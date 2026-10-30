@@ -50,6 +50,8 @@ export { AGENT_DIRS, agentPaths } from "../foundation/agent-paths.mjs";
 import {
   AGENT_DIRS,
   agentPaths,
+  loopLogPath,
+  resolveConfigDir,
   resolveKindConfigPath,
 } from "../foundation/agent-paths.mjs";
 import { statePathsForDir } from "../foundation/loop-state.mjs";
@@ -344,7 +346,10 @@ export function parseArgs(argv, env = process.env) {
   }
 
   const paths = agentPaths(opts.home, opts.actorKind);
-  opts.log ??= paths.log;
+  // One log for every actor kind, at the program root: the file answers "where
+  // are this product's logs" without the agent-kind table. `--home` still moves
+  // the state and the roles; it no longer moves the log.
+  opts.log ??= loopLogPath(resolveConfigDir({ env }));
   opts.state ??= paths.state;
   // The lock and the ledgers sit beside the worker registry, never inside it: an
   // entry there would consume a worker slot.
@@ -355,9 +360,9 @@ export function parseArgs(argv, env = process.env) {
   opts.slaLastOk ??= beside.slaLastOk;
   opts.slaLeader ??= env.MEERKAT_TASKPANEL_SLA_LEADER ?? null;
   opts.slaPeer ??= env.MEERKAT_TASKPANEL_SLA_PEER ?? null;
-  // The per-kind config and the project map live at the program root, not under
-  // `--home`; `--home` still selects the state, log and roles. `--config` is the
-  // explicit override and fills the value first.
+  // The per-kind config, the project map and the log live at the program root,
+  // not under `--home`; `--home` still selects the state and the roles.
+  // `--config` is the explicit override and fills the value first.
   opts.kindConfigDefault = resolveKindConfigPath({ actorKind: opts.actorKind, env });
   opts.config ??= opts.kindConfigDefault;
   opts.configFile = readConfigFile(opts.config);
@@ -907,7 +912,7 @@ Options:
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).
   --notify <cmd>            Run <cmd> with each patrol alert as JSON on stdin.
   --dry-run                 Print intended actions; write nothing, spawn nothing.
-  --log <path>              Append log lines here (default: <home>/<agent-dir>/meerkat-taskpanel/supervisor.log).
+  --log <path>              Append log lines here (default: <config root>/logs/supervisor.log — one file for every actor kind).
   --state <path>            Worker registry (default: <home>/<agent-dir>/meerkat-taskpanel/supervisor.state.json).
   --sla-ledger <path>       SLA de-duplication ledger (default: a sibling of --state).
   --workflow-ledger <path>  Workflow alert de-duplication ledger (default: a sibling of --state).

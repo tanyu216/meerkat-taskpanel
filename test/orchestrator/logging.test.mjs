@@ -33,7 +33,11 @@ function captureStderr(fn) {
 describe("orchestrator/logging — the loop's line logger", () => {
   it("names the loop in a `component=` field on stderr", () => {
     const dir = tempDir();
-    const log = createLogger({ log: join(dir, "supervisor.log"), logLevel: "info" });
+    const log = createLogger({
+      log: join(dir, "supervisor.log"),
+      logLevel: "info",
+      actorKind: "claude",
+    });
     const text = captureStderr(() => log("/meerkat-loop Continue — timer turn"));
     assert.match(
       text,
@@ -41,15 +45,33 @@ describe("orchestrator/logging — the loop's line logger", () => {
     );
   });
 
+  it("names the actor kind on every line, because the file is shared", () => {
+    const dir = tempDir();
+    const log = createLogger({
+      log: join(dir, "supervisor.log"),
+      logLevel: "info",
+      actorKind: "codex",
+    });
+    const text = captureStderr(() => log("tick"));
+    assert.match(text, / actor_kind=codex$/m);
+  });
+
+  it("still names a kind when the caller has none", () => {
+    const dir = tempDir();
+    const log = createLogger({ log: join(dir, "supervisor.log"), logLevel: "info" });
+    const text = captureStderr(() => log("tick"));
+    assert.match(text, / actor_kind=unknown$/m);
+  });
+
   it("appends a timestamped, levelled line to the loop log", () => {
     const dir = tempDir();
     const path = join(dir, "supervisor.log");
-    const log = createLogger({ log: path, logLevel: "info" });
+    const log = createLogger({ log: path, logLevel: "info", actorKind: "claude" });
     captureStderr(() => log("continue: would run: claude"));
     log.close();
     assert.match(
       readFileSync(path, "utf8"),
-      /^time=\d{4}-\d{2}-\d{2}T\S+ level=info component=supervisor msg="continue: would run: claude"$/m,
+      /^time=\d{4}-\d{2}-\d{2}T\S+ level=info component=supervisor msg="continue: would run: claude" actor_kind=claude$/m,
     );
   });
 

@@ -104,7 +104,8 @@ The server target materializes a self-contained runtime at `<home>/.meerkat-task
 ├── bin/taskctl           # 0755 launcher: exec node <tree>/src/cli/index.mjs
 ├── .env                  # 0600, seeded from the template; never overwritten
 ├── .env.<actor-kind>     # umask default; one per installed kind, policy not secrets
-└── .data/                # 0700, the SQLite board; never deleted
+├── .data/                # 0700, the SQLite board; never deleted
+└── logs/                 # 0700, the loop's supervisor.log for every actor kind
 ```
 
 The tree is self-locating: `src/` resolves `.env`, `.env.<actor-kind>`, `.data` and `web/dist` from its own
@@ -127,6 +128,12 @@ under `src/` (it still never touches `.env` or `.data`); `--dry-run` writes noth
 Upgrade by running the installer again (`--force` to refresh managed files). To remove,
 delete the agent-kind skill directories listed below and the tree itself; **keep `.data/` if you
 want the board**: `rm -rf ~/.meerkat-taskpanel` deletes the database with it.
+
+**One loop log, at the config root.** The supervisor log used to sit under the agent
+directory (`<agent-dir>/meerkat-taskpanel/supervisor.log`) and now lands at
+`<program root>/logs/supervisor.log`, one file for every actor kind. The installer does not
+move the old file: a re-run repoints the units, and the old
+`<agent-dir>/meerkat-taskpanel/supervisor.log*` is dead weight you may delete by hand.
 
 **Where the per-kind config lives.** `<program root>/.env.<actor-kind>` (for example
 `.env.claude`), beside the board `.env`, not under the agent directory. A combined install
@@ -270,7 +277,7 @@ place with a warning; repair it with `taskctl project map set`.
 | Artefact | Where | What |
 |---|---|---|
 | loop skill | `<agent-dir>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md` and `references/`. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked |
-| loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, `continue.state.json`, `supervisor.log` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
+| loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, `continue.state.json` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
 | launchd | `<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
 | systemd | `<agent-dir>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
 | cron | `<agent-dir>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue — **no pool**: no worker dispatch |
@@ -285,7 +292,7 @@ and write the wrong actor identity. If the agent CLI is not on `PATH` at install
 installer says so and renders the shim directory and node's alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](../scheduling.md#what-the-loops-units-run-with).
 | per-kind config | `<program root>/.env.<actor-kind>` | the loop's policy: claiming, stale recovery, where `taskctl` lives (`MEERKAT_TASKPANEL_REPO`), the workflow channel, the clocks, the concurrency cap and the session pool. **Every key, its default and its allowed values are inventoried once in [`.env.example`](../../.env.example)** (`docs/tech-spec.md` TS-26). Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
-| log (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
+| log (runtime) | `<program root>/logs/supervisor.log` | the supervisor's tick log — **one file for every actor kind**, each line carrying `actor_kind=<kind>`; `~/.meerkat-taskpanel/logs/supervisor.log` for a combined install |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/subscribe.state.json` | the event daemon's pid, last connection/event and pending reconnect — what `--supervisor=status` reports |

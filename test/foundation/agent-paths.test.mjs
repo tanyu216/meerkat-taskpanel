@@ -13,6 +13,7 @@ import {
   AGENT_DIRS,
   KIND_CONFIG_DIR_ENV,
   agentPaths,
+  loopLogPath,
   resolveConfigDir,
   resolveKindConfigPath,
 } from "../../src/foundation/agent-paths.mjs";
@@ -33,18 +34,34 @@ describe("agent-paths — the installed agent's directories", () => {
       paths.state,
       join("/home/op", ".claude", "meerkat-taskpanel", "supervisor.state.json"),
     );
-    assert.equal(
-      paths.log,
-      join("/home/op", ".claude", "meerkat-taskpanel", "supervisor.log"),
-    );
     assert.equal(paths.loopSkill, join("/home/op", ".claude", "skills", "meerkat-loop"));
     assert.equal(paths.boardSkill, join("/home/op", ".claude", "skills", "meerkat"));
     assert.equal(paths.stateDir, join("/home/op", ".claude", "meerkat-taskpanel"));
   });
 
+  it("is not where the loop log lives — the log is one file for every kind", () => {
+    const claude = agentPaths("/home/op", "claude");
+    const codex = agentPaths("/home/op", "codex");
+    assert.equal(Object.hasOwn(claude, "log"), false);
+    // The state directory stays per kind: the queue, the locks and the ledgers
+    // must not be shared between two pools.
+    assert.notEqual(claude.stateDir, codex.stateDir);
+  });
+
   it("does not derive the machine-local project map from the agent home", () => {
     const paths = agentPaths("/home/op", "claude");
     assert.equal(Object.hasOwn(paths, "projectsJson"), false);
+  });
+});
+
+describe("loopLogPath — one loop log, under the config root", () => {
+  it("puts supervisor.log in logs/ at the config root", () => {
+    assert.equal(loopLogPath("/opt/tree"), join("/opt/tree", "logs", "supervisor.log"));
+  });
+
+  it("takes no actor kind, so every kind writes the same file", () => {
+    // The signature is the guarantee: a kind argument would fork the path again.
+    assert.equal(loopLogPath.length, 1);
   });
 });
 
