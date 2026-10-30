@@ -225,6 +225,13 @@ openclaw-team instead. An install that predates this location is migrated once f
 The supervisor stays opt-in (--supervisor, above): without it, and without the
 MEERKAT_TASKPANEL_SUPERVISOR below, a plain install only prints the load command.
 
+A plain install does **restart** what it would otherwise leave stale. When --target
+server copies a `src/` that differs from the last install (a content digest, not a
+timestamp), an already-loaded taskd guard and an already-loaded session/subscribe pair
+are re-run so they execute the new code. Nothing is loaded, enabled or disabled by that
+path: a stopped unit stays stopped. MEERKAT_TASKPANEL_RUNTIME_CHANGED=1 asks for the
+restart explicitly (an agent-only install cannot detect the change itself).
+
 Environment (set for each agent-kind installer):
   MEERKAT_TASKPANEL_TARGET_HOME  overrides $HOME
   MEERKAT_TASKPANEL_AGENT_NAME   agent identity (default: Worker)
@@ -268,7 +275,8 @@ die() {
 # root `<prefix>/.meerkat-taskpanel/scheduling/`, and never touched by an agent kind's own
 # scheduling install. It is also the one unit this installer *loads* rather than
 # only printing a command for — a deliberate, narrow exception to "write the unit,
-# never start a daemon for you". The loop supervisor's units keep that rule.
+# never start a daemon for you". The loop supervisor's units keep that rule (they may be
+# *restarted* when the tree changed, never loaded; see install_scheduling).
 #
 # Reporting is the point: the guard's whole job is a server that comes back after
 # it dies, so an install says what it did (`enabled`, or `installed … not loaded`
@@ -295,11 +303,15 @@ install_taskd_guard() {
 
   force_flag=""
   [ -n "$FORCE" ] && force_flag="--force"
+  # A restart, not a load: the guard is already running the previous code when
+  # the tree changed under it. Skipped by the guard itself when nothing is loaded.
+  restart_flag=""
+  [ "$SERVER_TREE_CHANGED" = "1" ] && restart_flag="--restart-if-changed"
   if [ "$SERVER_INSTALLED" = "1" ]; then
     # The keepalive runs the installed tree, and pins its data dir so the
     # one-guard-per-machine comparison sees a distinct board.
     node "$ROOT/scripts/install/lib/taskd-guard.mjs" install --prefix "$TARGET_HOME" \
-      --root "$SERVER_ROOT" --data-dir "$SERVER_ROOT/.data" $force_flag
+      --root "$SERVER_ROOT" --data-dir "$SERVER_ROOT/.data" $force_flag $restart_flag
   else
     node "$ROOT/scripts/install/lib/taskd-guard.mjs" install --prefix "$TARGET_HOME" $force_flag
   fi
@@ -584,6 +596,15 @@ SERVER_ROOT="$TARGET_HOME/.meerkat-taskpanel"
 HAS_KIND_TARGET=0
 SERVER_SELECTED=0
 SERVER_INSTALLED=""
+# "Did the copied `src/` differ from what the running processes started with?"
+# The server target answers it in a file (a child cannot return a variable), and
+# two later steps act on it: the loop supervisor units and the taskd guard.
+SERVER_TREE_CHANGED=0
+# An explicit `MEERKAT_TASKPANEL_RUNTIME_CHANGED=1` is an operator (or a test)
+# saying "the code did change — restart it", which an agent-only install cannot
+# otherwise know. The server target can only ever *set* it, never clear it.
+[ "${MEERKAT_TASKPANEL_RUNTIME_CHANGED:-0}" = "1" ] && SERVER_TREE_CHANGED=1
+SERVER_REPORT=""
 for target in $TARGETS; do
   if [ "$target" = "server" ]; then
     SERVER_SELECTED=1
@@ -602,6 +623,11 @@ if [ "$SERVER_SELECTED" = "1" ]; then
   done
   export MEERKAT_TASKPANEL_REPO="$SERVER_ROOT"
   export MEERKAT_TASKPANEL_ENV_FILE="$SERVER_ROOT/.env"
+  # No `mktemp`: the installer must run under the tests' restricted PATH, which
+  # carries no coreutils. The pid makes the name unique, and the home prefix is
+  # the one directory this run is allowed to write.
+  SERVER_REPORT="$TARGET_HOME/.meerkat-taskpanel-server-report.$$"
+  export MEERKAT_TASKPANEL_SERVER_REPORT="$SERVER_REPORT"
 fi
 
 # Resolve the "allow claiming unassigned tasks?" policy (per-agent-kind config default).
@@ -748,9 +774,19 @@ FAIL $target — installer not found"
       MEERKAT_TASKPANEL_DRY_RUN="$DRY_RUN" \
       MEERKAT_TASKPANEL_SKIP_NODE_CHECK="1" \
       MEERKAT_TASKPANEL_SKIP_WEB_BUILD="$SKIP_WEB_BUILD" \
+      MEERKAT_TASKPANEL_SERVER_REPORT="$SERVER_REPORT" \
+      MEERKAT_TASKPANEL_RUNTIME_CHANGED="$SERVER_TREE_CHANGED" \
       bash "$installer"; then
     if [ "$target" = "server" ]; then
       SERVER_INSTALLED=1
+      # `read` + `case` are builtins: no grep/cat under the tests' restricted PATH.
+      if [ -s "$SERVER_REPORT" ]; then
+        report_line=""
+        IFS= read -r report_line < "$SERVER_REPORT" || true
+        case "$report_line" in
+          *'"changed":true'*) SERVER_TREE_CHANGED=1 ;;
+        esac
+      fi
       summary="$summary
 OK   server — $SERVER_ROOT"
     else
@@ -763,6 +799,12 @@ FAIL $target — see the message above (re-run with --force to overwrite an exis
     status=1
   fi
 done
+
+# Best-effort: `rm` is not guaranteed under the tests' restricted PATH, and a
+# stray one-line report in the home prefix is harmless (the next run rewrites it).
+if [ -n "$SERVER_REPORT" ] && command -v rm >/dev/null 2>&1; then
+  rm -f "$SERVER_REPORT"
+fi
 
 # The machine-level view: one loop supervisor per machine. Status always reports it; an
 # enable reports it only when this install covers more than one loop kind — the case where a

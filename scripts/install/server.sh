@@ -32,6 +32,10 @@ args=(install --root "$(repo_root)" --dest "$SERVER_ROOT")
 [ -n "${MEERKAT_TASKPANEL_FORCE:-}" ] && args+=(--force)
 [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ] && args+=(--dry-run)
 [ -n "${MEERKAT_TASKPANEL_SKIP_WEB_BUILD:-}" ] && args+=(--skip-web-build)
+# The runtime-changed answer goes to a file: a child process cannot return a
+# variable to install.sh, and both the board guard and the loop supervisor
+# restart decisions hinge on it.
+[ -n "${MEERKAT_TASKPANEL_SERVER_REPORT:-}" ] && args+=(--report "$MEERKAT_TASKPANEL_SERVER_REPORT")
 
 node "$(script_dir)/lib/server-install.mjs" "${args[@]}"
 

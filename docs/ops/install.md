@@ -388,9 +388,25 @@ supervisor: reloaded (kind=claude, scheduler=launchd, units=…)
 supervisor:   reloaded com.meerkat-taskpanel.<agent>.claude.session — the definition on disk had changed and a loaded unit is only read at bootstrap
 ```
 
-**A plain install says when it left a loaded unit stale.** The installer still never
-*changes* a service-manager state on its own, but a reinstall that rewrote units a manager
-already has loaded no longer prints "nothing is loaded for you" — that would be false. It
+**A plain install restarts what it would otherwise leave stale.** The installer still never
+*loads*, *enables* or *disables* a unit on its own — starting a daemon stays the operator's
+call. It does **restart** a unit that is already running when the runtime tree under it
+changed: the server target copies `src/**` unconditionally, a running process keeps the code
+it started with, and an install that refreshed the code and said nothing would leave a fix
+silently inert. The decision is a content digest of `src/**` (`<tree>/.install-state.json`),
+so an install that changed nothing bounces nothing:
+
+- `taskd` — with the guard loaded, `launchctl kickstart -k` / `systemctl --user restart`
+  re-runs it and the report carries the replacement's pid.
+- the loop supervisor — `session` and `subscribe` are restarted when loaded; the two timers
+  are left alone (one-shot, they read the new code on their next fire), and a stopped unit
+  stays stopped.
+- `cron` has no long-lived process, so there is nothing to restart.
+- A restart can be requested explicitly with `MEERKAT_TASKPANEL_RUNTIME_CHANGED=1`, which an
+  agent-only install cannot otherwise know.
+
+Separately, a reinstall that *rewrote unit definitions* a manager already has loaded still
+prints the stale report rather than "nothing is loaded for you" — that would be false. It
 probes (read-only) and reports:
 
 ```text

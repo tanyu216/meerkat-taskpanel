@@ -59,11 +59,16 @@ MEERKAT_TASKPANEL_SCHEDULER="${MEERKAT_TASKPANEL_SCHEDULER:-}"
 MEERKAT_TASKPANEL_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-}"
 MEERKAT_TASKPANEL_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
 MEERKAT_TASKPANEL_RECOVER_STALE="${MEERKAT_TASKPANEL_RECOVER_STALE:-}"
+# "The server target rewrote the runtime tree" — set by install.sh from the
+# server step's report and consumed by install_scheduling. A restart signal, not
+# an enable signal: see supervisor_restart_if_changed below.
+MEERKAT_TASKPANEL_RUNTIME_CHANGED="${MEERKAT_TASKPANEL_RUNTIME_CHANGED:-}"
 export MEERKAT_TASKPANEL_TARGET_HOME MEERKAT_TASKPANEL_AGENT_NAME MEERKAT_TASKPANEL_LINK \
   MEERKAT_TASKPANEL_FORCE MEERKAT_TASKPANEL_DRY_RUN MEERKAT_TASKPANEL_NO_AUTOMATION \
   MEERKAT_TASKPANEL_MIN_NODE MEERKAT_TASKPANEL_SKIP_NODE_CHECK MEERKAT_TASKPANEL_CLAIM_UNASSIGNED \
   MEERKAT_TASKPANEL_SUPERVISOR MEERKAT_TASKPANEL_SCHEDULER \
-  MEERKAT_TASKPANEL_WORKFLOW MEERKAT_TASKPANEL_REVIEWER MEERKAT_TASKPANEL_RECOVER_STALE
+  MEERKAT_TASKPANEL_WORKFLOW MEERKAT_TASKPANEL_REVIEWER MEERKAT_TASKPANEL_RECOVER_STALE \
+  MEERKAT_TASKPANEL_RUNTIME_CHANGED
 
 # is_int64 <value> — 0 when <value> is a non-negative integer that fits in a
 # signed 64-bit integer (the width bash's `[ … -lt … ]` test arithmetic uses),
@@ -722,11 +727,27 @@ supervisor_stale_report() {
     --scheduler "${MEERKAT_TASKPANEL_SCHEDULER:-auto}" 2>/dev/null || true
 }
 
+# supervisor_restart_if_changed — re-run the session/subscribe units that are
+# already loaded, after the server target replaced the tree they execute. This is
+# a restart, never a load: nothing is started that was not already running, and
+# the timers are untouched (they read the new code on their next fire). Prints
+# one line; never fatal, like the stale report above. Requires export_tp_env first.
+supervisor_restart_if_changed() {
+  node "$(script_dir)/lib/supervisor.mjs" restart-if-changed \
+    --actor-kind "$TP_ACTOR_KIND" \
+    --agent "$TP_AGENT" \
+    --agent-base "$TP_AGENT_BASE" \
+    --config "$TP_ENV" \
+    --scheduler "${MEERKAT_TASKPANEL_SCHEDULER:-auto}" || true
+}
+
 # install_scheduling — write the scheduling units, then either print the exact
 # command that loads them or — when the user asked for it (`--supervisor=…`, i.e.
 # MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without a request the installer
-# never runs `launchctl` / `systemctl` / `crontab` itself: enabling a daemon is the user's
-# call, and a plain install must have no side effects. Requires export_tp_env first.
+# never loads/enables/disables anything: enabling a daemon is the user's call. The one
+# exception is a *restart* of units that are already running, when the server target
+# replaced the tree under them (supervisor_restart_if_changed below). Requires
+# export_tp_env first.
 #
 # The templates are this installer's own (`scripts/install/templates/`), the one place
 # they live: the loop skill carries decisions, not deployment files.
@@ -767,6 +788,22 @@ install_scheduling() {
   if [ -n "${MEERKAT_TASKPANEL_SUPERVISOR:-}" ]; then
     apply_supervisor
     return 0
+  fi
+
+  # The server target replaced the tree these units execute, so a pool that is
+  # still running holds the previous code. Restart what is already loaded; a
+  # stopped unit stays stopped (starting one is still the operator's call), so
+  # "nothing to restart" falls through to the usual load hint below. Skipped on a
+  # fresh install (its units directory did not exist), in a dry run, and in the
+  # tests-only service bypass.
+  if [ "${MEERKAT_TASKPANEL_RUNTIME_CHANGED:-0}" = "1" ] \
+     && [ "${TP_SCHED_EXISTED:-0}" = "1" ] \
+     && [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    restart_line="$(supervisor_restart_if_changed)"
+    if [ -n "$restart_line" ]; then printf '%s\n' "$restart_line"; fi
+    case "$restart_line" in
+      *"restarted "*) return 0 ;;
+    esac
   fi
 
   # A rewrite over units a service manager already has loaded leaves the *running* job on

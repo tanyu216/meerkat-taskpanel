@@ -140,6 +140,27 @@ describe("server-install — the tree", () => {
     assert.equal(readFileSync(join(dest, ".data", "sentinel"), "utf8"), "keep me\n");
   });
 
+  // The copy runs unconditionally, so "did anything change?" is the digest's job —
+  // it is what decides whether a live board and pool must be restarted.
+  it("reports whether the copied source changed", () => {
+    const source = sourceRoot();
+    const dest = join(tempDir("server-digest"), ".meerkat-taskpanel");
+
+    const first = installServer({ root: source, dest, skipWebBuild: true });
+    assert.equal(first.ok, true);
+    assert.equal(first.changed, true, "a fresh install has nothing to match");
+
+    const same = installServer({ root: source, dest, skipWebBuild: true });
+    assert.equal(same.changed, false, "the same bytes are not a change");
+    assert.equal(same.srcDigest, first.srcDigest);
+
+    writeFileSync(join(source, "src", "cli", "index.mjs"), "// cli changed\n");
+    const changed = installServer({ root: source, dest, skipWebBuild: true });
+    assert.equal(changed.changed, true);
+    assert.notEqual(changed.srcDigest, first.srcDigest);
+    assert.equal(changed.previousSrcDigest, first.srcDigest);
+  });
+
   it("--dry-run writes nothing", () => {
     const source = sourceRoot();
     const dest = join(tempDir("server-dry"), ".meerkat-taskpanel");

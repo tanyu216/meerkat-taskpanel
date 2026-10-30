@@ -468,6 +468,12 @@ describe("taskd guard: what makes the unit live", () => {
     assert.deepEqual(plan.commands, [{ command: "launchctl", args: ["bootstrap", "gui/501", "/p/taskd.plist"] }]);
     assert.deepEqual(plan.fallback, { command: "launchctl", args: ["load", "-w", "/p/taskd.plist"] });
     assert.deepEqual(plan.loadedProbe.args, ["print", "gui/501/com.meerkat-taskpanel.taskd"]);
+    // A restart is a re-run of the loaded job, never a re-read of the plist:
+    // only the code under the unit changed.
+    assert.deepEqual(plan.restart, {
+      command: "launchctl",
+      args: ["kickstart", "-k", "gui/501/com.meerkat-taskpanel.taskd"],
+    });
     assert.deepEqual(plan.stop, ["launchctl bootout gui/501/com.meerkat-taskpanel.taskd", "rm /p/taskd.plist"]);
   });
 
@@ -481,6 +487,7 @@ describe("taskd guard: what makes the unit live", () => {
       systemdUnit: "/p/taskd.service",
     });
     assert.deepEqual(plan.commands, [{ command: "systemctl", args: ["--user", "enable", "--now", TASKD_UNIT] }]);
+    assert.deepEqual(plan.restart, { command: "systemctl", args: ["--user", "restart", TASKD_UNIT] });
     assert.equal(plan.unitDir, "/home/op/.config/systemd/user");
     assert.deepEqual(plan.stop, [`systemctl --user disable --now ${TASKD_UNIT}`, `rm /home/op/.config/systemd/user/${TASKD_UNIT}`]);
   });
@@ -987,6 +994,53 @@ describe("taskd guard: the readiness gate", () => {
     assert.equal(report.pid, FAKE_PID);
     assert.equal(runner.state.loads, 1);
     assert.ok(lines.some((line) => line === `taskd guard: enabled (${TASKD_LABEL}, pid ${FAKE_PID})`), lines.join("\n"));
+  });
+
+  // The tree was replaced under a running guard: it keeps the previous code until
+  // its process is re-run. The restart is opt-in, and only for a loaded guard.
+  it("restarts an already-loaded guard only when the tree changed", async () => {
+    const prefix = makeTempDir();
+    const dataDir = makeTempDir();
+    const asked = [];
+    let pid = FAKE_PID;
+    const run = (command, args) => {
+      const line = `${command} ${args.join(" ")}`;
+      asked.push(line);
+      if (line.startsWith("launchctl kickstart")) {
+        pid = FAKE_PID + 1;
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      if (command === "launchctl") return { status: 0, stdout: `\tpid = ${pid}\n`, stderr: "" };
+      return { status: 0, stdout: "", stderr: "" };
+    };
+    const base = {
+      prefix,
+      platform: "darwin",
+      uid: 501,
+      home: prefix,
+      env: { ...process.env, TASKD_DATA_DIR: dataDir },
+      runner: run,
+      log: () => {},
+      pidWaitMs: 20,
+      healthWaitMs: 200,
+      healthPollMs: 5,
+      readPointerFn: () => ({ url: "http://127.0.0.1:9527", pid, dataDir }),
+      healthProbe: async () => true,
+    };
+
+    const untouched = await installGuard(base);
+    assert.equal(untouched.state, "already");
+    assert.equal(
+      asked.filter((line) => line.startsWith("launchctl kickstart")).length,
+      0,
+      "an unchanged tree does not bounce the board",
+    );
+
+    asked.length = 0;
+    const restarted = await installGuard({ ...base, restartIfChanged: true });
+    assert.equal(restarted.state, "restarted");
+    assert.ok(asked.includes("launchctl kickstart -k gui/501/com.meerkat-taskpanel.taskd"));
+    assert.equal(restarted.pid, FAKE_PID + 1, "the replacement's pid is what the report carries");
   });
 
   it("does not start a second board when one is already serving /health", async () => {

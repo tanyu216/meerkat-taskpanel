@@ -10,6 +10,11 @@
  * the installer's rule that it writes a unit and prints the load command but
  * never starts a daemon — the loop supervisor's units still keep that rule.
  *
+ * `--restart-if-changed` is a different act: it re-runs a guard that is **already
+ * loaded** so a board still serving the previous tree picks up the freshly
+ * installed code. It never loads a stopped unit, and it is only passed when the
+ * server target reported that `src/**` actually changed.
+ *
  * Why a keepalive at all: `taskctl` lazy-starts `taskd` only when a CLI call
  * needs it, so a board whose server dies while nobody is calling it would stay
  * down until the next call. The unit closes that gap with the supervisor's own
@@ -390,6 +395,9 @@ export function enablePlan(options) {
       fallback: { command: "launchctl", args: ["load", "-w", launchdUnit] },
       loadedProbe: { command: "launchctl", args: ["print", job] },
       pidProbe: { command: "launchctl", args: ["print", job] },
+      // Re-run the loaded job as-is. `kickstart -k` deliberately does not re-read
+      // the plist; only the code under the unit changed, so that is the right tool.
+      restart: { command: "launchctl", args: ["kickstart", "-k", job] },
       stop: [`launchctl bootout ${job}`, `rm ${launchdUnit}`],
     };
   }
@@ -401,6 +409,7 @@ export function enablePlan(options) {
       commands: [{ command: "systemctl", args: ["--user", "enable", "--now", TASKD_UNIT] }],
       loadedProbe: { command: "systemctl", args: ["--user", "is-active", TASKD_UNIT] },
       pidProbe: { command: "systemctl", args: ["--user", "show", "--property", "MainPID", "--value", TASKD_UNIT] },
+      restart: { command: "systemctl", args: ["--user", "restart", TASKD_UNIT] },
       stop: [`systemctl --user disable --now ${TASKD_UNIT}`, `rm ${join(unitDir, TASKD_UNIT)}`],
       systemdUnit,
       unitDir,
@@ -466,7 +475,8 @@ export function parsePid(plan, output) {
  *          uid?: number|null, home?: string, force?: boolean, runner?: typeof spawnSync,
  *          log?: (line: string) => void, pidWaitMs?: number, node?: string,
  *          healthWaitMs?: number, healthPollMs?: number, healthProbe?: Function,
- *          readPointerFn?: Function, sleep?: (ms: number) => Promise<void>}} [options]
+ *          readPointerFn?: Function, sleep?: (ms: number) => Promise<void>,
+ *          restartIfChanged?: boolean}} [options]
  * @returns {Promise<object>} the report (see `report` below)
  */
 export async function installGuard(options = {}) {
@@ -475,6 +485,10 @@ export async function installGuard(options = {}) {
   const platform = options.platform ?? process.platform;
   const home = options.home ?? homedir();
   const force = Boolean(options.force);
+  // The installed tree was rewritten under a running guard. Restarting is not
+  // loading: the unit definition is unchanged, so `kickstart -k` (launchd) or
+  // `systemctl --user restart` re-runs it and picks up the new code.
+  const restartIfChanged = Boolean(options.restartIfChanged);
   const run = options.runner ?? spawnSync;
   const log = options.log ?? ((line) => process.stdout.write(`${line}\n`));
 
@@ -594,7 +608,24 @@ export async function installGuard(options = {}) {
   let reason = null;
 
   if (already.ok) {
-    state = "already";
+    if (restartIfChanged && plan.restart !== undefined) {
+      const outcome = runStep(plan.restart, run);
+      if (outcome.ok) {
+        state = "restarted";
+        // The old process is gone; wait for the replacement before reporting a pid.
+        report.pid = waitForPid(plan, run, pidWaitMs);
+        log(`taskd guard: restarted ${TASKD_LABEL} — the installed code had changed`);
+      } else {
+        // Never fatal: the guard is still there, running the previous code.
+        state = "already";
+        log(
+          `taskd guard: could not restart ${TASKD_LABEL} (${outcome.status ?? "error"}); ` +
+            "it keeps the previous code — restart it by hand",
+        );
+      }
+    } else {
+      state = "already";
+    }
   } else {
     let outcome = runStep(plan.commands[0], run);
     if (!outcome.ok && plan.fallback) outcome = runStep(plan.fallback, run);
@@ -828,14 +859,17 @@ function waitForPid(plan, run, budgetMs) {
   }
 }
 
-const USAGE = `Usage: node scripts/install/lib/taskd-guard.mjs install --prefix <dir> [--root <tree>] [--data-dir <dir>] [--force]
+const USAGE = `Usage: node scripts/install/lib/taskd-guard.mjs install --prefix <dir> [--root <tree>] [--data-dir <dir>] [--force] [--restart-if-changed]
 
 Writes the taskd keepalive unit (launchd + systemd) under
 <dir>/.meerkat-taskpanel/scheduling/, then loads this platform's one, waits for its
 board to answer /health, and reports what happened.
 --root names the program tree the unit runs (default: this checkout);
 --data-dir pins TASKD_DATA_DIR in the unit (used by --target server).
-Called by install.sh; not meant to be run by hand.
+--restart-if-changed re-runs an already-loaded guard so a board that is still
+serving the previous code picks up the freshly installed tree. It restarts a
+running unit; it never loads one that is not running. Called by install.sh; not
+meant to be run by hand.
 
 Exit 0 even when the unit could not be loaded (the report says so, and the
 agent install is unaffected). Exit 3 when it refused to re-point the machine's
@@ -858,6 +892,7 @@ async function main() {
   let root = null;
   let dataDir = null;
   let force = false;
+  let restartIfChanged = false;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--prefix") {
       prefix = argv[++i];
@@ -879,6 +914,8 @@ async function main() {
       }
     } else if (argv[i] === "--force") {
       force = true;
+    } else if (argv[i] === "--restart-if-changed") {
+      restartIfChanged = true;
     } else {
       process.stderr.write(`taskd-guard: unknown option: ${argv[i]}\n`);
       return 2;
@@ -893,7 +930,7 @@ async function main() {
   // first — so it leaves the subcommand with a code of its own (`exitCode`). `install.sh`
   // already treats a non-zero guard step as non-fatal (it prints the line above and
   // carries on, `install.sh:488-495`), which keeps this out of the install's own status.
-  return exitCode(await installGuard({ prefix, force, root, dataDir }));
+  return exitCode(await installGuard({ prefix, force, root, dataDir, restartIfChanged }));
 }
 
 /**

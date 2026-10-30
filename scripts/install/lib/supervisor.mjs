@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 /**
- * The `meerkat-loop` supervisor's **enable / disable / status** actions.
+ * The `meerkat-loop` supervisor's **enable / disable / status** actions, plus the
+ * installer-only `restart-if-changed` (an `INTERNAL_ACTIONS` member, not part of the
+ * documented user surface).
  *
  * `install.sh` writes the loop's scheduling units and, by default, stops there: it prints
- * the load command and never starts a daemon. This module is the one deliberate exception
+ * the load command and never starts a daemon. `restart-if-changed` is not a start: when the
+ * server target replaced the tree under a running supervisor, it re-runs the loaded
+ * `session`/`subscribe` units (`kickstart -k` / `systemctl --user restart`) and leaves a
+ * stopped unit, and the two one-shot timers, untouched. This module is the one deliberate exception
  * — the opt-in path the contract fixes in `docs/scheduling.md` §"Enabling the supervisor
  * (opt-in)" — run by `scripts/install/_common.sh` for each loop agent kind when the user asked
  * for it (`--supervisor=enable|disable|status`, `MEERKAT_TASKPANEL_SUPERVISOR`, or a `y`
@@ -46,6 +51,12 @@ import { unitPath } from "./unit-path.mjs";
 
 /** The three actions of the single entry point. */
 export const ACTIONS = Object.freeze(["enable", "disable", "status"]);
+/**
+ * Actions the installer drives, never the operator: the machine view, and the
+ * restart an install runs when it replaced the tree under a live supervisor.
+ * Kept out of `ACTIONS` because that list is the documented user surface.
+ */
+export const INTERNAL_ACTIONS = Object.freeze(["machine-status", "restart-if-changed"]);
 /** The mechanisms `--scheduler` may name, plus `auto` (this platform's one). */
 export const SCHEDULERS = Object.freeze(["auto", "launchd", "systemd", "cron"]);
 /** The actor kinds that run the supervisor. OpenClaw is never among them (D8). */
@@ -676,6 +687,28 @@ export function launchdMechanism({ paths, uid, run }) {
     disable() {
       return takeDown(paths.launchd);
     },
+
+    /**
+     * Re-run the **long-lived** units that are already loaded, after the code
+     * they execute was replaced. A restart, never a load: an unloaded unit is
+     * left alone (the operator decides when to start one), and the two timers
+     * are skipped because they are one-shot and pick up the new code on their
+     * next fire.
+     */
+    restartLoaded() {
+      const restarted = [];
+      for (const unit of paths.launchd) {
+        if (unit.kind !== "session" && unit.kind !== "subscribe") continue;
+        const loaded = runStep({ command: "launchctl", args: ["print", jobId(unit)] }, run).ok;
+        if (!loaded) continue;
+        const outcome = runStep({ command: "launchctl", args: ["kickstart", "-k", jobId(unit)] }, run);
+        if (!outcome.ok) {
+          return { ok: false, reason: `launchctl kickstart exited ${outcome.status}: ${firstLine(outcome.stderr)}` };
+        }
+        restarted.push(unit.kind);
+      }
+      return { ok: true, restarted };
+    },
   };
 }
 
@@ -793,6 +826,20 @@ export function systemdMechanism({ paths, run }) {
       if (outcome.ok) return { ok: true, already: !wasEnabled };
       return outcome;
     },
+
+    /** See `launchdMechanism.restartLoaded`: active services only, never the timers. */
+    restartLoaded() {
+      const active = SYSTEMD_SERVICES.filter(
+        (unit) => runStep({ command: "systemctl", args: ["--user", "is-active", unit] }, run).ok,
+      );
+      if (active.length === 0) return { ok: true, restarted: [] };
+      const outcome = runStep({ command: "systemctl", args: ["--user", "restart", ...active] }, run);
+      if (!outcome.ok) return { ok: false, reason: `systemctl exited ${outcome.status}: ${firstLine(outcome.stderr)}` };
+      return {
+        ok: true,
+        restarted: active.map((unit) => unit.replace(/^meerkat-taskpanel-/, "").replace(/\.service$/, "")),
+      };
+    },
   };
 }
 
@@ -860,6 +907,12 @@ export function cronMechanism({ paths, run }) {
       const outcome = write(next);
       if (outcome.ok) return { ok: true, already: false };
       return { ok: false, reason: `crontab exited ${outcome.status}: ${firstLine(outcome.stderr)}` };
+    },
+
+    // cron cannot host a long-lived process: its two entries are one-shot and the
+    // next fire executes the new code. Nothing to restart, and nothing to run.
+    restartLoaded() {
+      return { ok: true, restarted: [], reason: "cron runs one-shot entries — the next fire uses the new code" };
     },
   };
 }
@@ -1026,6 +1079,31 @@ export function runSupervisorAction(options) {
     return 0;
   }
 
+  // The installed tree was replaced under a running supervisor. This is a
+  // restart of what is already loaded, not a load: a unit that is not running is
+  // left for the operator, and the timers are untouched (they are one-shot and
+  // read the new code on their next fire).
+  if (action === "restart-if-changed") {
+    if (options.dryRun) {
+      log(`supervisor: dry-run — would restart loaded session/subscribe units (${withUnits(all[requested])})`);
+      return 0;
+    }
+    const outcome = all[requested].restartLoaded();
+    if (!outcome.ok) {
+      log(`supervisor: restart failed — ${outcome.reason}`);
+      return 1;
+    }
+    if (outcome.restarted.length === 0) {
+      log(
+        "supervisor: nothing to restart" +
+          (outcome.reason === undefined ? " — no long-lived unit is loaded" : ` — ${outcome.reason}`),
+      );
+    } else {
+      log(`supervisor: restarted ${outcome.restarted.join(", ")} — the installed code had changed`);
+    }
+    return 0;
+  }
+
   if (action === "status") {
     log(`supervisor: status (kind=${paths.actorKind})`);
     // The platform and the scan set are the two facts a user cannot infer from the unit
@@ -1164,13 +1242,15 @@ export function runSupervisorAction(options) {
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = `Usage: node scripts/install/lib/supervisor.mjs <enable|disable|status> --actor-kind <kind> \\
+const USAGE = `Usage: node scripts/install/lib/supervisor.mjs <enable|disable|status|restart-if-changed> --actor-kind <kind> \\
          --agent <name> --agent-base <dir> [--config <file>] \\
          [--scheduler auto|launchd|systemd|cron] [--dry-run]
 
 Loads, unloads or reports one loop agent kind's supervisor units — the opt-in path
-docs/scheduling.md defines. Called by scripts/install/_common.sh; not meant to be
-run by hand.
+docs/scheduling.md defines. \`restart-if-changed\` re-runs the session/subscribe
+units that are already loaded, so a pool that is still executing the previous
+code picks up the freshly installed tree; it never loads a stopped unit.
+Called by scripts/install/_common.sh; not meant to be run by hand.
 `;
 
 /**
@@ -1225,7 +1305,7 @@ function main(argv) {
     return action === undefined ? 2 : 0;
   }
   if (action === "machine-status") return machineStatusMain(rest);
-  if (!ACTIONS.includes(action)) {
+  if (!ACTIONS.includes(action) && !INTERNAL_ACTIONS.includes(action)) {
     process.stderr.write(`supervisor: unknown action: ${action} (expected ${ACTIONS.join("|")})\n`);
     return 2;
   }
