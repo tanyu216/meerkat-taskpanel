@@ -188,12 +188,12 @@ describe("commands/relations", () => {
 
   it("refuses a second parent, a cycle and a cross-project edge", async () => {
     await board(({ commands }) => {
-      commands.createProject({ id: "other", name: "Other", actor: HUMAN });
+      commands.createProject({ id: "oth", name: "Other", actor: HUMAN });
       const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
       const a = commands.createTask({ projectId: "proj", title: "A", kind: "epic", actor: AGENT });
       const b = commands.createTask({ projectId: "proj", title: "B", kind: "epic", actor: AGENT });
       const c = commands.createTask({ projectId: "proj", title: "C", actor: AGENT });
-      const elsewhere = commands.createTask({ projectId: "other", title: "Elsewhere", actor: AGENT });
+      const elsewhere = commands.createTask({ projectId: "oth", title: "Elsewhere", actor: AGENT });
 
       commands.addRelation({ type: "parent", source: epic.id, target: a.id, actor: AGENT });
       assert.throws(
@@ -566,12 +566,12 @@ describe("commands — the project surface", () => {
 
   it("reads a task by id or identifier, refusing an ambiguous identifier", async () => {
     await board(({ commands }) => {
-      commands.createProject({ id: "other", name: "Other", actor: HUMAN });
+      commands.createProject({ id: "oth", name: "Other", actor: HUMAN });
       const task = commands.createTask({ projectId: "proj", title: "one", identifier: "SHARED-0001", actor: AGENT });
       assert.equal(commands.getTask({ id: task.id }).id, task.id);
       assert.equal(commands.getTaskByIdentifier({ identifier: "SHARED-0001" }).id, task.id);
 
-      commands.createTask({ projectId: "other", title: "two", identifier: "SHARED-0001", actor: AGENT });
+      commands.createTask({ projectId: "oth", title: "two", identifier: "SHARED-0001", actor: AGENT });
       assert.throws(() => commands.getTaskByIdentifier({ identifier: "SHARED-0001" }), (err) => {
         assert.equal(err.code, "VALIDATION_FAILED");
         assert.match(err.message, /more than one project/);
@@ -673,14 +673,14 @@ describe("commands/delivery-report — the one delivery-shaped insert", () => {
 describe("commands/projects — ensure", () => {
   it("creates once, then returns the existing row untouched", async () => {
     await board(async ({ commands, repos }) => {
-      const first = commands.ensureProject({ id: "ensured", name: "Ensured", meta: { team: "panel" }, actor: HUMAN });
+      const first = commands.ensureProject({ id: "ens", name: "Ensured", meta: { team: "panel" }, actor: HUMAN });
       assert.equal(first.created, true);
       assert.equal(first.project.name, "Ensured");
       assert.deepEqual(first.project.meta, { team: "panel" });
 
       // The second call is a read: a different name and meta are ignored.
       const second = commands.ensureProject({
-        id: "ensured",
+        id: "ens",
         name: "Renamed",
         meta: { team: "other" },
         actor: HUMAN,
@@ -688,7 +688,7 @@ describe("commands/projects — ensure", () => {
       assert.equal(second.created, false);
       assert.equal(second.project.name, "Ensured");
       assert.deepEqual(second.project.meta, { team: "panel" });
-      assert.equal(repos.projects.list().filter((p) => p.id === "ensured").length, 1);
+      assert.equal(repos.projects.list().filter((p) => p.id === "ens").length, 1);
     });
   });
 });

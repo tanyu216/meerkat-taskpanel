@@ -50,13 +50,13 @@ before(async () => {
   board = await openBoard({ dataDir, pointer: false });
   const { commands, repos, db } = board;
 
-  commands.createProject({ id: "scale", name: "Scale", actor: AGENT });
+  commands.createProject({ id: "scl", name: "Scale", actor: AGENT });
 
   // One real card per assignee, so the dictionary holds an entry whose id the
   // bulk rows can carry — the candidate read resolves a *name* to those ids.
   const seeds = ASSIGNEES.map((name, index) =>
     commands.createTask({
-      projectId: "scale",
+      projectId: "scl",
       title: `seed ${name}`,
       assignee: name,
       priority: PRIORITIES[index % PRIORITIES.length],
@@ -80,8 +80,8 @@ before(async () => {
         repos.tasks.insert({
           ...template,
           id: `scale-${index}`,
-          // Deliberately not the project's own `SCALE-` prefix: the four seed
-          // cards already hold SCALE-0001…0004, and the identifier is unique
+          // Deliberately not the project's own `SCL-` prefix: the four seed
+          // cards already hold SCL-0001…0004, and the identifier is unique
           // per project.
           identifier: `BULK-${String(index).padStart(4, "0")}`,
           title: `scale card ${index}`,
@@ -123,13 +123,13 @@ function timeOf(runs, fn) {
 describe("task-order — R12: the weight order on a real project", () => {
   it("orders the whole project scope without truncating it", (t) => {
     const { commands, repos } = board;
-    const total = commands.listTasks({ projectId: "scale", limit: null }).length;
+    const total = commands.listTasks({ projectId: "scl", limit: null }).length;
     assert.ok(total >= PROJECT_SIZE, `the fixture really holds ${PROJECT_SIZE}+ cards, has ${total}`);
 
     // The repository read is the comparison: it is the `ORDER BY` SQLite can do
     // with the existing index, so the difference is what the weight order costs.
-    const boardOrder = timeOf(3, () => repos.tasks.list({ projectId: "scale", limit: null }));
-    const weight = timeOf(3, () => commands.listTasks({ projectId: "scale", limit: null }));
+    const boardOrder = timeOf(3, () => repos.tasks.list({ projectId: "scl", limit: null }));
+    const weight = timeOf(3, () => commands.listTasks({ projectId: "scl", limit: null }));
 
     assert.equal(weight.result.length, boardOrder.result.length, "same cards, both orders");
     assert.deepEqual(
@@ -140,7 +140,7 @@ describe("task-order — R12: the weight order on a real project", () => {
     // A valid total order: strict, and the same set twice.
     const ids = weight.result.map((task) => task.id);
     assert.equal(new Set(ids).size, ids.length, "no card appears twice");
-    assert.deepEqual(commands.listTasks({ projectId: "scale", limit: null }).map((task) => task.id), ids);
+    assert.deepEqual(commands.listTasks({ projectId: "scl", limit: null }).map((task) => task.id), ids);
 
     t.diagnostic(
       `R12 · project scope of ${weight.result.length} cards — repository order ${boardOrder.ms.toFixed(1)}ms, ` +
@@ -151,10 +151,10 @@ describe("task-order — R12: the weight order on a real project", () => {
   it("orders a single assignee's scope, which is where it is meant to be used", (t) => {
     const { commands, repos } = board;
     const assigneeId = idsOf(board, "bench-0");
-    const scope = repos.tasks.list({ projectId: "scale", assigneeId, limit: null }).length;
+    const scope = repos.tasks.list({ projectId: "scl", assigneeId, limit: null }).length;
     const candidates = timeOf(3, () => commands.listCandidates({ assignee: "bench-0" }));
     const repository = timeOf(3, () =>
-      repos.tasks.list({ projectId: "scale", status: "todo", assigneeId, limit: null }),
+      repos.tasks.list({ projectId: "scl", status: "todo", assigneeId, limit: null }),
     );
 
     assert.ok(scope > 200, `the assignee's scope is ${scope} cards before any dependency filtering`);
@@ -174,7 +174,7 @@ describe("task-order — R12: the weight order on a real project", () => {
     // A page is `LIMIT`-shaped work on top of the ordering; this records what a
     // poll-sized page costs, which is the number a caller actually pays.
     const { commands } = board;
-    const page = timeOf(3, () => commands.listTasks({ projectId: "scale", limit: 50, offset: 0 }));
+    const page = timeOf(3, () => commands.listTasks({ projectId: "scl", limit: 50, offset: 0 }));
     assert.equal(page.result.length, 50);
     t.diagnostic(`R12 · first page of 50 from a ${PROJECT_SIZE}-card project: ${page.ms.toFixed(1)}ms (median of 3)`);
   });

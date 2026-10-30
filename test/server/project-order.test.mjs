@@ -32,14 +32,14 @@ before(async () => {
 
   const { commands, db } = taskd.board;
   const create = (id, name) => commands.createProject({ id, name, actor: AGENT });
-  create("busy", "Busy");
-  create("quiet", "Quiet");
+  create("bu", "Busy");
+  create("qu", "Quiet");
   create("old", "Old");
 
-  // 3 recent activities in `busy`, 1 in `quiet`, 5 but all outside both windows
+  // 3 recent activities in `bu`, 1 in `qu`, 5 but all outside both windows
   // in `old` (which is the case the window bound exists for).
-  for (let i = 1; i <= 3; i += 1) createTask(commands, { projectId: "busy", title: `b${i}` });
-  createTask(commands, { projectId: "quiet", title: "q1" });
+  for (let i = 1; i <= 3; i += 1) createTask(commands, { projectId: "bu", title: `b${i}` });
+  createTask(commands, { projectId: "qu", title: "q1" });
 
   // `old` needs tasks whose *only* activities predate both windows. The audit
   // log is append-only (0038), so the fixture writes the rows with the stamp
@@ -119,34 +119,34 @@ describe("project-order — the pure ranking", () => {
 describe("project-order — over HTTP against a real board", () => {
   it("orders by activity, keeps the old project last, and ships no debug by default", async () => {
     const body = (await (await fetch(`${base}/api/v1/projects`)).json()).data;
-    assert.deepEqual(body.projects.map((project) => project.id), ["busy", "quiet", "old"]);
+    assert.deepEqual(body.projects.map((project) => project.id), ["bu", "qu", "old"]);
     assert.equal(body.order_debug, undefined, "the debug detail is opt-in");
   });
 
   it("returns the three factors on ?order_debug=1", async () => {
     const body = (await (await fetch(`${base}/api/v1/projects?order_debug=1`)).json()).data;
-    assert.deepEqual(body.projects.map((project) => project.id), ["busy", "quiet", "old"]);
+    assert.deepEqual(body.projects.map((project) => project.id), ["bu", "qu", "old"]);
 
     const debug = Object.fromEntries(body.order_debug.map((entry) => [entry.id, entry]));
-    assert.equal(debug.busy.factors.a7.raw, 3);
-    assert.equal(debug.busy.factors.a30.raw, 3);
-    assert.equal(debug.quiet.factors.a7.raw, 1);
+    assert.equal(debug.bu.factors.a7.raw, 3);
+    assert.equal(debug.bu.factors.a30.raw, 3);
+    assert.equal(debug.qu.factors.a7.raw, 1);
     assert.equal(debug.old.factors.a7.raw, 0, "activity 40 days old is outside both windows");
     assert.equal(debug.old.factors.a30.raw, 0);
-    assert.equal(debug.busy.factors.a7.score, 1);
-    assert.equal(debug.old.total < debug.quiet.total, true);
-    assert.equal(typeof debug.busy.last_activity_at, "string");
+    assert.equal(debug.bu.factors.a7.score, 1);
+    assert.equal(debug.old.total < debug.qu.total, true);
+    assert.equal(typeof debug.bu.last_activity_at, "string");
   });
 
   it("folds a heartbeat into no activity at all", async () => {
     const { commands, db } = taskd.board;
     const raw = async () => {
       const body = (await (await fetch(`${base}/api/v1/projects?order_debug=1`)).json()).data;
-      return body.order_debug.find((entry) => entry.id === "quiet").factors.a7.raw;
+      return body.order_debug.find((entry) => entry.id === "qu").factors.a7.raw;
     };
 
     const before = await raw();
-    const task = createTask(commands, { projectId: "quiet", title: "pulse" });
+    const task = createTask(commands, { projectId: "qu", title: "pulse" });
     commands.claim({ id: task.id, actor: AGENT });
     assert.equal(await raw(), before + 2, "the create and the claim both count");
 

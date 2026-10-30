@@ -66,8 +66,8 @@ const dataOf = (result) => {
 };
 
 /** A project to hang the cards on (created once, reused by every case). */
-async function project(name) {
-  const created = await call("POST", "/api/v1/projects", { name });
+async function project(name, id) {
+  const created = await call("POST", "/api/v1/projects", { id, name });
   if (created.body.ok) return dataOf(created).project.id;
   // Already there (a second run in the same process) — read it back.
   const list = dataOf(await call("GET", "/api/v1/projects"));
@@ -76,7 +76,7 @@ async function project(name) {
 
 describe("server/error-envelope — ③ engine text never reaches a message", () => {
   it("answers every refusing route with a readable sentence", async () => {
-    const projectId = await project("Envelope");
+    const projectId = await project("Envelope", "env");
     const card = dataOf(await call("POST", "/api/v1/tasks", { project_id: projectId, title: "Seed" })).task;
     // The routing lock only exists on an *assigned* card: an unassigned one is
     // an open pool (domain/claim.mjs#isAssignee).
@@ -135,7 +135,7 @@ describe("server/error-envelope — ③ engine text never reaches a message", ()
 
 describe("server/error-envelope — ② Terry's drag, end to end", () => {
   it("moves a claimed card back to Backlog and leaves no claim behind", async () => {
-    const projectId = await project("Terry");
+    const projectId = await project("Terry", "ter");
     const card = dataOf(await call("POST", "/api/v1/tasks", { project_id: projectId, title: "Claimed work" })).task;
     assert.equal(card.status, "todo");
     assert.equal(card.claimed_by, null);

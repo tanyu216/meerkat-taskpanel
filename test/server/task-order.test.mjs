@@ -292,12 +292,12 @@ describe("task-order — assertion 10: the scope reaches SQL before the order do
   it("keeps the claimability bucket as the first key", async () => {
     // `stale` cards are in the recovery pool and must stay behind every `ready`
     // one, however much longer they have been waiting.
-    createProject("buckets", "Buckets");
+    createProject("bkt", "Buckets");
     const carol = { kind: "agent", id: "carol" };
-    const abandoned = createTask({ projectId: "buckets", title: "abandoned", priority: "urgent", assignee: "carol" });
+    const abandoned = createTask({ projectId: "bkt", title: "abandoned", priority: "urgent", assignee: "carol" });
     commands().moveStatus({ id: abandoned.id, to: "in_progress", actor: carol });
     db().prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run(LONG_AGO, abandoned.id);
-    createTask({ projectId: "buckets", title: "queued", priority: "low", assignee: "carol" });
+    createTask({ projectId: "bkt", title: "queued", priority: "low", assignee: "carol" });
 
     const { candidates } = dataOf(
       await call("GET", "/api/v1/tasks/candidates?assignee=carol&stale=1&order_debug=1"),
@@ -307,13 +307,13 @@ describe("task-order — assertion 10: the scope reaches SQL before the order do
   });
 
   it("never offers an epic, however much it blocks (R10)", async () => {
-    createProject("epics", "Epics");
-    const epic = createTask({ projectId: "epics", title: "container", kind: "epic", priority: "urgent", assignee: "dave" });
-    const children = [1, 2, 3].map((n) => createTask({ projectId: "epics", title: `child ${n}`, assignee: "dave" }));
+    createProject("epc", "Epics");
+    const epic = createTask({ projectId: "epc", title: "container", kind: "epic", priority: "urgent", assignee: "dave" });
+    const children = [1, 2, 3].map((n) => createTask({ projectId: "epc", title: `child ${n}`, assignee: "dave" }));
     for (const child of children) {
       commands().addRelation({ type: "blocks", source: epic.id, target: child.id, actor: AGENT });
     }
-    const ordinary = createTask({ projectId: "epics", title: "ordinary", assignee: "dave" });
+    const ordinary = createTask({ projectId: "epc", title: "ordinary", assignee: "dave" });
 
     const { candidates, order_debug: orderDebug } = dataOf(
       await call("GET", "/api/v1/tasks/candidates?assignee=dave&order_debug=1"),

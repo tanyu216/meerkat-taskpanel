@@ -141,17 +141,17 @@ describe("server/routes — projects", () => {
 
   it("ensures a project: creates once, then returns the existing row untouched", async () => {
     const fresh = dataOf(
-      await call("PUT", "/api/v1/projects/ensured", {
+      await call("PUT", "/api/v1/projects/ens", {
         name: "Ensured",
         meta: { team: "panel" },
       }),
     );
     assert.equal(fresh.created, true);
-    assert.equal(fresh.project.id, "ensured");
+    assert.equal(fresh.project.id, "ens");
     assert.deepEqual(fresh.project.meta, { team: "panel" });
 
     const again = dataOf(
-      await call("PUT", "/api/v1/projects/ensured", {
+      await call("PUT", "/api/v1/projects/ens", {
         name: "Renamed",
         meta: { team: "other" },
       }),
@@ -1159,7 +1159,7 @@ describe("server/routes — claim enforces the assignee (T-20261009-230500)", ()
   const asAgent = (id) => ({ "x-taskctl-actor": JSON.stringify({ kind: "agent", id }) });
   const assignedCard = (title) =>
     call("POST", "/api/v1/tasks", {
-      project_id: "claim",
+      project_id: "clm",
       title,
       assignee: "linus",
       assignee_kind: "agent",
@@ -1167,7 +1167,7 @@ describe("server/routes — claim enforces the assignee (T-20261009-230500)", ()
     }).then(dataOf);
 
   before(async () => {
-    dataOf(await call("POST", "/api/v1/projects", { id: "claim", name: "Claim" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "clm", name: "Claim" }));
   });
 
   it("lets the assignee move their card to in_progress (200)", async () => {
@@ -1240,8 +1240,8 @@ describe("server/routes — blocked_reason over HTTP (0016)", () => {
       .get(identifier).blocked_reason;
 
   before(async () => {
-    dataOf(await call("POST", "/api/v1/projects", { id: "block", name: "Block" }));
-    const created = dataOf(await call("POST", "/api/v1/tasks", { project_id: "block", title: "Waiting on a dep" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "blk", name: "Block" }));
+    const created = dataOf(await call("POST", "/api/v1/tasks", { project_id: "blk", title: "Waiting on a dep" }));
     REF = created.task.identifier;
   });
 
@@ -1347,9 +1347,9 @@ describe("server/routes — a blocks edge may not join an ancestor and a descend
   let sibling;
 
   before(async () => {
-    dataOf(await call("POST", "/api/v1/projects", { id: "chain", name: "Chain" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "chn", name: "Chain" }));
     const card = (title, kind) =>
-      call("POST", "/api/v1/tasks", { project_id: "chain", title, ...(kind ? { kind } : {}), allow_dup: true }).then(
+      call("POST", "/api/v1/tasks", { project_id: "chn", title, ...(kind ? { kind } : {}), allow_dup: true }).then(
         (r) => dataOf(r).task,
       );
     epic = await card("Epic", "epic");
@@ -1490,14 +1490,14 @@ describe("server/routes — exporting one card", () => {
   let archived;
 
   before(async () => {
-    dataOf(await call("POST", "/api/v1/projects", { id: "exportref", name: "Export ref" }));
-    dataOf(await call("POST", "/api/v1/projects", { id: "exportref2", name: "Export ref two" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "exf", name: "Export ref" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "exg", name: "Export ref two" }));
     original = dataOf(
-      await call("POST", "/api/v1/tasks", { project_id: "exportref", title: "Original" }),
+      await call("POST", "/api/v1/tasks", { project_id: "exf", title: "Original" }),
     ).task;
-    dataOf(await call("POST", "/api/v1/tasks", { project_id: "exportref", title: "Other" }));
+    dataOf(await call("POST", "/api/v1/tasks", { project_id: "exf", title: "Other" }));
     archived = dataOf(
-      await call("POST", "/api/v1/tasks", { project_id: "exportref", title: "Archived" }),
+      await call("POST", "/api/v1/tasks", { project_id: "exf", title: "Archived" }),
     ).task;
     dataOf(await call("POST", `/api/v1/tasks/${archived.identifier}/move`, { to: "canceled" }));
     dataOf(await call("POST", `/api/v1/tasks/${archived.identifier}/archive`, { days: 0 }));
@@ -1526,7 +1526,7 @@ describe("server/routes — exporting one card", () => {
   it("refuses ref with project_id, a missing ref, and an ambiguous identifier", async () => {
     const both = await call("POST", "/api/v1/export", {
       ref: original.identifier,
-      project_id: "exportref",
+      project_id: "exf",
     });
     assert.equal(both.status, 400, JSON.stringify(both.body));
     assert.equal(both.body.error.code, "VALIDATION_FAILED");
@@ -1537,14 +1537,14 @@ describe("server/routes — exporting one card", () => {
 
     dataOf(
       await call("POST", "/api/v1/tasks", {
-        project_id: "exportref",
+        project_id: "exf",
         title: "Ambiguous one",
         identifier: "AMBIG-EXP-7777",
       }),
     );
     dataOf(
       await call("POST", "/api/v1/tasks", {
-        project_id: "exportref2",
+        project_id: "exg",
         title: "Ambiguous two",
         identifier: "AMBIG-EXP-7777",
       }),
@@ -1555,8 +1555,8 @@ describe("server/routes — exporting one card", () => {
   });
 
   it("keeps the whole-project export when no ref is given", async () => {
-    const exported = dataOf(await call("POST", "/api/v1/export", { project_id: "exportref" }));
-    const listed = dataOf(await call("GET", "/api/v1/tasks?project_id=exportref&include_archived=1"));
+    const exported = dataOf(await call("POST", "/api/v1/export", { project_id: "exf" }));
+    const listed = dataOf(await call("GET", "/api/v1/tasks?project_id=exf&include_archived=1"));
     assert.equal(exported.cards.length, listed.tasks.length);
   });
 });
@@ -1566,22 +1566,22 @@ describe("server/routes — the review filter", () => {
   let review;
 
   before(async () => {
-    dataOf(await call("POST", "/api/v1/projects", { id: "revfilter", name: "Review filter" }));
-    dataOf(await call("POST", "/api/v1/projects", { id: "revfilter2", name: "Review filter two" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "rvf", name: "Review filter" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "rvg", name: "Review filter two" }));
     original = dataOf(
-      await call("POST", "/api/v1/tasks", { project_id: "revfilter", title: "Original" }),
+      await call("POST", "/api/v1/tasks", { project_id: "rvf", title: "Original" }),
     ).task;
     await deliverCard(original.identifier);
     review = dataOf(
       await call("POST", "/api/v1/tasks", {
-        project_id: "revfilter",
+        project_id: "rvf",
         title: "Review",
         review_of: original.identifier,
         review_round: 1,
         assignee: "linus",
       }),
     ).task;
-    dataOf(await call("POST", "/api/v1/tasks", { project_id: "revfilter", title: "Unrelated" }));
+    dataOf(await call("POST", "/api/v1/tasks", { project_id: "rvf", title: "Unrelated" }));
   });
 
   it("returns the review cards by identifier and by uuid", async () => {
@@ -1598,7 +1598,7 @@ describe("server/routes — the review filter", () => {
     const scoped = dataOf(
       await call(
         "GET",
-        `/api/v1/tasks?review_of=${original.id}&project_id=revfilter&status=todo&assignee_id=${review.assignee.id}`,
+        `/api/v1/tasks?review_of=${original.id}&project_id=rvf&status=todo&assignee_id=${review.assignee.id}`,
       ),
     );
     assert.deepEqual(scoped.tasks.map((task) => task.identifier), [review.identifier]);
@@ -1608,12 +1608,12 @@ describe("server/routes — the review filter", () => {
   });
 
   it("reads the marker as `kind=review`, without narrowing `kind=task`", async () => {
-    const reviews = dataOf(await call("GET", "/api/v1/tasks?project_id=revfilter&kind=review"));
+    const reviews = dataOf(await call("GET", "/api/v1/tasks?project_id=rvf&kind=review"));
     assert.deepEqual(reviews.tasks.map((task) => task.identifier), [review.identifier]);
 
     // A review card is an ordinary `kind=task` card: the alias is an **added**
     // filter over the marker, never a replacement for `kind=task`.
-    const tasks = dataOf(await call("GET", "/api/v1/tasks?project_id=revfilter&kind=task"));
+    const tasks = dataOf(await call("GET", "/api/v1/tasks?project_id=rvf&kind=task"));
     assert.ok(tasks.tasks.some((task) => task.identifier === review.identifier));
     assert.ok(tasks.tasks.some((task) => task.identifier === original.identifier));
 
@@ -1631,14 +1631,14 @@ describe("server/routes — the review filter", () => {
 
     dataOf(
       await call("POST", "/api/v1/tasks", {
-        project_id: "revfilter",
+        project_id: "rvf",
         title: "Ambiguous one",
         identifier: "AMBIG-7777",
       }),
     );
     dataOf(
       await call("POST", "/api/v1/tasks", {
-        project_id: "revfilter2",
+        project_id: "rvg",
         title: "Ambiguous two",
         identifier: "AMBIG-7777",
       }),
@@ -1676,7 +1676,7 @@ describe("server/routes — project acceptance (0038)", () => {
   it("round-trips a project's acceptance default and reviewer", async () => {
     const created = dataOf(
       await call("POST", "/api/v1/projects", {
-        id: "flow-req",
+        id: "frq",
         name: "Flow Required",
         acceptance: "agent",
         reviewer: "jobs",
@@ -1686,7 +1686,7 @@ describe("server/routes — project acceptance (0038)", () => {
     assert.equal(created.project.reviewer, "jobs");
 
     const updated = dataOf(
-      await call("PATCH", "/api/v1/projects/flow-req", {
+      await call("PATCH", "/api/v1/projects/frq", {
         acceptance: "off",
         reviewer: "",
       }),
@@ -1697,7 +1697,7 @@ describe("server/routes — project acceptance (0038)", () => {
 
   it("refuses an unknown acceptance value", async () => {
     const result = await call("POST", "/api/v1/projects", {
-      id: "flow-bad",
+      id: "fbd",
       name: "Bad",
       acceptance: "sometimes",
     });
@@ -1708,14 +1708,14 @@ describe("server/routes — project acceptance (0038)", () => {
   it("derives the card mode from the project, and lets an explicit value win", async () => {
     dataOf(
       await call("POST", "/api/v1/projects", {
-        id: "flow-required",
+        id: "frd",
         name: "Required",
         acceptance: "agent",
       }),
     );
     const required = dataOf(
       await call("POST", "/api/v1/tasks", {
-        project_id: "flow-required",
+        project_id: "frd",
         title: "required card",
       }),
     );
@@ -1723,7 +1723,7 @@ describe("server/routes — project acceptance (0038)", () => {
 
     dataOf(
       await call("POST", "/api/v1/projects", {
-        id: "flow-optional",
+        id: "fop",
         name: "Optional",
         acceptance: "auto",
       }),
@@ -1733,7 +1733,7 @@ describe("server/routes — project acceptance (0038)", () => {
       await call(
         "POST",
         "/api/v1/tasks",
-        { project_id: "flow-optional", title: "agent omitted" },
+        { project_id: "fop", title: "agent omitted" },
         AGENT,
       ),
     );
@@ -1743,7 +1743,7 @@ describe("server/routes — project acceptance (0038)", () => {
       await call(
         "POST",
         "/api/v1/tasks",
-        { project_id: "flow-optional", title: "agent stated", acceptance_mode: "off" },
+        { project_id: "fop", title: "agent stated", acceptance_mode: "off" },
         AGENT,
       ),
     );
@@ -1753,13 +1753,13 @@ describe("server/routes — project acceptance (0038)", () => {
   it("plans an auto_accept for a delivered card in an off project", async () => {
     dataOf(
       await call("POST", "/api/v1/projects", {
-        id: "flow-off",
+        id: "fof",
         name: "Off",
         acceptance: "off",
       }),
     );
     const created = dataOf(
-      await call("POST", "/api/v1/tasks", { project_id: "flow-off", title: "no review" }),
+      await call("POST", "/api/v1/tasks", { project_id: "fof", title: "no review" }),
     );
     assert.equal(created.task.acceptance_mode, "off");
     const delivered = await deliverCard(created.task.identifier);

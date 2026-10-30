@@ -29,12 +29,12 @@ before(async () => {
   taskd = await createTaskd({ dataDir: dir, host: "127.0.0.1", port: 0, env: {} });
   base = taskd.url;
 
-  dataOf(await call("POST", "/api/v1/projects", { id: "busy", name: "Busy" }));
-  dataOf(await call("POST", "/api/v1/projects", { id: "quiet", name: "Quiet" }));
+  dataOf(await call("POST", "/api/v1/projects", { id: "bu", name: "Busy" }));
+  dataOf(await call("POST", "/api/v1/projects", { id: "qu", name: "Quiet" }));
 
-  dataOf(await call("POST", "/api/v1/tasks", { project_id: "busy", title: "Live one" }));
-  dataOf(await call("POST", "/api/v1/tasks", { project_id: "busy", title: "Live two" }));
-  const third = dataOf(await call("POST", "/api/v1/tasks", { project_id: "busy", title: "Retired" }));
+  dataOf(await call("POST", "/api/v1/tasks", { project_id: "bu", title: "Live one" }));
+  dataOf(await call("POST", "/api/v1/tasks", { project_id: "bu", title: "Live two" }));
+  const third = dataOf(await call("POST", "/api/v1/tasks", { project_id: "bu", title: "Retired" }));
 
   // Retire the third card so the count has a row the default task list hides:
   // `canceled` is terminal, and `days: 0` skips the archive window — the same
@@ -69,7 +69,7 @@ const projectBy = (data, id) => data.projects.find((project) => project.id === i
 describe("server/routes — the sidebar task count", () => {
   it("serves a numeric task_count per project, archived rows included", async () => {
     const data = dataOf(await call("GET", "/api/v1/projects"));
-    assert.deepEqual(data.projects.map((project) => project.id).sort(), ["busy", "quiet"]);
+    assert.deepEqual(data.projects.map((project) => project.id).sort(), ["bu", "qu"]);
 
     for (const project of data.projects) {
       assert.equal(typeof project.task_count, "number", `${project.id} must carry a number`);
@@ -78,26 +78,26 @@ describe("server/routes — the sidebar task count", () => {
 
     // Three created, one archived ⇒ three owned. The badge is "how many tasks does
     // this project have", not "how many the board is currently showing".
-    assert.equal(projectBy(data, "busy").task_count, 3);
+    assert.equal(projectBy(data, "bu").task_count, 3);
 
     // A project with no tasks reports 0 — never an absent field, which is what
     // would leave the row's badge empty.
-    assert.equal(projectBy(data, "quiet").task_count, 0);
+    assert.equal(projectBy(data, "qu").task_count, 0);
   });
 
   it("counts what the default task list hides", async () => {
-    const listed = dataOf(await call("GET", "/api/v1/tasks?project_id=busy"));
+    const listed = dataOf(await call("GET", "/api/v1/tasks?project_id=bu"));
     assert.equal(listed.tasks.length, 2, "the archived card is hidden from the list by default");
 
-    const withArchived = dataOf(await call("GET", "/api/v1/tasks?project_id=busy&include_archived=1"));
+    const withArchived = dataOf(await call("GET", "/api/v1/tasks?project_id=bu&include_archived=1"));
     assert.equal(withArchived.tasks.length, 3);
 
     const projects = dataOf(await call("GET", "/api/v1/projects"));
-    assert.equal(projectBy(projects, "busy").task_count, withArchived.tasks.length, "the count is the archived-inclusive one");
+    assert.equal(projectBy(projects, "bu").task_count, withArchived.tasks.length, "the count is the archived-inclusive one");
   });
 
   it("carries the same number on the single-project route", async () => {
-    const one = dataOf(await call("GET", "/api/v1/projects/busy"));
+    const one = dataOf(await call("GET", "/api/v1/projects/bu"));
     assert.equal(one.project.task_count, 3);
 
     // The read of an unknown project is still a `null` projection, not a stray
@@ -113,13 +113,13 @@ describe("server/routes — the sidebar task count", () => {
     // The activity factor counts *events*: three creates plus the retire pair make
     // `a30` larger than the three tasks that exist — the two numbers are different
     // questions, and only `task_count` is the badge.
-    assert.ok(debug.busy.factors.a30.raw > projectBy(data, "busy").task_count);
+    assert.ok(debug.bu.factors.a30.raw > projectBy(data, "bu").task_count);
 
     // Every ranked entry carries its own count, whatever its position: the badge
     // is independent of the ordering, so the last row is as filled as the first.
     for (const project of data.projects) {
       assert.equal(typeof project.task_count, "number", `${project.id} (rank ${debug[project.id]?.order})`);
     }
-    assert.equal(projectBy(data, "quiet").task_count, 0);
+    assert.equal(projectBy(data, "qu").task_count, 0);
   });
 });

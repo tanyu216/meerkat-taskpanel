@@ -231,7 +231,7 @@ describe("concurrency/db-busy — end to end, a real held lock", () => {
     const taskd = await shortFuseBoard();
     try {
       const holder = await holdWriteLock(taskd.board.dbPath, 3_000);
-      const response = await createProject(taskd.url, "blocked");
+      const response = await createProject(taskd.url, "bkd");
       const body = await response.json();
 
       assert.equal(response.status, 503, "contention is a 503, not the old 500");
@@ -254,10 +254,10 @@ describe("concurrency/db-busy — end to end, a real held lock", () => {
       // Longer than one `busy_timeout` (100ms) plus the backoff, shorter than
       // the same again — so the first attempt loses and a later one wins.
       const holder = await holdWriteLock(taskd.board.dbPath, 250);
-      const response = await createProject(taskd.url, "eventually");
+      const response = await createProject(taskd.url, "evt");
       assert.equal(response.status, 200, `expected the retry to win, got ${response.status}`);
       const body = await response.json();
-      assert.equal(body.data.project.id, "eventually");
+      assert.equal(body.data.project.id, "evt");
       holder.kill("SIGKILL");
     } finally {
       await taskd.close();
@@ -268,8 +268,8 @@ describe("concurrency/db-busy — end to end, a real held lock", () => {
     const taskd = await shortFuseBoard();
     try {
       const holder = await holdWriteLock(taskd.board.dbPath, 3_000);
-      await createProject(taskd.url, "never-lands");
-      const row = taskd.board.db.prepare("SELECT id FROM projects WHERE id = ?").get("never-lands");
+      await createProject(taskd.url, "nvl");
+      const row = taskd.board.db.prepare("SELECT id FROM projects WHERE id = ?").get("nvl");
       assert.equal(row, undefined, "the refused write left no row behind");
       holder.kill("SIGKILL");
     } finally {
