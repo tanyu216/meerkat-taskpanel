@@ -927,6 +927,15 @@ for kind in claude openclaw codex pi; do
   strip_env_key "$map_root/.env.$kind" MEERKAT_TASKPANEL_PROJECTS_JSON
 done
 
+# The hub is not a unit, so no service manager can restart it: stop the one the
+# previous code started. This runs BEFORE the taskd guard — the stop resolves the
+# board like every consumer does, and the guard may be restarting (or have just
+# restarted) the very board it needs. Non-fatal, like the guard step.
+echo
+if ! stop_local_hub; then
+  echo "install.sh: the hub stop step failed (see the message above)" >&2
+fi
+
 # The taskd keepalive guard, once for the machine rather than once per agent kind, and
 # after the agent kinds so its report closes the install's own work (see the function
 # above). Non-fatal by design: a failed agent kind is already reported, and letting the
@@ -934,13 +943,6 @@ done
 echo
 if ! install_taskd_guard; then
   echo "install.sh: the taskd guard step failed (see the message above)" >&2
-fi
-
-# The hub is not a unit, so no service manager can restart it: stop the one the
-# previous code started. Non-fatal for the same reason as the guard step.
-echo
-if ! stop_local_hub; then
-  echo "install.sh: the hub stop step failed (see the message above)" >&2
 fi
 
 echo
