@@ -129,6 +129,37 @@ describe("supervisor status", () => {
     assert.equal(report.units.launchd.any, true);
   });
 
+  it("reports the scan set the loop will use — the team, plus the reviewer", () => {
+    // A team install has one question status must answer: can the role my card is
+    // assigned to ever be claimed? That is the scan set, and it is resolved here the
+    // same way the loop resolves it — a name outside it strands its cards.
+    const dir = tempDir();
+    // Written before `optsFor`: `parseArgs` reads the config once, at parse time.
+    writeFileSync(join(dir, "config.env"), "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing\nMEERKAT_TASKPANEL_REVIEWER=Reviewer\n");
+
+    const report = probeSupervisor(optsFor(dir), {
+      isAlive: () => false,
+      now: () => NOW,
+      run: noUnits(),
+    });
+
+    assert.deepEqual(report.agents, ["Jobs", "Linus", "Turing", "Reviewer"]);
+  });
+
+  it("falls back to the one default identity when no team is configured", () => {
+    // `--agent alice` names the units, not the scan set: with no config the loop scans
+    // the OS identity, and saying "alice" here would hide that.
+    const dir = tempDir();
+    const report = probeSupervisor(optsFor(dir), {
+      isAlive: () => false,
+      now: () => NOW,
+      run: noUnits(),
+    });
+
+    const fallback = process.env.TASKCTL_AGENT || process.env.USER || process.env.LOGNAME || "agent";
+    assert.deepEqual(report.agents, [fallback]);
+  });
+
   it("is partial when only the subscriber is alive", () => {
     const dir = tempDir();
     writeFileSync(

@@ -12,6 +12,10 @@
  * One mechanism per agent kind, chosen by `--scheduler` (default `auto`: launchd on macOS,
  * systemd `--user` on Linux, cron anywhere else). Every action is **idempotent**: a repeat
  * enable never loads a unit twice, and disabling something that is not loaded is a no-op.
+ * "Never twice" is not "never again": a unit already loaded with a **different definition**
+ * is booted out and bootstrapped again, because a loaded unit keeps the flags it was read
+ * with (a stale `--agent` outranks the per-kind config forever). An unchanged unit is left
+ * alone; one that cannot be compared is left alone *and reported*.
  * Enabling a mechanism takes down any *other* one already loaded for the same agent kind first —
  * the contract's "never leave two loaded", which also means this module only ever touches
  * the units it names (its own labels, its own unit files, its own cron marker block).
@@ -451,6 +455,78 @@ function launchdNoSession(text) {
   return /input\/output error/i.test(text);
 }
 
+/** XML text as launchd reads it (`&amp;` and friends unescaped). */
+function unescapeXml(text) {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * The `ProgramArguments` a plist declares — what a bootstrap would load *now*.
+ *
+ * `null` when the file cannot be read or carries no such array. Null is not empty:
+ * an absent array means "cannot compare", and the caller must not read that as a
+ * change (nor as a match).
+ *
+ * @param {string} plistPath
+ * @returns {string[]|null}
+ */
+export function plistArguments(plistPath) {
+  let text;
+  try {
+    text = readFileSync(plistPath, "utf8");
+  } catch {
+    return null;
+  }
+  const block = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(text);
+  if (block === null) return null;
+  const args = [...block[1].matchAll(/<string>([\s\S]*?)<\/string>/g)].map((match) => unescapeXml(match[1]));
+  return args.length > 0 ? args : null;
+}
+
+/**
+ * The arguments `launchctl print` reports as loaded.
+ *
+ * This is the only place the *loaded* definition is visible: `print` answering at all
+ * says "loaded", never "loaded from this file". `null` when the output carries no
+ * block — an older format, not an empty definition.
+ *
+ * @param {string} printOutput
+ * @returns {string[]|null}
+ */
+export function loadedArguments(printOutput) {
+  const block = /^[ \t]*arguments = \{([\s\S]*?)^[ \t]*\}/m.exec(printOutput ?? "");
+  if (block === null) return null;
+  const args = block[1]
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  return args.length > 0 ? args : null;
+}
+
+/**
+ * Does the job launchd is running match the unit file just written?
+ *
+ * Returns `"same"`, `"changed"` or `"unknown"`. Only `"changed"` may cause a reload:
+ * a definition that cannot be compared is left exactly as it is, because guessing
+ * here means restarting a live supervisor on a parse failure.
+ *
+ * @param {string} plistPath
+ * @param {string} printOutput
+ * @returns {"same"|"changed"|"unknown"}
+ */
+export function definitionDrift(plistPath, printOutput) {
+  const rendered = plistArguments(plistPath);
+  const loaded = loadedArguments(printOutput);
+  if (rendered === null || loaded === null) return "unknown";
+  if (rendered.length !== loaded.length) return "changed";
+  return rendered.every((arg, index) => arg === loaded[index]) ? "same" : "changed";
+}
+
 /**
  * launchd (macOS).
  *
@@ -501,9 +577,36 @@ export function launchdMechanism({ paths, uid, run }) {
 
     enable() {
       let allAlready = true;
+      const reloaded = [];
+      const uncompared = [];
       for (const unit of paths.launchd) {
-        if (runStep({ command: "launchctl", args: ["print", jobId(unit)] }, run).ok) continue;
-        allAlready = false;
+        const printed = runStep({ command: "launchctl", args: ["print", jobId(unit)] }, run);
+        if (printed.ok) {
+          // A loaded job keeps the definition launchd read at bootstrap — a rewritten
+          // plist is inert until the job is loaded again. That is how a unit ends up
+          // running with an `--agent` flag the file no longer has, which outranks the
+          // per-kind config forever. So compare, and reload only a real difference.
+          const drift = definitionDrift(unit.plist, printed.stdout);
+          if (drift === "same") continue;
+          if (drift === "unknown") {
+            // Cannot compare → do not touch a live job. Reported at the end.
+            uncompared.push(unit.label);
+            allAlready = false;
+            continue;
+          }
+          const down = runStep({ command: "launchctl", args: ["bootout", jobId(unit)] }, run);
+          if (
+            !down.ok &&
+            !down.missing &&
+            !/could not find service|not found|no such process/i.test(down.stderr)
+          ) {
+            return { ok: false, reason: `launchctl bootout exited ${down.status}: ${firstLine(down.stderr)}` };
+          }
+          allAlready = false;
+          reloaded.push(unit.label);
+        } else {
+          allAlready = false;
+        }
 
         let outcome = runStep({ command: "launchctl", args: ["bootstrap", domain, unit.plist] }, run);
         // The fallback is for a `bootstrap` this macOS does not have — **not** for a
@@ -525,7 +628,7 @@ export function launchdMechanism({ paths, uid, run }) {
         }
         return { ok: false, reason: `launchctl exited ${outcome.status}: ${firstLine(outcome.stderr)}` };
       }
-      return { ok: true, already: allAlready };
+      return { ok: true, already: allAlready, reloaded, uncompared };
     },
 
     disable() {
@@ -554,14 +657,31 @@ export function systemdMechanism({ paths, run }) {
       ];
     },
 
-    /** Copy the units where systemd reads them, then reload — nothing works before this. */
+    /**
+     * Copy the units where systemd reads them, then reload — nothing works before this.
+     *
+     * `changed` reports whether any copied file differed from the installed one: an
+     * enabled unit keeps running the `ExecStart` it started with, so a rewrite needs a
+     * restart, and `daemon-reload` alone is not one.
+     */
     install() {
       mkdirSync(paths.systemdUnitDir, { recursive: true });
+      let changed = false;
       for (const name of SYSTEMD_UNITS) {
         const source = join(paths.systemdSrcDir, name);
-        if (existsSync(source)) copyFileSync(source, join(paths.systemdUnitDir, name));
+        if (!existsSync(source)) continue;
+        const dest = join(paths.systemdUnitDir, name);
+        let same = false;
+        try {
+          same = readFileSync(dest, "utf8") === readFileSync(source, "utf8");
+        } catch {
+          same = false;
+        }
+        if (same) continue;
+        copyFileSync(source, dest);
+        changed = true;
       }
-      return runStep({ command: "systemctl", args: ["--user", "daemon-reload"] }, run);
+      return { ...runStep({ command: "systemctl", args: ["--user", "daemon-reload"] }, run), changed };
     },
 
     probe() {
@@ -587,12 +707,23 @@ export function systemdMechanism({ paths, run }) {
       const prepared = this.install();
       if (prepared.missing) return { ok: false, reason: "systemctl is not available on this machine" };
 
-      if (this.probe().loaded) return { ok: true, already: true };
+      const wasEnabled = this.probe().loaded;
+      // Unchanged file + enabled = the idempotent no-op. A rewritten unit needs the
+      // service restarted for systemd to read it; `daemon-reload` only re-reads files.
+      if (wasEnabled && !prepared.changed) return { ok: true, already: true };
+      if (wasEnabled) this.disableTimers([...SYSTEMD_TIMERS, ...SYSTEMD_SERVICES]);
       const outcome = runStep(
         { command: "systemctl", args: ["--user", "enable", "--now", ...SYSTEMD_TIMERS, ...SYSTEMD_SERVICES] },
         run,
       );
-      if (outcome.ok) return { ok: true, already: false };
+      if (outcome.ok) {
+        return {
+          ok: true,
+          already: false,
+          reloaded: wasEnabled ? [...SYSTEMD_TIMERS, ...SYSTEMD_SERVICES] : [],
+          uncompared: [],
+        };
+      }
 
       if (/failed to connect to bus/i.test(outcome.stderr)) {
         return {
@@ -732,13 +863,34 @@ function disableHint(paths, chosen, platform) {
 }
 
 /**
+ * The lines an install prints when it just rewrote units a service manager already has
+ * loaded: the live definition is now stale, and only a reload re-reads the file.
+ *
+ * Read-only, and deliberately the same shape as `taskd-guard.mjs`'s drift report — say
+ * what is true and name the one command that fixes it.
+ *
+ * @param {ReturnType<typeof supervisorPaths>} paths
+ * @param {string} mechanismName
+ * @param {string} platform
+ * @returns {string[]}
+ */
+export function staleWarningLines(paths, mechanismName, platform) {
+  const suffix = mechanismName === resolveScheduler("auto", platform) ? "" : ` --scheduler=${mechanismName}`;
+  return [
+    `supervisor: warning (kind=${paths.actorKind}) — the scheduling units were just rewritten, but ${mechanismName} still has the old definition loaded`,
+    "supervisor:   the running supervisor keeps its old flags until it is reloaded (an old --agent outranks the per-kind config)",
+    `supervisor:   reload it with: install.sh --supervisor=enable --supervisor-actor-kinds ${paths.actorKind}${suffix}`,
+  ];
+}
+
+/**
  * Run one action for one agent kind. Everything is reported on `log`; the return value is the
  * process exit code (non-zero only when an `enable`/`disable` the user asked for could
  * not be performed — a failure is never dressed up as a success).
  *
  * @param {{action: string, scheduler?: string, paths: ReturnType<typeof supervisorPaths>,
  *          platform?: string, uid?: number|null, user?: string, run?: typeof spawnSync,
- *          dryRun?: boolean, log?: (line: string) => void}} options
+ *          dryRun?: boolean, staleOnly?: boolean, log?: (line: string) => void}} options
  */
 export function runSupervisorAction(options) {
   const { action, paths } = options;
@@ -750,6 +902,17 @@ export function runSupervisorAction(options) {
   const withUnits = (mechanism) =>
     `kind=${paths.actorKind}, scheduler=${mechanism.name}, units=${mechanism.unitsReport}`;
   const all = mechanisms({ paths, uid: options.uid ?? process.getuid?.() ?? null, run });
+
+  // An internal, read-only variant of `status`: report only whether a mechanism has this
+  // kind's units loaded, for an install that just rewrote them. No daemon action.
+  if (action === "status" && options.staleOnly) {
+    const names = scheduler === "auto" ? ["launchd", "systemd", "cron"] : [requested];
+    for (const name of names) {
+      if (!all[name].probe().loaded) continue;
+      for (const line of staleWarningLines(paths, name, platform)) log(line);
+    }
+    return 0;
+  }
 
   if (action === "status") {
     log(`supervisor: status (kind=${paths.actorKind})`);
@@ -846,7 +1009,21 @@ export function runSupervisorAction(options) {
     return 1;
   }
 
-  log(`supervisor: ${outcome.already ? "already enabled" : "enabled"} (${withUnits(mechanism)})`);
+  const reloaded = outcome.reloaded ?? [];
+  const uncompared = outcome.uncompared ?? [];
+  const word = outcome.already ? "already enabled" : reloaded.length > 0 ? "reloaded" : "enabled";
+  log(`supervisor: ${word} (${withUnits(mechanism)})`);
+  if (reloaded.length > 0) {
+    log(`supervisor:   reloaded ${reloaded.join(", ")} — the definition on disk had changed and a loaded unit is only read at bootstrap`);
+  }
+  if (uncompared.length > 0) {
+    log(`supervisor: warning — could not compare the loaded definition of ${uncompared.join(", ")}; it was left exactly as it is`);
+    log(
+      `supervisor:   if its flags changed, reload it by hand: ` +
+        `install.sh --supervisor=disable --supervisor-actor-kinds ${paths.actorKind} && ` +
+        `install.sh --supervisor=enable --supervisor-actor-kinds ${paths.actorKind}`,
+    );
+  }
   if (requested === "systemd") {
     const linger = lingerState({ user: options.user ?? "", run });
     if (linger !== "on") {
@@ -889,6 +1066,7 @@ function main(argv) {
     const arg = rest[i];
     const value = () => rest[++i];
     if (arg === "--dry-run") opts.dryRun = true;
+    else if (arg === "--stale-only") opts.staleOnly = true;
     else if (arg === "--actor-kind") opts.actorKind = value();
     else if (arg === "--agent") opts.agent = value();
     else if (arg === "--agent-base") opts.agentBase = value();
@@ -924,6 +1102,7 @@ function main(argv) {
     }),
     user: env.USER ?? env.LOGNAME ?? "",
     dryRun: opts.dryRun,
+    staleOnly: opts.staleOnly === true,
   });
 }
 

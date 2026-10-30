@@ -29,7 +29,7 @@ import { fileURLToPath } from "node:url";
 
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
-import { AGENT_DIRS, parseArgs } from "./options.mjs";
+import { AGENT_DIRS, parseArgs, resolveLoopConfig, resolveScanSet } from "./options.mjs";
 import { readContinue } from "./queue.mjs";
 import {
   isProcessAlive,
@@ -166,8 +166,25 @@ export function probeSupervisor(opts, deps = {}) {
   else if (subscribeLive || continueState.pending !== null) verdict = "partial";
   else verdict = "absent";
 
+  // The scan set the loop will use, resolved exactly as the loop resolves it. This is
+  // what tells a team install whether its roles can ever be claimed: a name outside
+  // this list is never scanned, and its cards strand. Status is a read, so a config it
+  // cannot resolve falls back to the names it was given rather than failing.
+  let agents = Array.isArray(opts.agents) ? [...opts.agents] : [];
+  try {
+    // `--agent` on a status call names the *units* (the shim supplies one on every
+    // invocation); it is not the scan set. Passing it through would report the
+    // installer's default exactly when the question matters — "does the config's team
+    // get scanned?" — so the scan set is resolved without it, from the config/env.
+    const scan = resolveScanSet([], opts);
+    agents = resolveLoopConfig({ ...opts, agents: scan }).scanAgents;
+  } catch {
+    // fall through with the names from the command line
+  }
+
   return {
     verdict,
+    agents,
     pool: {
       ...pool,
       starting,
@@ -314,6 +331,7 @@ function humanReport(report) {
     `  pool:      ${pool}`,
     `  continue:  ${report.continue.processing ? "processing" : report.continue.pending ? "pending" : report.continue.oneShot ? `one-shot pid ${report.continue.oneShot.pid}` : "idle"}`,
     `  subscribe: ${report.subscribe.live ? `running (pid ${report.subscribe.pid})` : "not running"}`,
+    `  agents:    ${report.agents.length > 0 ? report.agents.join(",") : "(none)"}`,
     `  units:     ${units}`,
     ...(report.sessionStarted === null
       ? []

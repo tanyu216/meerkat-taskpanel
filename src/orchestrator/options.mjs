@@ -361,18 +361,7 @@ export function parseArgs(argv, env = process.env) {
   opts.kindConfigDefault = resolveKindConfigPath({ actorKind: opts.actorKind, env });
   opts.config ??= opts.kindConfigDefault;
   opts.configFile = readConfigFile(opts.config);
-  // A team is a list of board identities, not a second config surface. The
-  // explicit `--agent` flags win; otherwise the env/config list is the scan set.
-  // Without this, a loop configured for one human name never claims a role card.
-  if (opts.agents.length === 0) {
-    const configured = env.MEERKAT_TASKPANEL_AGENTS ?? opts.configFile.MEERKAT_TASKPANEL_AGENTS;
-    const listed = typeof configured === "string"
-      ? configured.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean)
-      : [];
-    opts.agents = listed.length > 0
-      ? listed
-      : [env.TASKCTL_AGENT || env.USER || env.LOGNAME || "agent"];
-  }
+  opts.agents = resolveScanSet(opts.agents, opts, env);
   const rolesDir = opts.rolesDir ?? env.MEERKAT_TASKPANEL_ROLES_DIR ?? opts.configFile.MEERKAT_TASKPANEL_ROLES_DIR;
   opts.rolesDir = typeof rolesDir === "string" && rolesDir.trim() !== "" ? resolve(rolesDir.trim()) : null;
   // One concurrency cap for the whole fleet of subagents: workers and reviewers
@@ -637,6 +626,28 @@ export function mergeReviewerSets(opts, config, projectReviewers = []) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {{config: object, reviewerIsWorker: boolean, scanAgents: string[], continueEnabled: boolean}}
  */
+/**
+ * The scan set — the board identities the loop may claim for.
+ *
+ * A team is a list of board identities, not a second config surface: the explicit
+ * `--agent` flags win, else `MEERKAT_TASKPANEL_AGENTS` (env, then the per-kind config),
+ * else one default identity. One reader, because a status view and the tick must never
+ * disagree about who is scanned.
+ *
+ * @param {string[]|undefined} agents the `--agent` flags already parsed
+ * @param {{configFile?: Record<string, string>}} opts
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string[]}
+ */
+export function resolveScanSet(agents, opts, env = process.env) {
+  if (Array.isArray(agents) && agents.length > 0) return [...agents];
+  const configured = env.MEERKAT_TASKPANEL_AGENTS ?? opts.configFile?.MEERKAT_TASKPANEL_AGENTS;
+  const listed = typeof configured === "string"
+    ? configured.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean)
+    : [];
+  return listed.length > 0 ? listed : [env.TASKCTL_AGENT || env.USER || env.LOGNAME || "agent"];
+}
+
 export function resolveLoopConfig(opts, env = process.env) {
   const configFile = opts.configFile ?? readConfigFile(opts.config);
   const claimUnassigned = resolveClaimUnassigned({
