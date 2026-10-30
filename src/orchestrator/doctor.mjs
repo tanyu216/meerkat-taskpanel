@@ -37,12 +37,21 @@ import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import { PATROL_STALE_MS, planPatrol } from "../foundation/scheduling.mjs";
 import { TERMINAL_STATUSES } from "../foundation/sla-patrol.mjs";
 import { readBoard } from "./board.mjs";
+import {
+  DEFERRAL_THRESHOLD,
+  readDeferralLedger,
+} from "./deferrals.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { parseArgs } from "./options.mjs";
 import { readCards } from "./queue.mjs";
 import { readPeerMarker } from "./runtime.mjs";
 import { probeSupervisor } from "./status.mjs";
-import { runGit } from "./workspace.mjs";
+import {
+  isStaleWorkspaceRecord,
+  readWorkspaceRegistry,
+  registryPath,
+  runGit,
+} from "./workspace.mjs";
 
 /** How many log lines the report carries, and how many bytes it will read for them. */
 export const LOG_TAIL_LINES = 40;
@@ -390,6 +399,41 @@ function queueLoopFindings(rows, boardByRef) {
 }
 
 /**
+ * Cards whose admission keeps failing.
+ *
+ * The ledger is the only durable record of an admission failure: a deferred card
+ * is never enqueued, so the queue's attempt counters never see it. An unknown
+ * card (a truncated board) stays unfiltered, like the other local halves.
+ */
+function deferralLoopFindings(rows, boardByRef, nowMs) {
+  const findings = [];
+  for (const entry of rows) {
+    const ref = String(entry?.identifier ?? "").trim();
+    if (ref === "") continue;
+    if (knownTerminal(ref, boardByRef)) continue;
+    const count = Number(entry?.count ?? 0);
+    if (!Number.isFinite(count) || count < DEFERRAL_THRESHOLD) continue;
+    const board = boardByRef.get(ref) ?? null;
+    findings.push({
+      ref,
+      title: board?.title ?? null,
+      status: board?.status ?? null,
+      round: entry.round ?? null,
+      count,
+      code: typeof entry.code === "string" ? entry.code : null,
+      reason: typeof entry.reason === "string" ? entry.reason : null,
+      first_at: entry.first_at ?? null,
+      last_at: entry.last_at ?? null,
+      age_ms: ageSince(entry.first_at ?? null, nowMs),
+    });
+  }
+  findings.sort(
+    (left, right) => right.count - left.count || left.ref.localeCompare(right.ref),
+  );
+  return findings;
+}
+
+/**
  * Failed subagent rows that keep accumulating for one card.
  *
  * Question-role rows are deliberately included: a subagent that cannot start for
@@ -635,6 +679,17 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   stuck.total = stuck.in_progress.length;
   waiting.total = waiting.in_review.length;
 
+  // 6b. The admission-deferral ledger. A missing file is a fresh install, not an
+  // error; only a malformed one is reported.
+  let deferralRows = [];
+  try {
+    const read = readDeferralLedger(stateDir);
+    if (read.error !== null) errors.push(`deferrals: ${read.error}`);
+    deferralRows = Object.values(read.value.cards ?? {});
+  } catch (error) {
+    errors.push(`deferrals: ${error.message}`);
+  }
+
   // 7. The cards that look like they are looping. The board half reuses the
   // same snapshot; the local halves read the queue and ledger rows the sections
   // above already loaded — no second file read. A card the board knows is
@@ -650,6 +705,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     review_reopens: boardLoop.review_reopens,
     dispatch_retries: queueLoopFindings(queueRows, boardByRef),
     subagent_failures: ledgerLoopFindings(ledgerRows, boardByRef),
+    deferrals: deferralLoopFindings(deferralRows, boardByRef, nowMs),
     total: 0,
   };
   // One card, one count: a card may be named by more than one list, and the
@@ -660,6 +716,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     looping.review_reopens,
     looping.dispatch_retries,
     looping.subagent_failures,
+    looping.deferrals,
   ]) {
     for (const card of list) loopRefs.add(card.ref);
   }
@@ -755,6 +812,35 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   }
   unlanded.total = unlanded.cards.length;
 
+  // A registry record whose tree and branch are both gone cannot be landed and
+  // can only mislead a rework. Only cards the board snapshot knows are judged;
+  // an unknown card (or a failed board read) is left alone.
+  const workspaces = { file: registryPath(stateDir), total: 0, stale: [], error: null };
+  try {
+    const registry = readWorkspaceRegistry(stateDir);
+    workspaces.total = registry.workspaces.length;
+    if (board.error === null) {
+      for (const record of registry.workspaces) {
+        const task = boardByRef.get(record.identifier);
+        if (task === undefined || TERMINAL_STATUSES.includes(String(task.status ?? ""))) {
+          continue;
+        }
+        if (isStaleWorkspaceRecord(record, { run: git })) {
+          workspaces.stale.push({
+            ref: record.identifier,
+            round: record.round ?? null,
+            branch: record.branch ?? null,
+            path: record.path ?? null,
+            project_dir: record.project_dir ?? null,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    workspaces.error = error.message;
+    errors.push(`workspaces: ${error.message}`);
+  }
+
   const attentionReasons = [];
   if (stuck.total > 0) attentionReasons.push(`stuck_cards: ${stuck.total}`);
   if (looping.total > 0) attentionReasons.push(`looping: ${looping.total}`);
@@ -762,6 +848,9 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     attentionReasons.push(`blocked_acceptance: ${blockedAcceptance.total}`);
   }
   if (unlanded.total > 0) attentionReasons.push(`unlanded: ${unlanded.total}`);
+  if (workspaces.stale.length > 0) {
+    attentionReasons.push(`stale_workspaces: ${workspaces.stale.length}`);
+  }
   if (queue.failed > 0) attentionReasons.push(`queue: ${queue.failed} failed`);
   if (supervisor?.verdict === "absent" || supervisor?.verdict === "partial") {
     attentionReasons.push(`supervisor: ${supervisor.verdict}`);
@@ -789,6 +878,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     waiting,
     blocked_acceptance: blockedAcceptance,
     unlanded,
+    workspaces,
     errors,
     skipped,
   };
@@ -864,6 +954,7 @@ function humanReport(report) {
     ["review-reopen", report.looping.review_reopens.length],
     ["dispatch", report.looping.dispatch_retries.length],
     ["subagent", report.looping.subagent_failures.length],
+    ["deferred", report.looping.deferrals.length],
   ];
   const loopListed = loopKinds.reduce((sum, [, count]) => sum + count, 0);
   lines.push(
@@ -899,6 +990,24 @@ function humanReport(report) {
       `  ${card.ref}  subagent  ${card.failures} failure(s)` +
         `  ${card.status ?? "?"}${detail === "" ? "" : `  ${detail}`}  ${card.title ?? ""}`.trimEnd(),
     );
+  }
+  for (const card of report.looping.deferrals) {
+    const detail = oneLine(card.reason);
+    lines.push(
+      `  ${card.ref}  deferred  ${card.count}x  ${card.code ?? "?"}` +
+        `  ${card.status ?? "?"}${detail === "" ? "" : `  ${detail}`}  ${card.title ?? ""}`.trimEnd(),
+    );
+  }
+  if (report.workspaces.stale.length > 0) {
+    lines.push(
+      `workspaces  ${report.workspaces.stale.length} stale record(s) for non-terminal cards ` +
+        "— the tree and branch are both gone",
+    );
+    for (const record of report.workspaces.stale) {
+      lines.push(
+        `  ${record.ref}  r${record.round ?? "?"}  ${record.branch ?? "?"}  ${record.path ?? ""}`.trimEnd(),
+      );
+    }
   }
 
   const oldest = report.waiting.in_review.reduce(
