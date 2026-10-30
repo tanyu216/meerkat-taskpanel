@@ -121,7 +121,10 @@ ledger, the cards that look stuck (a stale or unreadable heartbeat, judged by th
 plan — an `epic` container is not a stale worker), and the `in_review` cards waiting on a human
 with their age. That last list is **facts
 only**: review aging is the workflow pass's judgement and applies to review cards that are
-*not* `in_review` (`docs/lifecycle.md`), so the inspection neither restates nor widens it. It
+*not* `in_review` (`docs/lifecycle.md`), so the inspection neither restates nor widens it.
+A third list, `blocked_acceptance`, names the cards carrying `meta.accepted_by` for their
+**current** round while still `in_review` — an acceptance the board refused, which the round
+bump of the routed reopen otherwise turns invisible. The inspection
 claims, dispatches, starts and writes nothing — its board read runs
 with autostart disabled — and it exits 0 whenever a report was produced, so a scheduled
 inspection reads `attention` from `--json` rather than an exit code.
