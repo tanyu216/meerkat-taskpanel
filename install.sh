@@ -658,42 +658,37 @@ case "$SCHEDULER" in
   *) die "invalid --scheduler: $SCHEDULER (expected auto|launchd|systemd|cron)" ;;
 esac
 
-# Which loop actor kinds the action applies to: --supervisor-actor-kinds, else the loop actor kinds this
-# install covers. OpenClaw is never among them, and is rejected explicitly when named —
-# it runs openclaw-team's own poll/patrol, so there is no meerkat-loop supervisor to
-# enable (docs/scheduling.md §OpenClaw: no loop units).
-if [ -n "$SUPERVISOR_ACTOR_KINDS_FLAG" ]; then
-  SUPERVISOR_ACTOR_KINDS=""
-  OLD_IFS="$IFS"
-  IFS=','
-  for raw in $SUPERVISOR_ACTOR_KINDS_FLAG; do
-    IFS="$OLD_IFS"
-    entry="$(echo "$raw" | tr -d '[:space:]')"
-    IFS=','
-    case "$entry" in
-      "") ;;
-      claude | codex | pi) SUPERVISOR_ACTOR_KINDS="$SUPERVISOR_ACTOR_KINDS $entry " ;;
-      openclaw)
-        die "--supervisor-actor-kinds openclaw: OpenClaw has no meerkat-loop supervisor to enable (it runs openclaw-team's own poll/patrol — see docs/scheduling.md)"
-        ;;
-      server)
-        die "--supervisor-actor-kinds server: the server target has no meerkat-loop supervisor (the taskd guard is separate)"
-        ;;
-      *) die "invalid --supervisor-actor-kinds: $entry (expected claude|codex|pi)" ;;
-    esac
-  done
-  IFS="$OLD_IFS"
-else
-  SUPERVISOR_ACTOR_KINDS=""
-  for target in $TARGETS; do
-    case "$target" in
-      claude | codex | pi) SUPERVISOR_ACTOR_KINDS="$SUPERVISOR_ACTOR_KINDS $target " ;;
-    esac
-  done
+# Which loop actor kinds the action applies to (one loop supervisor per machine).
+# `--supervisor-actor-kinds` is the only multi-kind form; otherwise `enable` takes the FIRST
+# loop kind in --target order and `disable`/`status` take EVERY loop kind, so an old
+# three-supervisor install can be seen and stopped in one command. OpenClaw is never among
+# them, and is rejected explicitly when named — it runs openclaw-team's own poll/patrol, so
+# there is no meerkat-loop supervisor to enable (docs/scheduling.md §OpenClaw: no loop units).
+if ! SUPERVISOR_ACTOR_KINDS="$(supervisor_actor_kinds_value "$SUPERVISOR" "$SUPERVISOR_ACTOR_KINDS_FLAG" "$TARGETS")"; then
+  exit 2
 fi
 
-if [ -n "$SUPERVISOR" ] && [ -n "$(echo "$SUPERVISOR_ACTOR_KINDS" | tr -d ' ')" ]; then
-  echo "install.sh: supervisor: $SUPERVISOR (kinds:$(echo "$SUPERVISOR_ACTOR_KINDS" | sed 's/ $//'), scheduler: $SCHEDULER)"
+supervisor_kinds_csv="$(printf '%s' "$SUPERVISOR_ACTOR_KINDS" | tr -s ' ' ',' | sed 's/^,//; s/,$//')"
+supervisor_kind_count=0
+for kind in $SUPERVISOR_ACTOR_KINDS; do
+  supervisor_kind_count=$((supervisor_kind_count + 1))
+done
+supervisor_loop_kind_count=0
+for target in $TARGETS; do
+  case "$target" in
+    claude | codex | pi) supervisor_loop_kind_count=$((supervisor_loop_kind_count + 1)) ;;
+  esac
+done
+
+if [ -n "$SUPERVISOR" ] && [ -n "$supervisor_kinds_csv" ]; then
+  echo "install.sh: supervisor: $SUPERVISOR (kinds:$supervisor_kinds_csv, scheduler: $SCHEDULER)"
+  if [ "$SUPERVISOR" = "enable" ] && [ "$supervisor_kind_count" -gt 1 ]; then
+    echo "install.sh: supervisor: warning — $supervisor_kind_count loop supervisors on one machine; the explicit --supervisor-actor-kinds choice waives the one-supervisor rule, and each loop keeps its own alarm ledger"
+  elif [ "$SUPERVISOR" = "enable" ] && [ "$supervisor_loop_kind_count" -gt 1 ] && [ -z "$SUPERVISOR_ACTOR_KINDS_FLAG" ]; then
+    echo "install.sh: supervisor: one loop supervisor per machine — $supervisor_kinds_csv is the first loop kind in --target; add --supervisor-actor-kinds <list> to run more (each adds its own polling, log and alarm ledger)"
+  elif [ "$SUPERVISOR" != "enable" ]; then
+    echo "install.sh: supervisor: every loop kind in --target, so no stray is left"
+  fi
 elif [ -n "$SUPERVISOR" ]; then
   echo "install.sh: supervisor: $SUPERVISOR — no loop actor kind to act on (OpenClaw runs openclaw-team's own poll/patrol)"
 fi
@@ -765,6 +760,26 @@ FAIL $target — see the message above (re-run with --force to overwrite an exis
     status=1
   fi
 done
+
+# The machine-level view: one loop supervisor per machine. Status always reports it; an
+# enable reports it only when this install covers more than one loop kind — the case where a
+# defaulted single kind could leave an older sibling running. Read-only, best effort, never
+# fatal — a report, not a gate. A dry run asks no service manager at all.
+machine_view=0
+if [ -n "$SUPERVISOR" ] && [ -z "$DRY_RUN" ] && [ -n "$supervisor_kinds_csv" ]; then
+  if [ "$SUPERVISOR" = "status" ]; then
+    machine_view=1
+  elif [ "$SUPERVISOR" = "enable" ] && [ "$supervisor_loop_kind_count" -gt 1 ]; then
+    machine_view=1
+  fi
+fi
+if [ "$machine_view" = "1" ]; then
+  node "$ROOT/scripts/install/lib/supervisor.mjs" machine-status \
+    --home "$TARGET_HOME" \
+    --agent "${AGENT_NAME:-Worker}" \
+    --enabled "$supervisor_kinds_csv" \
+    --action "$SUPERVISOR" || true
+fi
 
 # The wizard's human name is a server/UI value too, not just an agent-bundle one:
 # record it as TASKCTL_HUMAN in the tree's single `.env`. Agent installs already

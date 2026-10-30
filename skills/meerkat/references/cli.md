@@ -499,7 +499,7 @@ all.
 | `loop poll` | Scan, admit, claim and enqueue ready cards; writes the queue. |
 | `loop tick [--passes <list>]` | Run `patrol,workflow,poll` (or `--passes` order) in one command — the cron/unit entry. |
 | `loop console` | One read-only question / frontier cycle. |
-| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
+| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict, the agent platform (`--actor-kind`) and the scan set it resolved; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
 | `loop run [--ping-once] [--continue-once]` | The two clocks as a daemon; either `--*-once` runs one pass and exits. |
 | `loop subscribe` | The event subscriber daemon; it dispatches continues. |
 | `loop session` | The resident session pool daemon. |
@@ -510,6 +510,9 @@ all.
 verbs a human runs while the daemons are up; `loop compat` is the gate to run before relying
 on a board's `taskctl`. Every verb writes its **own** output: `loop status --json` is the
 loop's JSON, not the `{ok:true,data}` envelope, and none of them adds `token_source`.
+`loop status --json` carries `platform` (`claude|codex|pi`) and `agents` (the resolved scan
+set); the human output prints the same two facts as `platform:` and `scan set:` lines. They
+are output fields, not new flags.
 
 <!-- shared-flags:loop:begin -->
 **Paths and state.** `--state-dir <dir>` places the loop's runtime state — `supervisor.state.json`,

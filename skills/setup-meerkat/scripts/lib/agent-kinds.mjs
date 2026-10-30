@@ -39,6 +39,33 @@ export const NATIVE_KINDS = Object.freeze(
     .map(([kind]) => kind),
 );
 
+/**
+ * A **setup heuristic**, not detection: what each platform is assumed to cover well.
+ * The interview shows what each platform actually has installed alongside this table, and
+ * the user decides — the recommendation is never written without an explicit yes.
+ */
+export const PLATFORM_CAPABILITIES = Object.freeze({
+  claude: Object.freeze(["design", "architecture", "implementation", "tests", "review"]),
+  codex: Object.freeze(["implementation", "tests", "review"]),
+  pi: Object.freeze(["implementation", "tests"]),
+});
+
+/** The capability tags a standard role needs; an unknown role falls back to its lane. */
+export const ROLE_CAPABILITY_TAGS = Object.freeze({
+  jobs: Object.freeze(["design"]),
+  linus: Object.freeze(["architecture", "implementation"]),
+  turing: Object.freeze(["tests"]),
+  reviewer: Object.freeze(["review"]),
+});
+
+/** Where each role is offered first when more than one platform can do the work. */
+export const ROLE_PLATFORM_PREFERENCE = Object.freeze({
+  jobs: Object.freeze(["claude", "codex", "pi"]),
+  linus: Object.freeze(["claude", "codex", "pi"]),
+  turing: Object.freeze(["codex", "claude", "pi"]),
+  reviewer: Object.freeze(["claude", "codex", "pi"]),
+});
+
 /** @param {string} kind */
 export function isAgentKind(kind) {
   return Object.hasOwn(AGENT_KINDS, kind);

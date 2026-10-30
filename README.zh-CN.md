@@ -215,12 +215,12 @@ skill 在 [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)，只承载决�
 普通安装只**写**单元并**打印**加载命令，绝不替你启动守护进程。加载是单独的显式动作：
 
 ```bash
-install.sh --supervisor=enable     # 加载单元
-install.sh --supervisor=status     # 查看当前加载了什么
-install.sh --supervisor=disable    # 卸载
+install.sh --supervisor=enable     # 加载一套 loop supervisor（--target 里第一个 loop kind）
+install.sh --supervisor=status     # 查看每个 loop kind：平台、扫描集、加载状态
+install.sh --supervisor=disable    # 卸载每个 loop kind
 ```
 
-`--supervisor-actor-kinds` 限定动作作用于哪些 agent kind。安装时还会问一次是否允许 supervisor 认领未分配的卡（默认允许），并把答案记在 `<program root>/.env.<actor-kind>`。
+一台机器只跑一套 loop supervisor：`enable` 默认只作用于 `--target` 里的第一个 loop kind（`--target all` 即 claude）；要再跑一个 kind 必须显式 `--supervisor-actor-kinds claude,codex`，代价是多一套轮询、日志和按 loop 去重的告警账本。`status` 与 `disable` 始终覆盖所有 loop kind。安装时还会问一次是否允许 supervisor 认领未分配的卡（默认允许），并把答案记在 `<program root>/.env.<actor-kind>`。
 
 loop 会声明它需要的看板接口：`task-interface v1`、board 版本 >= 0.1.0。loop 自身不带版本号。它的 `taskctl loop compat` 会对着看板自己的 `--version --json` 检查，拿不到结论时退出码为 3。
 

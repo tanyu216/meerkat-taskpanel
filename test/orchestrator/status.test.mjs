@@ -17,6 +17,7 @@ import { after, describe, it } from "node:test";
 
 import { parseArgs } from "../../src/orchestrator/options.mjs";
 import {
+  main,
   probeSupervisor,
   probeUnits,
   stopSupervisor,
@@ -158,6 +159,52 @@ describe("supervisor status", () => {
 
     const fallback = process.env.TASKCTL_AGENT || process.env.USER || process.env.LOGNAME || "agent";
     assert.deepEqual(report.agents, [fallback]);
+  });
+
+  it("names the agent platform it answered for", () => {
+    // A machine may run more than one loop kind, each with its own units and scan set.
+    // The verdict is for one of them, so it must say which.
+    const dir = tempDir();
+    assert.equal(
+      probeSupervisor(optsFor(dir), { isAlive: () => false, now: () => NOW, run: noUnits() }).platform,
+      "claude",
+    );
+    const codex = probeSupervisor(
+      parseArgs(
+        [
+          "--state", join(dir, "state.json"),
+          "--config", join(dir, "config.env"),
+          "--actor-kind", "codex",
+          "--home", dir,
+        ],
+        { HOME: dir },
+      ),
+      { isAlive: () => false, now: () => NOW, run: noUnits() },
+    );
+    assert.equal(codex.platform, "codex");
+  });
+
+  it("prints the platform and the scan set in the human report", async () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, "config.env"), "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus\n");
+    const out = [];
+    const code = await main(
+      [
+        "--state", join(dir, "state.json"),
+        "--config", join(dir, "config.env"),
+        "--actor-kind", "codex",
+        "--home", dir,
+      ],
+      { HOME: dir },
+      { isAlive: () => false, now: () => NOW, run: noUnits() },
+      { out: (text) => out.push(text), err: () => {} },
+    );
+
+    assert.equal(code, 0);
+    const text = out.join("");
+    assert.match(text, /^supervisor: absent$/m);
+    assert.match(text, /^ {2}platform: {2}codex \(~\/\.codex\)$/m);
+    assert.match(text, /^ {2}scan set: {2}Jobs,Linus$/m);
   });
 
   it("is partial when only the subscriber is alive", () => {

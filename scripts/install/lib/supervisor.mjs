@@ -35,7 +35,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { resolveKindConfigPath } from "../../../src/foundation/agent-paths.mjs";
+import { AGENT_DIRS, resolveKindConfigPath } from "../../../src/foundation/agent-paths.mjs";
 import {
   LIVE_STATUSES,
   QUEUE_FILES,
@@ -104,6 +104,24 @@ function agentConfigValue(path, key) {
     // No config file yet.
   }
   return null;
+}
+
+/**
+ * The scan set one agent kind's loop will actually use: `MEERKAT_TASKPANEL_AGENTS` from its
+ * per-kind config. `unset` means the loop falls back to `$TASKCTL_AGENT` / the OS user, which
+ * is exactly the silent case this line exists to make visible.
+ *
+ * @param {string} path the per-kind config (`<program root>/.env.<kind>`)
+ * @returns {{agents: string[], source: "config"|"unset"}}
+ */
+export function scanSetFromConfig(path) {
+  const value = agentConfigValue(path, "MEERKAT_TASKPANEL_AGENTS");
+  if (value === null) return { agents: [], source: "unset" };
+  const agents = value
+    .split(/[,\s]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return agents.length > 0 ? { agents, source: "config" } : { agents: [], source: "unset" };
 }
 
 /**
@@ -856,6 +874,76 @@ export function mechanisms(context) {
 }
 
 /**
+ * Every loop kind loaded on this machine — the machine-level view `--supervisor=status` adds,
+ * and the check that catches a stray a previous install left behind. Read-only: the probes
+ * are the ones `runSupervisorAction` uses.
+ *
+ * **launchd and cron are per kind** (the label and the agent-directory marker carry it), so
+ * each one answers for its own kind. **systemd's unit names carry no kind** — the installer
+ * copies the same six files into `~/.config/systemd/user` for every kind — so its loaded set
+ * is the machine's one supervisor; the kind is read back from the installed unit's
+ * `--actor-kind`, never guessed by probing three times. Reporting three hits there would be
+ * the false alarm this rule exists to avoid.
+ *
+ * One loop supervisor per machine is the rule; this function only reports. Which kinds the
+ * current action covers is `enabled`, so the caller can say which loaded ones are outside it.
+ *
+ * @param {{home?: string, agent?: string, enabled?: string[]|string,
+ *          env?: NodeJS.ProcessEnv, run?: typeof spawnSync, uid?: number|null}} [options]
+ * @returns {{kinds: Array<{kind: string, mechanisms: string[], loaded: boolean}>,
+ *            loadedKinds: string[], systemd: {loaded: boolean, kind: string|null, unitDir: string},
+ *            enabled: string[]}}
+ */
+export function machineStatus(options = {}) {
+  const home = options.home ?? homedir();
+  // The installer's own default (`agent_name()` in `_common.sh`); an empty flag must not
+  // build a label with an empty segment, which would match nothing.
+  const agent = options.agent || "Worker";
+  const run = options.run ?? spawnSync;
+  const env = options.env ?? process.env;
+  const uid = options.uid ?? process.getuid?.() ?? null;
+  const enabled = Array.isArray(options.enabled)
+    ? options.enabled
+    : typeof options.enabled === "string"
+      ? options.enabled.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean)
+      : [];
+  const pathsFor = (kind) =>
+    supervisorPaths({ agentBase: join(home, AGENT_DIRS[kind]), agent, actorKind: kind, env, home });
+
+  const kinds = LOOP_KINDS.map((kind) => {
+    const all = mechanisms({ paths: pathsFor(kind), uid, run });
+    const loaded = ["launchd", "cron"]
+      .filter((name) => all[name].probe().loaded);
+    return { kind, mechanisms: loaded, loaded: loaded.length > 0 };
+  });
+
+  // systemd: one set of machine-wide unit names. Probe it once, then read the kind back from
+  // the installed definition (the file systemd loads); an unreadable unit leaves the kind
+  // unknown rather than inventing one.
+  const systemdPaths = pathsFor(LOOP_KINDS[0]);
+  const systemdLoaded = mechanisms({ paths: systemdPaths, uid, run }).systemd.probe().loaded;
+  let systemdKind = null;
+  if (systemdLoaded) {
+    try {
+      const unit = readFileSync(join(systemdPaths.systemdUnitDir, "meerkat-taskpanel-session.service"), "utf8");
+      const match = /--actor-kind\s+(\w+)/.exec(unit);
+      systemdKind = match ? match[1] : null;
+    } catch {
+      systemdKind = null;
+    }
+  }
+
+  const loadedKinds = new Set(kinds.filter((row) => row.loaded).map((row) => row.kind));
+  if (systemdLoaded && systemdKind !== null) loadedKinds.add(systemdKind);
+  return {
+    kinds,
+    loadedKinds: [...loadedKinds],
+    systemd: { loaded: systemdLoaded, kind: systemdKind, unitDir: systemdPaths.systemdUnitDir },
+    enabled,
+  };
+}
+
+/**
  * Is lingering on for this user? A `systemd --user` manager is torn down with the last
  * session, so without it the "enabled" units stop the moment the login session closes
  * (`docs/scheduling.md` §Linux — the headless caveat). `"unknown"` covers a machine with
@@ -940,6 +1028,17 @@ export function runSupervisorAction(options) {
 
   if (action === "status") {
     log(`supervisor: status (kind=${paths.actorKind})`);
+    // The platform and the scan set are the two facts a user cannot infer from the unit
+    // load state: which agent platform this loop is, and which board names it will claim.
+    // The scan set is read from the per-kind config (what the units read), never from the
+    // installer's process env.
+    const scan = scanSetFromConfig(paths.config);
+    log(`supervisor:   platform: ${paths.actorKind} (~/${paths.agentDir})`);
+    log(
+      scan.source === "config"
+        ? `supervisor:   scan set: ${scan.agents.join(",")} (from ${paths.config})`
+        : "supervisor:   scan set: not configured (the loop falls back to its default agent)",
+    );
     const names = scheduler === "auto" ? ["launchd", "systemd", "cron"] : [requested];
     let subscribeUnitLoaded = null;
     for (const name of names) {
@@ -1074,12 +1173,58 @@ docs/scheduling.md defines. Called by scripts/install/_common.sh; not meant to b
 run by hand.
 `;
 
+/**
+ * `machine-status` — the read-only machine view `install.sh` prints after an action. Hidden
+ * from `ACTIONS` on purpose: it is not a fourth user action, only the report that makes a
+ * stray supervisor visible. It never loads or unloads anything.
+ */
+function machineStatusMain(argv) {
+  const opts = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    const value = () => argv[++i];
+    if (arg === "--home") opts.home = value();
+    else if (arg === "--agent") opts.agent = value();
+    else if (arg === "--enabled") opts.enabled = value();
+    else if (arg === "--action") opts.action = value();
+    else {
+      process.stderr.write(`supervisor: unknown option: ${arg}\n`);
+      return 2;
+    }
+  }
+  const report = machineStatus(opts);
+  const loaded = report.loadedKinds;
+  const parts = [];
+  if (loaded.length > 0) parts.push(`${loaded.length} loop kind(s) loaded (${loaded.join(", ")})`);
+  if (report.systemd.loaded) parts.push("systemd units are machine-wide (one set of names)");
+  if (parts.length === 0) {
+    process.stdout.write("supervisor: machine: no loop kind loaded\n");
+  } else {
+    process.stdout.write(`supervisor: machine: ${parts.join("; ")}\n`);
+  }
+  const extras = loaded.filter((kind) => !report.enabled.includes(kind));
+  if ((opts.action ?? "") === "enable" && extras.length > 0) {
+    process.stdout.write(
+      `supervisor: warning — ${extras.join(", ")} also loaded but outside this action's kinds; ` +
+        `stop with: install.sh --supervisor=disable --supervisor-actor-kinds ${extras.join(",")}\n`,
+    );
+  }
+  if (loaded.length > 1) {
+    process.stdout.write(
+      "supervisor:   one loop supervisor per machine is the rule; " +
+        `stop the extras with: install.sh --supervisor=disable --supervisor-actor-kinds ${loaded.join(",")}\n`,
+    );
+  }
+  return 0;
+}
+
 function main(argv) {
   const [action, ...rest] = argv;
   if (action === undefined || action === "-h" || action === "--help") {
     process.stdout.write(USAGE);
     return action === undefined ? 2 : 0;
   }
+  if (action === "machine-status") return machineStatusMain(rest);
   if (!ACTIONS.includes(action)) {
     process.stderr.write(`supervisor: unknown action: ${action} (expected ${ACTIONS.join("|")})\n`);
     return 2;

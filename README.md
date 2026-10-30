@@ -215,12 +215,12 @@ The full design — the two clocks, the fire-only cost gate, idempotent wakes, t
 A plain install only writes the units and prints the load command. It never starts a daemon for you. Loading is a separate, explicit act:
 
 ```bash
-install.sh --supervisor=enable     # load the units
-install.sh --supervisor=status     # see what is loaded
-install.sh --supervisor=disable    # unload
+install.sh --supervisor=enable     # load one loop supervisor (the first loop kind in --target)
+install.sh --supervisor=status     # see every loop kind: platform, scan set, what is loaded
+install.sh --supervisor=disable    # unload every loop kind
 ```
 
-`--supervisor-actor-kinds` limits which agent kinds an action applies to. The installer also asks once whether the supervisor may claim unassigned cards (default yes) and remembers the answer in `<program root>/.env.<actor-kind>`.
+One loop supervisor per machine is the rule: `enable` defaults to the first loop kind in `--target` (claude for `--target all`); running a second kind needs the explicit `--supervisor-actor-kinds claude,codex` and costs another poller, log and per-loop alarm ledger. `status` and `disable` always cover every loop kind. The installer also asks once whether the supervisor may claim unassigned cards (default yes) and remembers the answer in `<program root>/.env.<actor-kind>`.
 
 The loop declares the board interface it needs: `task-interface v1`, board release >= 0.1.0. It carries no version of its own. Its `taskctl loop compat` checks the board against its own `--version --json` and exits 3 when it cannot get a verdict.
 

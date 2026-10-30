@@ -953,6 +953,127 @@ describe("install.sh: a plain reinstall tells the truth about loaded units", () 
   });
 });
 
+// ---------------------------------------------------------------------------
+// 6 — one loop supervisor per machine
+// ---------------------------------------------------------------------------
+
+describe("install.sh: one loop supervisor per machine", () => {
+  const bootstraps = (manager) => calls(manager).filter((line) => line.startsWith("launchctl bootstrap"));
+
+  it("--target all --supervisor=enable loads the FIRST loop kind only (claude), and says how to add more", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const run = runInstall(
+      ["--target", "all", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=launchd"],
+      installEnv(home, manager),
+    );
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /^install\.sh: supervisor: enable \(kinds:claude, scheduler: launchd\)$/m);
+    assert.match(run.stdout, /one loop supervisor per machine/);
+    assert.match(run.stdout, /--supervisor-actor-kinds <list>/, "and the way to opt into more");
+
+    const loaded = bootstraps(manager);
+    assert.equal(loaded.length, 4, "claude's four units");
+    for (const line of loaded) assert.ok(line.includes(join(".claude", "scheduling")), line);
+    assert.doesNotMatch(run.stdout, /supervisor: enabled \(kind=codex/);
+    assert.doesNotMatch(run.stdout, /supervisor: enabled \(kind=pi/);
+  });
+
+  it("follows --target order, not a hard-coded preference: --target pi,claude enables pi", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const run = runInstall(
+      ["--target", "pi,claude", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=launchd"],
+      installEnv(home, manager),
+    );
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /^install\.sh: supervisor: enable \(kinds:pi, scheduler: launchd\)$/m);
+    const loaded = bootstraps(manager);
+    assert.equal(loaded.length, 4);
+    for (const line of loaded) assert.ok(line.includes(join(".agents", "scheduling")), line);
+  });
+
+  it("an explicit multi-kind list still works, and says the rule is waived", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const run = runInstall(
+      [
+        "--target", "all", "--prefix", home, "--dry-run",
+        "--supervisor=enable", "--supervisor-actor-kinds", "claude,codex", "--scheduler=launchd",
+      ],
+      installEnv(home, manager),
+    );
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /^install\.sh: supervisor: enable \(kinds:claude,codex, scheduler: launchd\)$/m);
+    assert.match(run.stdout, /warning — 2 loop supervisors on one machine/);
+  });
+
+  it("--supervisor=disable defaults to every loop kind in --target, so no stray is left", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const env = installEnv(home, manager);
+    assert.equal(
+      runInstall(
+        ["--target", "all", "--prefix", home, "--supervisor=enable", "--supervisor-actor-kinds", "claude,codex,pi", "--scheduler=launchd"],
+        env,
+      ).status,
+      0,
+    );
+    const before = calls(manager).length;
+
+    const run = runInstall(["--target", "all", "--prefix", home, "--supervisor=disable", "--scheduler=launchd"], env);
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /^install\.sh: supervisor: disable \(kinds:claude,codex,pi, scheduler: launchd\)$/m);
+    assert.match(run.stdout, /every loop kind in --target, so no stray is left/);
+
+    const stopped = calls(manager).slice(before).filter((line) => line.startsWith("launchctl bootout"));
+    assert.equal(stopped.length, 12, "three kinds × four units");
+  });
+
+  it("--supervisor=status covers every loop kind and prints the platform and the configured scan set", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const env = installEnv(home, manager);
+    assert.equal(runInstall(["--target", "all", "--agent-name", "alice", "--prefix", home], env).status, 0);
+
+    writeFileSync(join(kindConfigDirFor(home), ".env.claude"), "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing\n", "utf8");
+    const run = runInstall(["--target", "all", "--prefix", home, "--supervisor=status", "--scheduler=launchd"], env);
+
+    assert.equal(run.status, 0, run.stderr);
+    for (const kind of ["claude", "codex", "pi"]) {
+      assert.match(run.stdout, new RegExp(`^supervisor: status \\(kind=${kind}\\)$`, "m"), kind);
+    }
+    assert.match(run.stdout, /^supervisor:   platform: claude \(~\/\.claude\)$/m);
+    assert.match(run.stdout, /^supervisor:   scan set: Jobs,Linus,Turing \(from .*\.env\.claude\)$/m);
+    // The seeded per-kind file carries the agent name until setup-meerkat writes a team.
+    assert.match(run.stdout, /^supervisor:   scan set: alice \(from .*\.env\.codex\)$/m);
+  });
+
+  it("enable warns when another loop kind is already loaded", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const env = installEnv(home, manager);
+    const enable = (kinds) =>
+      runInstall(
+        ["--target", "all", "--prefix", home, "--supervisor=enable", "--supervisor-actor-kinds", kinds, "--scheduler=launchd"],
+        env,
+      );
+    assert.equal(enable("claude").status, 0);
+    assert.equal(enable("codex").status, 0);
+
+    // The default enable (first loop kind) runs the machine view because --target covers
+    // more than one loop kind, and names the sibling it did not touch.
+    const run = runInstall(["--target", "all", "--prefix", home, "--supervisor=enable", "--scheduler=launchd"], env);
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /supervisor: machine: 2 loop kind\(s\) loaded \(claude, codex\)/);
+    assert.match(run.stdout, /warning — codex also loaded but outside this action's kinds/);
+    assert.match(run.stdout, /one loop supervisor per machine is the rule/);
+  });
+});
+
 describe("install.sh: enable — systemd reload", () => {
   it("restarts an enabled unit whose file changed, instead of only daemon-reloading it", () => {
     const home = makeTempDir();

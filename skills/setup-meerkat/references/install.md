@@ -67,6 +67,9 @@ gate on its own.
 
 - Show `--dry-run` output before writing.
 - Ask before loading/enabling the supervisor (`--supervisor=enable`).
+- Ask before splitting the team across platforms: a split means more than one loop
+  supervisor, and it must be explicit (`--supervisor-actor-kinds claude,codex`). One
+  platform for all roles is the recommended default.
 - Ask before `--force`; it replaces the skill's own files, but an installed `roles/`
   directory is kept. The project map is not in the skill directory any more: an old
   skill-beside `projects.json` is migrated to the config root, never replaced.

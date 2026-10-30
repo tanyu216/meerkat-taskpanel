@@ -19,6 +19,10 @@ import { isEntryPoint } from "./lib/entry-guard.mjs";
 import { parseEnvText } from "./lib/env-merge.mjs";
 import {
   AGENT_KINDS,
+  LOOP_KINDS,
+  PLATFORM_CAPABILITIES,
+  ROLE_CAPABILITY_TAGS,
+  ROLE_PLATFORM_PREFERENCE,
   agentBase,
   isAgentKind,
   kindConfigFile,
@@ -351,16 +355,86 @@ function readdirSafe(dir) {
 
 function rolesAt(dir) {
   if (!dir || !existsSync(join(dir, "manifest.json"))) {
-    return { present: false, manifest: null, roles: 0, valid: false, warnings: [], errors: [] };
+    return { present: false, manifest: null, roles: 0, list: [], valid: false, warnings: [], errors: [] };
   }
   const team = readTeam(dir);
   return {
     present: true,
     manifest: join(dir, "manifest.json"),
     roles: team.roles.length,
+    // The role→platform proposal needs the ids and lanes, not the prose.
+    list: team.roles.map((role) => ({
+      id: role.id,
+      agent: role.agent,
+      lanes: Array.isArray(role.lanes) ? [...role.lanes] : [],
+    })),
     valid: team.ok,
     warnings: team.warnings,
     errors: team.errors,
+  };
+}
+
+/** A comma/whitespace list from a config value — `[]` when unset or empty. */
+function splitList(value) {
+  if (typeof value !== "string") return [];
+  return value
+    .split(/[,\s]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The setup heuristic behind the platform question: assign each role to the platform whose
+ * assumed capabilities cover its tags, honoring a per-role preference order, and fall back
+ * to the single best-covering platform when nothing matches. **Never forces a split**: the
+ * caller shows the proposal, `singlePlatform` is always a valid one-supervisor alternative,
+ * and nothing is written here.
+ *
+ * @param {Array<{id: string, agent: string, lanes?: string[]}>} roles
+ * @param {Record<string, {available?: boolean, capabilities?: string[]}>} platforms
+ * @returns {{status: "split"|"single"|"no-platform", byPlatform: Record<string, string[]>,
+ *            assignments: Array<{roleId: string, agent: string, platform: string, tags: string[]}>,
+ *            singlePlatform: string|null, singlePlatformAgents: string[]}}
+ */
+export function recommendRolePlatforms(roles, platforms) {
+  const list = Array.isArray(roles) ? roles : [];
+  const available = LOOP_KINDS.filter((kind) => platforms?.[kind]?.available === true);
+  const capabilities = (kind) => new Set(platforms?.[kind]?.capabilities ?? []);
+  const tagsFor = (role) => {
+    const known = ROLE_CAPABILITY_TAGS[String(role?.id ?? "").toLowerCase()];
+    if (known) return [...known];
+    const lanes = Array.isArray(role?.lanes) ? role.lanes : [];
+    return lanes.includes("reviewer") ? ["review"] : ["implementation", "tests"];
+  };
+
+  if (available.length === 0 || list.length === 0) {
+    return { status: "no-platform", byPlatform: {}, assignments: [], singlePlatform: null, singlePlatformAgents: [] };
+  }
+
+  const allTags = [...new Set(list.flatMap(tagsFor))];
+  const singlePlatform =
+    available.find((kind) => allTags.every((tag) => capabilities(kind).has(tag))) ?? available[0];
+
+  const assignments = [];
+  for (const role of list) {
+    const tags = tagsFor(role);
+    const capable = available.filter((kind) => tags.every((tag) => capabilities(kind).has(tag)));
+    const preferred = ROLE_PLATFORM_PREFERENCE[String(role.id ?? "").toLowerCase()] ?? available;
+    const platform = preferred.find((kind) => capable.includes(kind)) ?? capable[0] ?? singlePlatform;
+    assignments.push({ roleId: role.id ?? "", agent: role.agent ?? role.id ?? "", platform, tags });
+  }
+
+  const byPlatform = {};
+  for (const kind of available) {
+    const agents = assignments.filter((row) => row.platform === kind).map((row) => row.agent);
+    if (agents.length > 0) byPlatform[kind] = agents;
+  }
+  return {
+    status: Object.keys(byPlatform).length > 1 ? "split" : "single",
+    byPlatform,
+    assignments,
+    singlePlatform,
+    singlePlatformAgents: list.map((role) => role.agent ?? role.id ?? ""),
   };
 }
 
@@ -461,6 +535,18 @@ function humanReport(report) {
       `  pi subagents: ${report.piSubagents.installed ? report.piSubagents.extensionDir : `missing (${report.piSubagents.recommended})`}`,
     );
   }
+  if (report.platforms) {
+    const summary = Object.values(report.platforms)
+      .map((platform) => `${platform.kind}=${platform.available ? "ready" : "unavailable"}`)
+      .join("; ");
+    lines.push(`  platforms: ${summary}`);
+    if (report.rolePlatforms?.status === "split") {
+      const split = Object.entries(report.rolePlatforms.byPlatform)
+        .map(([kind, agents]) => `${kind}=${agents.join(",")}`)
+        .join("; ");
+      lines.push(`  split:     ${split} (proposed; one platform for all roles is the default)`);
+    }
+  }
   if (report.missing.length > 0) lines.push(`  missing:   ${report.missing.join(", ")}`);
   for (const warning of report.warnings) lines.push(`  warning:   ${warning}`);
   return lines.join("\n");
@@ -533,6 +619,45 @@ async function main(argv) {
   const human = detectHuman(opts, opts.home, kind, env, envFile, config);
   const mattPocock = detectMatt(opts.project, opts.home);
   const piSubagents = detectPiSubagents(opts.home);
+
+  // Per platform: what a role→platform decision needs before it is offered. `available` is
+  // the hard gate (the loop skill, and for pi its subagent extension); `capabilities` is
+  // the heuristic table the recommendation reads. `config` is this platform's current
+  // assignment, so the interview can show the truth and propose only real diffs.
+  const platforms = {};
+  for (const candidate of LOOP_KINDS) {
+    const kindSkills = skillsByKind[candidate];
+    const kindSubagents = candidate === "pi" ? piSubagents : { installed: null };
+    const platformBase = agentBase(opts.home, candidate);
+    const platformSkillsDir = join(platformBase, "skills");
+    const programRoot = resolveKindConfigDir(opts, opts.home, candidate, env);
+    const platformConfigPath = programRoot.dir === null ? null : kindConfigFile(programRoot.dir, candidate);
+    const platformConfig = parseEnvText(readText(platformConfigPath) ?? "");
+    const reviewer = platformConfig.get("MEERKAT_TASKPANEL_REVIEWER");
+    platforms[candidate] = {
+      kind: candidate,
+      dir: AGENT_KINDS[candidate].dir,
+      skills: {
+        ...kindSkills,
+        names: readdirSafe(platformSkillsDir)
+          .filter((name) => existsSync(join(platformSkillsDir, name, "SKILL.md")))
+          .sort(),
+      },
+      loopState: detectLoopState(opts.home, candidate),
+      supervisor: detectSupervisor(opts.home, candidate),
+      config: {
+        path: platformConfigPath,
+        present: platformConfigPath !== null && existsSync(platformConfigPath),
+        agents: splitList(platformConfig.get("MEERKAT_TASKPANEL_AGENTS")),
+        reviewer: typeof reviewer === "string" && reviewer.trim() !== "" ? reviewer.trim() : null,
+      },
+      roles: rolesAt(join(loopSkillDir(opts.home, candidate), "roles")),
+      capabilities: [...(PLATFORM_CAPABILITIES[candidate] ?? [])],
+      piSubagents: kindSubagents,
+      available: kindSkills.loop === true && (candidate !== "pi" || kindSubagents.installed === true),
+    };
+  }
+  const rolePlatforms = recommendRolePlatforms(effectiveRoles?.list ?? [], platforms);
 
   const missing = [];
   if (!taskctl.found) missing.push("taskctl");
@@ -608,6 +733,8 @@ async function main(argv) {
     human,
     skills,
     skillsByKind,
+    platforms,
+    rolePlatforms,
     loopState,
     supervisor,
     roles,
