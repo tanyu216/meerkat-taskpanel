@@ -220,6 +220,47 @@ describe("card queue", () => {
     assert.equal(readCards(dir).value.cards[0].status, "failed");
   });
 
+  // A terminal row is kept for 24h, and a new handoff for the same card gets the
+  // same deterministic id once the old row is terminal (`enqueueCard`). A
+  // requeue must move the one live row — not resurrect and inflate the history.
+  it("does not inflate or resurrect a terminal row that shares a live row's id", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    const [first] = claimCards(dir, { claimedBy: "/work/app", limit: 1 }).cards;
+    requeueCards(dir, [first.id], { maxAttempts: 1 });
+    assert.equal(readCards(dir).value.cards[0].status, "failed");
+
+    enqueueCard(dir, card("T-1"));
+    assert.equal(readCards(dir).value.cards.length, 2, "a terminal row does not coalesce");
+
+    const [second] = claimCards(dir, { claimedBy: "/work/app", limit: 1 }).cards;
+    const result = requeueCards(dir, [second.id], { maxAttempts: 3 });
+    assert.deepEqual({ requeued: result.requeued, failed: result.failed }, { requeued: 1, failed: 0 });
+
+    const rows = readCards(dir).value.cards;
+    const terminal = rows.filter((entry) => entry.status === "failed");
+    const live = rows.filter((entry) => entry.status === "pending");
+    assert.equal(terminal.length, 1, "the failed history row stays failed");
+    assert.equal(terminal[0].attempts, 1, "and is not counted again");
+    assert.equal(live.length, 1);
+    assert.equal(live[0].attempts, 1, "only the live row was requeued");
+  });
+
+  it("does not rewrite a terminal row when a later handoff completes", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    const [first] = claimCards(dir, { claimedBy: "/work/app", limit: 1 }).cards;
+    completeCards(dir, [first.id], { now: "2026-01-01T00:00:00.000Z" });
+
+    enqueueCard(dir, card("T-1"));
+    const [second] = claimCards(dir, { claimedBy: "/work/app", limit: 1 }).cards;
+    completeCards(dir, [second.id], { now: "2026-01-02T00:00:00.000Z" });
+
+    const [oldRow, newRow] = readCards(dir).value.cards;
+    assert.equal(oldRow.completedAt, "2026-01-01T00:00:00.000Z", "the first completion is history");
+    assert.equal(newRow.completedAt, "2026-01-02T00:00:00.000Z");
+  });
+
   it("recovers a processing card whose owner pid is gone", (t) => {
     const dir = dirFor(t);
     enqueueCard(dir, card("T-1"));

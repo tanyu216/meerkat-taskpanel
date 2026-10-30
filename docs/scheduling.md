@@ -237,7 +237,14 @@ line) double-starts work. Guards:
   failed or timed-out turn) re-reads the card first: one that has already left
   `todo`/`in_progress` — the worker delivered just before the interrupt — is
   completed locally instead of being re-dispatched. A timed-out turn also closes
-  its session rather than reusing it.
+  its session rather than reusing it. A **successful** turn that reports no
+  subagent id for a card follows the same rule against a weaker test: a card that
+  has left `todo` — including one still `in_progress`, which is where a missing id
+  usually comes from — is completed locally as `handoff already in flight`,
+  because re-dispatching it would put a second worker on the same card. Queue
+  rows are terminal-aware: `requeueCards` and `completeCards` never rewrite a
+  retained `done`/`failed` row, so the three-attempt bound belongs to the row
+  that is actually in flight.
 
 ## The cost gate: a worker turn starts only on fire
 

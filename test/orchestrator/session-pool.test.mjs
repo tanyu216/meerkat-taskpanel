@@ -626,6 +626,98 @@ describe("session pool", () => {
     await pool.stop();
   });
 
+  // The adapter only captures a subagent id from a tool result, so a background
+  // spawn that has not returned by turn end reports none — and the session may
+  // also stand down on its own when the lane already holds the card. Either way
+  // a card that is no longer `todo` got its handoff; retrying it would spawn a
+  // second worker for the same card.
+  it("completes a handoff when a successful turn reports no id and the card is in flight", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool({ behavior: () => ({ ids: [] }) });
+    const checks = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: ({ card: ref }) => {
+        checks.push(ref);
+        return { ok: true, status: "in_progress", error: null };
+      },
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "done", "a missing id is a reporting gap, not missing work");
+    assert.equal(row.lastError, "handoff already in flight");
+    assert.equal(row.attempts, 0);
+    assert.deepEqual(checks, ["T-1"]);
+    await pool.stop();
+  });
+
+  it("requeues an unmatched card that the board still calls todo", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool({ behavior: () => ({ ids: [] }) });
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: () => ({ ok: true, status: "todo", error: null }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "pending");
+    assert.equal(row.attempts, 1);
+    assert.match(row.lastError, /project session reported 0 subagent\(s\)/);
+    await pool.stop();
+  });
+
+  it("requeues an unmatched card when the board check cannot be read", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool({ behavior: () => ({ ids: [] }) });
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: () => ({ ok: false, status: null, error: "down" }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "pending", "an unreadable check is not proof the handoff landed");
+    assert.equal(row.attempts, 1);
+    await pool.stop();
+  });
+
+  it("pairs the ids it got and revalidates only the tail", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool({
+      behavior: ({ prompt }) => (prompt.startsWith("/meerkat-loop") ? { ids: [] } : { ids: ["a-one"] }),
+    });
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: () => ({ ok: true, status: "in_progress", error: null }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    enqueueCard(join(f.dir), card(f, "T-2", f.app));
+    await pool.tick();
+
+    const rows = readCards(f.dir).value.cards;
+    assert.deepEqual(rows.map((row) => row.status), ["done", "done"]);
+    assert.equal(rows[0].lastError, null, "the matched card completes normally");
+    assert.equal(rows[1].lastError, "handoff already in flight", "the tail is revalidated");
+    await pool.stop();
+  });
+
   it("closes an idle project session but keeps its session id for resume", async (t) => {
     const f = fixture(t);
     let clock = Date.parse("2026-01-01T00:00:00.000Z");
