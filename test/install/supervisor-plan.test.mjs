@@ -13,7 +13,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
@@ -289,6 +289,29 @@ describe("supervisor: the per-kind scan set and the machine-level view", () => {
       machineStatus({ home, agent: "alice", scheduler: "launchd", env: { HOME: home }, run, platform: "darwin" }).loadedKinds,
       [],
     );
+  });
+
+  it("counts systemd's machine-wide units once, and reads the loaded kind from the definition", () => {
+    // The six systemd unit names carry no kind: the installer copies the same files for
+    // every kind. Probing per kind would report three supervisors for one. The loaded set
+    // is one; which kind it runs is read back from the unit systemd actually loads.
+    const home = makeTempDir();
+    const unitDir = join(home, ".config", "systemd", "user");
+    mkdirSync(unitDir, { recursive: true });
+    writeFileSync(
+      join(unitDir, "meerkat-taskpanel-session.service"),
+      "[Service]\nExecStart=/usr/bin/node /repo/src/cli/index.mjs loop session --actor-kind codex\n",
+    );
+    const run = (command, args) => {
+      const enabled = command === "systemctl" && args[0] === "--user" && args[1] === "is-enabled";
+      return { status: enabled ? 0 : 1, stdout: enabled ? "enabled\n" : "", stderr: "", error: null };
+    };
+
+    const report = machineStatus({ home, agent: "alice", env: { HOME: home }, run, platform: "linux" });
+    assert.equal(report.systemd.loaded, true);
+    assert.equal(report.systemd.kind, "codex");
+    assert.deepEqual(report.loadedKinds, ["codex"], "one machine-wide set is one supervisor, not three");
+    assert.equal(report.kinds.filter((row) => row.loaded).length, 0, "systemd is not attributed per kind");
   });
 });
 
@@ -582,6 +605,18 @@ describe("supervisor: the docs and the implementation agree", () => {
       "systemd enable",
     );
     assert.ok(scheduling.includes("loginctl enable-linger"), "the lingering remedy");
+  });
+
+  it("the docs state the one-supervisor rule and the first-kind default", () => {
+    const scheduling = doc("docs/scheduling.md");
+    assert.match(scheduling, /One loop supervisor per machine/);
+    assert.match(scheduling, /first loop kind in normalized `--target` order/);
+    assert.match(scheduling, /systemd.*unit names are machine-wide/s);
+
+    const install = doc("docs/ops/install.md");
+    assert.match(install, /One loop supervisor per machine is the rule/);
+    assert.match(install, /first loop kind in/);
+    assert.match(install, /--supervisor=disable` and `--supervisor=status` cover/);
   });
 
   it("the opt-in is documented in the install docs, not in the skill", () => {

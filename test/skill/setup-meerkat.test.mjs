@@ -1653,6 +1653,29 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     assert.equal(result.body.platforms.pi.available, false);
   });
 
+  it("marks pi available only when its subagent extension is installed", (t) => {
+    // Pi's loop cannot spawn a worker without `pi-subagents`, so a platform that cannot
+    // run the work is never offered — the same gate the interview relies on.
+    const home = temp(t);
+    const project = temp(t);
+    const configDir = temp(t);
+    mkdirSync(join(home, ".agents", "skills", "meerkat-loop"), { recursive: true });
+    writeFileSync(join(home, ".agents", "skills", "meerkat-loop", "SKILL.md"), "# loop\n");
+    const args = ["--home", home, "--project", project, "--actor-kind", "all", "--no-network"];
+    const env = { HOME: home, PATH: temp(t), MEERKAT_TASKPANEL_CONFIG_DIR: configDir };
+
+    const without = runJson(t, DETECT, args, { cwd: project, env });
+    assert.equal(without.status, 0, without.stderr);
+    assert.equal(without.body.platforms.pi.skills.loop, true, "the loop skill alone is not enough");
+    assert.equal(without.body.platforms.pi.available, false);
+
+    mkdirSync(join(home, ".pi", "agent", "npm", "node_modules", "pi-subagents"), { recursive: true });
+    const withExtension = runJson(t, DETECT, args, { cwd: project, env });
+    assert.equal(withExtension.status, 0, withExtension.stderr);
+    assert.equal(withExtension.body.platforms.pi.available, true);
+    assert.equal(withExtension.body.platforms.pi.piSubagents.installed, true);
+  });
+
   it("proposes Jobs/Linus/Reviewer on claude and Turing on codex — a proposal, never a write", (t) => {
     const fixture = twoPlatformHome(t);
     const result = detectAll(t, fixture);
@@ -1864,6 +1887,34 @@ describe("install-roles.mjs — project scope", () => {
     assert.ok(existsSync(join(home, ".codex", "agents", "jobs.toml")));
     assert.ok(existsSync(join(home, ".pi", "agent", "agents", "jobs.md")));
     assert.equal(existsSync(join(project, ".meerkat", "roles")), false, "global must not write into the project");
+  });
+
+  it("installs a global roles root per actor kind — the fact a platform split depends on", (t) => {
+    // Global roles live under each kind's own loop skill. A split that installs globally
+    // must run this once per participating kind, or the other loop scans cards it has no
+    // workflows for.
+    const home = temp(t);
+    const project = temp(t);
+    const codexLoop = join(home, ".codex", "skills", "meerkat-loop");
+    mkdirSync(codexLoop, { recursive: true });
+    writeFileSync(join(codexLoop, "SKILL.md"), "---\nname: meerkat-loop\n---\n");
+
+    const result = runJson(
+      t,
+      INSTALL,
+      ["--scope", "global", "--project", project, "--home", home, "--actor-kind", "codex"],
+      { cwd: project },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(existsSync(join(codexLoop, "roles", "manifest.json")), "codex's own roles root");
+    assert.equal(
+      existsSync(join(home, ".claude", "skills", "meerkat-loop", "roles")),
+      false,
+      "one kind's install does not cover another's roles root",
+    );
+    // Native agent definitions are written for every native kind regardless of --actor-kind.
+    assert.ok(existsSync(join(home, ".claude", "agents", "jobs.md")));
+    assert.ok(existsSync(join(home, ".codex", "agents", "jobs.toml")));
   });
 
   it("warns when ownership.md is absent and when a legacy policy remains", (t) => {
