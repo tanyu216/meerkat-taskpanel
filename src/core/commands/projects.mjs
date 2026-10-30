@@ -20,11 +20,22 @@
  * Two projects whose prefix resolves to the same token are indistinguishable on
  * the board — both would hand out `OPENCLAW-TEAM-0007` — so creation refuses a
  * prefix another project already owns. A declared prefix that normalizes to
- * *nothing* is refused too: it would leave a project that can never mint a card.
+ * *nothing* is refused too: it would leave a project that can never mint a card,
+ * and (M8) a resolved prefix outside `^[A-Z0-9]{1,4}$` is refused on every
+ * create path — declared, id-derived, or `ensure` on first creation. The rule is
+ * creation-only: rows that already carry a longer or hyphenated token keep
+ * reading and minting, because `projectPrefix` and identifier allocation are not
+ * narrowed.
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
-import { PROJECT_PREFIX_META_KEY, identifierPrefix, projectPrefix } from "../../foundation/ids.mjs";
+import {
+  PROJECT_PREFIX_MAX,
+  PROJECT_PREFIX_META_KEY,
+  identifierPrefix,
+  isValidProjectPrefix,
+  projectPrefix,
+} from "../../foundation/ids.mjs";
 import { assertProjectAcceptance } from "../domain/acceptance-mode.mjs";
 import { normalizeReviewer } from "../domain/reviewer.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
@@ -50,11 +61,11 @@ const PROJECT_PREFIX_FIELD = `meta.${PROJECT_PREFIX_META_KEY}`;
  * same project, and `repos.projects.create` already answers it with
  * `ID_CONFLICT` (409), not with a prefix refusal (400).
  *
- * An **undeclared** prefix that normalizes to nothing (`--id ###`) is left to
- * the pre-existing guard in `identifierForPrefix`, which refuses to allocate an
- * identifier for it; this check is about collisions, not emptiness, so it steps
- * aside when the prefix is "". A **declared** one never reaches this function
- * empty — `normalizeDeclaredPrefix` refuses it first (M4).
+ * Creation resolves a prefix through `normalizeDeclaredPrefix` or
+ * `normalizeIdPrefix` before this runs, so the candidate is always a non-empty
+ * 1-4 `[A-Z0-9]` token. An empty prefix is refused earlier (M4/M8), and a legacy
+ * row that mints nothing is refused by `identifierForPrefix` on its first card,
+ * not here.
  *
  * @param {object} repos
  * @param {{id?: string, prefix: string, field: string}} candidate the effective
@@ -62,7 +73,6 @@ const PROJECT_PREFIX_FIELD = `meta.${PROJECT_PREFIX_META_KEY}`;
  */
 function assertPrefixAvailable(repos, candidate) {
   const { id, prefix, field } = candidate;
-  if (prefix === "") return;
   const conflict = repos.projects
     .list({ includeArchived: true })
     .filter((project) => project.id !== id && projectPrefix(project) === prefix)
@@ -103,11 +113,17 @@ function declaredPrefix(meta) {
  * Normalize a declared `meta.prefix` into what the project will store, or
  * refuse it (M4).
  *
- * Two shapes are refused, and they are the same defect one type apart: a value
+ * Three shapes are refused, all the same defect at different strengths: a value
  * that is not a string (there is no sensible normalization of `null` — `String`
- * would happily mint the prefix `NULL`), and a string that does not survive
- * normalization (`####`, `"   "`, `---`). Both would otherwise leave a project
- * that stores an unusable prefix and can therefore never mint a card.
+ * would happily mint the prefix `NULL`), a string that does not survive
+ * normalization (`####`, `"   "`, `---`), and (M8) a normalized token outside
+ * 1-4 `[A-Z0-9]` (`abcde` → `ABCDE`, `or c` → `OR-C`). Each would otherwise
+ * leave a project that stores an unusable prefix and can therefore never mint a
+ * card, or one whose cards print a token creation no longer accepts.
+ *
+ * The checks run in that order — type, empty, shape — and the caller's collision
+ * check runs after them, so a value that fails the rule is never reported as a
+ * collision.
  *
  * The refusal happens **before** the insert, so no row lands: this is checked on
  * the way in, not discovered on the first card.
@@ -128,7 +144,73 @@ function normalizeDeclaredPrefix(value) {
       details: { field: PROJECT_PREFIX_FIELD, received: value },
     });
   }
+  if (!isValidProjectPrefix(prefix)) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message:
+        `project prefix ${JSON.stringify(value)} normalizes to ${JSON.stringify(prefix)}, ` +
+        `which is not 1-${PROJECT_PREFIX_MAX} characters of A-Z and 0-9`,
+      details: { field: PROJECT_PREFIX_FIELD, received: value, prefix, max: PROJECT_PREFIX_MAX },
+    });
+  }
   return prefix;
+}
+
+/**
+ * The prefix a create's **id** resolves to, or a refusal (M8).
+ *
+ * Two failures, deliberately distinct. An id that normalizes to nothing
+ * (`###`) names no token at all; an id whose token is outside the creation rule
+ * (`other` → `OTHER`, `demo-x` → `DEMO-X`) asks for a prefix the board no longer
+ * accepts for a new project. Both carry the id and a `hint.fix` naming the
+ * prefix flag: the id is about to become a card prefix, so the caller's next
+ * move is to choose a shorter id or declare the prefix explicitly.
+ *
+ * Legacy rows are untouched by this: only a **create** calls it, and
+ * `projectPrefix` still reads a long or hyphenated id-derived token as before.
+ *
+ * @param {string} projectId
+ */
+function normalizeIdPrefix(projectId) {
+  const fix = {
+    fix:
+      `run \`taskctl project create --prefix <p>\` with 1-${PROJECT_PREFIX_MAX} ` +
+      "characters of A-Z and 0-9",
+  };
+  const prefix = identifierPrefix(projectId);
+  if (prefix === "") {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `project id ${JSON.stringify(projectId)} has no usable identifier prefix`,
+      details: { field: "id", projectId, prefix: "", max: PROJECT_PREFIX_MAX },
+      hint: fix,
+    });
+  }
+  if (!isValidProjectPrefix(prefix)) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message:
+        `project id ${JSON.stringify(projectId)} normalizes to identifier prefix ${JSON.stringify(prefix)}, ` +
+        `which is not 1-${PROJECT_PREFIX_MAX} characters of A-Z and 0-9`,
+      details: { field: "id", projectId, prefix, max: PROJECT_PREFIX_MAX },
+      hint: fix,
+    });
+  }
+  return prefix;
+}
+
+/**
+ * A create with neither a declared `meta.prefix` nor an id used to mint a UUID
+ * and derive its prefix from that. M8 closes the branch: there is nothing to
+ * validate, and the caller must say what the project's cards should be called.
+ */
+function missingPrefixRefusal() {
+  return new DomainError("VALIDATION_FAILED", {
+    message: "a project needs an identifier prefix: declare meta.prefix or an id",
+    details: { field: PROJECT_PREFIX_FIELD, max: PROJECT_PREFIX_MAX },
+    hint: {
+      fix:
+        `run \`taskctl project create --prefix <p> --name <name>\` with 1-${PROJECT_PREFIX_MAX} ` +
+        "characters of A-Z and 0-9",
+    },
+  });
 }
 
 /**
@@ -166,21 +248,23 @@ export function createProject(ctx, input) {
     () => {
       const declared = declaredPrefix(input.meta);
       // The prefix this project will number its cards with. A declared one is
-      // normalized (and may be refused) here; otherwise an explicit id supplies
-      // it; otherwise the project gets a freshly minted UUID, whose prefix is
-      // unique by construction and therefore needs no check before the insert.
-      const prefix = declared !== undefined
-        ? normalizeDeclaredPrefix(declared)
-        : input.id === undefined
-          ? undefined
-          : identifierPrefix(input.id);
-      if (prefix !== undefined) {
-        assertPrefixAvailable(ctx.repos, {
-          id: input.id,
-          prefix,
-          field: declared === undefined ? "id" : PROJECT_PREFIX_FIELD,
-        });
+      // normalized and validated first; an explicit id supplies it otherwise; a
+      // create with neither is refused (M8 — it used to mint a UUID whose token
+      // was never checked). Every path ends at a 1-4 `[A-Z0-9]` token before the
+      // collision check runs.
+      let prefix;
+      if (declared !== undefined) {
+        prefix = normalizeDeclaredPrefix(declared);
+      } else if (input.id === undefined || input.id === null) {
+        throw missingPrefixRefusal();
+      } else {
+        prefix = normalizeIdPrefix(input.id);
       }
+      assertPrefixAvailable(ctx.repos, {
+        id: input.id,
+        prefix,
+        field: declared === undefined ? "id" : PROJECT_PREFIX_FIELD,
+      });
       // Store the prefix **normalized**, once, at the boundary (M2) — it is
       // written back into the meta the caller sent, so what the row carries is
       // already the value the allocator will read. An undeclared prefix is not

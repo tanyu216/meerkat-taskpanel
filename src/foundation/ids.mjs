@@ -64,7 +64,27 @@ export function sessionId(taskId, owner, seg) {
 }
 
 /**
+ * The shape a **new** project's identifier prefix must resolve to (M8): 1-4
+ * characters of `A-Z` and `0-9`, checked after normalization. Creation
+ * enforces it; the read path deliberately does not, so a seeded or imported row
+ * whose prefix is longer or carries a dash (`MEERKAT-TASKPANEL`, `DEMO-X`)
+ * keeps reading and minting exactly as it did before the rule existed.
+ */
+export const PROJECT_PREFIX_MAX = 4;
+export const PROJECT_PREFIX_PATTERN = /^[A-Z0-9]{1,4}$/;
+
+/** @param {unknown} value a **normalized** prefix (see `identifierPrefix`) */
+export function isValidProjectPrefix(value) {
+  return typeof value === "string" && PROJECT_PREFIX_PATTERN.test(value);
+}
+
+/**
  * Project id → identifier prefix. `meerkat-taskpanel` → `MEERKAT-TASKPANEL`, `demo_x` → `DEMO-X`.
+ *
+ * Deliberately a normalizer, not a validator: it must keep producing the token
+ * legacy rows number their cards with. `isValidProjectPrefix` is the creation
+ * rule applied to its result.
+ *
  * @param {string} projectId
  */
 export function identifierPrefix(projectId) {
@@ -89,6 +109,10 @@ export function identifierPrefix(projectId) {
  * path that bypasses the create use-case (a hand-written row, a historical
  * import) still resolves to the same prefix the create use-case would have stored —
  * `identifierPrefix` is idempotent, so the normal path is unaffected.
+ *
+ * This is the **read** side and stays lenient. The 1-4 `[A-Z0-9]` rule
+ * (`isValidProjectPrefix`) is a creation gate, so a legacy long or hyphenated
+ * token keeps its numbers; only a *new* project is held to the narrower shape.
  *
  * @param {{id: string, meta?: object|null}} project
  */

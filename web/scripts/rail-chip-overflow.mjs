@@ -330,6 +330,16 @@ async function startTaskdEngine() {
   // copies of the fixture's. Note that this engine's *row order* is the server's
   // own and is not pinned by this leg (see the report); that the long tokens sit
   // between short ones is guaranteed by the fixture engine, not here.
+  //
+  // Seeded through `repos.projects.create`, the import/seed seam, not the
+  // create use-case: C-PREFIX-1 M8 refuses a new project whose prefix is not
+  // 1-4 `[A-Z0-9]`, and the two legacy rows are deliberately longer than that.
+  // This engine has to reproduce a board written *before* the rule, not a
+  // create the rule would now reject. Declared prefixes are normalized before
+  // the insert the way the command stores them (`identifierPrefix` is
+  // idempotent, and `projectPrefix` re-normalizes on read), so the rows read
+  // back exactly as before.
+  const now = new Date().toISOString();
   for (const project of [
     { name: "MeerkatTaskPanel", meta: { prefix: "td" } },
     { name: "Orchestrator", meta: { prefix: "orc" } },
@@ -337,7 +347,14 @@ async function startTaskdEngine() {
     { id: LEGACY_ID, name: "Zulu Legacy Importer", meta: {} },
     { id: SOLID_ID, name: "Victor Solid Token", meta: {} },
   ]) {
-    seed.commands.createProject(project);
+    const declared = project.meta?.prefix;
+    seed.repos.projects.create({
+      ...project,
+      ...(typeof declared === "string"
+        ? { meta: { ...project.meta, prefix: identifierPrefix(declared) } }
+        : {}),
+      now,
+    });
   }
   await seed.close();
 
