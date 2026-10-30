@@ -129,7 +129,10 @@ keep the clock — the question tick (60 s) and the control tick (600 s) continu
      (it refuses any other verdict). If they decline, the agenda still runs, but nothing will
      claim what you release. Stop a pool you started with `taskctl loop status --stop`.
 2. **Waiting on me — one card at a time.** `questions[]` carries two rungs; branch on `kind`:
-   - `awaiting` is **the human's**. Take one card — priority, then age; console order is board
+   - `awaiting` is **the human's**. Before you ask, settle what is knowable: a question whose
+     answer already sits in the code, the design record or the docs is not a decision — look it
+     up, and put the answer in front of them to confirm rather than asking it open-ended. Only
+     what survives that is theirs. Take one card — priority, then age; console order is board
      weight order, not a decision order. Re-read its comment trail first: a human comment newer
      than the question is already the answer, whether it came from the board UI or from this
      conversation, so do not ask again and do not duplicate it. Ask that card's whole frontier

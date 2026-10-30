@@ -131,6 +131,7 @@ describe("loop skill: SKILL.md", () => {
     assert.match(manual, /backlog/i);
     assert.match(manual, /blocked/i);
     assert.match(manual, /60 s/);
+    assert.match(manual, /settle what is knowable/i);
   });
 
   it("documents the decision round in the decision policy", () => {
