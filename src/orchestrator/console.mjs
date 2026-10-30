@@ -17,6 +17,7 @@
  * Node builtins only.
  */
 
+import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 import { parseArgs } from "./options.mjs";
@@ -167,5 +168,6 @@ export async function main(argv, env = process.env, deps = {}, io = {}) {
 }
 
 if (isEntryPoint(import.meta.url)) {
+  installEntryCrashGuard("console");
   main(process.argv.slice(2)).then((code) => process.exit(code));
 }

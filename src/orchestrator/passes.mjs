@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 
 import { resolveWakeDir, resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
+import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import { candidateArgs, pruneRegistry } from "../foundation/scheduling.mjs";
 
@@ -880,5 +881,6 @@ export function main(argv, env = process.env, io = {}) {
 }
 
 if (isEntryPoint(import.meta.url)) {
+  installEntryCrashGuard("passes");
   main(process.argv.slice(2)).then((code) => process.exit(code));
 }

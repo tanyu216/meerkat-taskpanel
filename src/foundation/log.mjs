@@ -95,6 +95,9 @@ export const EVENT_LEVELS = Object.freeze({
   sla_config_invalid: "warn",
   log_level_invalid: "warn",
   // Exception boundaries.
+  process_crash: "error",
+  pool_start_failed: "error",
+  server_error: "error",
   sse_stream_failed: "error",
   container_sweep_failed: "error",
   label_gc_failed: "error",

@@ -21,6 +21,7 @@
 
 import { existsSync } from "node:fs";
 
+import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 import * as passesEntry from "./passes.mjs";
@@ -171,5 +172,8 @@ export async function main(argv, env = process.env, io = {}) {
 }
 
 if (isEntryPoint(import.meta.url)) {
+  // An escaped rejection from `main()` used to be an unlogged death: one crash
+  // record, a bounded cleanup and exit 1 instead.
+  installEntryCrashGuard("supervisor");
   main(process.argv.slice(2)).then((code) => process.exit(code));
 }
