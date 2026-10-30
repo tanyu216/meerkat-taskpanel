@@ -25,7 +25,7 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `taskctl --version --json` | `data.version`, `data.schema_version` | `taskctl loop compat` |
+| `taskctl --version --json` | `data.version`, `data.schema_version` | `taskctl loop compat`, `taskctl loop doctor` |
 
 ## 2. Project rows — `project list`
 
@@ -68,7 +68,7 @@ refuses with `BLOCKED_BY_PREDECESSOR` (409) when a `blocks` predecessor is not
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `issue list --limit <board-limit>` | `data.tasks[]` | the legacy stale-heartbeat patrol |
+| `issue list --limit <board-limit>` | `data.tasks[]` | the legacy stale-heartbeat patrol, and `taskctl loop doctor` |
 
 The patrol reads `identifier`, `status`, `heartbeat_at`, `claimed_by_actor`,
 `assignee`. Truncation is inferred when `tasks.length >= board-limit`.
