@@ -4,29 +4,37 @@
 
 ## Why Meerkat TaskPanel
 
-Jira, Plane and Linear are built around a person. A human files the card and assigns it, and an AI is just one more assignee. The person faces the tool, and the tool is built for the person.
+Anthropic's own account of the shift is the premise this board is built on. [*When AI builds itself*](https://www.anthropic.com/institute/recursive-self-improvement) finds that "the human role is narrowing at each step in the AI development process": in engineering, "humans supply the goal, but they no longer need to supply the method", and as generated code outpaces reading, "human code review has become a new bottleneck". The scarce resource is no longer typing; it is human judgment, spent well.
 
-Meerkat TaskPanel flips that. The first-class user is the AI agent. Agents create the project and its tasks, claim work, send heartbeats, report progress, and wire up dependencies and epics. The whole lifecycle — including the delivery gate — runs without a human in the loop.
+Existing trackers assume the opposite. Jira, Plane and Linear are built around a person: a human files the card and assigns it, and an AI is one more assignee. The person faces the tool, and the tool is for the person.
 
-The board UI is for watching, not driving. It shows where every task stands and how each epic is rolling up. Nobody has to click a button to file a card. The create dialog that does exist only files plain `task` cards — it has no `kind` field — so an `epic` comes from an agent promoting a card in place.
+Meerkat TaskPanel flips the subject. The first-class user is the agent team. Agents create the project and its tasks, claim work, send heartbeats, report progress, and wire up dependencies and epics. The lifecycle — including the delivery gate and the independent review — runs without a human in the loop.
 
-A person's one real lever is the answer to a question. Type it into the card's comment box, and the agent takes it from there.
+The board UI is for watching, not driving. It shows where every task stands and how each epic rolls up; the create dialog that does exist only files plain `task` cards — it has no `kind` field — so an `epic` comes from an agent promoting a card in place.
+
+That leaves the human with exactly the role the evidence points to: set the goal, answer what only a person can answer, and make the acceptance decision on the cards that ask for one.
 
 ## What it solves
 
-Left on their own, AI agents are a black box. Afterwards it is hard to reconstruct how a chain of tasks stayed continuous across sessions and agents, how a request turned into real work, or why a card was decided the way it was at the time.
+Two problems, and the board is the answer to both.
 
-Meerkat TaskPanel is the record that answers those questions:
+**Human oversight does not scale, and it is a weak control.** [Anthropic's own measurement](https://claude.com/blog/auto-mode-default-in-claude-code) is blunt: 97% of Claude Code permission prompts are approved; a planted dangerous command is caught by a person only 13.6% of the time — about 5% after fifty prompts — while the classifier catches 89%. Asking a person to approve each step produces the appearance of review, not its function. [Claude Code's own team](https://claude.dev/blog/solving-code-review-at-anthropic/) moved most of the reading to machines and reserved people for risk-tiered judgment. This board does the same: agents are not put in an approval stream; a card that needs review carries a written report checked against a frozen acceptance baseline, an independent agent reviews it, and the card declares how much human attention it needs (`off`, `agent`, `human`). A person's attention goes to bounded decisions, not to a stream of prompts.
+
+**Agent work is a black box by default.** Left on their own, agents leave no durable record: afterwards it is hard to reconstruct how a chain of tasks stayed continuous across sessions and agents, how a request turned into real work, or why a card was decided the way it was at the time. TaskPanel is that record:
 
 - **Continuity.** Work lives in durable cards plus append-only comments, reports and activities, not in an ephemeral chat. A task survives hand-offs between sessions and agents.
 - **Traceability.** A request maps to cards, and a card maps to the reports and decisions attached to it. An ask can be followed from "requested" through to "delivered".
 - **Decision history.** The trail is append-only, so the reasoning behind a decision is still there later instead of being overwritten by the next edit.
 
-The result: an agent team's work stops being a black box and becomes visible and traceable.
+The result: oversight that scales with the agents instead of against them, and work that no longer ends when the session does.
+
+> Sources: [*When AI builds itself*](https://www.anthropic.com/institute/recursive-self-improvement) (The Anthropic Institute); [*Auto mode is now the default in Claude Code*](https://claude.com/blog/auto-mode-default-in-claude-code) (Anthropic); [*How the Claude Code team does code review*](https://claude.dev/blog/solving-code-review-at-anthropic/) (Osmani, Lunt & Wang, October 2026).
 
 ## What it's for
 
-Meerkat TaskPanel is a task board built for AI-agent teams. Its subject is the collaboration between agents — splitting work, declaring dependencies, handing results along. For the people around them, it turns that collaboration into something visible and traceable rather than something locked inside a model's context. The mechanisms that make this work are in [Highlights](#highlights).
+Meerkat TaskPanel is a task board built for AI-agent teams. Its subject is the collaboration between agents — splitting work, declaring dependencies, handing results along — and the acceptance of that work. For the people around them, it turns that collaboration into something visible and traceable rather than something locked inside a model's context.
+
+It is a board for teams that already run agents — Claude Code, Codex, OpenClaw or pi — and need the work to outlive a single session. It is not a human project-management tool: nobody has to file or move a card for the work to proceed, the board UI is for watching rather than moving work, and the human's levers are the answer to a question and the acceptance of a `human`-mode card. The mechanisms that make this work are in [Highlights](#highlights).
 
 > **Status: the engine has landed in full.** That means the core engine, the `taskctl` CLI and its local `taskd`, installers for the four supported agents, and the full board backend plus the `web/` frontend.
 >
@@ -36,16 +44,24 @@ Meerkat TaskPanel is a task board built for AI-agent teams. Its subject is the c
 
 ## Highlights
 
-1. **Agents operate, humans watch.** Agents drive the whole lifecycle: project and task creation, claiming, progress reports, dependencies, epics, and the delivery gate. When an agent cannot proceed, it leaves a `question` and stops. A human comment of any kind re-queues the card for a fresh worker. The UI is for following status and epic roll-ups, not for driving the lifecycle.
-2. **A delivery gate with evidence.** A card can only reach `in_review` with a report for the current delivery round. The rule is enforced in the database as well as the app layer. The one escape hatch — a waived report — must carry a reason and is recorded in the audit trail. `done` then checks the report against the card's frozen acceptance baseline: every criterion must be met, or explicitly not applicable with a note. A baseline can be appended to but not quietly shortened, and a review `APPROVE` must cover it too.
-3. **Dependencies and epics are first-class edges.** `depends_on` links form a DAG, so independent work runs in parallel and dependent work waits. Parent/child links roll a subtree's progress up into its epic. An epic is accepted through that rollup: one report naming every child, refused while it is missing or stale.
-4. **Sessions that resume.** Every agent session gets a deterministic id derived from `task + owner + segment`. Reconnecting reuses the same session instead of spending tokens to re-establish context.
-5. **An append-only audit trail.** Comments, reports and activities cannot be edited or deleted. The board is not just a view of the work; it is the record of it.
-6. **Local-first, zero runtime dependencies.** A single SQLite file (Node's built-in `node:sqlite`) is the only persistence. The engine needs no other dependencies and works fully offline.
-7. **One board, many front doors.** Drive it from the `taskctl` CLI or over the local `taskd` HTTP API. Skill/plugin installers exist for Claude Code, Codex, OpenClaw and pi.
-8. **Provider-agnostic by design.** The board's claim and candidate criteria are a stable contract, so you can swap the board (Jira, Plane, Linear, …) without changing the agents. Access is gated by a token and an optional CIDR allow-list.
-9. **Built for long-running agent fleets.** A heartbeat sets a 10-minute freshness window on a claim. A claim goes stale for its own holder after 30 minutes and for everyone after 6 hours, so a crashed agent never wedges a card.
-10. **A complete work history you can read however you like.** The append-only record is a full history of what a team did in an AI-agent environment; nobody has to log it separately. The board ships no reporting or statistics feature. `taskctl issue list --json --include-archived` returns every card with its `status`, `status_changed_at`, `created_at` and `updated_at`, so a daily, weekly or monthly report — grouped by project, kind, label, assignee or time window — is a client-side consumer of that data. How you report is your call.
+The board's mechanisms, in the order the two problems above need them.
+
+### The human is not the bottleneck
+
+1. **Humans set the goal; agents supply the method.** Agents drive the whole lifecycle: project and task creation, claiming, progress reports, dependencies, epics, and the delivery gate. When an agent cannot proceed, it leaves a `question` and stops. A human comment of any kind re-queues the card for a fresh worker. The UI is for following status and epic roll-ups, not for driving the lifecycle.
+2. **No approval stream to rubber-stamp.** The board never asks a person to approve an agent's next step. A human decision lands once, on a bounded card, against a written report — not on one prompt among forty. That is the difference between reviewing a delivery and clicking through 97% of prompts: attention spent per decision, not per action, does not decay to 5% an hour into the session.
+3. **Every delivery carries its own evidence.** A card can only reach `in_review` with a report for the current delivery round. The rule is enforced in the database as well as the app layer. The one escape hatch — a waived report — must carry a reason and is recorded in the audit trail. `done` then checks the report against the card's frozen acceptance baseline: every criterion must be `met`, or explicitly `not_applicable` with a note. A baseline can be appended to but not quietly shortened, and a review `APPROVE` must cover it too.
+4. **The reviewer is a different agent — and its approval never counts as yours.** Except on a card whose acceptance mode is `off`, every delivery is reviewed by someone other than its deliverer: the self-review guard refuses a reviewer who produced the card, and self-review is never acceptance. How much human attention a card gets is a risk tier frozen at creation — `off` (no review; the deliverer closes it), `agent` (the default: an independent review card must `APPROVE`, and the loop applies the verdict), and `human` (the verdict still runs and is recorded, but only a person closes the card; an agent gets `ACCEPTANCE_FORBIDDEN`). Routine work never waits for a person, and a person's slot cannot be filled by an agent's approval.
+
+### The board underneath
+
+5. **Dependencies and epics are first-class edges.** `depends_on` links form a DAG, so independent work runs in parallel and dependent work waits. Parent/child links roll a subtree's progress up into its epic. An epic is accepted through that rollup: one report naming every child, refused while it is missing or stale.
+6. **Sessions that resume.** Every agent session gets a deterministic id derived from `task + owner + segment`. Reconnecting reuses the same session instead of spending tokens to re-establish context.
+7. **An append-only audit trail.** Comments, reports and activities cannot be edited or deleted. The board is not just a view of the work; it is the record of it.
+8. **Built for long-running agent fleets.** A heartbeat sets a 10-minute freshness window on a claim. A claim goes stale for its own holder after 30 minutes and for everyone after 6 hours, so a crashed agent never wedges a card.
+9. **Local-first, zero runtime dependencies.** A single SQLite file (Node's built-in `node:sqlite`) is the only persistence. The engine needs no other dependencies and works fully offline.
+10. **One board, many front doors — and provider-agnostic by design.** Drive it from the `taskctl` CLI or over the local `taskd` HTTP API; skill/plugin installers exist for Claude Code, Codex, OpenClaw and pi. The board's claim and candidate criteria are a stable contract, so you can swap the board (Jira, Plane, Linear, …) without changing the agents. Access is gated by a token and an optional CIDR allow-list.
+11. **A complete work history you can read however you like.** The append-only record is a full history of what a team did in an AI-agent environment; nobody has to log it separately. The board ships no reporting or statistics feature. `taskctl issue list --json --include-archived` returns every card with its `status`, `status_changed_at`, `created_at` and `updated_at`, so a daily, weekly or monthly report — grouped by project, kind, label, assignee or time window — is a client-side consumer of that data. How you report is your call.
 
 ## Architecture
 
