@@ -359,6 +359,12 @@ project's current branch before the card reaches `done`; a dirty project checkou
 merge conflict keeps the card in `in_review` and leaves the worktree and branch for a human.
 Cleanup (worktree first, then the merged branch) happens only when the card is terminal.
 
+Landing covers the lanes **admission created and registered** in `workspaces.json`. A worktree
+a session makes for itself (`using-git-worktrees`, any `.worktrees/<slug>`) is never in that
+registry, so accepting its card merges nothing: the pass logs `has no lane record`, and `done`
+means *accepted*, not *merged*. `loop doctor` reports those cards as `unlanded` (branch still
+outside the project's current branch), which is the only place they surface.
+
 ### No resident pool: what still runs
 
 The pool is the only dispatcher, so without it a claim has nowhere to go. The

@@ -82,6 +82,10 @@ export const CARD_KEY_ORDER = Object.freeze([
   "accepted_by",
   "accepted_round",
   "auto_accepted",
+  // The commit an acceptance landed, when the loop merged a lane for it. Absent
+  // means the loop merged nothing — not that the work is unmerged.
+  "landed_sha",
+  "landed_at",
   "review_verdict",
   "review_verdict_round",
   "rework_round",
@@ -97,6 +101,8 @@ const EXPORTED_TASK_META = Object.freeze([
   "accepted_by",
   "accepted_round",
   "auto_accepted",
+  "landed_sha",
+  "landed_at",
   "review_verdict",
   "review_verdict_round",
   "rework_round",

@@ -21,7 +21,7 @@ import {
 } from "../foundation/sla-patrol.mjs";
 
 import { isQuestionSettled, newestQuestion } from "./questions.mjs";
-import { findWorkspace, mergeWorkspace } from "./workspace.mjs";
+import { findWorkspace, mergeWorkspace, runGit } from "./workspace.mjs";
 import { notifySlaAlerts, runWorkflowTick, notifyReal } from "./runners.mjs";
 import {
   loadSlaLedger,
@@ -54,6 +54,14 @@ export function boardRefusal(read) {
     ...(read.details === undefined ? {} : { details: read.details }),
     ...(read.hint === undefined ? {} : { hint: read.hint }),
   };
+}
+
+/** The commit a project checkout is on now, or `null` when git cannot say. */
+function headSha(projectDir) {
+  const read = runGit("git", ["-C", String(projectDir ?? ""), "rev-parse", "HEAD"]);
+  if (read === null || read.status !== 0) return null;
+  const sha = String(read.stdout ?? "").trim();
+  return sha === "" ? null : sha;
 }
 
 export function reviewCreateArgs(action) {
@@ -477,15 +485,28 @@ export async function runWorkflowPass(opts, config, log) {
         identifier: action.original_ref,
         round: action.round,
       });
-      // No record: a shared-mode card, or one delivered before worktrees. There
-      // is nothing to merge.
-      if (record === null) return { ok: true };
+      // No record: a shared-mode card, or one worked in a tree the loop did not
+      // create (a session's own `.worktrees/<slug>` is never registered). There
+      // is nothing to merge — which is not the same as "already merged", so say
+      // it: `done` would otherwise read as landed when nothing checked.
+      if (record === null) {
+        if (opts.workspace === "worktree") {
+          log(
+            `workflow: ${action.original_ref} has no lane record — accepting it does not merge ` +
+              "any branch; done does not imply the branch was merged",
+            { level: "warn" },
+          );
+        }
+        return { ok: true };
+      }
       // The project's own rules are read live, not frozen at admission: a
       // declared `merge_ref` names the branch acceptance must land on.
       const target = record.project ? resolveWakeTarget({ project: record.project }) : null;
       const entry = target !== null && target.ok === true ? (target.entry ?? null) : null;
       const merged = mergeWorkspace({ workspace: record, entry });
-      if (merged.ok === true) return { ok: true };
+      // The merge is what makes the card landed; the commit is the receipt the
+      // acceptance write records. A receipt is bookkeeping — never a gate.
+      if (merged.ok === true) return { ok: true, sha: headSha(record.project_dir) };
       log(
         `workflow: landing ${action.original_ref} blocked (${merged.code}: ${merged.message}) — ` +
           "the card stays in in_review",

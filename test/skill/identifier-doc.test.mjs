@@ -132,10 +132,11 @@ describe("card-schema.md — identifier syntax", () => {
     // `target` has a reserved slot in CARD_KEY_ORDER so a legacy key keeps its
     // historical position, but it is not one of the documented card keys (the
     // page says so under "Unknown keys are preserved"). 0038 added
-    // `acceptance_mode` (41 → 42) and 0040 retired `review_required` (42 → 41).
+    // `acceptance_mode` (41 → 42) and 0040 retired `review_required` (42 → 41);
+    // the landing markers added `landed_sha` / `landed_at` (41 → 43).
     const documented = CARD_KEY_ORDER.filter((key) => key !== "target");
-    assert.equal(documented.length, 41, "CARD_KEY_ORDER minus target must be the 41 documented keys");
-    assert.equal(keys.length, documented.length, "the table must still document 41 keys");
+    assert.equal(documented.length, 43, "CARD_KEY_ORDER minus target must be the 43 documented keys");
+    assert.equal(keys.length, documented.length, "the table must still document 43 keys");
     assert.deepEqual([...keys].sort(), [...documented].sort());
     assert.deepEqual([keys[0], keys.at(-1)], ["id", "notify_leader"]);
 

@@ -360,7 +360,10 @@ The executor sequences each one so a crash leaves a recoverable, re-plannable st
   note on every pass. When the loop runs with
   per-card worktree lanes, a **landing** step runs first: the lane branch is merged into the
   project's current branch, and a dirty checkout or a merge conflict keeps the card in
-  `in_review` with its verdict recorded (see [scheduling.md](scheduling.md)). An `auto_accept`
+  `in_review` with its verdict recorded (see [scheduling.md](scheduling.md)). The acceptance
+  then records that merge as `meta.landed_sha` / `landed_at`; a card with no **registered**
+  lane has nothing to merge, so it carries neither key — absence means unknown, and
+  `loop doctor` reports the ones git still finds outside the branch. An `auto_accept`
   lands the same way before its `done` write.
 - **`record_verdict`** — comment, write `meta.review_verdict=approve` with
   `meta.review_verdict_round`, close the review card, stop. The person closes the original

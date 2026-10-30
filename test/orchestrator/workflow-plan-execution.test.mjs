@@ -84,6 +84,7 @@ async function throughBothHalves(input, overrides = {}) {
   const wirePlan = workflowToWire(plan);
   const order = [];
   const appends = [];
+  const metas = [];
   const result = await runWorkflowTick({
     plan: wirePlan,
     config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
@@ -98,7 +99,11 @@ async function throughBothHalves(input, overrides = {}) {
     linkFixChild: async (epic, child) => (order.push(`linkFixChild:${epic}:${child}`), { ok: true }),
     move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
     comment: async (ref, { kind }) => (order.push(`comment:${ref}:${kind}`), { ok: true }),
-    setMeta: async (ref, meta) => (order.push(`setMeta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+    setMeta: async (ref, meta) => (
+      metas.push({ ref, meta }),
+      order.push(`setMeta:${ref}:${JSON.stringify(meta)}`),
+      { ok: true }
+    ),
     appendAcceptance: async (ref, items) => {
       appends.push({ ref, items });
       order.push(`appendAcceptance:${ref}:${items.length}`);
@@ -108,7 +113,7 @@ async function throughBothHalves(input, overrides = {}) {
     now: () => NOW,
     log: () => {},
   });
-  return { plan, wirePlan, order, result, appends };
+  return { plan, wirePlan, order, result, appends, metas };
 }
 
 const APPROVE_ORDER = [
@@ -490,6 +495,37 @@ describe("workflow plan → execution", () => {
       "move:PROJ-0001:in_progress",
       "move:PROJ-0001:todo",
     ]);
+  });
+
+  it("records the commit the acceptance landed, in the same meta write", async () => {
+    const original = card();
+    const review = reviewCard(original);
+    const { metas } = await throughBothHalves(
+      { tasks: [original, review], verdicts: { "PROJ-0002": verdict("APPROVE") } },
+      { land: async () => ({ ok: true, sha: "abc1234" }) },
+    );
+
+    assert.deepEqual(metas[0], {
+      ref: "PROJ-0001",
+      meta: {
+        accepted_by: "loop-review",
+        accepted_round: "1",
+        landed_sha: "abc1234",
+        landed_at: NOW,
+      },
+    });
+  });
+
+  it("writes no landing marker when there was no lane to merge", async () => {
+    const original = card();
+    const review = reviewCard(original);
+    const { metas } = await throughBothHalves(
+      { tasks: [original, review], verdicts: { "PROJ-0002": verdict("APPROVE") } },
+      { land: async () => ({ ok: true }) },
+    );
+
+    assert.deepEqual(metas[0].meta, { accepted_by: "loop-review", accepted_round: "1" });
+    assert.equal("landed_sha" in metas[0].meta, false, "absent means unknown, not unlanded");
   });
 
   it("dispatches a delivered human card through the same create_review action", async () => {

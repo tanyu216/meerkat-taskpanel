@@ -183,6 +183,8 @@ plain card does not grow a line.
 | `accepted_by` | Who accepted the card automatically. | `loop-auto` (no review was required) or `loop-review` (after an `approve`). |
 | `accepted_round` | The round that acceptance names. | Integer. |
 | `auto_accepted` | The acceptance was automated. | `1`. |
+| `landed_sha` | The commit the acceptance merged into the project's current branch. | A commit sha, written by the loop's `approve` / `auto_accept` when it landed a registered lane. **Absent means unknown**, not "not landed": a card worked in a tree the loop did not create has no lane to merge. `loop doctor` reports the ones git still finds outside the branch. |
+| `landed_at` | When that merge ran. | Timestamp; written with `landed_sha`. |
 | `review_verdict` | The applied review verdict on a card its mode leaves for a person. | `approve`; written by the loop's `record_verdict` action on a `human` card, and the workflow planner compares the lowercase word. A card the loop closes itself carries `accepted_by` instead. |
 | `review_verdict_round` | The round that verdict applied to. | Integer; written with `review_verdict`. |
 | `rework_round` | The original round a rework child targets. | Integer. |
