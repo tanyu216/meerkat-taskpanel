@@ -1289,6 +1289,36 @@ describe("worktree admission", () => {
     assert.equal(findWorkspace(f.dir, { identifier: "T-2" }), null, "nothing is registered");
   });
 
+  it("reproduces TP-0009: a missing previous lane branch falls back and admits", async () => {
+    const f = fixture();
+    upsertWorkspaceRecord(f.dir, {
+      identifier: "T-3",
+      round: 1,
+      path: join(f.app, ".worktrees", "T-3"),
+      branch: "lane/T-3",
+      project_dir: f.app,
+    });
+    const refAware = (cmd, argv) => {
+      const key = argv.join(" ");
+      if (key.includes("rev-parse --verify --quiet")) {
+        return { status: 1, stdout: "", stderr: "" };
+      }
+      if (key.includes("rev-parse --abbrev-ref HEAD")) {
+        return { status: 0, stdout: "dev\n", stderr: "" };
+      }
+      return { status: 0, stdout: "", stderr: "" };
+    };
+    const admission = admissionFor(f, refAware);
+    const result = await admission.admit(
+      { identifier: "T-3", agent: "alice" },
+      { identifier: "T-3", project: "P", delivery_round: 2 },
+    );
+    assert.equal(result.ok, true, "a dead previous branch no longer blocks admission");
+    const record = findWorkspace(f.dir, { identifier: "T-3", round: 2 });
+    assert.equal(record.base_ref, "dev", "the missing previous branch is not used");
+    assert.equal(record.branch, "lane/T-3-r2");
+  });
+
   it("fails a review admission when the original workspace is gone, never using the shared tree", async () => {
     const f = fixture();
     upsertWorkspaceRecord(f.dir, {
