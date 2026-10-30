@@ -1653,6 +1653,29 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     assert.equal(result.body.platforms.pi.available, false);
   });
 
+  it("marks pi available only when its subagent extension is installed", (t) => {
+    // Pi's loop cannot spawn a worker without `pi-subagents`, so a platform that cannot
+    // run the work is never offered — the same gate the interview relies on.
+    const home = temp(t);
+    const project = temp(t);
+    const configDir = temp(t);
+    mkdirSync(join(home, ".agents", "skills", "meerkat-loop"), { recursive: true });
+    writeFileSync(join(home, ".agents", "skills", "meerkat-loop", "SKILL.md"), "# loop\n");
+    const args = ["--home", home, "--project", project, "--actor-kind", "all", "--no-network"];
+    const env = { HOME: home, PATH: temp(t), MEERKAT_TASKPANEL_CONFIG_DIR: configDir };
+
+    const without = runJson(t, DETECT, args, { cwd: project, env });
+    assert.equal(without.status, 0, without.stderr);
+    assert.equal(without.body.platforms.pi.skills.loop, true, "the loop skill alone is not enough");
+    assert.equal(without.body.platforms.pi.available, false);
+
+    mkdirSync(join(home, ".pi", "agent", "npm", "node_modules", "pi-subagents"), { recursive: true });
+    const withExtension = runJson(t, DETECT, args, { cwd: project, env });
+    assert.equal(withExtension.status, 0, withExtension.stderr);
+    assert.equal(withExtension.body.platforms.pi.available, true);
+    assert.equal(withExtension.body.platforms.pi.piSubagents.installed, true);
+  });
+
   it("proposes Jobs/Linus/Reviewer on claude and Turing on codex — a proposal, never a write", (t) => {
     const fixture = twoPlatformHome(t);
     const result = detectAll(t, fixture);
