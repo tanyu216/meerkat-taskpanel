@@ -103,6 +103,7 @@ export const COMMANDS = [
     str("passes", "passes", "<list>", "Ordered pass list (default: patrol,workflow,poll)."),
   ]),
   verb("console", "One read-only question/frontier cycle."),
+  verb("doctor", "One read-only daily-inspection report."),
   verb("status", "Report the loop's runtime verdict; take over or stop the pool.", [
     bool("take-over", "takeOver", "Start the pool in external-control mode."),
     bool("stop", "stop", "Stop the pool this session started."),

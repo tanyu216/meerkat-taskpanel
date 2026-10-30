@@ -110,7 +110,9 @@ same acceptance rules. Two drivers run it; the turn says which.
 
 #### Manual mode
 
-1. **Detect.** Run `taskctl loop status --json`:
+1. **Detect.** Run `taskctl loop status --json` (`taskctl loop doctor --json` is the one-command
+   inspection: the same verdict plus board compatibility, the patrol marker, the log tail, the
+   queue/ledger and the stuck cards — read-only, and it starts nothing):
    - `running` — a pool is live. `pool.controlMode` says who owns the turn. `internal` means
      the supervisor owns it: do **not** run a second control turn; you may attach as a question
      console. `external` means a live session owns it; run the loop.
@@ -156,6 +158,7 @@ pool, but two consoles would still race the workflow ledger.
 # The agent's own `taskctl` shim carries `--agent` and `--actor-kind`; a session
 # that overrides either passes the flag explicitly.
 taskctl loop status --json
+taskctl loop doctor --json
 taskctl loop console --json
 taskctl loop patrol
 taskctl loop workflow

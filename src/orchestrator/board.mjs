@@ -157,7 +157,9 @@ export function readBoard(opts, log) {
   const read = runCli(opts, opts.agents[0], ["issue", "list", "--limit", String(opts.boardLimit)]);
   if (!read.ok) {
     log(`patrol scan failed: ${read.error}`);
-    return { ok: false };
+    // The message rides on the result too: a caller that shows the report to a
+    // human (the doctor) cannot read the patrol's log.
+    return { ok: false, error: read.error };
   }
   const tasks = Array.isArray(read.data?.tasks) ? read.data.tasks : [];
   return { ...read, truncated: tasks.length >= opts.boardLimit };

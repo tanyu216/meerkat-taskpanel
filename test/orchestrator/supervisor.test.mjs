@@ -1944,6 +1944,7 @@ describe("supervisor module", () => {
       [new URL("../../src/orchestrator/subscribe.mjs", import.meta.url), ["runSubscribe", "createDispatchScheduler"]],
       [new URL("../../src/orchestrator/status.mjs", import.meta.url), ["probeSupervisor", "probeUnits", "takeOver", "stopSupervisor"]],
       [new URL("../../src/orchestrator/console.mjs", import.meta.url), ["consoleCycle"]],
+      [new URL("../../src/orchestrator/doctor.mjs", import.meta.url), ["doctorReport"]],
       [new URL("../../src/foundation/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation"]],
     ];
     for (const [url, names] of modules) {

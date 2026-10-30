@@ -12,6 +12,7 @@ import { describe, it } from "node:test";
 
 import { importedSpecifiers, listModuleFiles, readSource } from "../helpers/source-scan.mjs";
 import * as consoleEntry from "../../src/orchestrator/console.mjs";
+import * as doctorEntry from "../../src/orchestrator/doctor.mjs";
 import * as options from "../../src/orchestrator/options.mjs";
 import * as passes from "../../src/orchestrator/passes.mjs";
 import * as session from "../../src/orchestrator/session.mjs";
@@ -26,6 +27,7 @@ describe("orchestrator — the moved loop body", () => {
       supervisor,
       status,
       consoleEntry,
+      doctorEntry,
       subscribe,
     })) {
       assert.equal(typeof module.main, "function", `${name}.main`);
@@ -36,6 +38,7 @@ describe("orchestrator — the moved loop body", () => {
     assert.equal(typeof status.probeSupervisor, "function");
     assert.equal(typeof status.takeOver, "function");
     assert.equal(typeof consoleEntry.consoleCycle, "function");
+    assert.equal(typeof doctorEntry.doctorReport, "function");
     assert.equal(typeof subscribe.runSubscribe, "function");
     assert.equal(typeof session.runSession, "function");
     assert.equal(typeof options.parseArgs, "function");

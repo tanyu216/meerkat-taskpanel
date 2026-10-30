@@ -3,7 +3,7 @@
  *
  * The migration's honesty hinges on three things this file pins:
  *
- *   1. the ten verbs are registered as *local* commands (no board connect
+ *   1. the eleven verbs are registered as *local* commands (no board connect
  *      happens before the handler runs — `loop status` must answer with the
  *      board down);
  *   2. the two globals the loop cannot honour (`--as-human`, `--session-id`,
@@ -36,6 +36,7 @@ const VERBS = [
   "poll",
   "tick",
   "console",
+  "doctor",
   "status",
   "run",
   "subscribe",
@@ -44,7 +45,7 @@ const VERBS = [
 ];
 
 describe("cli/commands/loop — the surface", () => {
-  it("registers the ten verbs, each local", () => {
+  it("registers the eleven verbs, each local", () => {
     assert.deepEqual(COMMANDS.map((command) => command.name), VERBS);
     for (const command of COMMANDS) {
       assert.equal(command.local, true, `${command.name} must not connect first`);
@@ -132,6 +133,61 @@ describe("cli/commands/loop — status", () => {
     // `--state-dir` derives the registry file inside the directory, so the
     // verdict cannot read a developer's real loop state.
     assert.equal(data.pool.file, join(stateDir, "sessions.state.json"));
+  });
+});
+
+describe("cli/commands/loop — doctor", () => {
+  it("reports without an identity, and never writes to the board", () => {
+    const dir = makeTempDir("meerkat-taskpanel-loop-doctor-");
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "sentinel.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "appendFileSync(process.env.TP_DOCTOR_CALLS, `${JSON.stringify(process.argv.slice(2))}\\n`);",
+        "const argv = process.argv.slice(2);",
+        "if (argv.includes('--version')) {",
+        '  process.stdout.write(`${JSON.stringify({ ok: true, data: { version: "0.1.0", schema_version: 4 } })}\\n`);',
+        "} else {",
+        "  process.stdout.write(`${JSON.stringify({ ok: true, data: { tasks: [",
+        '    { identifier: "T-1", status: "in_progress", heartbeat_at: null },',
+        "  ] } })}\\n`);",
+        "}",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = runCli(
+      [
+        "loop",
+        "doctor",
+        "--json",
+        "--cli",
+        script,
+        "--state-dir",
+        join(dir, "state"),
+        "--log",
+        join(dir, "loop.log"),
+      ],
+      { noIdentity: true, noUrl: true, env: { TP_DOCTOR_CALLS: record } },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    const data = parseJson(result);
+    assert.equal(data.read_only, true);
+    assert.equal(data.data, undefined, "the loop's verbs print their own JSON, not the envelope");
+    assert.equal(typeof data.supervisor.verdict, "string");
+    assert.equal(data.compat.ok, true);
+    assert.equal(data.queue.depth, 0, "a fresh state directory is empty, not an error");
+    assert.equal(data.log.missing, true, "a log that was never written is not an error");
+    assert.deepEqual(data.stuck_cards.in_progress.map((card) => card.ref), ["T-1"]);
+    assert.deepEqual(data.errors, []);
+    assert.equal(data.ok, true);
+
+    const calls = readFileSync(record, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const writes = calls.filter((args) => /\b(move|claim|deliver|add|update|create)\b/.test(args.join(" ")));
+    assert.deepEqual(writes, [], "the doctor never writes to the board");
   });
 });
 
