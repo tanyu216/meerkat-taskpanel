@@ -403,10 +403,12 @@ so an install that changed nothing bounces nothing:
   stays stopped.
 - the local event hub — it has **no unit** and is started lazily, so it is stopped rather than
   restarted: the installed CLI runs `events hub --stop` (with board autostart disabled), and the
-  next `events follow` / `export watch` starts one from the new tree. Detached registrations are
-  persisted and rehydrated. The step is non-fatal, skipped by `--no-automation` and `--dry-run`,
-  and by `MEERKAT_TASKPANEL_SKIP_HUB_STOP=1` (**for tests only**). A same-generation hub that is
-  wedged is not replaced by an install; `taskctl events hub --stop` retires it.
+  next `events follow` / `export watch` starts one from the new tree. It runs **before** the
+  taskd restart, because the stop resolves the board first and a board mid-restart would fail
+  it. Detached registrations are persisted and rehydrated. The step is non-fatal, skipped by
+  `--no-automation` and `--dry-run`, and by `MEERKAT_TASKPANEL_SKIP_HUB_STOP=1` (**for tests
+  only**). A same-generation hub that is wedged is not replaced by an install;
+  `taskctl events hub --stop` retires it.
 - `cron` has no long-lived process, so there is nothing to restart.
 - A restart can be requested explicitly with `MEERKAT_TASKPANEL_RUNTIME_CHANGED=1`, which an
   agent-only install cannot otherwise know.
