@@ -18,7 +18,8 @@
  * Node builtins only.
  */
 
-import { existsSync, mkdirSync, cpSync, readFileSync, rmSync, chmodSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, cpSync, readFileSync, readdirSync, rmSync, chmodSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -33,6 +34,61 @@ export const LAUNCHERS = Object.freeze([
   { name: "taskd", entry: "src/server/main.mjs" },
   { name: "taskctl", entry: "src/cli/index.mjs" },
 ]);
+
+/**
+ * Where the digest of the last copied `src/` is recorded. At the tree root, so a
+ * `--force` (which prunes `src/`) cannot delete it, and distinct from `.env` /
+ * `.data` (the operator's) and `web/` (derived).
+ */
+export const INSTALL_STATE_FILE = ".install-state.json";
+
+/**
+ * A content digest of `src/**`.
+ *
+ * The install copies bytes unconditionally and `cpSync` rewrites mtimes, so
+ * neither mtime nor "the copy ran" says whether anything actually changed. A
+ * digest says it exactly, and it works the same for a checkout and for an
+ * installed npm package (git is not available in the latter).
+ *
+ * @param {string} dir the `src/` directory
+ * @returns {string} `sha256:<hex>`
+ */
+export function srcDigest(dir) {
+  const hash = createHash("sha256");
+  const walk = (base, rel) => {
+    const entries = readdirSync(join(base, rel), { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
+      if (entry.isDirectory()) {
+        walk(base, childRel);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const bytes = readFileSync(join(base, childRel));
+      hash.update(childRel);
+      hash.update("\0");
+      hash.update(String(bytes.length));
+      hash.update("\0");
+      hash.update(bytes);
+    }
+  };
+  walk(dir, "");
+  return `sha256:${hash.digest("hex")}`;
+}
+
+/** @param {string} tree @returns {{srcDigest?: string}|null} */
+export function readInstallState(tree) {
+  try {
+    return JSON.parse(readFileSync(join(tree, INSTALL_STATE_FILE), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeInstallState(tree, value) {
+  writeFileSync(join(tree, INSTALL_STATE_FILE), `${JSON.stringify(value, null, 2)}\n`);
+}
 
 const WEB_ONLY_WARNING =
   "web/dist is absent and web/node_modules is not installed — installing API-only; " +
@@ -103,6 +159,13 @@ export function installServer(input) {
     return { ok: false, warnings, web: { action: "none" }, error: `${source.src} is missing` };
   }
 
+  // What is about to run, versus what ran last time. The copy is unconditional,
+  // so only the digest can answer "did the code change?" — and that answer is
+  // what decides whether a live board and a live pool must be restarted.
+  const srcDigestNext = srcDigest(source.src);
+  const previousSrcDigest = readInstallState(tree)?.srcDigest ?? null;
+  const changed = previousSrcDigest !== srcDigestNext;
+
   if (dryRun) {
     log(`would copy ${source.src} -> ${join(tree, "src")}`);
     for (const name of META_FILES) {
@@ -122,7 +185,8 @@ export function installServer(input) {
       : web.action === "build"
         ? `would run npm run build in ${web.cwd}`
         : `would install API-only: ${web.reason}`);
-    return { ok: true, warnings, web };
+    log(`would ${changed ? "record a changed" : "record an unchanged"} src digest (${srcDigestNext})`);
+    return { ok: true, changed, srcDigest: srcDigestNext, previousSrcDigest, warnings, web };
   }
 
   try {
@@ -191,7 +255,14 @@ export function installServer(input) {
       log(`${written.status} ${join(tree, "bin", launcher.name)}`);
     }
 
-    return { ok: true, warnings, web };
+    // Recorded only after a successful copy, so a failed run leaves the previous
+    // digest in place and the next run still sees the change.
+    writeInstallState(tree, {
+      srcDigest: srcDigestNext,
+      installedAt: new Date().toISOString(),
+    });
+
+    return { ok: true, changed, srcDigest: srcDigestNext, previousSrcDigest, warnings, web };
   } catch (err) {
     return {
       ok: false,
@@ -207,12 +278,13 @@ export function installServer(input) {
 // ---------------------------------------------------------------------------
 
 function parse(argv) {
-  const out = { command: null, root: null, dest: null, force: false, dryRun: false, skipWebBuild: false };
+  const out = { command: null, root: null, dest: null, force: false, dryRun: false, skipWebBuild: false, report: null };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") return { help: true };
     if (arg === "--root") out.root = argv[++i] ?? null;
     else if (arg === "--dest") out.dest = argv[++i] ?? null;
+    else if (arg === "--report") out.report = argv[++i] ?? null;
     else if (arg === "--force") out.force = true;
     else if (arg === "--dry-run") out.dryRun = true;
     else if (arg === "--skip-web-build") out.skipWebBuild = true;
@@ -222,10 +294,13 @@ function parse(argv) {
   return out;
 }
 
-const USAGE = `Usage: node scripts/install/lib/server-install.mjs install --root <source> --dest <tree> [--force] [--dry-run] [--skip-web-build]
+const USAGE = `Usage: node scripts/install/lib/server-install.mjs install --root <source> --dest <tree> [--force] [--dry-run] [--skip-web-build] [--report <file>]
 
 Materializes the runtime tree used by --target server. Called by server.sh;
 not meant to be run by hand.
+
+\`--report\` writes {ok, changed, srcDigest, previousSrcDigest} so the caller can
+decide whether a running board and pool are now executing the previous code.
 `;
 
 async function main() {
@@ -250,6 +325,28 @@ async function main() {
     skipWebBuild: args.skipWebBuild,
     ...(process.env.MEERKAT_TASKPANEL_SKIP_WEB_BUILD === "1" ? { skipWebBuild: true } : {}),
   });
+
+  // The caller cannot read a child's variables, so "did the code change?" is
+  // handed over as a file. Written on failure too: `changed` then stays the
+  // previous run's answer, and the caller must not treat it as fresh.
+  // A dry run changes nothing — not even this one-line report.
+  const reportFile = args.dryRun === true
+    ? null
+    : args.report ?? process.env.MEERKAT_TASKPANEL_SERVER_REPORT ?? null;
+  if (reportFile !== null && reportFile !== "") {
+    // One line on purpose: the shell reads it back with `read`, a builtin, so
+    // the installer stays runnable under a PATH without coreutils.
+    writeFileSync(
+      reportFile,
+      `${JSON.stringify({
+        ok: report.ok === true,
+        changed: report.changed === true,
+        srcDigest: report.srcDigest ?? null,
+        previousSrcDigest: report.previousSrcDigest ?? null,
+      })}\n`,
+    );
+  }
+
   if (!report.ok) {
     process.stderr.write(`server-install: ${report.error}\n`);
     return 1;

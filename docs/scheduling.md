@@ -1213,6 +1213,13 @@ rule that it writes a unit and prints the load command but **never starts a daem
 you**. It holds **only** for the `taskd` service guard: the `meerkat-loop` supervisor's
 units are still written and left for the operator to load, and OpenClaw still gets none.
 
+A **restart is not a start**, and the installer does restart what it would otherwise leave
+running the previous code. When the server target replaced `src/**` (a content digest, not a
+timestamp), the already-loaded `taskd` guard is re-run (`launchctl kickstart -k` /
+`systemctl --user restart`), and so are the loaded `session` and `subscribe` units; the two
+timers are skipped (one-shot — their next fire reads the new code) and a stopped unit stays
+stopped. Nothing is ever loaded, enabled or disabled by this path.
+
 The install reports what it did, and how to undo it:
 
 ```text
@@ -1560,7 +1567,10 @@ the operator's documentation and the decisions the loop applies. It is always a 
 skill carries.
 
 Installers write per-agent kind units under `<agent-dir>/scheduling/{launchd,systemd,cron}`,
-then **print the load command** — they never enable a daemon or run `crontab` for you. A
+then **print the load command** — they never enable a daemon or run `crontab` for you. (They
+do restart an already-loaded `session`/`subscribe` pair when the installed tree changed; see
+[The taskd guard (keepalive)](#the-taskd-guard-keepalive) for why that is a restart and not a
+start.) A
 reinstall that *rewrites* units the manager already has loaded says so instead of printing
 "nothing is loaded for you": the running job still carries the old definition, and
 `install.sh --supervisor=enable` is the one command that reloads it (see
@@ -1649,7 +1659,8 @@ capability adds one deliberate act on top: `install.sh --supervisor=enable` (ali
 the manual commands in the section above are still the whole story.
 
 That is the single exception to the rule, stated once and pointed at rather than repeated:
-**an installer never loads a unit or runs `crontab` for you — unless you ask.** Asking is
+**an installer never loads a unit or runs `crontab` for you — unless you ask** (it may
+*restart* one that is already running after a code change; see the note on `taskd` above). Asking is
 always explicit (the flag, `MEERKAT_TASKPANEL_SUPERVISOR=enable`, or answering **yes** to
 the one-time TTY question — also asked by the no-options wizard, default **none** — whose
 default is **N**): enabling is never a silent default, and

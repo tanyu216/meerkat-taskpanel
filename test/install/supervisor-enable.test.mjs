@@ -299,6 +299,63 @@ describe("install.sh: the supervisor flag surface", () => {
     assert.deepEqual(calls(manager), [], "no manager is even asked — not even for a status probe");
   });
 
+  // The runtime tree was replaced under a running supervisor: the pool keeps the
+  // old code until its process is re-run. A restart, never a load.
+  it("restarts a loaded supervisor when the runtime tree changed", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const env = installEnv(home, manager);
+    const first = runInstall(["--target", "claude", "--agent-name", "alice", "--prefix", home], env);
+    assert.equal(first.status, 0, first.stderr);
+    assert.deepEqual(calls(manager), [], "the first install asks no service manager");
+
+    // A live supervisor: both long-lived unit kinds are loaded.
+    const uid = process.getuid();
+    const jobs = ["session", "subscribe"].map(
+      (unit) => `gui/${uid}/com.meerkat-taskpanel.alice.claude.${unit}`,
+    );
+    writeFileSync(env.FAKE_LAUNCHD_STATE, `${jobs.join("\n")}\n`);
+    writeFileSync(manager.log, "");
+
+    const changed = runInstall(
+      ["--target", "claude", "--agent-name", "alice", "--prefix", home],
+      { ...env, MEERKAT_TASKPANEL_RUNTIME_CHANGED: "1" },
+    );
+
+    assert.equal(changed.status, 0, changed.stderr);
+    assert.match(changed.stdout, /supervisor: restarted session, subscribe — the installed code had changed/);
+    assert.deepEqual(
+      calls(manager).filter((line) => line.startsWith("launchctl kickstart -k ")).sort(),
+      jobs.map((job) => `launchctl kickstart -k ${job}`).sort(),
+      "each loaded long-lived unit is re-run",
+    );
+    assert.deepEqual(loads(manager), [], "a restart is not a load");
+    assert.doesNotMatch(changed.stdout, /nothing is loaded for you/, "the units are loaded — restarting them says so");
+  });
+
+  it("says nothing to restart when the tree changed but no unit is loaded", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const env = installEnv(home, manager);
+    runInstall(["--target", "claude", "--agent-name", "alice", "--prefix", home], env);
+    writeFileSync(manager.log, "");
+
+    const changed = runInstall(
+      ["--target", "claude", "--agent-name", "alice", "--prefix", home],
+      { ...env, MEERKAT_TASKPANEL_RUNTIME_CHANGED: "1" },
+    );
+
+    assert.equal(changed.status, 0, changed.stderr);
+    assert.match(changed.stdout, /supervisor: nothing to restart — no long-lived unit is loaded/);
+    assert.match(changed.stdout, /to start the supervisor, load one of these \(nothing is loaded for you\):/);
+    // It probes whether anything is running (read-only), and stops there.
+    assert.deepEqual(loads(manager), [], "nothing loaded means nothing is loaded or restarted");
+    assert.equal(
+      calls(manager).filter((line) => line.startsWith("launchctl kickstart")).length,
+      0,
+    );
+  });
+
   it("the three aliases are the three actions of the one entry point", () => {
     const cases = [
       ["--enable-supervisor", /supervisor: enabled/],
