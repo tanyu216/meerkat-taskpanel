@@ -536,8 +536,10 @@ reported `unknown` and left alone, never guessed at.
    next dispatch; the scan set is not — it comes from the units and the per-kind config.)
 5. Re-read the host's instruction file: the task entry is stated once, names `/meerkat`, and
    carries the card scope.
-6. Summarize: what was installed, where, the effective roles root, the human name, the
-   instruction file that received the task entry, and what was skipped and why.
+6. Summarize: what was installed, where, the effective roles root, the platform assignment
+   (one platform for all roles, or the approved split) with the loop kinds that are
+   enabled, the human name, the instruction file that received the task entry, and what was
+   skipped and why.
 7. A second run must change **no managed content**: role files, native definitions and
    env keys report `unchanged`, and the task entry reports `unchanged` rather than being
    restated or duplicated; `install.sh` may re-copy identical runtime bytes, which
