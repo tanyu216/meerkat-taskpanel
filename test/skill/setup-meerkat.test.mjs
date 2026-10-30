@@ -1063,6 +1063,16 @@ describe("skill frontmatter and assets", () => {
     assert.doesNotMatch(jobs, /five stages/i);
     assert.doesNotMatch(jobs, /inherit or extend/i);
 
+    // A child is a deliverable that can land alone; one change's layers are its
+    // scope. The seed repeats the rule in one clause per surface, never the
+    // whole four-question test (that lives in the board skill).
+    assert.match(jobs, /not one card per layer/i);
+    assert.match(jobsCheck, /never one child per layer/i);
+    assert.match(impl, /not the layers of one change/i);
+    assert.match(roles, /can land on the base branch alone/i);
+    assert.match(skill, /one child, not five/i);
+    assert.match(ownership, /not a technical layer/i);
+
     assert.match(jobsCheck, /## Handoff/);
     assert.match(jobsCheck, /Acceptance source/i);
     assert.match(jobsCheck, /Delivery shape/i);

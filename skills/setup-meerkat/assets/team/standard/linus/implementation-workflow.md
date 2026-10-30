@@ -60,8 +60,9 @@ crossing one is a recorded decision. A departure is a recorded decision, not a s
 Choose the smallest correct design. Run the decision round (the policy this handoff names)
 on the open design questions — one round, one question string, each with a recommendation;
 check the terms against `GLOSSARY.md` and update it inline as they settle.
-Name the files and contracts you will touch. If the card contains independent deliverables,
-do not split it yourself; ask the project session.
+Name the files and contracts you will touch. If the card contains independent deliverables —
+each landable alone, not the layers of one change — do not split it yourself; ask the project
+session.
 
 ### 3. Implement test-first
 

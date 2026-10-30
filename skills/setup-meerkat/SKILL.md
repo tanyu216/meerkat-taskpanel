@@ -295,7 +295,9 @@ Before creating a downstream card the project session triages the target: a smal
 bug with no product archive gets a plain task with `meta.product_change=none` and no design
 artifacts; a feature with an archive gets a task (or one per downstream stage) carrying the
 `## Handoff` and `meta.design_stage`; a large feature with several independently verifiable
-deliverables becomes an `epic` with one child per deliverable. Every card's worker writes
+deliverables becomes an `epic` with one child per deliverable — a child must land on the base
+branch alone, so one change's core, CLI, web, docs and fixtures are one child, not five.
+Every card's worker writes
 its own `.meerkat/<id>/plan.md`; no card inherits another card's plan.
 
 Every worker workflow carries the same decision round before it freezes a direction: a

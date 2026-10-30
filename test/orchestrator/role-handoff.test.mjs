@@ -81,9 +81,11 @@ describe("handoffs without a role stay byte-identical", () => {
     // Re-pinned again when review became mode-independent and every unresolved
     // card began to resolve `agent`: a card payload without a mode now names the
     // reviewed default, not the old human fallback.
+    // Re-pinned when Step 0 began sizing by deliverable: the worker is told that
+    // layers of one change are not several deliverables (TP-0002's split).
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "9a61fd94999d28ff5cc638ada68a057f0c5bd28117253f03b7ff4b0e3f915077",
+      "6bd41a12559eea832d22d54990ab2e6b5f1691be20dbb22b4772339ffa331368",
     );
   });
 

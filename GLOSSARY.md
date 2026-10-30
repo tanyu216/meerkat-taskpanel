@@ -510,10 +510,17 @@ _Avoid_: approver, acceptor, QA
 
 **Epic triage**:
 The worker's Step 0 decision — before starting, does this card contain several independent
-deliverables, and should it therefore become an `epic` split into children? It happens in
-the worker's own first turn, not in a separate planner.
+deliverables (each landable alone), and should it therefore become an `epic` split into
+children? It happens in the worker's own first turn, not in a separate planner.
 _中文_: 升格判断
 _Avoid_: planning, decomposition, estimation
+
+**Deliverable**:
+A change a child card can land on the base branch alone, leaving the tree coherent — every
+surface it touches updated, the suite green, and no follow-up cleanup card owed. The layers
+a change crosses (core, CLI, web, docs, fixtures) are its scope, not separate deliverables.
+_中文_: 可交付项
+_Avoid_: layer, slice, sub-task
 
 **Wake**:
 Starting one worker, once, with a bounded prompt. A wake is dispatched only for work the

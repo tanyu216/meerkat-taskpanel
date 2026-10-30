@@ -20,8 +20,8 @@ not describe is not forced into a row.
 
 ## Rules
 
-1. **One owner per shape.** Work spanning rows is split into one card per shape; the
-   project session triages and splits it.
+1. **One owner per role shape.** Work spanning rows is split per **role** shape — a handoff
+   boundary, not a technical layer. The project session triages and splits it.
 2. **The reviewer is independent.** A producer never reviews its own card; review is
    always the Reviewer lane.
 3. **The assignee executes — set at creation.** Create each card with its one accountable
@@ -32,8 +32,8 @@ not describe is not forced into a row.
    the roles. That worker carries its own flow and inherits no role workflow,
    responsibilities, boundaries or self-check; its card is not evidence for a role's
    process. Do not widen a role's row to absorb work it does not own.
-5. **Ambiguous goes to the project session.** If two rows plausibly claim the card, the
-   project session decides which; it does not guess a role.
+5. **Ambiguous goes to the project session.** If two rows claim it, the project session
+   decides which; it does not guess a role.
 6. **Design hands off; it does not implement.** A Jobs delivery hands the archived
    spec/prototype/PRD to the project session, which creates the implementation and
    verification cards.

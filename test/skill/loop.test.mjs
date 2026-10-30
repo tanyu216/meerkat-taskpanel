@@ -598,4 +598,17 @@ describe("board skill: the container decision", () => {
     assert.match(schema, /\*\*8\*\*\s+children/);
     assert.match(schema, /\*\*8\*\*\s+deep/);
   });
+
+  it("sizes a child by what can land alone, not by layer", () => {
+    // TP-0002 cut "enforce a 1-4 character prefix on every create path" into core,
+    // CLI, web, docs and a fixture sweep. Three children could not land alone and
+    // a sixth card existed only to pay the split's debt. The rule names the test.
+    assert.match(skill, /land on the base branch alone/i);
+    assert.match(skill, /leave the tree coherent/i);
+    assert.match(skill, /1-4 character project prefix/i);
+    assert.match(skill, /core, CLI, web, docs and fixtures/);
+    assert.match(skill, /not a technical layer/i);
+    assert.match(lifecycle, /not schema-enforced/i);
+    assert.match(lifecycle, /\.\.\/SKILL\.md#containers-when-the-card-is-an-epic/);
+  });
 });

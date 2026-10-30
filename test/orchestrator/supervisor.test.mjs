@@ -601,6 +601,9 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /keep the card in_progress/);
     assert.match(text, /scope expansion is E1/);
     assert.match(text, /meta\.epic_triage=off/);
+    // Sizing is by deliverable, not by layer: the worker must be told that a
+    // slice of one change is not one of "several deliverables".
+    assert.match(text, /or layers of one change\?/, "a layer of one change is not a split");
     assert.doesNotMatch(text, /--kind epic/);
     assert.doesNotMatch(text, /relation add T-1 --type parent/);
     assert.match(

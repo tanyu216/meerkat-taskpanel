@@ -144,8 +144,8 @@ names in `MEERKAT_TASKPANEL_AGENTS`, so an unassigned or untargeted card may sit
 routes it. A shape the guide does not cover goes to a worker outside the roles, named
 explicitly. **Without a team roles root, do not invent a role name** — leave the card
 unassigned (the public pool, claimed by the default worker) or name your own worker identity.
-Ambiguous between two rows: split it into one card per shape, or leave it for the project
-session to decide.
+Ambiguous between two rows: split it into one card per **role** shape — a handoff boundary,
+not a technical layer — or leave it for the project session to decide.
 
 **File a card in the human's name when you are in an interactive session with the human, or
 when the instruction to create this card comes explicitly from them.** Either one is enough:
@@ -301,6 +301,23 @@ the human, `E1`), so a worker that finds several deliverables writes an agent `q
 comment describing the pieces, keeps the card `in_progress`, and stops. Decide what the card
 *is* first: a title and description naming the **sum** of the work is the container; naming
 **one deliverable** makes it a child.
+
+**A child is a deliverable, not a layer.** Ask four questions of every proposed child:
+
+1. **Can it land on the base branch alone?** Its branch merges without carrying a sibling's
+   unmerged commit.
+2. **Does landing it leave the tree coherent?** Every surface it touches — core, CLI, web,
+   docs, fixtures — is updated in the same card, and the suite is green.
+3. **Is the outcome visible?** A reader of the epic sees a result, not "the CLI flag" or
+   "the docs".
+4. **Does it owe a cleanup card?** No fixture sweep or documentation catch-up exists only to
+   pay its debt.
+
+A later child may build on an earlier child **already on the base branch** — sequence is fine;
+a stack on an unmerged sibling is not. The layers of one change are its **scope**:
+core, CLI, web, docs and fixtures move together — enforcing the 1-4 character project prefix on
+every create path is one child, not five. The ownership guide's "one card per shape" sizes a
+**role** handoff, not a technical layer.
 
 | Card you have | Role | What to do |
 |---|---|---|
