@@ -459,7 +459,10 @@ Three properties make the pass safe to run repeatedly:
   snapshot (`ACCEPTANCE_*`, `ROLLUP_*`, `REVIEW_PENDING`) is *skipped* and re-planned, not
   counted as a failure; a repeated refusal is a standing alarm
   (`workflow_action_failed`), because it means the deployment's policy and the board's state
-  disagree.
+  disagree. A refusal that outlives a 24-hour window is escalated as
+  `workflow_action_failed_escalated` — once per bucket, under a new ledger key built from the
+  original `first_seen` — so a card cannot sit refused forever with the alarm sent only once.
+  The window is a module constant (`runners.mjs#WORKFLOW_ACTION_ESCALATE_MS`), not a config key.
 
 Alerts split into two channels: findings an operator can act on are notified, standing state
 (no reviewer configured, a dispatch cap, a `human` card waiting for its person) is logged.

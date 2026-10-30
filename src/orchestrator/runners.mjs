@@ -705,15 +705,40 @@ export async function runWorkflowTick(deps) {
       // `ACCEPTANCE_FORBIDDEN`/`CHILDREN_OPEN` mean this deployment's copy of
       // the policy (or the board's state) disagrees with the plan, and the loop
       // deliberately leaves the review card in place rather than forcing it.
-      notifyBatch([
+      const baseKey = `workflow_action_failed|${action.type}|${ref}|${err.message}`;
+      const batch = [
         {
           type: "workflow_action_failed",
           action: action.type,
           ref,
           error: err.message,
-          dedupKey: `workflow_action_failed|${action.type}|${ref}|${err.message}`,
+          dedupKey: baseKey,
         },
-      ]);
+      ];
+      // The first refusal notifies once. A refusal that outlives the window is
+      // a standing alarm, so it is re-sent once per bucket: the ledger supplies
+      // the original `first_seen`, and a bucket is a *new key*, which is the
+      // same rule the SLA channel uses for a tier promotion.
+      const firstSeen = workingLedger?.seen?.[baseKey]?.first_seen;
+      const firstSeenAt = typeof firstSeen === "string" ? Date.parse(firstSeen) : Number.NaN;
+      const nowAt = Date.parse(now());
+      if (Number.isFinite(firstSeenAt) && Number.isFinite(nowAt)) {
+        const ageMs = nowAt - firstSeenAt;
+        if (ageMs >= WORKFLOW_ACTION_ESCALATE_MS) {
+          batch.push({
+            type: "workflow_action_failed_escalated",
+            action: action.type,
+            ref,
+            error: err.message,
+            first_seen: firstSeen,
+            age_ms: ageMs,
+            dedupKey:
+              `workflow_action_failed_escalated|${action.type}|${ref}` +
+              `|b${Math.floor(ageMs / WORKFLOW_ACTION_ESCALATE_MS)}`,
+          });
+        }
+      }
+      notifyBatch(batch);
     }
   }
 
@@ -750,6 +775,9 @@ const EXPECTED_ACCEPTANCE_SKIP_CODES = new Set([
  * A state-based alert may still notify once when the ledger keys it to the
  * state rather than the clock (`actions_capped`).
  */
+/** A standing workflow-action failure re-notifies once per this bucket. */
+export const WORKFLOW_ACTION_ESCALATE_MS = 24 * 60 * 60 * 1000;
+
 const WORKFLOW_NOTIFY_TYPES = new Set([
   "reconcile",
   "self_review_not_independent",
@@ -765,6 +793,10 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   "actions_capped",
   // A `todo` card no scan can claim: notify once per card state, not per tick.
   "unowned_todo",
+  // Raised by the failed-action catch itself (which calls `notifyBatch` directly
+  // rather than through this filter), so it is listed for consistency: a later
+  // refactor that routes every alert through the filter must not drop it.
+  "workflow_action_failed_escalated",
 ]);
 
 function describeWorkflowAlert(alert) {

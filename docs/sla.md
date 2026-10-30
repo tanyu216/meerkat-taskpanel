@@ -509,7 +509,11 @@ The ledger is a JSON file beside the loop's state (`sla-ledger.json`):
 
 A missing or unreadable ledger reads as **empty**, so the pass notifies rather than
 suppresses. A failed write costs a duplicate, never an alert. The same code and file shape
-serve the workflow pass's own ledger; both read only `dedup_key`.
+serve the workflow pass's own ledger; both use `dedup_key` for suppression. The workflow pass is
+the one reader that also uses `first_seen`: a `workflow_action_failed` that outlives a 24-hour
+window re-notifies as `workflow_action_failed_escalated` under a **new, bucketed key**, so the
+suppression rule is unchanged — a standing refusal reaches a human once per bucket instead of
+once ever.
 
 ### 8.2 Keys
 

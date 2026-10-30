@@ -1513,6 +1513,107 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.equal(notify.count(), 1, "the same failure is not repeated");
   });
 
+  // A refusal that repeats every pass is a standing alarm: without an
+  // escalation it is notified once and then only logged, so a card can sit
+  // failed-to-approve for days with nothing reaching a human (TP-0009: 36h).
+  it("escalates a standing action failure once per 24h bucket", async () => {
+    const notify = spy();
+    const failing = { type: "create_review", original_ref: "T-1" };
+    const createReview = async () => ({ ok: false, error: "board busy" });
+    let ledger = emptySlaLedger();
+    const run = async (now) => {
+      const result = await runWorkflowTick(
+        baseDeps({
+          plan: { alerts: [], changes: [], actions: [failing], summary: {} },
+          createReview,
+          notify,
+          ledger,
+          now: () => now,
+        }),
+      );
+      ledger = result.ledger;
+    };
+
+    await run("2026-10-22T10:00:00.000Z");
+    assert.equal(notify.count(), 1);
+    await run("2026-10-22T10:10:00.000Z");
+    assert.equal(notify.count(), 1, "inside the window nothing is repeated");
+
+    await run("2026-10-23T11:00:00.000Z"); // +25h
+    assert.equal(notify.count(), 2, "after a day the operator hears about it again");
+    assert.equal(notify.calls.at(-1)[0].type, "workflow_action_failed_escalated");
+    assert.match(
+      notify.calls.at(-1)[0].dedupKey,
+      /^workflow_action_failed_escalated\|create_review\|T-1\|b1$/,
+    );
+
+    await run("2026-10-23T11:10:00.000Z");
+    assert.equal(notify.count(), 2, "the same bucket does not repeat");
+
+    await run("2026-10-24T11:00:00.000Z"); // +49h
+    assert.equal(notify.count(), 3);
+    assert.match(
+      notify.calls.at(-1)[0].dedupKey,
+      /^workflow_action_failed_escalated\|create_review\|T-1\|b2$/,
+    );
+  });
+
+  it("skips escalation when the ledger's first_seen cannot be read", async () => {
+    const notify = spy();
+    const failing = { type: "create_review", original_ref: "T-1" };
+    const baseKey = "workflow_action_failed|create_review|T-1|board busy";
+    const ledger = {
+      version: 1,
+      seen: {
+        [baseKey]: {
+          first_seen: "not-a-date",
+          last_seen: "2026-10-22T10:00:00.000Z",
+          observed_by: ["workflow"],
+        },
+      },
+    };
+    await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [], changes: [], actions: [failing], summary: {} },
+        createReview: async () => ({ ok: false, error: "board busy" }),
+        notify,
+        ledger,
+        now: () => "2026-10-25T10:00:00.000Z",
+      }),
+    );
+    assert.equal(notify.count(), 0, "a corrupt first_seen is not a reason to page");
+  });
+
+  it("starts a new age when the error message changes", async () => {
+    const notify = spy();
+    const failing = { type: "create_review", original_ref: "T-1" };
+    const oldKey = "workflow_action_failed|create_review|T-1|old refus";
+    const ledger = {
+      version: 1,
+      seen: {
+        [oldKey]: {
+          first_seen: "2026-10-01T00:00:00.000Z",
+          last_seen: "2026-10-22T10:00:00.000Z",
+          observed_by: ["workflow"],
+        },
+      },
+    };
+    await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [], changes: [], actions: [failing], summary: {} },
+        createReview: async () => ({ ok: false, error: "new refus" }),
+        notify,
+        ledger,
+        now: () => "2026-10-22T10:00:00.000Z",
+      }),
+    );
+    assert.deepEqual(
+      notify.calls.map(([alert]) => alert.type),
+      ["workflow_action_failed"],
+      "a different refusal is a new finding, not an old standing one",
+    );
+  });
+
   it("fails open when the ledger is unreadable", async () => {
     const notify = spy();
     await runWorkflowTick(
