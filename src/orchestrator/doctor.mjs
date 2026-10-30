@@ -29,10 +29,11 @@ import { dirname, join } from "node:path";
 import { checkBoard } from "../foundation/board-compat.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import { QUEUE_FILES } from "../foundation/loop-state.mjs";
-import { DEFAULT_REVIEW_AGING_MINUTES, PATROL_STALE_MS, planPatrol } from "../foundation/scheduling.mjs";
+import { reviewIdentityOf } from "../foundation/review-identity.mjs";
+import { PATROL_STALE_MS, planPatrol } from "../foundation/scheduling.mjs";
 import { readBoard } from "./board.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
-import { parseArgs, resolveLoopConfig } from "./options.mjs";
+import { parseArgs } from "./options.mjs";
 import { readCards } from "./queue.mjs";
 import { readPeerMarker } from "./runtime.mjs";
 import { probeSupervisor } from "./status.mjs";
@@ -163,14 +164,6 @@ function byAgeDesc(left, right) {
   const b = right.age_ms ?? -1;
   if (a !== b) return b - a;
   return String(left.ref ?? "").localeCompare(String(right.ref ?? ""));
-}
-
-function reviewAgingMs(opts, env) {
-  try {
-    return resolveLoopConfig(opts, env).config.reviewAgingMs;
-  } catch {
-    return DEFAULT_REVIEW_AGING_MINUTES * 60_000;
-  }
 }
 
 function countStatuses(rows) {
@@ -346,8 +339,13 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     errors.push(`subagents: ${error.message}`);
   }
 
-  // 7. The cards that look stuck, judged by the rules that already own each line.
-  const stuck = { in_progress: [], in_review: [], total: 0 };
+  // 7. The cards that look stuck, judged by the rule that already owns that
+  // judgement: the patrol's stale-heartbeat plan. `in_review` is reported as a
+  // fact, not a judgement — `review_aging` belongs to the workflow pass and
+  // applies to *review* cards that are **not** in_review (`docs/lifecycle.md`).
+  // Applying it here would call every delivery waiting for acceptance "aged".
+  const stuck = { in_progress: [], total: 0 };
+  const waiting = { in_review: [], total: 0 };
   if (board.error === null) {
     const titles = new Map(tasks.map((task) => [task?.identifier, task?.title ?? null]));
     stuck.in_progress = planPatrol({ tasks, now: nowMs })
@@ -363,25 +361,23 @@ export function doctorReport(opts, env = process.env, deps = {}) {
       }))
       .sort(byAgeDesc);
 
-    const agingMs = reviewAgingMs(opts, env);
-    stuck.in_review = tasks
+    waiting.in_review = tasks
       .filter((task) => task?.status === "in_review")
       .map((task) => {
         const since = task.status_changed_at ?? task.created_at ?? null;
         const at = since === null || since === undefined ? Number.NaN : Date.parse(since);
-        const ageMs = Number.isFinite(at) ? Math.max(0, nowMs - at) : null;
         return {
           ref: task.identifier,
           title: task.title ?? null,
           since: since ?? null,
-          age_ms: ageMs,
-          threshold_ms: agingMs,
-          aging: ageMs !== null && ageMs >= agingMs,
+          age_ms: Number.isFinite(at) ? Math.max(0, nowMs - at) : null,
+          review: reviewIdentityOf(task).isReview,
         };
       })
       .sort(byAgeDesc);
   }
-  stuck.total = stuck.in_progress.length + stuck.in_review.filter((card) => card.aging).length;
+  stuck.total = stuck.in_progress.length;
+  waiting.total = waiting.in_review.length;
 
   const attentionReasons = [];
   if (stuck.total > 0) attentionReasons.push(`stuck_cards: ${stuck.total}`);
@@ -410,6 +406,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     queue,
     subagents,
     stuck_cards: stuck,
+    waiting,
     errors,
     skipped,
   };
@@ -479,11 +476,7 @@ function humanReport(report) {
   );
   lines.push(`subagents   live ${report.subagents.live} / total ${report.subagents.total}`);
 
-  const agingCount = report.stuck_cards.in_review.filter((card) => card.aging).length;
-  lines.push(
-    `stuck       ${report.stuck_cards.total} card(s): ` +
-      `${report.stuck_cards.in_progress.length} in_progress, ${agingCount} in_review aging`,
-  );
+  lines.push(`stuck       ${report.stuck_cards.total} card(s): ${report.stuck_cards.in_progress.length} in_progress`);
   for (const card of report.stuck_cards.in_progress) {
     const why =
       card.reason === "stale"
@@ -491,9 +484,20 @@ function humanReport(report) {
         : `heartbeat-unreadable (${card.detail ?? "unknown"})`;
     lines.push(`  ${card.ref}  in_progress  ${why}  ${card.title ?? ""}`.trimEnd());
   }
-  for (const card of report.stuck_cards.in_review.filter((entry) => entry.aging)) {
+
+  const oldest = report.waiting.in_review.reduce(
+    (max, card) => (card.age_ms !== null && (max === null || card.age_ms > max) ? card.age_ms : max),
+    null,
+  );
+  lines.push(
+    `waiting     ${report.waiting.total} in_review` +
+      (oldest === null ? "" : ` (oldest ${minutes(oldest)})`) +
+      " — age only; review aging is the workflow pass's",
+  );
+  for (const card of report.waiting.in_review) {
+    const age = card.age_ms === null ? "?" : minutes(card.age_ms);
     lines.push(
-      `  ${card.ref}  in_review    aging ${minutes(card.age_ms)} >= ${minutes(card.threshold_ms)}  ${card.title ?? ""}`.trimEnd(),
+      `  ${card.ref}  in_review  ${age}${card.review ? "  [review]" : ""}  ${card.title ?? ""}`.trimEnd(),
     );
   }
 

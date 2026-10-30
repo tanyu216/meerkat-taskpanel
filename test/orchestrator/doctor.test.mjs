@@ -49,6 +49,13 @@ const TASKS = [
   { identifier: "T-103", title: "Just inside the window", status: "in_progress", heartbeat_at: at(29 * MIN) },
   { identifier: "T-200", title: "Waiting too long", status: "in_review", status_changed_at: at(90 * MIN) },
   { identifier: "T-201", title: "Just delivered", status: "in_review", status_changed_at: at(10 * MIN) },
+  {
+    identifier: "T-202",
+    title: "Reviewer card",
+    status: "in_review",
+    status_changed_at: at(120 * MIN),
+    review_of_id: "orig-200",
+  },
   { identifier: "T-300", title: "Queued", status: "todo" },
 ];
 
@@ -166,7 +173,7 @@ describe("loop doctor — the report", () => {
     assert.equal(report.board.total, TASKS.length);
     assert.equal(report.board.truncated, false);
     assert.equal(report.board.counts.in_progress, 4);
-    assert.equal(report.board.counts.in_review, 2);
+    assert.equal(report.board.counts.in_review, 3);
 
     assert.equal(report.log.source, "live");
     assert.equal(report.log.lines.length, LOG_TAIL_LINES);
@@ -192,35 +199,45 @@ describe("loop doctor — the report", () => {
     assert.equal(report.stuck_cards.in_progress[1].detail, "missing");
 
     assert.deepEqual(
-      report.stuck_cards.in_review.map((card) => [card.ref, card.aging]),
-      [["T-200", true], ["T-201", false]],
+      report.waiting.in_review.map((card) => [card.ref, card.review]),
+      [["T-202", true], ["T-200", false], ["T-201", false]],
+      "a review card is labelled, not judged — the workflow pass owns review aging",
     );
-    assert.equal(report.stuck_cards.total, 3);
+    assert.equal(report.waiting.in_review[0].age_ms, 120 * MIN);
+    assert.equal("aging" in report.waiting.in_review[0], false);
+    assert.equal(report.waiting.total, 3);
+    assert.equal(report.stuck_cards.total, 2, "only the patrol's heartbeat judgement is 'stuck'");
 
     assert.deepEqual(report.errors, []);
     assert.deepEqual(report.skipped, []);
     assert.equal(report.ok, true);
     assert.equal(report.attention, true);
-    assert.ok(report.attention_reasons.some((reason) => reason.startsWith("stuck_cards:")));
+    assert.ok(report.attention_reasons.includes("stuck_cards: 2"));
   });
 
-  it("lets the resolved review-aging setting move the line", () => {
+  it("keeps in_review as facts: the review-aging setting does not judge them", () => {
     const dir = tempDir();
     const { script } = sentinel(dir);
     seedState(dir);
 
+    // `--review-aging-minutes` is accepted (it is a shared loop flag) but it is
+    // the *workflow* pass's threshold. Applying it here would report every
+    // delivery waiting for acceptance as an aged review card.
     const report = doctorReport(
       optsFor(dir, script, ["--review-aging-minutes", "5"]),
       { HOME: dir },
       deps(),
     );
 
-    assert.deepEqual(
-      report.stuck_cards.in_review.map((card) => [card.ref, card.aging]),
-      [["T-200", true], ["T-201", true]],
-      "10 minutes is aging at a 5-minute threshold",
+    assert.equal(report.waiting.total, 3);
+    for (const card of report.waiting.in_review) {
+      assert.equal("aging" in card, false);
+      assert.equal("threshold_ms" in card, false);
+    }
+    assert.equal(
+      report.attention_reasons.some((reason) => /aging/.test(reason)),
+      false,
     );
-    assert.equal(report.stuck_cards.in_review[0].threshold_ms, 5 * MIN);
   });
 
   it("calls an overdue patrol marker out, and only when a cadence is declared", () => {
@@ -375,9 +392,11 @@ describe("loop doctor — the process boundary", () => {
     assert.equal(textExit, 0);
     assert.match(out, /supervisor\s+absent/);
     assert.match(out, /patrol\s+last_ok 2025-12-31T23:30:00.000Z \(30m ago, cadence 15m\)/);
-    assert.match(out, /stuck\s+3 card\(s\): 2 in_progress, 1 in_review aging/);
+    assert.match(out, /stuck\s+2 card\(s\): 2 in_progress/);
     assert.match(out, /T-100  in_progress  stale 31m > 30m  Stale claim/);
-    assert.match(out, /T-200  in_review    aging 90m >= 60m  Waiting too long/);
+    assert.match(out, /waiting\s+3 in_review \(oldest 120m\)/);
+    assert.match(out, /T-202  in_review  120m  \[review\]  Reviewer card/);
+    assert.match(out, /T-200  in_review  90m  Waiting too long/);
     assert.match(out, /queue\s+depth 2/);
 
     out = "";

@@ -117,8 +117,11 @@ The deterministic passes are **not scheduled individually**:
 `taskctl loop doctor` is **not** one of these passes. It is the read-only inspection a human
 runs: one report covering the supervisor verdict, the resolved scan set, board compatibility,
 the patrol's last-successful-run marker, the tail of the loop log, the queue and subagent
-ledger, and the cards that look stuck (a stale or unreadable heartbeat; a review card past the
-review-aging threshold). It claims, dispatches, starts and writes nothing — its board read runs
+ledger, the cards that look stuck (a stale or unreadable heartbeat, judged by the patrol's own
+plan), and the `in_review` cards waiting on a human with their age. That last list is **facts
+only**: review aging is the workflow pass's judgement and applies to review cards that are
+*not* `in_review` (`docs/lifecycle.md`), so the inspection neither restates nor widens it. It
+claims, dispatches, starts and writes nothing — its board read runs
 with autostart disabled — and it exits 0 whenever a report was produced, so a scheduled
 inspection reads `attention` from `--json` rather than an exit code.
 
