@@ -303,6 +303,7 @@ describe("skill frontmatter and assets", () => {
     const turing = readFileSync(join(team, "turing", "workflow.md"), "utf8");
     const regression = readFileSync(join(team, "turing", "regression-workflow.md"), "utf8");
     const performance = readFileSync(join(team, "turing", "performance-workflow.md"), "utf8");
+    const testDesign = readFileSync(join(team, "turing", "test-design-workflow.md"), "utf8");
     const jobsWorkflow = readFileSync(join(team, "jobs", "workflow.md"), "utf8");
     const jobsCheck = readFileSync(join(team, "jobs", "self-check.md"), "utf8");
 
@@ -321,6 +322,24 @@ describe("skill frontmatter and assets", () => {
     assert.match(performance, /optional|on request|when the card/i, "performance is opt-in");
     assert.match(regression, /production bug/i, "regression covers production bugs");
     assert.match(regression, /before and after|before\/after|pre-fix/i, "regression proves the fix");
+    assert.match(turing, /ownership\.md/, "Turing routes by the team ownership guide");
+    assert.doesNotMatch(turing, /\|\s*Card\s*\|\s*Branch\s*\|/i, "the branch table lives in ownership.md");
+    assert.match(turing, /do not merge, rebase or push/i, "the shared delivery leaves landing to the project");
+    assert.match(testDesign, /already landed|landed implementation/i, "test design verifies a landed implementation");
+    assert.doesNotMatch(testDesign, /test-first|red-first/i, "red-first belongs to the implementation card");
+    assert.match(
+      testDesign,
+      /for a feature or behaviour change,[\s\S]*archived spec/,
+      "test design reads the archived spec through the handoff",
+    );
+    for (const [name, text] of [
+      ["test design", testDesign],
+      ["regression", regression],
+      ["performance", performance],
+    ]) {
+      assert.match(text, /^## Steps/m, `${name} opens with its step list`);
+      assert.match(text, /workflow\.md/, `${name} points at the shared contract`);
+    }
 
     assert.match(jobsWorkflow, /Review ownership/i, "Jobs states who reviews what");
     assert.match(jobsWorkflow, /E3/, "the design direction is an E3 decision");
@@ -336,7 +355,7 @@ describe("skill frontmatter and assets", () => {
 
   it("takes the card's plan before work — adopted first, then audited", () => {
     const team = join(SKILL, "assets", "team", "standard");
-    for (const rel of ["jobs/workflow.md", "linus/workflow.md", "turing/workflow.md"]) {
+    for (const rel of ["jobs/workflow.md", "linus/workflow.md"]) {
       const text = readFileSync(join(team, rel), "utf8");
       const start = text.indexOf("## Before work — the plan");
       assert.ok(start >= 0, `${rel} states the pre-work plan step`);
@@ -356,6 +375,36 @@ describe("skill frontmatter and assets", () => {
         `${rel} takes the plan before it audits it`,
       );
     }
+  });
+
+  it("takes the card's plan before work in every Turing branch", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    for (const rel of [
+      "turing/test-design-workflow.md",
+      "turing/regression-workflow.md",
+      "turing/performance-workflow.md",
+    ]) {
+      const text = readFileSync(join(team, rel), "utf8");
+      assert.match(text, /^## Steps/m, `${rel} opens with a step list`);
+      const plan = text.slice(text.indexOf("### 1. Plan"), text.indexOf("### 2."));
+      assert.match(plan, /adopt/i, `${rel} adopts an attached plan`);
+      assert.match(plan, /audit/i, `${rel} audits it before starting`);
+    }
+    const testDesign = readFileSync(join(team, "turing", "test-design-workflow.md"), "utf8");
+    const plan = testDesign.slice(testDesign.indexOf("### 1. Plan"), testDesign.indexOf("### 2."));
+    assert.match(plan, /attachments?/i, "test design reads the card's attachments");
+    assert.match(
+      plan,
+      /`meerkat`[^\n]*(board skill|card operation|card brief)/i,
+      "test design points attachment handling at the board skill",
+    );
+    assert.match(plan, /adopt|fold/i, "test design adopts an attached plan");
+    assert.match(plan, /no plan attached|carries none/i, "test design writes the plan when none is attached");
+    assert.match(plan, /audit the plan/i, "test design audits the plan before starting");
+    assert.ok(
+      plan.search(/attachments?/i) < plan.search(/audit the plan/i),
+      "test design takes the plan before it audits it",
+    );
   });
 
   it("names an adopted plan in every branch input", () => {
@@ -1129,7 +1178,7 @@ describe("skill frontmatter and assets", () => {
     assert.match(testDesign, /## Handoff/);
     assert.match(testDesign, /named report/i);
     assert.match(regression, /not inputs here/);
-    assert.match(turing, /test-plan\.md/);
+    assert.match(testDesign, /test-plan\.md/);
     assert.match(turing, /API/i);
     assert.match(turing, /browser/i);
     assert.match(testDesign, /API/);
@@ -1226,7 +1275,7 @@ describe("skill frontmatter and assets", () => {
       const check = readFileSync(join(team, role, "self-check.md"), "utf8");
       assert.match(check, /pre-delivery audit/, `${role} self-check names the audit`);
       assert.match(check, /not\s+the `## Handoff` block/, `${role} self-check is not the handoff`);
-      assert.match(check, /re-export/i, `${role} self-check re-exports the brief`);
+      assert.match(check, /refresh the brief|re-export/i, `${role} self-check refreshes the brief`);
       assert.match(check, /card\.md/, `${role} self-check names the brief`);
       assert.match(check, /`commit` anchor/i, `${role} self-check requires the commit anchor`);
     }
@@ -1236,9 +1285,6 @@ describe("skill frontmatter and assets", () => {
       ["linus/architecture-workflow.md", "### 9. Deliver"],
       ["linus/implementation-workflow.md", "### 7. Deliver"],
       ["linus/refactor-workflow.md", "### 7. Deliver"],
-      ["turing/test-design-workflow.md", "### 9. Deliver"],
-      ["turing/regression-workflow.md", "### 7. Deliver"],
-      ["turing/performance-workflow.md", "### 7. Deliver"],
     ]) {
       const text = readFileSync(join(team, file), "utf8");
       assert.ok(text.includes(heading), `${file} must end in ${heading}`);
@@ -1246,6 +1292,24 @@ describe("skill frontmatter and assets", () => {
       assert.match(deliver, /commit/i, `${file} commits before it delivers`);
       assert.match(deliver, /DELIVERY_NEEDS_COMMIT/, `${file} names the delivery gate`);
       assert.match(deliver, /do not merge, rebase or push/i, `${file} leaves landing to the loop`);
+    }
+
+    const turingWorkflow = readFileSync(join(team, "turing", "workflow.md"), "utf8");
+    assert.match(turingWorkflow, /## Delivery/, "the shared Turing delivery is the workflow's");
+    assert.match(turingWorkflow, /commit/i, "the shared delivery commits before it delivers");
+    assert.match(
+      turingWorkflow,
+      /do not merge, rebase or push/i,
+      "the shared delivery leaves landing to the project session",
+    );
+    for (const rel of [
+      "turing/test-design-workflow.md",
+      "turing/regression-workflow.md",
+      "turing/performance-workflow.md",
+    ]) {
+      const text = readFileSync(join(team, rel), "utf8");
+      assert.match(text, /workflow\.md/, `${rel} points at the shared delivery`);
+      assert.doesNotMatch(text, /DELIVERY_NEEDS_COMMIT/, `${rel} does not restate the board gate`);
     }
 
     const testDesign = readFileSync(join(team, "turing", "test-design-workflow.md"), "utf8");
