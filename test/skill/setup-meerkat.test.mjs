@@ -1571,6 +1571,33 @@ describe("skill frontmatter and assets", () => {
     }
   });
 
+  it("keeps the reviewer workflow step-navigable, concise and board-delegated", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const workflow = readFileSync(join(team, "reviewer", "workflow.md"), "utf8");
+    const check = readFileSync(join(team, "reviewer", "self-check.md"), "utf8");
+
+    const start = workflow.indexOf("## Steps");
+    assert.ok(start >= 0, "the reviewer workflow opens with a step list");
+    const glance = workflow.slice(start, workflow.indexOf("### 1.", start));
+    const listed = [...glance.matchAll(/^(\d+)\. /gm)].map((match) => Number(match[1]));
+    const headings = [...workflow.matchAll(/^### (\d+)\. /gm)].map((match) => Number(match[1]));
+    assert.deepEqual(listed, headings, "the step list matches the headings");
+
+    for (const block of workflow.split(/^### \d+\. /m).slice(1)) {
+      assert.match(block, /\*\*Purpose\.\*\*/, "the step names its purpose");
+      assert.match(block, /\*\*Watch for\.\*\*/, "the step names what to watch");
+      assert.match(block, /\*\*Essentials\.\*\*/, "the step names what is indispensable");
+    }
+    assert.ok(workflow.split("\n").length <= 110, "the reviewer workflow stays concise");
+    assert.ok(check.split("\n").length <= 35, "the pre-verdict audit stays concise");
+    assert.match(
+      workflow,
+      /`meerkat`[^\n]*(board skill|card operation)/,
+      "card operations are delegated to the board skill",
+    );
+    assert.match(check, /security-checklist\.md/, "the audit walks the checklist");
+  });
+
   it("mirrors the loop's actor-kind table", () => {
     assert.deepEqual([...LOOP_KINDS].sort(), Object.keys(AGENT_DIRS).sort());
   });
