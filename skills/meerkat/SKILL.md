@@ -1,13 +1,13 @@
 ---
 name: meerkat
-description: Use this skill when the user asks about a Meerkat TaskPanel task itself — progress, status, what is left, remaining work, who is on it, why it is blocked, history, completion count, acceptance criteria, what to do next, or a card found by a bare id or title. It also runs every card operation through the local `taskctl` kanban — claim, heartbeat, comment, answer on-card questions, read or re-export the brief (`card.md`), create or split cards (uploading a plan, spec or reference file as an attachment), link relations, move status, deliver with a report, review, accept or reopen, and export the board as markdown. Trigger on Meerkat, taskpanel, taskctl, the task board, a task card, `card.md`, card file, `export md`, re-export, brief, deliver, heartbeat, acceptance, review, or an awaiting question; on a `meerkat-loop` handoff or role workflow that only says read the brief or deliver the card. Works the same on any agent runtime — Claude, Codex, pi and OpenClaw are all covered.
+description: Use this skill when the user asks about a Meerkat TaskPanel task itself — progress, status, what is left, remaining work, who is on it, why it is blocked, history, completion count, acceptance criteria, what to do next, or a card found by a bare id or title. It also runs every card operation through the local `taskctl` kanban — claim, heartbeat, comment, answer on-card questions, read or re-export the brief (`card.md`), create or split cards (uploading a plan, spec or reference file as an attachment), link relations, move status, deliver with a report, review, accept or reopen, and export the board as markdown. Trigger on Meerkat, taskpanel, taskctl, the task board, a task card, `card.md`, card file, `export md`, re-export, brief, deliver, heartbeat, acceptance, review, or an awaiting question; on a supervisor handoff or role workflow that only says read the brief or deliver the card. Works the same on any agent runtime — Claude, Codex, pi and OpenClaw are all covered.
 ---
 
 # Meerkat TaskPanel
 
 A local-first task board for AI Agent teams, driven entirely through the `taskctl` CLI: claim a card, heartbeat, comment, deliver with a report; results roll up a parent/child tree.
 
-This page is the **decision manual** — what to do, in what order, and which of two similar commands to use. The board validates every write itself: read the refusal and act rather than pre-checking from a document, because enforced rules live in `references/`. Scheduling is the `meerkat-loop` skill's job. `src/…` and `docs/…` name the source repository, not this skill; everything you run is `taskctl`.
+This page is the **decision manual** — what to do, in what order, and which of two similar commands to use. The board validates every write itself: read the refusal and act rather than pre-checking from a document, because enforced rules live in `references/`. Scheduling is the supervisor's job; the decisions it cannot make are the `meerkat-director` skill's. `src/…` and `docs/…` name the source repository, not this skill; everything you run is `taskctl`.
 
 ## Running the CLI
 
@@ -70,13 +70,13 @@ Attempt the move and read the refusal; the whitelist names the allowed targets. 
 `issue create` is the whole handoff: the card lands in `todo` — the queue the loop's poll reads — in the same call, addressed to whoever it is assigned to. The queue is per assignee, not global; an unassigned card is the public pool. Only `--status backlog` keeps it out of a queue. The INSERT gate:
 [`references/status-lifecycle.md#8-creating-a-card-in-a-status`](references/status-lifecycle.md#8-creating-a-card-in-a-status).
 
-**Route the card at creation.** The create *is* the routing decision, not a step after it. When the project has a team roles root, read its `ownership.md`, pick the one accountable role for the card's work shape, and name it in the same call:
+**Route the card at creation.** The create *is* the routing decision, not a step after it. When a role skill fits the card's work shape (each role's `SKILL.md` lists its shapes), name that one accountable role in the same call:
 
 ```bash
 taskctl issue create --project <p> --title "…" --assignee <role> --assignee-kind agent --acceptance "…"
 ```
 
-An unassigned card in a team project is **unowned**, not handed off: the loop scans only the names it is configured with, so it may sit until someone routes it. A shape the guide does not cover goes to a worker outside the roles, named explicitly. **Without a team roles root, do not invent a role name** — leave the card unassigned (the public pool) or name your own worker identity. Ambiguous between two rows: split it into one card per **role** shape — a handoff boundary, not a technical layer — or leave it to the project session.
+An unassigned card is **unowned**, not handed off: the supervisor's pool claim can take it as the Worker role, or the `meerkat-director` routes it. A shape no role describes goes to the Worker role, named explicitly. **With no role installed, do not invent a role name** — leave the card unassigned (the public pool) or name your own worker identity. Ambiguous between two shapes: split it into one card per **role** shape — a handoff boundary, not a technical layer — or leave the routing to the director.
 
 **File a card in the human's name when you are in an interactive session with the human, or when the instruction to create this card comes explicitly from them.** Either one is enough: `--as-human` records that human as both the writer and the reporter. Do not use it when you are working from a loop handoff or a card brief with no explicit human instruction, when you file a card yourself outside a human conversation, or for your own claim, heartbeat, delivery or review. If the human asked but `--as-human` is unavailable, pass `--reporter <name>` for the create.
 
@@ -132,7 +132,7 @@ A heartbeat resets the claim and **nothing else** — not status, not claimer, n
 
 - **Non-empty** — work to it. It is frozen: append with `issue update <ref> --acceptance "…"`; never replace or remove (removal is a human-only, audited prune).
 - **Empty, but `meta.acceptance` / `meta.acceptance_legacy` is not** — append as above; the next round freezes it.
-- **All empty** — this is an acceptance decision. Derive **1–6 concrete, externally checkable** items (usually 2–6; never pad) only when the project session pre-authorized it for this card, persist them once, and record the act:
+- **All empty** — this is an acceptance decision. Derive **1–6 concrete, externally checkable** items (usually 2–6; never pad) only when the handoff or the `meerkat-director` pre-authorized it for this card, persist them once, and record the act:
 
 ```bash
 taskctl issue update <ref> --acceptance "…" --acceptance "…" --meta acceptance_derived=yes
@@ -152,7 +152,7 @@ The mode is resolved once, at creation: `--acceptance-mode off|agent|human`; omi
 
 ## Containers: when the card is an epic
 
-An epic exists only where someone named one. Splitting is a scope decision: it belongs to the project session (an out-of-scope expansion to the human, `E1`), so a worker that finds several deliverables writes an agent `question` comment describing the pieces, keeps the card `in_progress`, and stops. A title and description naming the **sum** of the work is the container; naming **one deliverable** makes it a child.
+An epic exists only where someone named one. Splitting is a scope decision: it belongs to the `meerkat-director` (an out-of-scope expansion to the human, `E1`), so a worker that finds several deliverables writes an agent `question` comment describing the pieces, keeps the card `in_progress`, and stops. A title and description naming the **sum** of the work is the container; naming **one deliverable** makes it a child.
 
 **A child is a deliverable, not a layer.** Ask four questions of every proposed child:
 
@@ -161,7 +161,7 @@ An epic exists only where someone named one. Splitting is a scope decision: it b
 3. **Is the outcome visible?** A reader of the epic sees a result, not "the CLI flag" or "the docs".
 4. **Does it owe a cleanup card?** No fixture sweep or documentation catch-up exists only to pay its debt.
 
-A later child may build on an earlier child already on the base branch; a stack on an unmerged sibling is not. The layers of one change are its **scope**: enforcing the 1-4 character project prefix on every create path is one child, not five. The ownership guide's "one card per shape" sizes a **role** handoff, not a technical layer.
+A later child may build on an earlier child already on the base branch; a stack on an unmerged sibling is not. The layers of one change are its **scope**: enforcing the 1-4 character project prefix on every create path is one child, not five. The role routing table's "one card per shape" sizes a **role** handoff, not a technical layer.
 
 | Card you have | Role | What to do |
 |---|---|---|
@@ -217,7 +217,7 @@ Full protocols:
 - **Never force a conflict** — the retry rule is in *Reading a refusal*.
 - **Stamp every write with your identity:** `--actor-kind <kind> --session-id <id>`. `taskctl session id <ref> --seg <seg> --owner <name>` derives it; offline, [`scripts/session-id.mjs`](scripts/session-id.mjs) computes the same value from the resolved task UUID.
 - **Metadata has two writers.** `issue meta` is a read-modify-write with `--if-version` that preserves value types; `issue update --meta` merges but stringifies and sends no CAS, so a concurrent write can be lost. Use `issue meta` for machine keys. Neither writes `acceptance[]`.
-- **The board runs no timer.** The `meerkat-loop` skill owns the scheduler — add no second poller.
+- **The board runs no timer.** The supervisor owns the scheduler — add no second poller.
 
 Session identity: [`references/cli.md#session`](references/cli.md#session).
 
@@ -238,7 +238,7 @@ Which directory does it work in? I will register it with
 
 ## Keeping the brief fresh
 
-A card exported into a project directory is a **snapshot**. Register it once with the local event hub — `export watch <ref> --dir <dir> --detach` — and check it with `--watch-status`; `--stop` ends it, and the portable form is `--once`. Never use a plain `&`: the hub, not your shell, owns the connection. It writes `.meerkat/<identifier>/card.md`, stops at `done` or `canceled`, and is one-way — re-read the brief before a decision, and never hand-edit it. **A loop-dispatched worker starts no watcher.** Detail:
+A card exported into a project directory is a **snapshot**. Register it once with the local event hub — `export watch <ref> --dir <dir> --detach` — and check it with `--watch-status`; `--stop` ends it, and the portable form is `--once`. Never use a plain `&`: the hub, not your shell, owns the connection. It writes `.meerkat/<identifier>/card.md`, stops at `done` or `canceled`, and is one-way — re-read the brief before a decision, and never hand-edit it. **A supervisor-dispatched worker starts no watcher.** Detail:
 [`references/cli.md#export-watch`](references/cli.md#export-watch).
 
 ## Where to look

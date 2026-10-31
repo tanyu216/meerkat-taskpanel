@@ -262,8 +262,7 @@ describe("continue — the event path needs a live pool", () => {
       },
     );
     assert.equal(code, 0);
-    assert.equal(logs.some((line) => /no resident session pool/.test(line)), true);
-    assert.equal(logs.some((line) => /would run:/.test(line)), true);
+    assert.equal(logs.some((line) => /would run patrol → workflow → poll/.test(line)), true);
     assert.equal(logs.some((line) => /event dispatch skipped/.test(line)), false);
   });
 });
@@ -290,7 +289,7 @@ describe("ping and continue entries", () => {
     assert.deepEqual(Object.keys(JSON.parse(readFileSync(state, "utf8")).running), [], "the dead pid is pruned");
   });
 
-  it("continue dry-run prints the prompt and spawns nothing", () => {
+  it("tick dry-run prints the pass order and spawns nothing", () => {
     const dir = tempDir("tp-entry-continue-");
     const record = join(dir, "spawned");
     const bin = join(dir, "bin");
@@ -302,8 +301,8 @@ describe("ping and continue entries", () => {
       "--dry-run",
     ], { TP_FAKE_CLAUDE: record, PATH: `${bin}:${process.env.PATH}` });
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stderr, /component=supervisor msg="\/meerkat-loop Continue/);
-    assert.match(run.stderr, /continue: would run: claude/);
+    assert.match(run.stderr, /tick: would run patrol → workflow → poll on claude/);
+    assert.equal(existsSync(record), false, "dry-run spawns no agent");
     assert.equal(existsSync(join(dir, "continue.state.json")), false, "dry-run takes no lock");
   });
 });
@@ -446,6 +445,37 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       argv.some((call) => call.includes("claim")),
       false,
       "the question lane never claims a card",
+    );
+  });
+
+  it("scans every discovered worker-lane role even when the config omits it", () => {
+    const dir = tempDir("tp-scan-roles-");
+    const home = join(dir, "home");
+    const roleDir = join(home, ".codex", "skills", "turing");
+    mkdirSync(roleDir, { recursive: true });
+    writeFileSync(join(roleDir, "SKILL.md"), "---\nname: turing\n---\n");
+    writeFileSync(
+      join(roleDir, "role.json"),
+      JSON.stringify({ schema: "meerkat-role", id: "turing", agent: "Turing", lanes: ["worker"] }),
+    );
+    writeFileSync(join(dir, ".env.claude"), "MEERKAT_TASKPANEL_AGENTS=Worker\n");
+    writeLivePool(dir);
+    const { script, record } = sentinelCli(dir);
+    const run = runEntry(
+      "passes.mjs",
+      [
+        "--actor-kind", "claude", "--agent", "Worker",
+        "--home", home, "--cli", script, "--repo", dir,
+        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+        "--config", join(dir, ".env.claude"),
+      ],
+      { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
+      "poll",
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(
+      calls(record).some((call) => call.includes("candidates") && call.includes("Turing")),
+      "a discovered role is scanned without being in MEERKAT_TASKPANEL_AGENTS",
     );
   });
 
@@ -684,6 +714,99 @@ describe("the resident poll dispatch", () => {
     assert.equal(entry.handoff.includes("/meerkat-loop"), false, "a handoff is not a continue turn");
   });
 
+  it("carries the role's platform on the row while the supervisor keeps its own kind", async () => {
+    const f = fixture();
+    const turing = {
+      id: "turing",
+      agent: "Turing",
+      lanes: ["worker"],
+      title: "Verification",
+      summary: "",
+      responsibilities: [],
+      boundaries: [],
+      shapes: [],
+      skillDir: "/roles/codex/turing",
+      platform: "codex",
+      installedOn: ["codex"],
+      workflow: "/roles/codex/turing/SKILL.md",
+      selfCheck: null,
+      reviewerPrompt: null,
+      defaultReviewer: false,
+      variants: {},
+    };
+    const opts = {
+      ...f.opts,
+      roles: {
+        roles: [turing],
+        defaultReviewer: null,
+        decisionPolicy: { path: null },
+        routing: { source: "skills", text: "" },
+        warnings: [],
+      },
+    };
+    const admission = createProjectAdmission({
+      opts,
+      projectConcurrency: 1,
+      watchCards: f.watchCards,
+    });
+    const action = { identifier: "T-1", agent: "Turing", reason: "ready" };
+    const card = { id: "uuid-1", identifier: "T-1", project: "P", title: "x" };
+    assert.equal((await admission.admit(action, card)).ok, true);
+    const dispatch = createQueueDispatch({
+      opts,
+      config: { reviewers: [] },
+      stateDir: f.dir,
+      admission,
+    });
+    assert.equal((await dispatch(action, card)).ok, true);
+    const [entry] = readCards(f.dir).value.cards;
+    assert.equal(entry.actor_kind, "codex", "the row runs on the kind carrying the role");
+    assert.equal(opts.actorKind, "claude", "the supervisor still claims as its own kind");
+    assert.match(entry.handoff, /\/roles\/codex\/turing\/SKILL\.md/);
+  });
+
+  it("refuses to enqueue when no platform carries the role", async () => {
+    const f = fixture();
+    const opts = {
+      ...f.opts,
+      kindAvailable: () => false,
+      roles: {
+        roles: [
+          {
+            id: "turing",
+            agent: "Turing",
+            lanes: ["worker"],
+            installedOn: ["codex"],
+            platform: "codex",
+            skillDir: "/roles/turing",
+            workflow: "/roles/turing/SKILL.md",
+          },
+        ],
+        defaultReviewer: null,
+        decisionPolicy: { path: null },
+        warnings: [],
+      },
+    };
+    const admission = createProjectAdmission({
+      opts,
+      projectConcurrency: 1,
+      watchCards: f.watchCards,
+    });
+    const action = { identifier: "T-1", agent: "Turing", reason: "ready" };
+    const card = { id: "uuid-1", identifier: "T-1", project: "P", title: "x" };
+    await admission.admit(action, card);
+    const dispatch = createQueueDispatch({
+      opts,
+      config: { reviewers: [] },
+      stateDir: f.dir,
+      admission,
+    });
+    const outcome = await dispatch(action, card);
+    assert.equal(outcome.ok, false);
+    assert.match(outcome.error, /no available platform carries role/);
+    assert.equal(readCards(f.dir).value.cards.length, 0, "no row is written for an unreachable role");
+  });
+
   it("warns once when parallel workers share a git checkout", async () => {
     const f = fixture();
     mkdirSync(join(f.app, ".git"), { recursive: true });
@@ -756,7 +879,7 @@ describe("the resident poll dispatch", () => {
     assert.equal(entry.task_id, "uuid-2");
     assert.equal(entry.review_of, "T-1");
     assert.equal(entry.review_round, 1);
-    assert.match(entry.handoff, /^You are a reviewer subagent of the P project session/);
+    assert.match(entry.handoff, /^You are the reviewer for the P project/);
     assert.match(entry.handoff, /Review brief: \.meerkat\/T-2\/card\.md/);
     assert.match(entry.handoff, /Original brief: \.meerkat\/T-1\/card\.md/);
     assert.deepEqual(watched, [["T-2", "T-1"]], "the claim event refreshes it; no second export");
@@ -1068,7 +1191,7 @@ describe("the resident poll dispatch", () => {
   });
 });
 
-describe("continue spawn", () => {
+describe("the tick runs the passes in-process", () => {
   function fakeClaude(dir) {
     const bin = join(dir, "bin");
     mkdirSync(bin, { recursive: true });
@@ -1079,79 +1202,50 @@ describe("continue spawn", () => {
     return { bin, record, env: { TP_FAKE_CLAUDE: record, PATH: `${bin}:${process.env.PATH}` } };
   }
 
-  function waitFor(path, timeoutMs = 3000) {
-    const deadline = Date.now() + timeoutMs;
-    const sleeper = new Int32Array(new SharedArrayBuffer(4));
-    while (Date.now() < deadline) {
-      if (existsSync(path)) return true;
-      Atomics.wait(sleeper, 0, 0, 20);
-    }
-    return false;
+  function tickArgs(dir, extra = []) {
+    return [
+      "--continue-only", "--once",
+      "--actor-kind", "claude", "--agent", "alice",
+      "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      "--continue-state", join(dir, "continue.state.json"),
+      ...extra,
+    ];
   }
 
-  it("starts the agent with -p and a prompt that begins with /meerkat-loop", () => {
-    const dir = tempDir("tp-continue-spawn-");
+  it("runs patrol, workflow and poll and spawns no agent", () => {
+    const dir = tempDir("tp-tick-inprocess-");
     const fake = fakeClaude(dir);
-    const state = join(dir, "state.json");
-    const lock = join(dir, "continue.state.json");
-    const run = runSupervisor(["--continue-only", "--once",
-      "--actor-kind", "claude", "--agent", "alice",
-      "--repo", dir, "--state", state, "--log", join(dir, "log"),
-      "--continue-state", lock,
-    ], fake.env);
+    const { script, record } = sentinelCli(dir);
+    writeLivePool(dir);
+    const run = runSupervisor(tickArgs(dir, ["--cli", script]), {
+      ...fake.env,
+      TP_SENTINEL: record,
+    });
     assert.equal(run.status, 0, run.stderr);
-    assert.ok(waitFor(fake.record), "the fake agent was not started");
-    const argv = readFileSync(fake.record, "utf8").split("\n");
-    const text = argv.slice(1).join("\n");
-    assert.equal(argv[0], "-p");
-    assert.ok(argv[1].startsWith("/meerkat-loop Continue"), argv[1].slice(0, 48));
-    assert.doesNotMatch(text, /--project\b|TP_PROJECT/);
-    // No pool: the turn runs patrol + workflow only, and says why.
-    assert.doesNotMatch(text, /passes\.mjs poll/);
-    assert.match(text, /No resident session pool is running/);
-    // The one-shot turn runs the same prompt: its pass names the bare
-    // interpreter, which is what the control lane's allowlist permits.
-    const patrolLine = text.split("\n").find((line) => line.includes("loop patrol"));
-    assert.match(patrolLine, /^\s+1\) node \S*\.mjs .*loop patrol\b/);
-    const boardLine = text.split("\n").find((line) => line.includes("issue list --status in_progress"));
-    assert.match(boardLine, /^\s+node \S*\.mjs --actor-kind claude --agent alice issue list --status in_progress --json$/);
-    const held = loadContinueLock(lock);
-    assert.ok(Number.isInteger(held.pid) && held.pid > 0, "the lock holds the child pid");
+    const boardCalls = calls(record).map((argv) => argv.join(" "));
+    assert.ok(boardCalls.some((line) => line.includes("issue candidates")), "poll scanned");
+    assert.ok(boardCalls.some((line) => line.includes("issue reconcile") || line.includes("issue list")), "workflow/patrol read");
+    assert.equal(existsSync(fake.record), false, "the supervisor must not spawn an agent");
+    assert.equal(existsSync(join(dir, "continue.state.json")), false, "the tick lock is released");
   });
 
-  it("enqueues the turn for a resident pool instead of spawning an agent", () => {
-    const dir = tempDir("tp-continue-resident-");
+  it("runs the tick even with --resident=no", () => {
+    const dir = tempDir("tp-tick-resident-no-");
     const fake = fakeClaude(dir);
+    const { script, record } = sentinelCli(dir);
     writeLivePool(dir);
-    const run = runSupervisor(["--continue-only", "--once",
-      "--actor-kind", "claude", "--agent", "alice",
-      "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
-      "--continue-state", join(dir, "continue.state.json"),
-    ], fake.env);
+    const run = runSupervisor(tickArgs(dir, ["--resident=no", "--cli", script]), {
+      ...fake.env,
+      TP_SENTINEL: record,
+    });
     assert.equal(run.status, 0, run.stderr);
-    const pending = JSON.parse(readFileSync(join(dir, "continue.pending.json"), "utf8"));
-    assert.equal(pending.reason, "timer");
-    assert.equal(existsSync(fake.record), false, "the one-shot process must not start an agent");
-    assert.equal(existsSync(join(dir, "continue.state.json")), false, "no spawn lock is taken");
-  });
-
-  it("treats --resident=no as no pool even when the state file looks live", () => {
-    const dir = tempDir("tp-continue-resident-no-");
-    const fake = fakeClaude(dir);
-    writeLivePool(dir);
-    const run = runSupervisor(["--continue-only", "--once", "--resident=no",
-      "--actor-kind", "claude", "--agent", "alice",
-      "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
-      "--continue-state", join(dir, "continue.state.json"),
-    ], fake.env);
-    assert.equal(run.status, 0, run.stderr);
-    assert.equal(existsSync(join(dir, "continue.pending.json")), false, "nothing is queued");
-    assert.ok(waitFor(fake.record), "the fallback one-shot turn still runs");
+    assert.ok(calls(record).length > 0, "the deterministic passes still run");
   });
 
   it("notifies once per cadence that dispatch is paused", () => {
-    const dir = tempDir("tp-continue-notify-");
+    const dir = tempDir("tp-tick-notify-");
     const fake = fakeClaude(dir);
+    const { script } = sentinelCli(dir);
     const out = join(dir, "notify.json");
     const notifier = join(dir, "notify.mjs");
     writeFileSync(
@@ -1162,46 +1256,25 @@ describe("continue spawn", () => {
       ].join("\n"),
       "utf8",
     );
-    const run = runSupervisor(["--continue-only", "--once",
-      "--actor-kind", "claude", "--agent", "alice",
-      "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
-      "--continue-state", join(dir, "continue.state.json"),
-      "--notify", `${process.execPath} ${notifier}`,
-    ], { ...fake.env, TP_NOTIFY_OUT: out });
+    const run = runSupervisor(
+      tickArgs(dir, ["--cli", script, "--notify", `${process.execPath} ${notifier}`]),
+      { ...fake.env, TP_NOTIFY_OUT: out },
+    );
     assert.equal(run.status, 0, run.stderr);
     const alert = JSON.parse(readFileSync(out, "utf8"));
     assert.equal(alert.kind, "no_resident");
     assert.match(alert.message, /dispatch is paused/);
-    assert.match(alert.reason, /no session state/);
   });
 
-  it("skips while a live turn holds the lock", () => {
-    const dir = tempDir("tp-continue-lock-");
-    const fake = fakeClaude(dir);
+  it("skips while a live tick holds the lock", () => {
+    const dir = tempDir("tp-tick-lock-");
+    const { script, record } = sentinelCli(dir);
     const lock = join(dir, "continue.state.json");
     writeFileSync(lock, JSON.stringify({ version: 1, pid: process.pid, startedAt: new Date().toISOString() }));
-    const run = runSupervisor(["--continue-only", "--once",
-      "--actor-kind", "claude", "--agent", "alice",
-      "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
-      "--continue-state", lock,
-    ], fake.env);
+    const run = runSupervisor(tickArgs(dir, ["--cli", script]), { TP_SENTINEL: record });
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stderr, /still running/);
-    assert.equal(existsSync(fake.record), false, "no second LLM turn");
-  });
-
-  it("releases the lock and exits 1 when the agent cannot start", () => {
-    const dir = tempDir("tp-continue-fail-");
-    const emptyBin = join(dir, "empty");
-    mkdirSync(emptyBin, { recursive: true });
-    const lock = join(dir, "continue.state.json");
-    const run = runSupervisor(["--continue-only", "--once",
-      "--actor-kind", "claude", "--agent", "alice",
-      "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
-      "--continue-state", lock,
-    ], { PATH: emptyBin });
-    assert.equal(run.status, 1, run.stderr);
-    assert.equal(existsSync(lock), false, "a failed spawn leaves no lock behind");
+    assert.deepEqual(calls(record), [], "no pass runs while another tick holds the lock");
   });
 });
 

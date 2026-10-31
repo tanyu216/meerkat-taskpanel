@@ -3,7 +3,7 @@
  * The external scheduler — the loop's two clocks.
  *
  *   * **ping** (60s) — prune worker pids that are gone. No board read, no LLM.
- *   * **continue** (600s) — wake the agent with a bounded Continue prompt; that turn
+ *   * **continue** (600s) — run patrol → workflow → poll in-process; the
  *     runs `taskctl loop patrol|workflow|poll`, in that order.
  *
  * The installed units are one-shot (`--ping-only --once` / `--continue-only
@@ -27,6 +27,9 @@ import * as passesEntry from "./passes.mjs";
 import { runSession } from "./session.mjs";
 import * as subscribeEntry from "./subscribe.mjs";
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./options.mjs";
+import { availableKinds, isKindAvailable } from "./platforms.mjs";
+import { loadRoles } from "../foundation/roles.mjs";
+import { describeRolePlatforms } from "../foundation/role-platforms.mjs";
 import { runContinueOnce } from "./runners.mjs";
 import { createLogger, isProcessAlive, loadRegistry, runPingTick, saveRegistry } from "./runtime.mjs";
 
@@ -133,6 +136,11 @@ export async function main(argv, env = process.env, io = {}) {
     return 0;
   }
 
+  // Dispatch honesty: a role is only sent to a kind whose CLI can start. Every
+  // mode that builds handoffs resolves roles against this probe; tests that call
+  // the passes directly get the deterministic "installed means available" default.
+  opts.kindAvailable ??= (kind) => isKindAvailable(kind, { env });
+
   let mode;
   try {
     mode = selectMode(opts);
@@ -142,6 +150,32 @@ export async function main(argv, env = process.env, io = {}) {
   }
 
   const log = createLogger(opts);
+
+  // One startup line per discovered role: installation location is the routing,
+  // and a role stranded on a kind whose CLI cannot start must be visible before
+  // its cards strand, not after.
+  if (mode === "continue" || mode === "session" || mode === null) {
+    try {
+      const roleSet = loadRoles({
+        home: typeof opts.home === "string" ? opts.home : null,
+        primaryKind: opts.actorKind,
+        explicitDir: opts.rolesDir ?? null,
+      });
+      const lines = describeRolePlatforms(roleSet.roles, {
+        primaryKind: opts.actorKind,
+        available: availableKinds({ env }),
+      });
+      log(lines.length > 0 ? `roles: ${lines.join("; ")}` : "roles: none discovered");
+      if (roleSet.roles.length > 0 && roleSet.decisionPolicy?.path == null) {
+        log(
+          "roles: no meerkat-director decision policy found on the primary kind — decision rows fall back to the built-in summary",
+          { level: "warning" },
+        );
+      }
+    } catch (err) {
+      log(`roles: discovery failed (${err instanceof Error ? err.message : String(err)})`, { level: "warning" });
+    }
+  }
 
   switch (mode) {
     case "ping":

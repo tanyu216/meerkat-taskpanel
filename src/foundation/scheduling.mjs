@@ -31,9 +31,6 @@ import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
 import { isContainer } from "./task-kind.mjs";
 import {
-  renderDecisionPolicySummary,
-  renderDecisionRoundPrinciples,
-  renderOwnershipSummary,
   renderReviewerProtocol,
   renderRoleDecision,
   renderRoleLayerOne,
@@ -60,18 +57,11 @@ export { DEFAULT_PATROL_SECONDS };
 export const DEFAULT_PING_SECONDS = 60;
 /**
  * Default continue cadence, seconds — the scheduler's judgment clock. A
- * continue turn wakes the agent with a bounded prompt; that turn runs the
+ * tick runs the deterministic passes itself;
  * deterministic poll, patrol and workflow entries.
  */
 export const DEFAULT_CONTINUE_SECONDS = 600; // 10 minutes
 
-/**
- * The command-only loop skill's slash command. A continue turn starts with it,
- * so an agent kind that expands slash commands loads `meerkat-loop` before the model
- * runs; the rest of the prompt is the turn's instruction. Kept beside the
- * prompt builder so a skill rename cannot drift from the command.
- */
-export const LOOP_SKILL_COMMAND = "/meerkat-loop";
 /** A claim older than this is "stale" for patrol (same-holder recovery window). */
 export const PATROL_STALE_MS = CLAIM_STALE_SAME_MS;
 
@@ -86,20 +76,6 @@ export const PATROL_STALE_MS = CLAIM_STALE_SAME_MS;
  */
 export const LEDGER_STALE_MS = 2 * 60 * 60 * 1000;
 
-
-/**
- * Quote one argv element for a shell command line. The continue prompt embeds
- * the deterministic passes' argv, so a path with a space must survive a copy
- * into a shell unchanged.
- *
- * @param {unknown} value
- * @returns {string}
- */
-export function quoteArg(value) {
-  const text = String(value ?? "");
-  if (text !== "" && /^[A-Za-z0-9_./:=@%+-]+$/.test(text)) return text;
-  return `'${text.replace(/'/g, "'\\''")}'`;
-}
 
 /**
  * Parse a yes/no-ish string into a boolean, or `null` when it says nothing.
@@ -444,7 +420,7 @@ export function candidateArgs(agent, claimUnassigned, recoverStale = false) {
 }
 
 /** A `todo` card older than this with no one to claim it is a finding. */
-export const STRANDED_TODO_AGING_MS = 30 * 60 * 1000;
+const STRANDED_TODO_AGING_MS = 30 * 60 * 1000;
 
 /**
  * The stranded-`todo` findings the workflow pass reports.
@@ -570,28 +546,6 @@ export function wakeCommand(input = {}) {
 }
 
 /**
- * What the scheduler spawns for one **continue** turn.
- *
- * A continue turn is not a card wake: it has no card, no project identity and
- * no session to resume. So it always takes the agent kind's built-in headless form.
- * `TP_NODE` is carried so a process this turn starts finds the interpreter the
- * scheduler is running on, rather than betting on `node` being on a minimal
- * launchd/cron `PATH`.
- *
- * @param {{actorKind: string, prompt: string, cwd?: string|null, nodePath?: string|null}} input
- * @returns {{command: string, args: string[], env: Record<string,string>, cwd: string|null, via: "direct"}}
- */
-export function planContinueInvocation(input = {}) {
-  const prompt = String(input.prompt ?? "");
-  const cwd = input.cwd ?? null;
-  const env = {};
-  if (input.nodePath !== undefined && input.nodePath !== null && String(input.nodePath) !== "") {
-    env.TP_NODE = String(input.nodePath);
-  }
-  return { ...wakeCommand({ actorKind: input.actorKind, prompt }), env, cwd, via: "direct" };
-}
-
-/**
  * The fresh handoff handed to a woken worker — bounded so a wake never carries
  * an unbounded context. It names the card, the attribution flags every write
  * should carry, and the compliant next step (triage, read, work, report).
@@ -600,17 +554,17 @@ export function planContinueInvocation(input = {}) {
  * in a separate planner process: the worker is the only process that has
  * already read the card when the answer is cheap. The worker does **not**
  * promote or split: a card with several independent deliverables becomes an
- * agent `question` comment to the project session, which decides the split
+ * agent `question` comment to the director, which decides the split
  * (a scope expansion is E1 for the human). A card with one deliverable
  * proceeds untouched.
  *
  * Sizing is by deliverable, not by layer: one change's core, CLI, web, docs and
  * fixture updates are one card. A child that needs a sibling's unmerged commit,
  * hands its red suite to a sibling, or owes a follow-up cleanup card is
- * mis-sized, and the project session regroups it.
+ * mis-sized, and the director regroups it.
  *
  * The handoff names the task's **process directory** (`.meerkat/<identifier>/`),
- * relative to the project session's cwd. `card.md` is the loop's authoritative
+ * relative to the project cwd. `card.md` is the loop's authoritative
  * export of the card; it is read-only, and every other process file — notes,
  * logs, evidence, downloaded attachments — belongs in the same directory. The
  * board still owns no directory (O3): this is the loop's convention under the
@@ -620,7 +574,7 @@ export function planContinueInvocation(input = {}) {
  * `decisionPolicyPath`) append the role layer; without them the text is the
  * pre-roles handoff, byte for byte.
  *
- * @param {{card?: object, agent: string, actorKind: string, sessionId?: string|null, review?: boolean, standalone?: boolean, role?: object|null, roleWorkflowPath?: string|null, selfCheckPath?: string|null, decisionPolicyPath?: string|null}} input
+ * @param {{card?: object, agent: string, actorKind: string, sessionId?: string|null, role?: object|null, roleWorkflowPath?: string|null, selfCheckPath?: string|null, decisionPolicyPath?: string|null}} input
  * @returns {string}
  */
 export function buildHandoff(input) {
@@ -648,19 +602,14 @@ export function buildHandoff(input) {
         : "stop at in_review — the loop dispatches an independent reviewer and a human accepts to done.";
   const brief = cardFileRel(ref);
   const processDir = cardDirRel(ref);
-  const standalone = input.standalone === true;
   const lines = [
-    standalone
-      ? `You are the worker for the ${project} project — one card: ${ref}. This is the card's own worker session; the loop holds its claim.`
-      : `You are a worker subagent of the ${project} project session — one card: ${ref}.`,
+    `You are the worker for the ${project} project — one card: ${ref}. This is the card's own worker session; the loop holds its claim.`,
     `Title: ${title}`,
     `Task brief: ${brief} — exported by the loop; read it first, it is authoritative for this card.`,
     "The brief was exported just before the claim, so its status/assignee may lag one step; the loop already holds the claim.",
     `Never edit ${brief}: the loop overwrites it from the board. Put your process files (notes, logs, evidence, report drafts) under ${processDir}/.`,
     `Download attachments into that directory: taskctl attachment list ${ref} --json, then taskctl attachment download <attachment-id> --out ${processDir}/<filename>.`,
-    standalone
-      ? "Your working directory is this card's workspace; never touch another project's paths."
-      : "Your working directory is this project's directory; never touch another project's paths.",
+    "Your working directory is this card's workspace; never touch another project's paths.",
     "The loop already claimed this card for you: do not claim it again — heartbeat it to keep the claim.",
     "",
     `Flags (substitute <flags>): ${flags}`,
@@ -670,7 +619,7 @@ export function buildHandoff(input) {
     `  taskctl issue get ${ref} --json <flags>    # live status, version, acceptance snapshot, meta`,
     "  Several deliverables, or layers of one change? Do not promote or split yourself.",
     "  Add an agent question naming the pieces, keep the card in_progress, and stop. The",
-    "  project session decides; a scope expansion is E1 and goes to the human.",
+    "  director decides; a scope expansion is E1 and goes to the human.",
     `    taskctl comment add ${ref} --kind question --body "..." <flags>`,
     "    meta.epic_triage=off: do not promote; record the split question in a comment.",
     "",
@@ -678,21 +627,21 @@ export function buildHandoff(input) {
     "  `acceptance` in issue get --json is the FROZEN baseline; meta.acceptance is only",
     "  the seed it was copied from. Work to the snapshot; append, never replace or remove.",
     "  Snapshot and meta both empty (not an epic): a mechanical derivation may be",
-    "  pre-authorized by the project session. If it was not, add an agent question",
+    "  pre-authorized in this handoff. If it was not, add an agent question",
     "  comment and stop. Changing an existing acceptance item is E2 and goes to the",
-    "  project session/human.",
+    "  director/human.",
     `    taskctl issue update <card> --acceptance "..." --acceptance "..." --meta acceptance_derived=yes <flags>`,
     `    taskctl comment add <card> --kind note --body "acceptance list derived at claim (pre-authorized): 1) ..." <flags>`,
     `  Comments: taskctl comment list <card> --limit 200 --json <flags>`,
     "  Too thin to yield checkable items, or blocked on a decision? Do not enter awaiting",
     "  yourself: add an agent question comment on the card, keep it in_progress, and stop.",
-    "  The loop hands it to the project session, which answers or escalates E1-E5.",
+    "  The supervisor hands it to the director, which answers or escalates E1-E5.",
     `    taskctl comment add <card> --kind question --body "Decision needed: ..." <flags>`,
     "  Then stop. On re-claim read every comment after your last question — a human",
-    "  comment, or the project session's `decision:` note. Any human comment auto-resumes",
+    "  comment, or the director's `note`. Any human comment auto-resumes",
     "  awaiting; approve/reject is its content, not its kind. An incomplete answer is not",
     "  consent — ask again. A rejection means revise or stop; never re-submit it.",
-    "  Review asks for more: append, never replace. Ask the project session, do not migrate.",
+    "  Review asks for more: append, never replace. Ask the director, do not migrate.",
     "",
     `Keep the claim alive (<=10 minutes): taskctl issue heartbeat <card> <flags>`,
     `Deliver with a report (a draft may live under ${processDir}/report.md): taskctl issue deliver <card> --report-file - <flags>`,
@@ -747,7 +696,7 @@ export function buildReviewHandoff(input) {
     : null;
   const originalBrief = originalRef === null ? null : cardFileRel(originalRef);
   const lines = [
-    `You are a reviewer subagent of the ${project} project session — one delivered card.`,
+    `You are the reviewer for the ${project} project — one delivered card.`,
     `Review card: ${ref}`,
     `Card under review: ${original} (round ${round})`,
     `Review brief: ${brief} — exported by the loop; read it after the live check, it is authoritative.`,
@@ -820,10 +769,10 @@ export function buildReviewHandoff(input) {
 }
 
 /**
- * The prompt the project session gets for the **question lane**.
+ * The prompt the director lane gets for the **question lane**.
  *
  * A worker that cannot decide writes an agent `question` comment and stops, and
- * the loop hands the question here. The project session answers with a `note` and
+ * the loop hands the question here. The director answers with a `note` and
  * releases the card to the queue, or escalates E1–E5 to the human. It never
  * spawns a subagent for this row and never moves a card to `done`.
  *
@@ -831,7 +780,7 @@ export function buildReviewHandoff(input) {
  * `target_dir`, `agent`, `question_id`, `question`, `asked_at`.
  *
  * @param {object[]} rows
- * @param {{actorKind?: string, decisionPolicyPath?: string|null}} [input]
+ * @param {{actorKind?: string, decisionPolicyPath?: string|null, routing?: string|null}} [input]
  * @returns {string}
  */
 export function buildQuestionPrompt(rows, input = {}) {
@@ -840,12 +789,26 @@ export function buildQuestionPrompt(rows, input = {}) {
   const project = String(first.project ?? "the project");
   const dir = String(first.target_dir ?? "");
   const lines = [
-    `You are the project session for ${project} at ${dir}.`,
-    "A worker stopped and asked a question. Answer it here — do not spawn a subagent for this row.",
+    `You are the director for ${project} at ${dir}.`,
+    "These rows need a decision. Answer or route them here — never spawn a subagent,",
+    "never claim a card and never move one to done.",
     "",
   ];
   rows.forEach((row, index) => {
     const flags = `--agent ${row.agent} --actor-kind ${actorKind}`;
+    if (row.route === true) {
+      const title = row.title ? ` — ${row.title}` : "";
+      const since = row.updated_at ? ` (unowned since ${row.updated_at})` : "";
+      lines.push(
+        `${index + 1}) ${row.card}${title} — unowned todo${since}:`,
+        `   Assign exactly one role from the routing table:`,
+        `   taskctl issue assign ${row.card} --assignee <role> ${flags}`,
+        "   A shape the table does not cover goes to the Worker role. Never invent a role",
+        "   name, never claim the card, and leave a fresh or ambiguous card for its creator.",
+        "",
+      );
+      return;
+    }
     const asked = row.asked_at ? ` (asked ${row.asked_at})` : "";
     lines.push(`${index + 1}) ${row.card} — question ${row.question_id}${asked}:`);
     for (const line of String(row.question ?? "").split("\n")) lines.push(`   ${line}`);
@@ -869,196 +832,9 @@ export function buildQuestionPrompt(rows, input = {}) {
   if (typeof input.decisionPolicyPath === "string" && input.decisionPolicyPath !== "") {
     lines.push("", `Decision policy: ${input.decisionPolicyPath}`);
   }
+  if (typeof input.routing === "string" && input.routing.trim() !== "") {
+    lines.push("", "## Routing table", input.routing.trim());
+  }
   return lines.join("\n");
 }
 
-/**
- * The bounded prompt for the scheduler's periodic **continue** turn.
- *
- * The loop's deterministic work is no longer scheduled as its own units: this
- * turn is where poll, patrol and workflow are invoked. The prompt is therefore
- * self-contained — absolute entry paths, the order to run them in, and the
- * board rules that must not be broken — because a headless agent may run it
- * without the loop skill loaded.
- *
- * The prompt begins with `/meerkat-loop`, the loop skill's command-only slash
- * command (`disable-model-invocation: true`). An agent kind that expands slash commands
- * loads the skill first; one that does not still receives the whole turn,
- * because the body stays self-contained. There is no subcommand and no
- * `$ARGUMENTS` placeholder.
- *
- * Order is **patrol → workflow → poll**: the workflow pass dispatches a review
- * card, and the poll that follows in the same turn can enqueue its reviewer
- * immediately; polling first would delay that review by a whole cadence.
- *
- * Poll only **claims and enqueues**. The handoff is taken from the queue by a
- * resident *project session* — one per target directory — which spawns the
- * worker/reviewer subagent with the project directory as cwd. The control turn
- * never spawns a subagent and never works a card itself.
- *
- * When no session pool is resident, `includePoll: false` yields the fallback:
- * patrol and workflow only, no claim, dispatch paused. It names no card and no
- * project directory either way — a continue turn is not a worker wake, and the
- * board holds no project directory to name.
- *
- * @param {{
- *   actorKind?: string,
- *   agent?: string,
- *   cliCommand?: string,
- *   continueIntervalSeconds?: number,
- *   includePoll?: boolean,
- *   openedBy?: "human"|"supervisor",
- *   decisionPolicy?: {path?: string|null, text?: string|null}|null,
- *   ownership?: {path?: string|null, text?: string|null}|null,
- *   owners?: string[],
- * }} [input]
- * @returns {string}
- */
-export function buildContinuePrompt(input = {}) {
-  const agent = String(input.agent ?? "agent");
-  const actorKind = String(input.actorKind ?? "claude");
-  const includePoll = input.includePoll !== false;
-  // The one control-turn template, two drivers. `supervised` is the headless
-  // scheduler (the human reads the board); `manual` is the live session (the
-  // human is in the conversation, so the question front-end is in-chat while the
-  // board comment remains the record).
-  const mode = input.mode === "manual" ? "manual" : "supervised";
-  const minutes = Math.max(
-    1,
-    Math.round((input.continueIntervalSeconds ?? DEFAULT_CONTINUE_SECONDS) / 60),
-  );
-  // The loop ships with the toolkit now; the turn names the command, not a script
-  // path inside a copied body. A caller that knows the runtime tree passes a
-  // `cliCommand` (interpreter + CLI entry + the loop's state flags), so a headless
-  // turn does not depend on `taskctl` happening to be on the unit's PATH. The
-  // interpreter must be the bare name `node`: the control lane's allowlist
-  // (`Bash(node *)`, `Bash(taskctl *)`) matches the first token, so an absolute
-  // interpreter path would be refused and every pass would fail unrun.
-  const command = typeof input.cliCommand === "string" && input.cliCommand.trim() !== ""
-    ? input.cliCommand.trim()
-    : "taskctl";
-  // Board reads and writes need a *different* prefix: the pass command carries the
-  // loop's own flags (`--log`, `--state`, …), which `issue`/`comment`/`relation` do
-  // not accept. A caller that knows the runtime tree says what that prefix is.
-  const board = typeof input.boardCommand === "string" && input.boardCommand.trim() !== ""
-    ? input.boardCommand.trim()
-    : "taskctl";
-  const run = (pass) => `${command} loop ${pass}`;
-
-  const lines = [
-    `${LOOP_SKILL_COMMAND} Continue — Meerkat TaskPanel loop, judgment turn (mode: ${mode}).`,
-    "No card and no project directory: this is the loop's periodic turn, not a worker wake.",
-    "",
-    "Run in order, each one pass:",
-    `  1) ${run("patrol")}   # notify-only SLA; never moves a card`,
-    `  2) ${run("workflow")}   # apply the board's workflow plan (issue reconcile --workflow)`,
-  ];
-
-  // The bounded routing fallback. Creation routes a team card, but a card that
-  // still lands unowned (a role-less create, a human's card, a role name outside
-  // the scan set) must not sit forever. The control turn names the roles here
-  // because it cannot read the guide: its lane allows `taskctl` and `node`, not
-  // `Read`. Only a card past the window is touched — a fresh one is still the
-  // creator's to route.
-  const owners = Array.isArray(input.owners)
-    ? input.owners
-        .filter((name) => typeof name === "string" && name.trim() !== "")
-        .map((name) => name.trim())
-    : [];
-  const routePool = includePoll && input.ownership != null && owners.length > 0;
-  if (routePool) {
-    lines.push(
-      `  3) ${board} issue list --status todo --json   # route a card left unowned`,
-      `     A card with no assignee over 30 minutes: assign the role the guide names —`,
-      `     one of ${owners.join(", ")} — with ${board} issue assign <ref> --assignee <role>.`,
-      "     Not a claim; leave a fresh or ambiguous card. Never invent a role name.",
-    );
-  }
-  if (includePoll) {
-    lines.push(
-      `  ${routePool ? "4" : "3"}) ${run("poll")}   # scan → atomic claim (as ${agent}) → enqueue the handoff`,
-      "",
-      "Poll only claims and enqueues: it never spawns a worker or reviewer. A resident",
-      "project session takes the handoff from the queue and spawns the subagent in the",
-      "project directory. Do not claim a card outside poll, and do not work one yourself.",
-      "With a resident pool, poll also enqueues each unanswered agent question to the",
-      "project session (the question lane). Do not answer it again in this turn.",
-    );
-  } else {
-    lines.push(
-      "",
-      "No resident session pool is running, so this turn claims no card: poll is skipped",
-      "and worker/reviewer dispatch is paused. Let review cards accumulate — the pool",
-      "claims them once it is back.",
-    );
-  }
-
-  // The decision ladder. A subagent never decides an unauthorized question: it
-  // records an agent `question` comment on an in_progress card and stops. The
-  // main session decides what it can (operational or plan/acceptance-internal)
-  // with a note, or escalates E1-E5 to the human via `awaiting`. Any human
-  // comment resumes an awaiting card; the board does not read it, and whether it
-  // is a complete decision is judged from its content by the resumed worker. The
-  // loop's own answer is never a decision kind and never `--as-human` (except
-  // when recording what the human said in a human-opened conversation).
-  const openedBy = input.openedBy === "human" ? "human" : "supervisor";
-  const inChat = mode === "manual" || openedBy === "human";
-  lines.push(
-    "",
-    "Questions and decision rights (before poll):",
-    "  Subagents never decide an unauthorized question: they write an agent `question`",
-    "  comment on an in_progress card and stop. Read those first:",
-    `    ${board} issue list --status in_progress --json`,
-    `    ${board} comment list <ref> --kind question --json`,
-    `    ${board} comment list <ref> --limit 20 --json   # a later human comment is the answer`,
-    "  Then read human questions:",
-    `    ${board} issue list --status awaiting --json`,
-    `    ${board} comment list <ref> --kind question --json`,
-    "  For an agent question you can decide (operational or within the plan/acceptance):",
-    `    ${board} comment add <ref> --kind note --body "decision: ... (why)"`,
-    `    ${board} issue move <ref> todo        # re-claim with the answer in the trail`,
-    "  Your own note does NOT resume an awaiting card; the move does.",
-    "  A HUMAN comment of any kind resumes it automatically — the board does not read it.",
-    "  For E1-E5 (scope, acceptance, design/aesthetic, security/data, architecture) or",
-    "  anything you cannot decide, do not answer: escalate with the question format:",
-    `    ${board} issue move <ref> awaiting --awaiting-reason E1..E5 --question "Decision needed: ...; Options: ...; Recommendation: ...; Why the main session cannot decide: ..."`,
-    "  Decision rounds — one round per card:",
-    ...renderDecisionRoundPrinciples().map((line) => `  ${line}`),
-    '  Answer every authorized item in ONE note ("decision: Q1 ...; Q2 ..."), then move the',
-    "  card once. Escalate only E1-E5 items in ONE new awaiting question string, numbered, with",
-    "  its E-code, recommendation and `Verified already:` evidence.",
-    "  An incomplete answer is not consent: ask the next round as one new string. Only a human comment resumes awaiting.",
-    "  Nothing acts while any frontier item is open.",
-    "  Never write decision/confirm/change for your own decision.",
-    "  Approve/reject/direction come from the human comment's content. A rejection is an",
-    "  answer: apply its direction; never re-dispatch the rejected work unchanged.",
-    "  If the answer is incomplete or ambiguous, the resumed worker asks; move the card",
-    "  back to awaiting with a NEW question (QUESTION_REQUIRED forces one).",
-    inChat
-      ? "  When the human answers in this conversation, record it with --as-human; any kind re-queues the card."
-      : "  The human answers on the board with a comment; any kind re-queues it automatically.",
-    ...(mode === "manual"
-      ? [
-          "  You are the live control session. Ask the human here when a question needs a",
-          `  decision, then record their answer with \`${board} comment add <ref> --as-human\`.`,
-          "  The board comment is authoritative; the in-session question is only the front-end.",
-          "  Ask every waiting card in one message — one numbered block per card; each block is one question string.",
-          "  Recompute after the answers and ask only the newly unblocked round.",
-        ]
-      : []),
-    "  A human comment after an agent question on an in_progress card is an answer too:",
-    "  act on it and move the card to todo (or reattach a live worker).",
-    "  Do not answer a question a later human comment already answered.",
-    ...(input.decisionPolicy ? ["", ...renderDecisionPolicySummary(input.decisionPolicy)] : []),
-    ...(input.ownership ? ["", ...renderOwnershipSummary(input.ownership)] : []),
-    "",
-    "Rules:",
-    "- Never move a card to done. in_review → done is the board's acceptance, applied by the loop as taskd.",
-    "- A reviewer moves nothing; it delivers a VERDICT report on its review card.",
-    "- Stop work at in_review: deliver a report, do not self-accept.",
-    "- Keep this turn bounded: hand off and return; do not wait for a worker.",
-    "- At the concurrency cap, leave the card for the next turn.",
-    `- Actor kind: ${actorKind}. This turn repeats every ${minutes} minute${minutes === 1 ? "" : "s"}.`,
-  );
-  return lines.join("\n");
-}

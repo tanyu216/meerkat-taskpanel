@@ -7,8 +7,8 @@
 #
 #   * `meerkat` — the board. Every agent kind installs it (`install_skill`). It was
 #     `meerkat-taskpanel` before the rename; `install_skill` migrates a legacy directory.
-#   * `meerkat-loop` — the external supervisor. The three non-OpenClaw agent kinds install
-#     it (`install_loop_skill` + `install_scheduling`); **OpenClaw does not**, because the
+#   * `meerkat-director` — the external supervisor. The three non-OpenClaw agent kinds install
+#     it (`install_director_skill` + `install_scheduling`); **OpenClaw does not**, because the
 #     openclaw-team framework already ships a per-agent poll and a `task-patrol`, which
 #     is the same design (its cadence is the framework's own AUTOMATIONS.md, not a
 #     number restated here) — see `scripts/install/openclaw.sh` and docs/scheduling.md.
@@ -206,11 +206,14 @@ resolve_agent_cli_dir() {
   esac
 }
 
-# board_skill_name / loop_skill_name / setup_skill_name — the skills this installer
+# board_skill_name / director_skill_name / setup_skill_name — the skills this installer
 # distributes. The setup skill is copied only for the Claude bundle (see claude.sh).
 board_skill_name() { printf '%s\n' "meerkat"; }
-loop_skill_name() { printf '%s\n' "meerkat-loop"; }
+director_skill_name() { printf '%s\n' "meerkat-director"; }
 setup_skill_name() { printf '%s\n' "setup-meerkat"; }
+
+# role_skill_names — the five standalone role skills, installed beside the director.
+role_skill_names() { printf '%s\n' jobs linus turing reviewer worker; }
 
 # legacy_board_skill_name <skill> — the directory the board skill had before it was
 # renamed to `meerkat`. Empty for the other two skills, which were never renamed.
@@ -300,8 +303,8 @@ export_tp_env() {
   # from. Agent-only installs leave the override unset and keep the old behavior.
   TP_REPO="${MEERKAT_TASKPANEL_REPO:-$(repo_root)}"
   TP_SHIM="$(target_home)/$agent_dir/bin/taskctl"
-  # The shim's directory carries every `taskctl` a unit's child runs (the control
-  # turn's board reads, a worker's card operations, a reviewer's evidence). It is
+  # The shim's directory carries every `taskctl` a unit's child runs (the
+  # supervisor's passes, a worker's card operations, a reviewer's evidence). It is
   # derived, never hard-coded, so the unit PATH and the shim cannot disagree.
   TP_SHIM_DIR="${TP_SHIM%/*}"
   TP_HOOK="$(target_home)/$agent_dir/hooks/meerkat-taskpanel-session-start.sh"
@@ -334,8 +337,20 @@ export_tp_env() {
   # renders as `KEY=`, which the supervisor reads as "not configured".
   TP_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-yes}"
   TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-Reviewer}"
+  # The initial scan set: the five role skills plus the installing agent's own
+  # identity. Discovery adds every installed role skill regardless; this key is
+  # what makes a custom agent name (one with no role skill) scannable from the
+  # first tick. An existing value is never overwritten without --force.
+  TP_SCAN_AGENTS="${MEERKAT_TASKPANEL_AGENTS:-}"
+  if [ -z "$TP_SCAN_AGENTS" ]; then
+    TP_SCAN_AGENTS="Jobs,Linus,Turing,Worker"
+    case ",$TP_SCAN_AGENTS," in
+      *",$TP_AGENT,"*) ;;
+      *) TP_SCAN_AGENTS="$TP_SCAN_AGENTS,$TP_AGENT" ;;
+    esac
+  fi
   # The scheduler's two clocks. Ping only prunes dead worker pids; continue is
-  # the bounded `Continue` judgment turn that runs poll/patrol/workflow.
+  # the tick that runs patrol -> workflow -> poll in-process.
   TP_PING_INTERVAL="${MEERKAT_TASKPANEL_PING_INTERVAL:-60}"
   TP_CONTINUE_INTERVAL="${MEERKAT_TASKPANEL_CONTINUE_INTERVAL:-600}"
   TP_CONTINUE="${MEERKAT_TASKPANEL_CONTINUE:-yes}"
@@ -420,7 +435,7 @@ export_tp_env() {
   fi
 
   export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK
-  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_STATE_DIR TP_CLI TP_LOG TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED
+  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_STATE_DIR TP_CLI TP_LOG TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED TP_SCAN_AGENTS
   export TP_CONFIG_DIR TP_LEGACY_ENV
   export TP_RECOVER_STALE TP_WORKFLOW TP_REVIEWER
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
@@ -610,12 +625,12 @@ supervisor_actor_kinds_value() {
           ;;
         openclaw)
           IFS="$old_ifs"
-          echo "--supervisor-actor-kinds openclaw: OpenClaw has no meerkat-loop supervisor to enable (it runs openclaw-team's own poll/patrol — see docs/scheduling.md)" >&2
+          echo "--supervisor-actor-kinds openclaw: OpenClaw has no meerkat-director supervisor to enable (it runs openclaw-team's own poll/patrol — see docs/scheduling.md)" >&2
           return 1
           ;;
         server)
           IFS="$old_ifs"
-          echo "--supervisor-actor-kinds server: the server target has no meerkat-loop supervisor (the taskd guard is separate)" >&2
+          echo "--supervisor-actor-kinds server: the server target has no meerkat-director supervisor (the taskd guard is separate)" >&2
           return 1
           ;;
         *)
@@ -636,6 +651,14 @@ supervisor_actor_kinds_value() {
           ;;
       esac
     done
+    if [ "$action" = "enable" ]; then
+      kept_count=0
+      for kind in $kept; do kept_count=$((kept_count + 1)); done
+      if [ "$kept_count" -gt 1 ]; then
+        echo "install.sh: supervisor: --supervisor-actor-kinds names ONE primary kind (got '${kept# }'); one supervisor holds every kind, so role placement — not a second supervisor — is how another platform joins" >&2
+        return 1
+      fi
+    fi
     [ -n "$kept" ] && printf ' %s ' "${kept# }"
     return 0
   fi
@@ -752,7 +775,7 @@ supervisor_restart_if_changed() {
 # export_tp_env first.
 #
 # The templates are this installer's own (`scripts/install/templates/`), the one place
-# they live: the loop skill carries decisions, not deployment files.
+# they live: the director skill carries decisions, not deployment files.
 install_scheduling() {
   # The loop's state directory (queue, ledger, locks, status files). It used to be
   # created as a side effect of copying the body; now nothing else makes it.
@@ -968,8 +991,10 @@ seed_env_file() {
 ensure_agent_config_keys() {
   # The loop's scan set. The scheduling units deliberately carry no `--agent`
   # (a flag would outrank this key), so this is the identity the loop runs as.
-  # setup-meerkat replaces it with the team's role names; never clobber one here.
-  ensure_env_key "MEERKAT_TASKPANEL_AGENTS" "$TP_AGENT"
+  # It is seeded with the standard role names plus the installing identity;
+  # discovered role skills are added by the supervisor, and an existing value is
+  # never clobbered here.
+  ensure_env_key "MEERKAT_TASKPANEL_AGENTS" "$TP_SCAN_AGENTS"
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
   ensure_env_key "MEERKAT_TASKPANEL_RECOVER_STALE" "$TP_RECOVER_STALE"
   ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
@@ -1029,7 +1054,7 @@ migrate_legacy_agent_config() {
 }
 
 # write_agent_config — persist the per-kind config the loop and the board path
-# read. Requires export_tp_env first. The template belongs to the loop skill: the
+# read. Requires export_tp_env first. The template belongs to the director skill: the
 # loop is its primary reader.
 #
 # The workflow keys are added with `ensure_env_key` as well, so an install that
@@ -1229,12 +1254,32 @@ install_skill() {
   migrate_legacy_skill "$agent_dir" "$label" "$skill" "$dest" "$link"
 }
 
-# install_loop_skill <agent_dir> <label>
-#   The loop skill, for the agent kinds that run an external supervisor. Always a copy (O6);
-#   OpenClaw never calls this — its framework already ships an equivalent supervisor, so
-#   a second one would only race the first for the same cards.
-install_loop_skill() {
-  install_skill "$1" "$2" "$(loop_skill_name)" copy
+# install_director_skill <agent_dir> <label>
+#   The director and the five role skills, for the agent kinds that run an external
+#   supervisor. Always copies (O6); OpenClaw never calls this — its framework already ships
+#   an equivalent supervisor, so a second one would only race the first for the same cards.
+install_director_skill() {
+  install_skill "$1" "$2" "$(director_skill_name)" copy
+  for role in $(role_skill_names); do
+    install_skill "$1" "$2" "$role" copy
+  done
+  install_native_agents "$2"
+}
+
+# install_native_agents <label>
+#   Derive each role's native agent definition from the same role.json the
+#   supervisor reads (scripts/install/lib/native-agents.mjs). A differing file
+#   without the generated marker is reported, never clobbered without --force.
+install_native_agents() {
+  label="$1"
+  dry_flag=""
+  [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ] && dry_flag="--dry-run"
+  force_flag=""
+  [ -n "${MEERKAT_TASKPANEL_FORCE:-}" ] && force_flag="--force"
+  node "$(script_dir)/lib/native-agents.mjs" --kind "$label" --home "$(target_home)" $dry_flag $force_flag || {
+    echo "$label: native agent definitions not refreshed (see above)" >&2
+    return 0
+  }
 }
 
 # ---------------------------------------------------------------------------

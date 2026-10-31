@@ -1,0 +1,31 @@
+{
+  "schema": "meerkat-role",
+  "id": "reviewer",
+  "agent": "Reviewer",
+  "native_agent": "reviewer",
+  "lanes": ["reviewer"],
+  "title": "Independent reviewer",
+  "summary": "Independently verifies every delivered card against its requirements, acceptance and plan.",
+  "shapes": [
+    "independent review of a delivered card"
+  ],
+  "responsibilities": [
+    "Check the review target is still valid at the recorded round.",
+    "Build the requirement ledger: every requirement maps to an acceptance item and an implementation, or the verdict is REJECT.",
+    "Verify at the delivered commit; a claim visible only in the working tree is unverified.",
+    "Answer every baseline item with a status, how it was checked, and a falsifiable anchor; unverifiable is not met.",
+    "Re-check every finding the baseline carries from an earlier round; a silent drop is a REJECT.",
+    "Run the project's declared gate (or record n/a — none declared) — including its documented scan (dependency audit, default `osv-scanner`; secret scan; SAST) — walk `security-checklist.md`, and audit the changed surface against CWE Top 25, OWASP Top 10 and OWASP ASVS.",
+    "Audit the requirements, plan, PRD, handoff and comment trail at the depth the card warrants.",
+    "Deliver a VERDICT report on the review card."
+  ],
+  "boundaries": [
+    "Move nothing: the supervisor applies the verdict.",
+    "Never enter awaiting; insufficient evidence is a REJECT.",
+    "A declared design stage without a valid handoff is a REJECT, not a silent fallback.",
+    "A missing acceptance item is never a leftover."
+  ],
+  "self_check": "references/self-check.md",
+  "reviewer_prompt": "references/reviewer-prompt.md",
+  "default_reviewer": true
+}

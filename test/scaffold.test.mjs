@@ -141,7 +141,16 @@ describe("skill definitions", () => {
     assert.equal(ok, true, results.filter((result) => !result.ok).map((result) => result.error).join("\n"));
     assert.deepEqual(
       results.map((result) => result.name).sort(),
-      ["meerkat", "meerkat-loop", "setup-meerkat"],
+      [
+        "meerkat",
+        "meerkat-director",
+        "setup-meerkat",
+        "jobs",
+        "linus",
+        "turing",
+        "reviewer",
+        "worker",
+      ].sort(),
     );
     for (const result of results) {
       assert.ok(
@@ -230,7 +239,7 @@ describe("install.sh", () => {
     assert.equal(run.status, 0, run.stderr);
     for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
       // Match the whole destination line, not a substring: `skills/meerkat` is a prefix
-      // of `skills/meerkat-loop`, so a bare `includes` would pass on the loop alone.
+      // of `skills/meerkat-director`, so a bare `includes` would pass on the director alone.
       const dest = join(fakeHome, agentDir, "skills", "meerkat");
       assert.ok(
         run.stdout.split("\n").some((line) => line.endsWith(dest)),

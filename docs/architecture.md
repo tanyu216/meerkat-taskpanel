@@ -180,7 +180,8 @@ meerkat-taskpanel/
 ├── web/                # the board: Vue 3 + Vite → web/dist (the hosted root taskd serves)
 │   ├── src/lib/        #   pure browser helpers, incl. board-enums.js (the mirrored vocabularies)
 │   └── .vendor/npm-cache/  # the committed offline cache the image's webbuild stage installs from
-├── skills/             # the authored board skill, loop docs and the installer skill — never generated
+├── skills/             # authored skills — never generated: meerkat (board), meerkat-director,
+│                       #   jobs/linus/turing/reviewer/worker (role skills), setup-meerkat
 ├── scripts/            # build / install / release / verify / security checkers
 ├── docker/             # Dockerfile, compose files, verify-in-container.sh, profiles/
 ├── monitoring/         # the metrics sidecar (Prometheus / OTLP)

@@ -32,11 +32,11 @@ Three agent kinds are not carriers. Codex and OpenClaw install the same
 itself in the canonical `package.json` itself (its `pi` field) — a row for any would only
 restate one above.
 
-There is **no loop version**. `meerkat-loop` is distributed by `install.sh` from
-`skills/meerkat-loop/` rather than as a plugin, and it declares no version of its own. Its
-two former carriers were the `plugins/loop` manifests, which this repository no longer
-ships — so ruling O4 (independent versions) is retired: the loop moves with the board, in
-one package at one `VERSION`, and drives the `taskctl` installed beside it.
+There is **no loop version**. `meerkat-director` and the five role skills are distributed by
+`install.sh` from `skills/` rather than as plugins, and they declare no version of their own.
+Their former carrier was the `plugins/loop` manifest, which this repository no longer ships —
+so ruling O4 (independent versions) is retired: the supervisor moves with the board, in one
+package at one `VERSION`, and drives the `taskctl` installed beside it.
 
 **Bump them with one command.** Editing these files by hand is exactly how drift starts;
 `scripts/release/bump.mjs` moves the whole group at once:
@@ -439,12 +439,12 @@ supported answer.
 
 | Plugin | Source | Carries |
 |---|---|---|
-| `meerkat-taskpanel` | `./` | all three skills — the repository's one `skills/` tree, read in place |
+| `meerkat-taskpanel` | `./` | the board skill, the director and the five role skills — the repository's one `skills/` tree, read in place |
 
 The loop used to be a second entry, sourced at a `plugins/loop` bundle that carried the loop
-skill and nothing else so it could be installed alone. That bundle is gone: `meerkat-loop`
-is installed by `install.sh --target claude|codex|pi`, and a marketplace install of the board
-brings the loop with it (the shared tree is not filtered per entry).
+skill and nothing else so it could be installed alone. That bundle is gone: the director and
+the role skills are installed by `install.sh --target claude|codex|pi`, and a marketplace
+install of the board brings the shared tree with it (it is not filtered per entry).
 
 ```bash
 # consumer: register this repository as the marketplace
@@ -499,7 +499,7 @@ The board's Pi package **is the repository's own `package.json`**: its `pi` obje
 `skills` (the one tree) and `extensions` (the module in `.pi/extensions/` that re-registers
 that directory at runtime). Pi reads `extensions`, `skills`, `prompts` and `themes` from a
 package's `pi` object, so no separate Pi package or copy of the skill tree is published. The
-loop reaches Pi through `install.sh --target pi` (`~/.agents/skills/meerkat-loop`), like on
+supervisor and roles reach Pi through `install.sh --target pi` (`~/.agents/skills/`), like on
 claude and codex.
 
 ```bash

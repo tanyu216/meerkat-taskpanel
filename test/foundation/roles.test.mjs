@@ -1,20 +1,14 @@
 /**
- * The optional team-role layer (`src/foundation/roles.mjs`).
+ * The team-role layer (`src/foundation/roles.mjs`) — discovery by installed skill.
  *
- * Roles are authored by `setup-meerkat`, never shipped by `install.sh`. The loader
- * is therefore deliberately fail-soft: a missing manifest means "no role layer"
- * (today's behaviour), while a broken manifest must warn and fall back rather
- * than wedge a poll or a wake.
+ * A role is a skill: `<kind>/skills/<role>/role.json` carries a schema marker and
+ * references that must stay inside the skill directory. The supervisor scans the
+ * kinds in preference order and records where each role is installed; discovery
+ * is fail-soft, so a malformed skill warns and is skipped rather than wedging a
+ * poll or a wake.
  *
- * Precedence is whole-manifest: explicit `--roles-dir` > project
- * `.meerkat/roles` > the loop skill's `roles/`.
- * Project roles win as a set; they are not merged role-by-role with the global
- * set. Workflow paths are resolved inside the chosen root and may not escape it,
- * including through a symlink.
- *
- * The loop's own state directory is deliberately **not** a candidate: the
- * "deployed body" it once served no longer exists, and a role root there would be
- * silently shadowed by the skill's.
+ * Decision authority is the director skill's, never a role's and never an
+ * explicit roles directory's.
  */
 
 import assert from "node:assert/strict";
@@ -31,443 +25,300 @@ import { describe, it } from "node:test";
 
 import {
   loadRoles,
-  resolveRolesRoot,
+  renderRoutingTable,
+  roleVariant,
   selectReviewerRole,
   selectRole,
+  selectWorkerRole,
 } from "../../src/foundation/roles.mjs";
 
-/** A temp tree with the three candidate roots the loader knows about. */
+/** A temp home with claude/codex/pi skill trees. */
 function fixture() {
   const base = mkdtempSync(join(tmpdir(), "tp-roles-"));
-  const projectDir = join(base, "project");
-  const projectRoles = join(projectDir, ".meerkat", "roles");
-  const loopSkillDir = join(base, "loop-skill");
-  const loopRoles = join(loopSkillDir, "roles");
-  const stateDir = join(base, "state");
-  const stateRoles = join(stateDir, "roles");
-  const explicitDir = join(base, "explicit");
-  for (const dir of [projectRoles, loopRoles, stateRoles, explicitDir]) {
-    mkdirSync(dir, { recursive: true });
+  const home = join(base, "home");
+  const kinds = { claude: ".claude", codex: ".codex", pi: ".agents" };
+  for (const dir of Object.values(kinds)) {
+    mkdirSync(join(home, dir, "skills"), { recursive: true });
   }
-
   const write = (dir, rel, text) => {
     const path = join(dir, rel);
     mkdirSync(join(path, ".."), { recursive: true });
     writeFileSync(path, text, "utf8");
     return path;
   };
-
   const cleanup = () => rmSync(base, { recursive: true, force: true });
-  return {
-    base,
-    projectDir,
-    projectRoles,
-    loopSkillDir,
-    loopRoles,
-    stateDir,
-    stateRoles,
-    explicitDir,
-    write,
-    cleanup,
+  return { base, home, kinds, write, cleanup };
+}
+
+/** A role skill under one kind, with a valid role.json and SKILL.md. */
+function writeRole(f, kind, id, overrides = {}) {
+  const dir = join(f.home, f.kinds[kind], "skills", id);
+  mkdirSync(join(dir, "references"), { recursive: true });
+  writeFileSync(join(dir, "SKILL.md"), `# ${id}\n`, "utf8");
+  writeFileSync(join(dir, "references", "self-check.md"), "# check\n", "utf8");
+  const role = {
+    schema: "meerkat-role",
+    id,
+    agent: id[0].toUpperCase() + id.slice(1),
+    native_agent: id,
+    lanes: ["worker"],
+    title: id,
+    summary: `${id} role`,
+    shapes: [`${id} work`],
+    responsibilities: [],
+    boundaries: [],
+    self_check: "references/self-check.md",
+    ...overrides,
   };
+  writeFileSync(join(dir, "role.json"), JSON.stringify(role), "utf8");
+  return dir;
 }
 
-/** A valid manifest with one worker role and one reviewer role. */
-function manifest(overrides = {}) {
-  return JSON.stringify({
-    version: 1,
-    team: "standard",
-    default_reviewer: "reviewer",
-    roles: [
-      {
-        id: "jobs",
-        agent: "Jobs",
-        native_agent: "jobs",
-        lanes: ["worker"],
-        title: "Product design",
-        summary: "Product planning and design",
-        responsibilities: ["product brief"],
-        boundaries: ["Do not write production backend code."],
-        workflow: "jobs/workflow.md",
-        self_check: "jobs/self-check.md",
-      },
-      {
-        id: "reviewer",
-        agent: "Reviewer",
-        native_agent: "reviewer",
-        lanes: ["reviewer"],
-        title: "Independent reviewer",
-        summary: "Independent acceptance review",
-        responsibilities: ["verify acceptance"],
-        boundaries: ["Move nothing."],
-        workflow: "reviewer/workflow.md",
-        reviewer_prompt: "reviewer/reviewer-prompt.md",
-      },
-      ...(overrides.roles ?? []),
-    ],
-    ...Object.fromEntries(
-      Object.entries(overrides).filter(([key]) => key !== "roles"),
-    ),
-  });
+/** A director skill with a decision policy. */
+function writeDirector(f, kind, text = "# Decision policy\nsubagent → director → human\n") {
+  const dir = join(f.home, f.kinds[kind], "skills", "meerkat-director");
+  mkdirSync(join(dir, "references"), { recursive: true });
+  writeFileSync(join(dir, "SKILL.md"), "# director\n", "utf8");
+  writeFileSync(join(dir, "references", "decision-policy.md"), text, "utf8");
+  return dir;
 }
 
-/** Write the files a manifest names so path validation can pass. */
-function writeRoleFiles(f, dir, prefix = "") {
-  f.write(dir, join(prefix, "jobs", "workflow.md"), "# Jobs\n");
-  f.write(dir, join(prefix, "jobs", "self-check.md"), "# Jobs self-check\n");
-  f.write(dir, join(prefix, "reviewer", "workflow.md"), "# Reviewer\n");
-  f.write(dir, join(prefix, "reviewer", "reviewer-prompt.md"), "# Verdict first\n");
-}
-
-describe("resolveRolesRoot — whole-manifest precedence", () => {
-  it("prefers an explicit directory, then project, then the loop skill", () => {
+describe("loadRoles — discovery", () => {
+  it("returns no roles for a home with no role skills, without a warning", () => {
     const f = fixture();
     try {
-      writeRoleFiles(f, f.explicitDir);
-      writeRoleFiles(f, f.projectRoles);
-      writeRoleFiles(f, f.loopRoles);
-      f.write(f.explicitDir, "manifest.json", manifest());
-      f.write(f.projectRoles, "manifest.json", manifest({ team: "project" }));
-      f.write(f.loopRoles, "manifest.json", manifest({ team: "global" }));
-
-      assert.equal(
-        resolveRolesRoot({
-          explicitDir: f.explicitDir,
-          projectDir: f.projectDir,
-          loopSkillDir: f.loopSkillDir,
-        }).source,
-        "explicit",
-      );
-      assert.equal(
-        resolveRolesRoot({
-          projectDir: f.projectDir,
-          loopSkillDir: f.loopSkillDir,
-        }).source,
-        "project",
-      );
-      assert.equal(resolveRolesRoot({ loopSkillDir: f.loopSkillDir }).source, "loop-skill");
-    } finally {
-      f.cleanup();
-    }
-  });
-
-  it("ignores a manifest in the loop state directory", () => {
-    const f = fixture();
-    try {
-      writeRoleFiles(f, f.stateRoles);
-      f.write(f.stateRoles, "manifest.json", manifest({ team: "state" }));
-
-      assert.equal(
-        resolveRolesRoot({ stateDir: f.stateDir }),
-        null,
-        "the state directory is runtime state, not a roles root",
-      );
-      const result = loadRoles({ stateDir: f.stateDir });
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
       assert.equal(result.ok, true);
-      assert.equal(result.source, null);
+      assert.equal(result.source, "skills");
       assert.deepEqual(result.roles, []);
-    } finally {
-      f.cleanup();
-    }
-  });
-
-  it("returns null when no root has a manifest", () => {
-    const f = fixture();
-    try {
-      assert.equal(resolveRolesRoot({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir }), null);
-    } finally {
-      f.cleanup();
-    }
-  });
-});
-
-describe("loadRoles — fail-soft loading", () => {
-  it("returns no roles for a missing manifest, without a warning", () => {
-    const f = fixture();
-    try {
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.ok, true);
-      assert.equal(result.source, null);
-      assert.deepEqual(result.roles, []);
+      assert.equal(result.defaultReviewer, null);
+      assert.equal(result.routing.text, null);
       assert.deepEqual(result.warnings, []);
     } finally {
       f.cleanup();
     }
   });
 
-  it("reports a malformed manifest and keeps the loop alive with no roles", () => {
+  it("discovers a role on one kind and records that platform", () => {
     const f = fixture();
     try {
-      f.write(f.projectRoles, "manifest.json", "{ not json");
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.ok, false);
-      assert.deepEqual(result.roles, []);
-      assert.ok(result.warnings.length > 0);
-      assert.match(result.warnings.join("\n"), /manifest/i);
+      writeRole(f, "codex", "turing");
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.roles.length, 1);
+      const role = result.roles[0];
+      assert.equal(role.id, "turing");
+      assert.equal(role.platform, "codex");
+      assert.deepEqual(role.installedOn, ["codex"]);
+      assert.match(role.workflow, /\.codex\/skills\/turing\/SKILL\.md$/);
     } finally {
       f.cleanup();
     }
   });
 
-  it("rejects an unknown manifest version rather than guessing", () => {
+  it("prefers the primary kind when a role is installed on several kinds", () => {
     const f = fixture();
     try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(f.projectRoles, "manifest.json", manifest({ version: 99 }));
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.ok, false);
-      assert.deepEqual(result.roles, []);
+      writeRole(f, "claude", "jobs");
+      writeRole(f, "codex", "jobs");
+      const result = loadRoles({ home: f.home, primaryKind: "codex" });
+      assert.equal(result.roles.length, 1);
+      assert.equal(result.roles[0].platform, "codex");
+      assert.deepEqual(result.roles[0].installedOn, ["codex", "claude"]);
     } finally {
       f.cleanup();
     }
   });
 
-  it("normalises a role and finds the reviewer", () => {
+  it("uses the fixed order when the primary kind does not carry the role", () => {
     const f = fixture();
     try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(f.projectRoles, "manifest.json", manifest());
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.ok, true);
-      assert.equal(result.source, "project");
-      assert.equal(result.team, "standard");
-      assert.equal(result.roles.length, 2);
-      assert.equal(result.defaultReviewer.id, "reviewer");
-      assert.equal(result.byAgent.get("jobs").agent, "Jobs");
-      assert.equal(result.roles[0].nativeAgent, "jobs");
-      assert.match(result.roles[0].workflows.worker, /jobs\/workflow\.md$/);
-      assert.match(result.roles[1].reviewerPrompt, /reviewer-prompt\.md$/);
+      writeRole(f, "codex", "linus");
+      writeRole(f, "pi", "linus");
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.roles[0].platform, "codex");
+      assert.deepEqual(result.roles[0].installedOn, ["codex", "pi"]);
     } finally {
       f.cleanup();
     }
   });
 
-  it("supports the workflow-by-lane form", () => {
+  it("keeps each kind's copy so a fallback dispatch points at that copy", () => {
     const f = fixture();
     try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(
-        f.projectRoles,
-        "manifest.json",
-        JSON.stringify({
-          version: 1,
-          roles: [
-            {
-              id: "dual",
-              agent: "Dual",
-              lanes: ["worker", "reviewer"],
-              title: "Dual",
-              workflow: { worker: "jobs/workflow.md", reviewer: "reviewer/workflow.md" },
-              reviewer_prompt: "reviewer/reviewer-prompt.md",
-            },
-          ],
-        }),
+      writeRole(f, "claude", "jobs");
+      writeRole(f, "codex", "jobs");
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      const role = result.roles[0];
+      assert.match(roleVariant(role, "claude").workflow, /\.claude\/skills\/jobs\/SKILL\.md$/);
+      assert.match(roleVariant(role, "codex").workflow, /\.codex\/skills\/jobs\/SKILL\.md$/);
+      // An unknown kind falls back to the role's own (primary) files.
+      assert.equal(roleVariant(role, "pi").workflow, role.workflow);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("an explicit roles directory replaces the scanned set", () => {
+    const f = fixture();
+    try {
+      writeRole(f, "claude", "jobs");
+      const explicit = join(f.base, "team", "custom");
+      mkdirSync(explicit, { recursive: true });
+      writeFileSync(join(explicit, "SKILL.md"), "# custom\n", "utf8");
+      writeFileSync(
+        join(explicit, "role.json"),
+        JSON.stringify({ schema: "meerkat-role", id: "custom", agent: "Custom", shapes: ["x"] }),
+        "utf8",
       );
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.ok, true);
-      assert.match(result.roles[0].workflows.worker, /jobs\/workflow\.md$/);
-      assert.match(result.roles[0].workflows.reviewer, /reviewer\/workflow\.md$/);
-      assert.equal(result.defaultReviewer.id, "dual");
+      const result = loadRoles({ home: f.home, primaryKind: "claude", explicitDir: join(f.base, "team") });
+      assert.equal(result.source, "explicit");
+      assert.deepEqual(result.roles.map((role) => role.id), ["custom"]);
+      assert.equal(result.roles[0].platform, "claude");
     } finally {
       f.cleanup();
     }
   });
 });
 
-describe("loadRoles — path safety", () => {
-  for (const [label, workflow] of [
-    ["a parent traversal", "../outside.md"],
-    ["an absolute path", "/tmp/outside.md"],
-    ["a backslash path", "..\\outside.md"],
-    ["a non-markdown file", "jobs/workflow.txt"],
-  ]) {
-    it(`refuses ${label} and keeps the role with no workflow path`, () => {
-      const f = fixture();
-      try {
-        writeRoleFiles(f, f.projectRoles);
-        f.write(f.projectRoles, "manifest.json", manifest({ roles: [{ ...JSON.parse(manifest()).roles[0], id: "evil", agent: "Evil", workflow }] }));
-        const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-        assert.equal(result.ok, true, "a bad workflow is a role warning, not a manifest failure");
-        const evil = result.roles.find((role) => role.id === "evil");
-        assert.ok(evil, "the role remains visible for reporting");
-        assert.equal(evil.workflows.worker, null);
-        assert.match(result.warnings.join("\n"), /evil/);
-      } finally {
-        f.cleanup();
-      }
-    });
-  }
-
-  it("refuses a symlink that escapes the roles root", () => {
+describe("loadRoles — fail-soft validation", () => {
+  it("skips a role without the schema marker", () => {
     const f = fixture();
     try {
-      writeRoleFiles(f, f.projectRoles);
+      writeRole(f, "claude", "jobs", { schema: undefined });
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.deepEqual(result.roles, []);
+      assert.ok(result.warnings.some((warning) => /marker/.test(warning)));
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("skips malformed JSON and invalid ids without throwing", () => {
+    const f = fixture();
+    try {
+      const broken = join(f.home, ".claude", "skills", "broken");
+      mkdirSync(broken, { recursive: true });
+      writeFileSync(join(broken, "SKILL.md"), "# broken\n", "utf8");
+      writeFileSync(join(broken, "role.json"), "{not json", "utf8");
+      writeRole(f, "claude", "bad id");
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.deepEqual(result.roles, []);
+      assert.ok(result.warnings.length >= 2);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("refuses a self-check that escapes the skill directory through a symlink", () => {
+    const f = fixture();
+    try {
+      const dir = writeRole(f, "claude", "jobs", { self_check: "references/check.md" });
       const outside = join(f.base, "outside.md");
       writeFileSync(outside, "# outside\n", "utf8");
-      symlinkSync(outside, join(f.projectRoles, "escape.md"));
-      f.write(
-        f.projectRoles,
-        "manifest.json",
-        manifest({ roles: [{ ...JSON.parse(manifest()).roles[0], id: "escape", agent: "Escape", workflow: "escape.md" }] }),
-      );
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      const escape = result.roles.find((role) => role.id === "escape");
-      assert.equal(escape.workflows.worker, null);
-      assert.match(result.warnings.join("\n"), /escape/);
+      symlinkSync(outside, join(dir, "references", "check.md"));
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.roles.length, 1);
+      assert.equal(result.roles[0].selfCheck, null);
+      assert.ok(result.warnings.some((warning) => /self_check/.test(warning)));
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("keeps the first role when two skills claim the same agent, and warns", () => {
+    const f = fixture();
+    try {
+      writeRole(f, "claude", "jobs");
+      writeRole(f, "claude", "jobs-copy", { id: "jobs-copy", agent: "Jobs" });
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.deepEqual(result.roles.map((role) => role.id), ["jobs"]);
+      assert.ok(result.warnings.some((warning) => /duplicate agent/.test(warning)));
     } finally {
       f.cleanup();
     }
   });
 });
 
-describe("selectRole / selectReviewerRole", () => {
-  it("matches the board agent name case-insensitively and respects the lane", () => {
+describe("roles — selection and routing", () => {
+  it("selects by agent or id, respecting the lane", () => {
     const f = fixture();
     try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(f.projectRoles, "manifest.json", manifest());
-      const roles = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-
-      assert.equal(selectRole(roles, "Jobs", "worker").id, "jobs");
-      assert.equal(selectRole(roles, "jobs", "worker").id, "jobs");
-      assert.equal(selectRole(roles, "Jobs", "reviewer"), null, "a worker-only role is not a review role");
-      assert.equal(selectReviewerRole(roles, "Reviewer").id, "reviewer");
-      assert.equal(selectRole(roles, "nobody", "worker"), null);
+      writeRole(f, "claude", "jobs");
+      writeRole(f, "claude", "reviewer", { lanes: ["reviewer"], default_reviewer: true });
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(selectRole(result, "Jobs", "worker")?.id, "jobs");
+      assert.equal(selectRole(result, "reviewer", "worker"), null);
+      assert.equal(selectReviewerRole(result, "Reviewer")?.id, "reviewer");
+      assert.equal(selectReviewerRole(result, "someone-else")?.id, "reviewer");
     } finally {
       f.cleanup();
     }
   });
 
-  it("falls back to the default reviewer when a dedicated reviewer has no reviewer lane", () => {
+  it("selects the worker fallback by id or agent", () => {
     const f = fixture();
     try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(f.projectRoles, "manifest.json", manifest());
-      const roles = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(selectReviewerRole(roles, "Jobs").id, "reviewer");
+      writeRole(f, "claude", "worker", { agent: "Worker" });
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(selectWorkerRole(result)?.id, "worker");
     } finally {
       f.cleanup();
     }
   });
 
-  it("keeps the first role when two roles claim the same agent, and warns", () => {
-    const f = fixture();
-    try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(
-        f.projectRoles,
-        "manifest.json",
-        manifest({ roles: [{ ...JSON.parse(manifest()).roles[0], id: "jobs-2", agent: "jobs" }] }),
-      );
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.roles.filter((role) => role.agent.toLowerCase() === "jobs").length, 1);
-      assert.equal(result.byAgent.get("jobs").id, "jobs");
-      assert.match(result.warnings.join("\n"), /duplicate/i);
-    } finally {
-      f.cleanup();
-    }
+  it("generates the routing table from shapes", () => {
+    const roles = [
+      { agent: "Jobs", shapes: ["brief", "prototype"], workflow: "/s/jobs/SKILL.md" },
+      { agent: "Turing", shapes: ["tests"], workflow: "/s/turing/SKILL.md" },
+    ];
+    const text = renderRoutingTable(roles);
+    assert.match(text, /\| brief \| Jobs \|/);
+    assert.match(text, /\| prototype \| Jobs \|/);
+    assert.match(text, /\| tests \| Turing \|/);
+    assert.match(text, /goes to the Worker role/);
   });
 });
 
 describe("decision policy", () => {
-  it("ignores a team decision-policy.md — the loop policy is authoritative", () => {
+  it("loads the policy from the primary kind's director skill", () => {
     const f = fixture();
     try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(f.projectRoles, "manifest.json", manifest());
-      f.write(f.projectRoles, "decision-policy.md", "# Team policy\n");
-      f.write(f.loopSkillDir, "references/decision-policy.md", "# Default policy\n");
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.decisionPolicy.isDefault, true);
-      assert.match(result.decisionPolicy.path, /loop-skill\/references\/decision-policy\.md$/);
-      assert.match(result.decisionPolicy.text, /Default policy/);
-      assert.doesNotMatch(result.decisionPolicy.text, /Team policy/);
+      writeDirector(f, "claude", "# policy\n");
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.decisionPolicy.source, "director");
+      assert.match(result.decisionPolicy.path, /meerkat-director\/references\/decision-policy\.md$/);
+      assert.match(result.decisionPolicy.text, /policy/);
     } finally {
       f.cleanup();
     }
   });
 
-  it("falls back to the loop skill's default policy", () => {
+  it("a role skill or explicit directory cannot override the policy", () => {
     const f = fixture();
     try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(f.projectRoles, "manifest.json", manifest());
-      f.write(f.loopSkillDir, "references/decision-policy.md", "# Default policy\n");
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.decisionPolicy.isDefault, true);
-      assert.match(result.decisionPolicy.path, /loop-skill\/references\/decision-policy\.md$/);
-      assert.match(result.decisionPolicy.text, /Default policy/);
+      writeDirector(f, "claude", "# the director's policy\n");
+      const explicit = join(f.base, "team", "jobs");
+      mkdirSync(explicit, { recursive: true });
+      writeFileSync(join(explicit, "SKILL.md"), "# custom\n", "utf8");
+      writeFileSync(
+        join(explicit, "role.json"),
+        JSON.stringify({ schema: "meerkat-role", id: "custom", agent: "Custom", shapes: ["x"] }),
+        "utf8",
+      );
+      writeFileSync(join(f.base, "team", "decision-policy.md"), "# team policy\n", "utf8");
+      const result = loadRoles({ home: f.home, primaryKind: "claude", explicitDir: join(f.base, "team") });
+      assert.match(result.decisionPolicy.text, /the director's policy/);
     } finally {
       f.cleanup();
     }
   });
 
-  it("reports no policy rather than failing when neither file exists", () => {
+  it("reports no policy rather than failing when the director skill is absent", () => {
     const f = fixture();
     try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(f.projectRoles, "manifest.json", manifest());
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.decisionPolicy.isDefault, true);
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.decisionPolicy.source, null);
       assert.equal(result.decisionPolicy.path, null);
-      assert.equal(result.decisionPolicy.text, null);
-    } finally {
-      f.cleanup();
-    }
-  });
-});
-
-describe("ownership guide", () => {
-  it("loads ownership.md from the roles root", () => {
-    const f = fixture();
-    try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(f.projectRoles, "manifest.json", manifest());
-      f.write(f.projectRoles, "ownership.md", "# Ownership\n| Work shape | Role |\n");
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.ownership.source, "team");
-      assert.match(result.ownership.path, /\.meerkat\/roles\/ownership\.md$/);
-      assert.match(result.ownership.text, /Work shape/);
-      assert.equal(result.ownership.truncated, false);
-    } finally {
-      f.cleanup();
-    }
-  });
-
-  it("reports no guide when the file is absent", () => {
-    const f = fixture();
-    try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(f.projectRoles, "manifest.json", manifest());
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.ownership.source, null);
-      assert.equal(result.ownership.path, null);
-      assert.equal(result.ownership.text, null);
-    } finally {
-      f.cleanup();
-    }
-  });
-
-  it("reports no guide when no roles root resolves", () => {
-    const f = fixture();
-    try {
-      const result = loadRoles({ loopSkillDir: f.loopSkillDir });
-      assert.equal(result.ownership.path, null);
-      assert.equal(result.ownership.text, null);
-    } finally {
-      f.cleanup();
-    }
-  });
-
-  it("truncates an oversized guide instead of failing", () => {
-    const f = fixture();
-    try {
-      writeRoleFiles(f, f.projectRoles);
-      f.write(f.projectRoles, "manifest.json", manifest());
-      f.write(f.projectRoles, "ownership.md", "x".repeat(9 * 1024));
-      const result = loadRoles({ projectDir: f.projectDir, loopSkillDir: f.loopSkillDir });
-      assert.equal(result.ownership.truncated, true);
-      assert.equal(result.ownership.text.length, 8 * 1024);
     } finally {
       f.cleanup();
     }

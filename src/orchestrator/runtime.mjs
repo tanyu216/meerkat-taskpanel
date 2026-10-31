@@ -199,7 +199,7 @@ export function readCardForRedispatch(opts, ref, log = () => {}, run = runCli) {
  * The human/project answer that caused a same-round re-dispatch.
  *
  * Any **human** comment newer than the latest agent question counts, whatever
- * its kind; a project session's `decision:` note counts too. The text is
+ * its kind; the director's `note` counts too. The text is
  * bounded because it goes into a resume prompt.
  *
  * @param {object} opts
@@ -429,7 +429,7 @@ export function streamCli(opts, agent, args, hooks = {}) {
 }
 
 /** An append fd for the log, or `null` when it cannot be opened. Never throws. */
-export function openAppendFd(path) {
+function openAppendFd(path) {
   try {
     mkdirSync(dirname(path), { recursive: true });
     return openSync(path, "a");
@@ -589,7 +589,7 @@ export function runPingTick(input = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// The continue turn's lock
+// The tick's lock
 // ---------------------------------------------------------------------------
 
 /** The continue lock's contents, or `null` when absent/unreadable. */

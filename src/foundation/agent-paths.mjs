@@ -31,7 +31,7 @@ export const AGENT_DIRS = Object.freeze({
 export const KIND_CONFIG_DIR_ENV = "MEERKAT_TASKPANEL_CONFIG_DIR";
 
 /** Per-kind config files are `<program root>/.env.<actor-kind>`. */
-export const KIND_CONFIG_FILE_PREFIX = ".env.";
+const KIND_CONFIG_FILE_PREFIX = ".env.";
 
 /** A kind that can safely be spliced into a file name. */
 const KIND_TOKEN = /^[A-Za-z0-9_-]+$/;
@@ -89,26 +89,23 @@ export function resolveKindConfigPath(options = {}) {
  * @param {string} actorKind
  * @returns {{
  *   state: string, agentDir: string,
- *   loopSkill: string, boardSkill: string, stateDir: string,
- *   loopRoles: string,
+ *   directorSkill: string, boardSkill: string, stateDir: string,
  * }}
  */
 export function agentPaths(home, actorKind) {
   const dir = join(home, AGENT_DIRS[actorKind]);
-  const loopSkill = join(dir, "skills", "meerkat-loop");
   const stateDir = join(dir, "meerkat-taskpanel");
   return {
     state: join(dir, "meerkat-taskpanel", STATE_FILES.supervisor),
     agentDir: AGENT_DIRS[actorKind],
-    // The two skills the resident sessions need: the loop expands
-    // `/meerkat-loop` in the control session; project subagents use the board
-    // skill. Checked at `--session` start, never assumed.
-    loopSkill,
+    // The two skills the resident sessions need: the director lane runs
+    // `meerkat-director`; workers and reviewers use the board skill. Checked at
+    // `--session` start, never assumed.
+    directorSkill: join(dir, "skills", "meerkat-director"),
     boardSkill: join(dir, "skills", "meerkat"),
-    // The loop's state directory. Runtime state only — a roles root travels
-    // with the skill, never here.
+    // The supervisor's state directory. Runtime state only — role skills live
+    // under `skills/`, never here.
     stateDir,
-    loopRoles: join(loopSkill, "roles"),
   };
 }
 

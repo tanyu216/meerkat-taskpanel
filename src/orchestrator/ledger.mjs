@@ -5,7 +5,7 @@
  * The ledger is deliberately *not* a copy of an agent transcript. It records only
  * what the supervisor needs to recover work across a crash:
  *
- *   sessionKey   the project directory whose project session spawned it
+ *   sessionKey   the project directory whose lane session spawned it
  *   subagentId   the agent's handle (Claude agentId, Codex thread id, …)
  *   role/card    what the subagent is responsible for
  *   status       spawned | running | completed | failed | interrupted | stale
@@ -153,7 +153,7 @@ export function markSubagent(ledger, identity, change) {
 
 /**
  * Rows worth trying to reattach after a restart, optionally scoped to one
- * project session. Terminal rows are excluded.
+ * lane session. Terminal rows are excluded.
  *
  * @param {{subagents: object[]}} ledger
  * @param {{sessionKey?: string|null}} [options]

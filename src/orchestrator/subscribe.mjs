@@ -8,7 +8,7 @@
  * board discovery, the token and the stream all live behind `taskctl`, and this
  * file only decides when to reconnect and when to wake the agent.
  *
- * It never claims, moves or wakes anything: the continue turn rescans, so
+ * It never claims, moves or wakes anything: the tick rescans, so
  * replay, duplicate frames and bursts are harmless and there is only one
  * dispatch path. A turn is requested only while a resident pool is live — with
  * no pool, poll could not dispatch anything, so the event path logs and skips

@@ -47,7 +47,7 @@ SDK and never implements a platform protocol.
 - Building the first real adapter as part of this design record.
 - Group chats, media, reactions, multi-tenant isolation or per-project IM sessions.
 - Replacing the board UI or the web front-end.
-- A second control turn: the IM session never claims, polls, dispatches or moves cards.
+- A second supervisor or director: the IM session never claims, polls, dispatches or moves cards.
 
 ## 4. Requirements
 
@@ -141,7 +141,7 @@ adapter processes.
 - Tools: read-only + `taskctl`. Claude uses a role allowlist; Codex uses a read-only
   sandbox; **Pi has no verified read-only switch and is off by default**
   (`SESSION_ALLOW_PI=yes` to opt in).
-- The prompt states the boundary: user-facing front-end, not the control turn; no claim,
+- The prompt states the boundary: user-facing front-end, not the supervisor or director; no claim,
   poll, dispatch, card move; decisions only through `--as-human`; do not invent board facts.
 - If the session is unavailable, deterministic commands still work; free text degrades to a
   “try /status <ref>” reply.
@@ -326,7 +326,7 @@ validate `channel-kit`; WeChat iLink is the least clean SDK ecosystem and should
 
 ## 13. References
 
-- [`scheduling.md`](scheduling.md) — the loop, the resident pool and the control turn.
+- [`scheduling.md`](scheduling.md) — the supervisor, the resident pool and the director lane.
 - [`events.md`](events.md) — the activity catalogue and the “signal, not payload” rule.
 - [`install.md`](ops/install.md) — the install targets and the installed tree.
 - [`contract.md`](agents/contract.md) — the CLI/HTTP contracts the integration must reuse.

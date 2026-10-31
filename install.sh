@@ -48,12 +48,13 @@
 # (Codex) — merge-style and idempotently. It needs no agent CLI to do so, so it behaves
 # the same on a bare machine and inside the verification container.
 #
-# Three skills are distributed, and they do not go to the same agent kinds:
+# The skills are distributed, and they do not go to the same agent kinds:
 #
 #   meerkat            the board                    → all four agent kinds
-#   meerkat-loop       the external supervisor  → claude, codex, pi
+#   meerkat-director   the decision hub             → claude, codex, pi
+#   jobs/linus/turing/reviewer/worker  the roles    → claude, codex, pi
 #                                                     (never openclaw)
-#   setup-meerkat      install/repair + team setup  → the Claude bundle only
+#   setup-meerkat      install/repair + migration   → the Claude bundle only
 #                                                     (the bundle/marketplace still
 #                                                      carries it for other kinds)
 #
@@ -133,12 +134,11 @@ Options:
                     The liveness clock (default 60). It only prunes dead worker
                     pids from the registry: no board read, no LLM.
   --continue-interval <sec>
-                    The judgment clock (default 600 = 10 minutes). It hands the
-                    resident control session a bounded "/meerkat-loop Continue"
-                    prompt (or runs it one-shot when no pool is live); that turn
-                    runs the poll, patrol and workflow entries.
+                    The tick clock (default 600 = 10 minutes). The supervisor
+                    runs patrol, workflow and poll in-process under one lock; no
+                    model turn.
   --continue=yes|no
-                    Enable the continue turn (default yes). Persisted to the
+                    Enable the tick clock (default yes). Persisted to the
                     per-kind config; `no` keeps the ping clock but discovers no work
                     until a human runs the poll entry.
   --supervisor=enable|disable|status
@@ -153,10 +153,11 @@ Options:
                     --supervisor-status.
   --supervisor-actor-kinds <list>
                     Which loop actor kinds the action applies to: claude, codex or pi.
-                    Default: enable = the FIRST loop kind in --target order (one loop
-                    supervisor per machine); disable/status = EVERY loop kind in
-                    --target, so a stray is seen and stopped. Naming more than one
-                    kind is the explicit multi-supervisor choice.
+                    For enable, exactly ONE primary kind (default: the first loop kind
+                    in --target order) — one supervisor already holds every kind, so a
+                    list is refused. disable/status default to EVERY loop kind in
+                    --target, so a stray is seen and stopped, and accept a narrowing
+                    list.
                     'openclaw' is rejected (exit 2) — it runs openclaw-team's own
                     poll/patrol. The values are actor kinds — the same vocabulary
                     taskctl loop takes on --actor-kind.
@@ -192,30 +193,29 @@ Destinations:
   codex      <home>/.codex/skills/meerkat
   pi         <home>/.agents/skills/meerkat
 
-The **board** and **loop** skills share two distribution surfaces. The board skill goes
-to all four agent kinds; the loop skill (the external supervisor) goes to the three
-non-OpenClaw agent kinds:
+The **board** skill goes to all four agent kinds. The **director** and the five **role**
+skills (jobs, linus, turing, reviewer, worker) go to the three non-OpenClaw agent kinds:
 
-  claude     <home>/.claude/skills/meerkat-loop
-  codex      <home>/.codex/skills/meerkat-loop
-  pi         <home>/.agents/skills/meerkat-loop
+  claude     <home>/.claude/skills/{meerkat-director,jobs,linus,turing,reviewer,worker}
+  codex      <home>/.codex/skills/{meerkat-director,jobs,linus,turing,reviewer,worker}
+  pi         <home>/.agents/skills/{meerkat-director,jobs,linus,turing,reviewer,worker}
   openclaw   — none, on purpose: the openclaw-team framework's poll / task-patrol
               automations already are this design (see docs/scheduling.md).
 
-The **setup** skill (`/setup-meerkat`, install/repair plus the optional team) is copied
+The **setup** skill (`/setup-meerkat`, install/repair plus the role migration) is copied
 with the Claude bundle only:
 
   claude     <home>/.claude/skills/setup-meerkat
   other      — not copied by this installer; the repository bundle and marketplace
               still carry it for the other agent kinds.
 
-Roles are installed and upgraded only by `/setup-meerkat`: this installer never
-creates, writes or deletes a roles root, and a forced reinstall carries an existing one
-across untouched.
+Roles are installed as skills by this installer. `/setup-meerkat` only migrates them
+between agent kinds and reports an old `meerkat-loop` roles tree as deprecated; a forced
+reinstall carries an existing one across untouched.
 
-The loop and setup skills are always **copied**, never symlinked: --link names the board
-skill only, or a symlinked loop would put the checkout back into the load path the split
-removes.
+The director and role skills are always **copied**, never symlinked: --link names the
+board skill only, or a symlinked director would put the checkout back into the load path
+the split removes.
 
 The claim policy is written to <program root>/.env.<actor-kind> for the agent kinds that
 build a supervisor (claude, codex, pi); OpenClaw installs
@@ -737,20 +737,16 @@ case "$SCHEDULER" in
 esac
 
 # Which loop actor kinds the action applies to (one loop supervisor per machine).
-# `--supervisor-actor-kinds` is the only multi-kind form; otherwise `enable` takes the FIRST
+# `--supervisor-actor-kinds` names the primary kind for `enable` (one only); otherwise `enable` takes the FIRST
 # loop kind in --target order and `disable`/`status` take EVERY loop kind, so an old
 # three-supervisor install can be seen and stopped in one command. OpenClaw is never among
 # them, and is rejected explicitly when named — it runs openclaw-team's own poll/patrol, so
-# there is no meerkat-loop supervisor to enable (docs/scheduling.md §OpenClaw: no loop units).
+# there is no meerkat-director supervisor to enable (docs/scheduling.md §OpenClaw: no loop units).
 if ! SUPERVISOR_ACTOR_KINDS="$(supervisor_actor_kinds_value "$SUPERVISOR" "$SUPERVISOR_ACTOR_KINDS_FLAG" "$TARGETS")"; then
   exit 2
 fi
 
 supervisor_kinds_csv="$(printf '%s' "$SUPERVISOR_ACTOR_KINDS" | tr -s ' ' ',' | sed 's/^,//; s/,$//')"
-supervisor_kind_count=0
-for kind in $SUPERVISOR_ACTOR_KINDS; do
-  supervisor_kind_count=$((supervisor_kind_count + 1))
-done
 supervisor_loop_kind_count=0
 for target in $TARGETS; do
   case "$target" in
@@ -760,10 +756,8 @@ done
 
 if [ -n "$SUPERVISOR" ] && [ -n "$supervisor_kinds_csv" ]; then
   echo "install.sh: supervisor: $SUPERVISOR (kinds:$supervisor_kinds_csv, scheduler: $SCHEDULER)"
-  if [ "$SUPERVISOR" = "enable" ] && [ "$supervisor_kind_count" -gt 1 ]; then
-    echo "install.sh: supervisor: warning — $supervisor_kind_count loop supervisors on one machine; the explicit --supervisor-actor-kinds choice waives the one-supervisor rule, and each loop keeps its own alarm ledger"
-  elif [ "$SUPERVISOR" = "enable" ] && [ "$supervisor_loop_kind_count" -gt 1 ] && [ -z "$SUPERVISOR_ACTOR_KINDS_FLAG" ]; then
-    echo "install.sh: supervisor: one loop supervisor per machine — $supervisor_kinds_csv is the first loop kind in --target; add --supervisor-actor-kinds <list> to run more (each adds its own polling, log and alarm ledger)"
+  if [ "$SUPERVISOR" = "enable" ] && [ "$supervisor_loop_kind_count" -gt 1 ] && [ -z "$SUPERVISOR_ACTOR_KINDS_FLAG" ]; then
+    echo "install.sh: supervisor: one loop supervisor per machine — $supervisor_kinds_csv is the primary kind; it holds the other kinds' sessions too, so role placement is how another platform joins"
   elif [ "$SUPERVISOR" != "enable" ]; then
     echo "install.sh: supervisor: every loop kind in --target, so no stray is left"
   fi

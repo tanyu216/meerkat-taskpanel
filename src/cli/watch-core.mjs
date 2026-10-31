@@ -86,7 +86,7 @@ export function writeCardFile(file, markdown) {
  * force-drains whatever was pending (so an event seen just before EOF is not
  * lost).
  *
- * The loop's subscriber has a separate scheduler for continue turns. They share
+ * The loop's subscriber has a separate scheduler for ticks. They share
  * the debounce shape, not a contract: the watch scheduler folds the interval
  * floor into the same arm, while the dispatch scheduler re-arms at the floor in
  * its `pump()`. Fire times are identical, arm counts are not — both are

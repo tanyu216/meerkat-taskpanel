@@ -187,10 +187,10 @@ function alive(pid) {
 /**
  * Build a hermetic tree:
  *
- *   <sandbox>/{home}/.claude/skills/{meerkat-loop,meerkat}/SKILL.md
+ *   <sandbox>/{home}/.claude/skills/{meerkat-director,meerkat}/SKILL.md
  *   <sandbox>/config/.env.claude      (empty per-kind config)
  *   <sandbox>/state/                  the pool's state dir
- *   <sandbox>/repo/                   --repo (control cwd)
+ *   <sandbox>/repo/                   --repo
  *   <sandbox>/projects/<card>/        one target_dir per card
  *   <sandbox>/bin/claude              the fake agent (stream-json)
  *   <sandbox>/bin/slow-taskctl.mjs    the slow board CLI
@@ -204,7 +204,7 @@ function createSandbox(options) {
   const bin = join(dir, "bin");
   for (const path of [home, config, stateDir, repo, bin]) mkdirSync(path, { recursive: true });
 
-  for (const skill of ["meerkat-loop", "meerkat"]) {
+  for (const skill of ["meerkat-director", "meerkat"]) {
     const skillDir = join(home, ".claude", "skills", skill);
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, "SKILL.md"), `# ${skill}\n\nsoak fixture\n`);

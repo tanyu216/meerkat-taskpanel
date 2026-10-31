@@ -32,8 +32,6 @@ describe("loop-state — the loop's state vocabulary", () => {
 
   it("pins the queue, liveness and session constants", () => {
     assert.deepEqual(QUEUE_FILES, {
-      continuePending: "continue.pending.json",
-      continueProcessing: "continue.processing.json",
       cards: "cards.queue.json",
       ledger: "subagents.state.json",
       sessions: "sessions.state.json",

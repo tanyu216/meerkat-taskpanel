@@ -25,6 +25,7 @@ what a change must comply with.
 | [0004](0004-actor-kind-system.md) | The board writes as `system`; acceptance is decided by evidence, not by actor kind | Accepted |
 | [0005](0005-the-loop-ships-with-the-board.md) | The loop ships in the board's package, so the board-interface gate is removed | Accepted |
 | [0006](0006-first-class-worker-sessions.md) | A worker is its own pooled session, resumed by id in the same round; replay when the native session is gone | Accepted |
+| [0007](0007-roles-are-skills-and-the-director-decides.md) | Roles are standalone skills; installation location routes the platform; `meerkat-director` decides and the control turn is gone | Accepted |
 
 ## Writing one
 

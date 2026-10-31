@@ -1,14 +1,14 @@
 /**
  * The resident session pool — the loop's long-lived agent conversations.
  *
- * One **control** session runs the board-wide continue turn (cwd = the
- * taskpanel checkout). One **project** session per `target_dir` runs the
- * per-project spawn turn (cwd = that directory), so the worker/reviewer
- * subagents it spawns inherit the project directory.
+ * One **worker** session per card, one **reviewer** session per target
+ * directory and one **director** lane per project directory. The director
+ * decision turn runs in the directory's project context; reviewer subagents
+ * inherit that directory.
  *
  * The pool manager owns the queues, routing, ledger, concurrency, heartbeat,
- * idle eviction and resume. It never talks to the board itself: the control
- * turn runs `taskctl loop patrol|workflow|poll`, and the poll pass writes the card queue.
+ * idle eviction and resume. It never talks to the board itself: the supervisor's
+ * tick runs `taskctl loop patrol|workflow|poll`, and the poll pass writes the card queue.
  *
  * Node builtins only; no network, no dependencies.
  */
@@ -18,11 +18,10 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { cardFileRel } from "../foundation/card-brief.mjs";
-import { renderOwnershipGuide } from "../foundation/role-prompt.mjs";
 import { loadRoles } from "../foundation/roles.mjs";
-import { buildContinuePrompt, buildQuestionPrompt } from "../foundation/scheduling.mjs";
+import { buildQuestionPrompt } from "../foundation/scheduling.mjs";
 import { createKindPool } from "./kind-session.mjs";
-import { agentPaths, loopBoardCommand, loopCliCommand } from "./options.mjs";
+import { agentPaths } from "./options.mjs";
 import { readCardForRedispatch, readRedispatchContext } from "./runtime.mjs";
 import {
   appendWorkerTurn,
@@ -45,17 +44,13 @@ import {
 const loggedRoleWarnings = new Set();
 import {
   claimCards,
-  claimContinue,
   completeCards,
-  completeContinue,
   ensureStateDir,
   pruneCards,
   readCards,
-  readContinue,
   readJsonFile,
   recoverStaleCards,
   requeueCards,
-  requeueContinue,
   resumeCards,
   retireLegacyDispatched,
   writeJsonFile,
@@ -93,7 +88,7 @@ import {
  * has no Edit/Write. The worker lane keeps the directory itself as its key, so
  * state written before the split still resumes.
  */
-export const REVIEWER_KEY_SUFFIX = "#reviewer";
+const REVIEWER_KEY_SUFFIX = "#reviewer";
 
 /** Actor kinds whose adapter turns `role` into a real tool allowlist. */
 const ROLE_ALLOWLIST_KINDS = new Set(["claude", "pi"]);
@@ -104,22 +99,29 @@ const QUESTION_BATCH_MAX = 8;
 /** A queue row on the question lane (everything else is a card handoff). */
 const isQuestionRow = (row) => String(row?.queue_kind ?? "handoff") === "question";
 
-/** The session key for a review card's lane. */
-export function reviewerKey(dir) {
-  return `${dir}${REVIEWER_KEY_SUFFIX}`;
+/**
+ * The session key for a review card's lane. The kind is part of the key when it
+ * is known: two reviewer roles on different platforms review in the same
+ * directory, and their conversations must not merge.
+ */
+function reviewerKey(dir, actorKind) {
+  return typeof actorKind === "string" && actorKind !== ""
+    ? `${dir}${REVIEWER_KEY_SUFFIX}@${actorKind}`
+    : `${dir}${REVIEWER_KEY_SUFFIX}`;
 }
 
 /** The lane a pool session key belongs to. */
-export function laneOf(key) {
+function laneOf(key) {
   if (isWorkerKey(key)) return "worker-session";
-  return String(key).endsWith(REVIEWER_KEY_SUFFIX) ? "reviewer" : "worker";
+  return String(key).includes(REVIEWER_KEY_SUFFIX) ? "reviewer" : "worker";
 }
 
 /** The directory a lane key runs in; a worker key carries its cwd on the entry. */
-export function targetDirOf(key) {
+function targetDirOf(key) {
   const value = String(key);
   if (isWorkerKey(value)) return "";
-  return laneOf(value) === "reviewer" ? value.slice(0, -REVIEWER_KEY_SUFFIX.length) : value;
+  const index = value.indexOf(REVIEWER_KEY_SUFFIX);
+  return index === -1 ? value : value.slice(0, index);
 }
 
 /**
@@ -173,16 +175,16 @@ function lockFile(stateDir) {
 
 /** @param {string} stateDir */
 function readSessionsState(stateDir) {
-  const empty = { version: 3, control: null, projects: {} };
+  const empty = { version: 3, projects: {} };
   const read = readJsonFile(sessionsFile(stateDir), empty);
   if (read.error !== null) return { value: { ...empty }, error: read.error };
   const value = read.value && typeof read.value === "object" ? read.value : {};
   return {
-    // v1/v2 files are read as the same {control, projects} shape; the version is
-    // informational, not a gate. v3 adds `worker:` records to `projects`.
+    // v1/v2 files are read for their `projects` map; the version is
+    // informational, not a gate. v3 adds `worker:` records to `projects`. An old
+    // `control` record is ignored: no control session exists any more.
     value: {
       version: 3,
-      control: value.control ?? null,
       projects: value.projects && typeof value.projects === "object" ? value.projects : {},
     },
     error: null,
@@ -191,7 +193,7 @@ function readSessionsState(stateDir) {
 
 /**
  * Is a resident pool running? The answer lives in `sessions.state.json`, so a
- * pass in another process (the control session's `passes.mjs poll`) asks the
+ * pass in another process (the supervisor's `passes.mjs poll`) asks the
  * same question the pool answers — no IPC, no network.
  *
  * Liveness is the pool manager's pid **and** a fresh heartbeat. The heartbeat is
@@ -208,7 +210,6 @@ function readSessionsState(stateDir) {
  *   reason: string|null,
  *   file: string,
  *   poolPid: number|null,
- *   control: object|null,
  *   projects: Record<string, object>,
  *   heartbeatAgeMs?: number,
  * }}
@@ -224,7 +225,6 @@ export function poolStatus(input = {}) {
     reason: null,
     file,
     poolPid: null,
-    control: null,
     projects: {},
     workers: {},
     capabilities: [],
@@ -238,7 +238,6 @@ export function poolStatus(input = {}) {
   if (read.error !== null) return { ...empty, reason: read.error };
   const value = read.value;
   if (value === null || typeof value !== "object") return { ...empty, reason: "no session state" };
-  const control = value.control ?? null;
   const projects = value.projects && typeof value.projects === "object" ? value.projects : {};
   const workers = {};
   for (const [key, record] of Object.entries(projects)) {
@@ -253,7 +252,6 @@ export function poolStatus(input = {}) {
     return {
       ...empty,
       reason: poolPid === null ? "no pool pid" : `pool pid ${poolPid} is gone`,
-      control,
       projects,
       workers,
       capabilities,
@@ -261,7 +259,7 @@ export function poolStatus(input = {}) {
   }
   const beat = Date.parse(String(value.heartbeatAt ?? ""));
   if (!Number.isFinite(beat)) {
-    return { ...empty, reason: "no heartbeat", poolPid, control, projects, workers, capabilities };
+    return { ...empty, reason: "no heartbeat", poolPid, projects, workers, capabilities };
   }
   const age = now() - beat;
   if (age > POOL_STALE_MS) {
@@ -269,7 +267,6 @@ export function poolStatus(input = {}) {
       ...empty,
       reason: `heartbeat ${Math.round(age / 1000)}s old`,
       poolPid,
-      control,
       projects,
       workers,
       capabilities,
@@ -280,7 +277,6 @@ export function poolStatus(input = {}) {
     reason: null,
     file,
     poolPid,
-    control,
     projects,
     workers,
     capabilities,
@@ -289,12 +285,17 @@ export function poolStatus(input = {}) {
 }
 
 /**
- * @param {object[]} cards
- * @param {{roles?: object[]}|null} [roleSet] the effective team, when one exists
- * @param {{lane?: "worker"|"reviewer"}} [options]
+ * The prompt a reviewer lane gets for a batch of review cards.
+ *
+ * Review cards are the only lane that still batches: the lane conversation
+ * spawns one subagent per card and pairs returned ids positionally. Worker cards
+ * run in their own worker session and never enter this prompt.
+ *
+ * @param {object[]} cards queue rows in dispatch order
+ * @param {{roles?: object[]}|null} [roleSet] discovered roles, for a native agent name
+ * @returns {string}
  */
-export function buildProjectBatchPrompt(cards, roleSet = null, options = {}) {
-  const lane = options.lane === "reviewer" ? "reviewer" : "worker";
+export function buildReviewerBatchPrompt(cards, roleSet = null) {
   const first = cards[0] ?? {};
   const project = String(first.project ?? "the project");
   const dir = String(first.target_dir ?? "");
@@ -309,11 +310,9 @@ export function buildProjectBatchPrompt(cards, roleSet = null, options = {}) {
   }
 
   const lines = [
-    lane === "reviewer"
-      ? `You are the reviewer session for ${project} at ${dir}.`
-      : `You are the project session for ${project} at ${dir}.`,
+    `You are the reviewer session for ${project} at ${dir}.`,
     "",
-    lane === "reviewer" ? "Review cards in this batch:" : "Claimed cards in this batch:",
+    "Review cards in this batch:",
   ];
   if (named.length > 0) {
     lines.push("", "Named role agents (when the actor kind supports them):");
@@ -325,12 +324,9 @@ export function buildProjectBatchPrompt(cards, roleSet = null, options = {}) {
       "role workflow it must read.",
     );
   }
-  if (lane === "worker" && roleSet?.ownership?.path) {
-    lines.push("", ...renderOwnershipGuide(roleSet.ownership));
-  }
   cards.forEach((card, index) => {
     const roleSuffix = card.agent_role ? ` role ${card.agent_role}` : "";
-    lines.push(`  ${index + 1}) ${card.card} (${card.role ?? "worker"})${roleSuffix} handoff:`);
+    lines.push(`  ${index + 1}) ${card.card} (${card.role ?? "reviewer"})${roleSuffix} handoff:`);
     for (const line of String(card.handoff ?? "").split("\n")) lines.push(`     ${line}`);
   });
   lines.push(
@@ -339,38 +335,23 @@ export function buildProjectBatchPrompt(cards, roleSet = null, options = {}) {
     "each returned agent id with the card at the same position. Pass the handoff text verbatim.",
     "Do not work the cards yourself. Do not move the cards you spawn. Return after spawning;",
     "record each subagent's agent/session id.",
+    "",
+    "Do not answer questions and do not move any card. A review ends in a verdict on the",
+    "review card; the loop applies it.",
   );
-  if (lane === "worker") {
-    lines.push(
-      "",
-      "Subagent questions: read agent-authored `question` comments on in_progress cards.",
-      "Answer a question you can decide with a note, then reattach the subagent or move the card",
-      "to todo; if you cannot decide, escalate E1-E5 to the human with awaiting. Never write a",
-      "decision kind and never use --as-human for your own decision.",
-    );
-  } else {
-    lines.push(
-      "",
-      "Do not answer questions and do not move any card. A review ends in a verdict on the",
-      "review card; the loop applies it.",
-    );
-  }
   return lines.join("\n");
 }
 
-/** @param {{targetDir: string, subagents: object[], lane?: "worker"|"reviewer"}} input */
-export function buildReattachPrompt(input) {
-  const lane = input.lane === "reviewer" ? "reviewer" : "worker";
+/** @param {{targetDir: string, subagents: object[]}} input */
+function buildReattachPrompt(input) {
   const lines = [
-    lane === "reviewer"
-      ? `You are the reviewer session for ${input.targetDir}.`
-      : `You are the project session for ${input.targetDir}.`,
-    "The previous process left these subagents unfinished:",
+    `You are the reviewer session for ${input.targetDir}.`,
+    "The previous process left these review subagents unfinished:",
   ];
   for (const subagent of input.subagents) {
     const card = typeof subagent.card === "string" && subagent.card !== "" ? subagent.card : null;
     lines.push(
-      `  - ${subagent.subagentId} (${subagent.role ?? "worker"}) card ${card ?? "?"}` +
+      `  - ${subagent.subagentId} (${subagent.role ?? "reviewer"}) card ${card ?? "?"}` +
         (card === null
           ? ""
           : ` — re-read ${cardFileRel(card)} before continuing; never edit it`),
@@ -393,6 +374,7 @@ export function buildReattachPrompt(input) {
  *   opts: object,
  *   log?: (line: string) => void,
  *   kindPool?: object,
+ *   kindPools?: Map<string, object>,
  *   now?: () => number,
  *   isAlive?: (pid: number) => boolean,
  * }} input
@@ -406,9 +388,9 @@ export function createSessionPool(input = {}) {
   // the card) while the turn that was about to be retried is still unwinding.
   const revalidateCard = typeof input.revalidateCard === "function" ? input.revalidateCard : null;
   const stateDir = dirname(String(opts.state));
-  // `internal` is the installed supervisor: the pool owns the control turn. In
-  // `external` mode a live /meerkat-loop session is the control; the pool keeps
-  // only the project sessions and the card queue (one dispatcher, two drivers).
+  // `internal` is the installed supervisor; `external` marks a pool started by a
+  // live session (`loop status --take-over`). There is no control turn in either
+  // mode: the supervisor's tick runs the passes, the pool dispatches.
   const controlMode = opts.control === "external" ? "external" : "internal";
   const maxConcurrency = Number(opts.maxConcurrency ?? SESSION_DEFAULTS.maxConcurrency);
   const projectConcurrency = Number(opts.projectConcurrency ?? SESSION_DEFAULTS.projectConcurrency);
@@ -418,21 +400,50 @@ export function createSessionPool(input = {}) {
   const turnTimeoutMs = Number(opts.sessionTurnTimeoutMs ?? SESSION_DEFAULTS.turnTimeoutMs);
   const pollMs = Number(opts.sessionPollMs ?? SESSION_DEFAULTS.pollMs);
 
+  // One session's kind environment: the kind's own `bin/` leads PATH so its
+  // `taskctl` shim (which bakes `--actor-kind`) is the one a tool call finds, and
+  // TASKCTL_ACTOR_KIND is pinned so a supervisor's own env cannot leak into a
+  // role running on another platform.
+  const kindHome = typeof opts.home === "string" ? opts.home : homedir();
+  const kindEnvironment = (kind) => {
+    const bin = join(kindHome, agentPaths(kindHome, kind).agentDir, "bin");
+    const separator = process.platform === "win32" ? ";" : ":";
+    const PATH = [bin, process.env.PATH ?? ""].filter((part) => part !== "").join(separator);
+    return { ...process.env, PATH, TASKCTL_ACTOR_KIND: kind };
+  };
+
   const sessions = new Map();
   const stateRead = readSessionsState(stateDir);
   const state = stateRead.value;
   if (stateRead.error !== null) log(`session: ${stateRead.error} — starting from empty state`);
   let ledger = readLedger(stateDir).value;
-  let control = null;
-  let kindPool = input.kindPool ?? null;
+  const kindPools = new Map();
+  const injectedKindPool = input.kindPool ?? null;
+  const injectedKindPools = input.kindPools instanceof Map ? input.kindPools : new Map();
   let started = false;
   let warnedReviewerAllowlist = false;
 
-  const getKindPool = () => {
-    if (kindPool === null) {
-      kindPool = createKindPool({ actorKind: opts.actorKind, opts, log, onEvent: handleEvent });
+  /**
+   * The pool for one actor kind. One process holds several: a role runs on the
+   * kind that carries its skill. An injected pool (tests) serves every kind
+   * unless the test injects one pool per kind.
+   *
+   * @param {string|null|undefined} actorKind
+   */
+  const getKindPool = (actorKind) => {
+    if (injectedKindPool !== null) return injectedKindPool;
+    const kind = typeof actorKind === "string" && actorKind !== "" ? actorKind : (opts.actorKind ?? "claude");
+    if (injectedKindPools.has(kind)) return injectedKindPools.get(kind);
+    if (!kindPools.has(kind)) {
+      kindPools.set(kind, createKindPool({
+        actorKind: kind,
+        opts,
+        log,
+        onEvent: handleEvent,
+        env: kindEnvironment(kind),
+      }));
     }
-    return kindPool;
+    return kindPools.get(kind);
   };
 
   function workerPersistRecord(entry, previous = {}) {
@@ -440,7 +451,7 @@ export function createSessionPool(input = {}) {
     return {
       ...previous,
       kind: "worker-session",
-      actorKind: opts.actorKind ?? "claude",
+      actorKind: entry.actorKind ?? opts.actorKind ?? "claude",
       role: "worker",
       cwd: entry.cwd,
       worktree: worker.worktree ?? entry.cwd,
@@ -474,13 +485,12 @@ export function createSessionPool(input = {}) {
   const persistState = () => {
     const projects = { ...(state.projects ?? {}) };
     for (const [key, entry] of sessions) {
-      if (key === "control") continue;
       if (isWorkerKey(key)) {
         projects[key] = workerPersistRecord(entry, projects[key]);
         continue;
       }
       projects[key] = {
-        actorKind: opts.actorKind ?? "claude",
+        actorKind: entry.actorKind ?? opts.actorKind ?? "claude",
         cwd: entry.cwd,
         sessionId: entry.handle.sessionId ?? entry.sessionId ?? null,
         pid: entry.handle.pid ?? null,
@@ -490,7 +500,6 @@ export function createSessionPool(input = {}) {
         closedAt: null,
       };
     }
-    const controlEntry = sessions.get("control") ?? null;
     const next = {
       // 3 — worker sessions. The question lane is unchanged; a poll from this
       // release only enqueues question rows when the live pool advertises the
@@ -501,24 +510,11 @@ export function createSessionPool(input = {}) {
       // would otherwise keep answering "resident" after its manager died.
       poolPid: process.pid,
       heartbeatAt: nowIso(now),
+      // A takeover marker only: `--control=external` still decides whether the
+      // pool's timers keep a signalled process alive. It is not a session.
       controlMode,
-      control: controlMode === "external"
-        ? null
-        : controlEntry
-        ? {
-            actorKind: opts.actorKind ?? "claude",
-            cwd: controlEntry.cwd,
-            sessionId: controlEntry.handle.sessionId ?? controlEntry.sessionId ?? null,
-            pid: controlEntry.handle.pid ?? null,
-            startedAt: controlEntry.startedAt,
-            lastHeartbeatAt: nowIso(now),
-            lastUsedAt: controlEntry.lastUsedAt,
-            closedAt: null,
-          }
-        : state.control ?? null,
       projects,
     };
-    state.control = next.control;
     state.projects = projects;
     const written = writeJsonFile(sessionsFile(stateDir), next);
     if (!written.ok) log(`session: could not write state: ${written.error}`);
@@ -527,7 +523,6 @@ export function createSessionPool(input = {}) {
 
   /** @param {string} key */
   function storedSession(key) {
-    if (key === "control") return state.control ?? null;
     return state.projects?.[key] ?? null;
   }
 
@@ -544,6 +539,14 @@ export function createSessionPool(input = {}) {
     const parsed = parseWorkerKey(key);
     const card = row?.card ?? parsed?.card ?? stored?.card ?? null;
     const round = roundOf(row ?? stored ?? {});
+    const actorKind =
+      (typeof row?.actor_kind === "string" && row.actor_kind !== "" ? row.actor_kind : null) ??
+      (typeof stored?.actorKind === "string" ? stored.actorKind : null) ??
+      opts.actorKind ??
+      "claude";
+    // A role migrated to another platform is a new generation: never resume a
+    // native session id on a CLI that did not create it.
+    const sameKind = typeof stored?.actorKind !== "string" || stored.actorKind === actorKind;
     const plan =
       worker.forceReplay === true
         ? {
@@ -551,12 +554,18 @@ export function createSessionPool(input = {}) {
             generation: Number(stored?.generation ?? 1),
             reason: "native resume failed",
           }
-        : planWorkerOpen(stored, {
-            targetDir: options.cwd,
-            workspaceCreatedAt: worker.workspace?.created_at ?? null,
-            now: now(),
-            maxAgeMs: sessionMaxAgeMs,
-          });
+        : !sameKind
+          ? {
+              mode: "fresh",
+              generation: Number(stored?.generation ?? 1) + 1,
+              reason: `role moved from ${stored?.actorKind} to ${actorKind}`,
+            }
+          : planWorkerOpen(stored, {
+              targetDir: options.cwd,
+              workspaceCreatedAt: worker.workspace?.created_at ?? null,
+              now: now(),
+              maxAgeMs: sessionMaxAgeMs,
+            });
     if (plan.mode === "blocked") {
       throw new Error(`worker session ${key} is blocked: ${plan.reason}`);
     }
@@ -572,7 +581,7 @@ export function createSessionPool(input = {}) {
       }
     }
     const resumeId = plan.mode === "resume" ? plan.sessionId ?? null : null;
-    const handle = getKindPool().openSession({
+    const handle = getKindPool(actorKind).openSession({
       cwd: options.cwd,
       sessionId: resumeId,
       role: "worker",
@@ -581,6 +590,7 @@ export function createSessionPool(input = {}) {
       key,
       cwd: options.cwd,
       role: "worker",
+      actorKind,
       handle,
       sessionId: resumeId,
       startedAt: nowIso(now),
@@ -643,19 +653,38 @@ export function createSessionPool(input = {}) {
     }
     if (isWorkerKey(key)) return openWorkerSession(key, options);
     const stored = storedSession(key);
+    const storedKind = typeof stored?.actorKind === "string" ? stored.actorKind : null;
+    const actorKind =
+      (typeof options.actorKind === "string" && options.actorKind !== "" ? options.actorKind : null) ??
+      storedKind ??
+      opts.actorKind ??
+      "claude";
+    // A role migrated between platforms starts a new conversation: the old
+    // kind's native session id is meaningless, and possibly a different CLI.
+    const sameKind = storedKind === null || storedKind === actorKind;
+    if (!sameKind) {
+      log(`session: ${key} role moved from ${storedKind} to ${actorKind} — starting a fresh conversation`);
+    }
     const storedAge =
-      stored?.startedAt === undefined ? Number.POSITIVE_INFINITY : now() - Date.parse(String(stored.startedAt));
+      !sameKind || stored?.startedAt === undefined
+        ? Number.POSITIVE_INFINITY
+        : now() - Date.parse(String(stored.startedAt));
     const resumeId =
-      options.sessionId !== undefined && options.sessionId !== null
+      options.sessionId !== undefined && options.sessionId !== null && sameKind
         ? options.sessionId
         : storedAge < sessionMaxAgeMs
           ? stored?.sessionId ?? null
           : null;
-    const handle = getKindPool().openSession({ cwd: options.cwd, sessionId: resumeId, role: options.role });
+    const handle = getKindPool(actorKind).openSession({
+      cwd: options.cwd,
+      sessionId: resumeId,
+      role: options.role,
+    });
     const entry = {
       key,
       cwd: options.cwd,
       role: options.role,
+      actorKind,
       handle,
       sessionId: resumeId,
       startedAt: nowIso(now),
@@ -664,25 +693,36 @@ export function createSessionPool(input = {}) {
       batch: null,
     };
     sessions.set(key, entry);
-    if (key === "control") control = entry;
-    else if (options.sessionId === undefined && storedAge >= sessionMaxAgeMs && stored !== null) {
-      // A fresh conversation supersedes the expired handle; do not resume it.
+    if (
+      (options.sessionId === undefined && storedAge >= sessionMaxAgeMs && stored !== null) ||
+      !sameKind
+    ) {
+      // A fresh conversation supersedes the expired (or foreign-kind) handle.
       delete state.projects[key];
     }
     persistState();
     log(
-      `session: opened ${key === "control" ? "control" : key} (cwd=${options.cwd}` +
+      `session: opened ${key} (cwd=${options.cwd}` +
         `${resumeId === null ? ", fresh" : `, resume=${resumeId}`})`,
     );
     return entry;
   }
 
-  /** @param {string} key @param {{cwd: string, role: string}} options */
+  /** @param {string} key @param {{cwd: string, role: string, actorKind?: string|null}} options */
   async function ensureSession(key, options) {
-    const entry = sessions.get(key) ?? openSession(key, options);
+    const requested =
+      typeof options.actorKind === "string" && options.actorKind !== "" ? options.actorKind : null;
+    let entry = sessions.get(key) ?? null;
+    // A role moved between platforms while its session was open: the open
+    // conversation belongs to the old CLI, so it is closed and never reused.
+    if (entry !== null && requested !== null && entry.actorKind !== undefined && entry.actorKind !== requested) {
+      log(`session: ${key} moved from ${entry.actorKind} to ${requested} — starting a fresh conversation`);
+      await closeEntry(entry, { dropSession: true });
+      entry = null;
+    }
+    entry = entry ?? openSession(key, options);
     if (entry.handle.closed === true) {
       sessions.delete(key);
-      if (key === "control") control = null;
       return openSession(key, options);
     }
     return entry;
@@ -731,10 +771,7 @@ export function createSessionPool(input = {}) {
       log(`session: close ${entry.key} failed: ${err.message}`);
     }
     sessions.delete(entry.key);
-    if (entry.key === "control") {
-      control = null;
-      if (dropSession) state.control = null;
-    } else if (dropSession) {
+    if (dropSession) {
       delete state.projects[entry.key];
     } else if (state.projects?.[entry.key] !== undefined) {
       state.projects[entry.key] = {
@@ -745,54 +782,6 @@ export function createSessionPool(input = {}) {
       };
     }
     persistState();
-  }
-
-  async function continueTurn() {
-    // The live session owns the control turn in external mode; consuming
-    // continue.pending here would run a second, headless control.
-    if (controlMode === "external") return { ok: true, skipped: "external control" };
-    if (control?.busy === true) return { ok: true, skipped: "control busy" };
-    const paths = readContinue(stateDir);
-    if (paths.pending === null) return { ok: true, skipped: "no pending continue" };
-    const claimed = claimContinue(stateDir);
-    if (claimed.request === null) return { ok: true, skipped: "already claimed" };
-    const entry = await ensureSession("control", { cwd: opts.repo ?? process.cwd(), role: "control" });
-    entry.busy = true;
-    const agentFiles = agentPaths(opts.home, opts.actorKind);
-    const roleSet = opts.roles ?? loadRoles({
-      explicitDir: opts.rolesDir ?? null,
-      loopSkillDir: agentFiles.loopSkill,
-    });
-    const controlAgent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : "agent";
-    const prompt = buildContinuePrompt({
-      actorKind: opts.actorKind,
-      agent: controlAgent,
-      cliCommand: loopCliCommand(opts),
-      boardCommand: loopBoardCommand(opts),
-      continueIntervalSeconds: opts.continueInterval,
-      openedBy: opts.openedBy,
-      decisionPolicy: roleSet.decisionPolicy,
-      ownership: roleSet.ownership,
-      owners: roleSet.roles.map((role) => role.agent),
-    });
-    let outcome;
-    try {
-      outcome = await entry.handle.send(prompt, { timeoutMs: turnTimeoutMs });
-    } finally {
-      entry.busy = false;
-      entry.lastUsedAt = nowIso(now);
-    }
-    if (outcome?.ok === true) {
-      completeContinue(stateDir);
-      log("session: control turn complete");
-      return { ok: true };
-    }
-    const requeued = requeueContinue(stateDir, { incrementAttempts: true });
-    log(`session: control turn failed: ${outcome?.error ?? "unknown error"}; requeued=${requeued.requeued}`);
-    if (/closed|exited|spawn error/.test(String(outcome?.error ?? ""))) {
-      await closeEntry(entry, { dropSession: false });
-    }
-    return { ok: false, error: outcome?.error ?? "unknown error" };
   }
 
   /**
@@ -816,9 +805,20 @@ export function createSessionPool(input = {}) {
     }
     let answered = 0;
     for (const [dir, cards] of groups) {
-      const entry = await ensureSession(dir, { cwd: dir, role: "project" });
+      // The director lane draws no worker budget, but it is still bounded by the
+      // project's concurrency cap: one decision conversation per project must not
+      // pile on a project whose workers are already at the limit.
+      const project = String(cards[0]?.project ?? cards[0]?.project_dir ?? dir);
+      const projectLive = liveSubagents(ledger).filter(
+        (subagent) => String(subagent.project ?? subagent.sessionKey ?? "") === project,
+      ).length;
+      if (projectConcurrency > 0 && projectLive >= projectConcurrency) {
+        log(`session: ${project} is at its project cap — leaving ${cards.length} decision row(s) pending`);
+        continue;
+      }
+      const entry = await ensureSession(dir, { cwd: dir, role: "director" });
       if (entry.busy === true) {
-        log(`session: ${dir} is busy — leaving ${cards.length} question(s) pending`);
+        log(`session: ${dir} is busy — leaving ${cards.length} decision row(s) pending`);
         continue;
       }
       const claimed = claimCards(stateDir, {
@@ -833,11 +833,10 @@ export function createSessionPool(input = {}) {
         if (!claimed.ok) log(`session: question claim failed: ${claimed.error}`);
         continue;
       }
-      const paths = agentPaths(opts.home, opts.actorKind);
       const roleSet = loadRoles({
+        home: opts.home,
+        primaryKind: opts.actorKind,
         explicitDir: opts.rolesDir ?? null,
-        projectDir: dir,
-        loopSkillDir: paths.loopSkill,
       });
       entry.busy = true;
       let outcome;
@@ -846,6 +845,7 @@ export function createSessionPool(input = {}) {
           buildQuestionPrompt(claimed.cards, {
             actorKind: opts.actorKind,
             decisionPolicyPath: roleSet?.decisionPolicy?.path ?? null,
+            routing: roleSet?.routing?.text ?? null,
           }),
           { timeoutMs: turnTimeoutMs },
         );
@@ -870,7 +870,7 @@ export function createSessionPool(input = {}) {
   }
 
   /**
-   * Route pending card handoffs to their project sessions.
+   * Route pending card handoffs to their lane sessions.
    */
   async function routeCards() {
     const workerRecords = readWorkerSessions(stateDir).workers;
@@ -931,7 +931,7 @@ export function createSessionPool(input = {}) {
       // A review card runs in its own conversation: the reviewer subagent
       // inherits that session's tool surface, which has no Write.
       if (String(card.role ?? "worker") === "reviewer") {
-        const key = reviewerKey(dir);
+        const key = reviewerKey(dir, card.actor_kind ?? null);
         let group = groups.get(key);
         if (group === undefined) {
           group = { key, dir, lane: "reviewer", cards: [] };
@@ -941,7 +941,7 @@ export function createSessionPool(input = {}) {
         continue;
       }
       // A worker card is its own top-level session, keyed by card + round.
-      // While its question row is open, the project session owns the card; the
+      // While its question row is open, the director lane owns the card; the
       // handoff waits one tick rather than racing a second writer.
       if (questionCards.has(String(card.card ?? ""))) {
         log(`session: worker ${card.card} has an open question — leaving its handoff pending`);
@@ -1006,7 +1006,7 @@ export function createSessionPool(input = {}) {
       if (
         lane !== "worker-session" &&
         !sessions.has(key) &&
-        [...sessions.keys()].filter((entryKey) => entryKey !== "control" && !isWorkerKey(entryKey)).length >=
+        [...sessions.keys()].filter((entryKey) => !isWorkerKey(entryKey)).length >=
           poolMax
       ) {
         log(`session: lane session pool is full (${poolMax}) — leaving ${dir} (${lane}) pending`);
@@ -1041,6 +1041,7 @@ export function createSessionPool(input = {}) {
         entry = await ensureSession(key, {
           cwd: dir,
           role: lane === "reviewer" ? "reviewer" : lane === "worker-session" ? "worker" : "project",
+          actorKind: cards[0].actor_kind ?? null,
           ...(lane === "worker-session"
             ? { worker: { row: cards[0], workspace: cards[0].workspace ?? null } }
             : {}),
@@ -1086,13 +1087,10 @@ export function createSessionPool(input = {}) {
       if (dropped > 0) globalBudget += dropped;
       if (batch.length === 0) continue;
       claimedByProject.set(project, (claimedByProject.get(project) ?? 0) + batch.length);
-      const paths = agentPaths(opts.home, opts.actorKind);
       const roleSet = loadRoles({
+        home: opts.home,
+        primaryKind: opts.actorKind,
         explicitDir: opts.rolesDir ?? null,
-        // Roles and the decision policy live at the project root; a worktree
-        // does not carry `.meerkat/roles/`.
-        projectDir: String(cards[0]?.project_dir ?? dir),
-        loopSkillDir: paths.loopSkill,
       });
       for (const warning of roleSet.warnings) {
         if (loggedRoleWarnings.has(warning)) continue;
@@ -1171,7 +1169,7 @@ export function createSessionPool(input = {}) {
         let outcome;
         try {
           outcome = await job.entry.handle.send(
-            buildProjectBatchPrompt(job.cards, job.roleSet, { lane: job.lane }),
+            buildReviewerBatchPrompt(job.cards, job.roleSet),
             { timeoutMs: turnTimeoutMs },
           );
         } finally {
@@ -1374,7 +1372,7 @@ export function createSessionPool(input = {}) {
         }
         if (requeue.length > 0) {
           requeueCards(stateDir, requeue.map((card) => card.id), {
-            error: `project session reported ${ids.length} subagent(s) for ${batch.length} card(s)`,
+            error: `reviewer session reported ${ids.length} subagent(s) for ${batch.length} card(s)`,
           });
         }
         log(
@@ -1443,43 +1441,44 @@ export function createSessionPool(input = {}) {
       if (held) continue;
       const age = now() - Date.parse(String(entry.startedAt));
       const idle = now() - Date.parse(String(entry.lastUsedAt));
-      if (entry.key === "control") {
-        if (sessionMaxAgeMs > 0 && age > sessionMaxAgeMs) {
-          await closeEntry(entry, { dropSession: true });
-          log("session: control session reached max-age — reopened fresh next turn");
-        }
-        continue;
-      }
       // A swept worktree takes its session with it; a stale key must not be
       // reused for a path that no longer exists.
       if (!existsSync(dir)) {
         await closeEntry(entry, { dropSession: true });
-        log(`session: project session ${entry.key} — its directory is gone; closed`);
+        log(`session: lane session ${entry.key} — its directory is gone; closed`);
         continue;
       }
       if (sessionMaxAgeMs > 0 && age > sessionMaxAgeMs) {
         await closeEntry(entry, { dropSession: true });
-        log(`session: project session ${entry.key} reached max-age — fresh next batch`);
+        log(`session: lane session ${entry.key} reached max-age — fresh next batch`);
       } else if (projectIdleMs >= 0 && idle > projectIdleMs) {
         await closeEntry(entry, { dropSession: false });
-        log(`session: project session ${entry.key} idle — closed; resume id kept`);
+        log(`session: lane session ${entry.key} idle — closed; resume id kept`);
       }
     }
   }
 
   async function reattachOnStart() {
     const groups = new Map();
+    let staleWorkers = 0;
     for (const subagent of reattachCandidates(ledger)) {
       const dir = String(subagent.sessionKey ?? "");
       if (dir === "" || !existsSync(dir)) {
         ledger = markSubagent(ledger, subagent.subagentId, { status: "stale" });
         continue;
       }
-      // Rows written before the lane split carry no `lane`; the role says it.
+      // Only reviewer subagents are reattached. A worker card resumes through
+      // its own worker session; an old worker subagent row is stale history and
+      // would only pin a concurrency slot.
       const lane = String(
         subagent.lane ?? (String(subagent.role ?? "") === "reviewer" ? "reviewer" : "worker"),
       );
-      const key = lane === "reviewer" ? reviewerKey(dir) : dir;
+      if (lane !== "reviewer") {
+        ledger = markSubagent(ledger, subagent.subagentId, { status: "stale" });
+        staleWorkers += 1;
+        continue;
+      }
+      const key = reviewerKey(dir, subagent.actorKind ?? null);
       let group = groups.get(key);
       if (group === undefined) {
         group = { key, dir, lane, subagents: [] };
@@ -1487,15 +1486,18 @@ export function createSessionPool(input = {}) {
       }
       group.subagents.push(subagent);
     }
-    for (const { key, dir, lane, subagents } of groups.values()) {
-      const entry = await ensureSession(key, {
-        cwd: dir,
-        role: lane === "reviewer" ? "reviewer" : "project",
+    if (staleWorkers > 0) {
+      writeLedgerState();
+      log(`session: marked ${staleWorkers} legacy worker subagent(s) stale — their cards resume as worker sessions`, {
+        level: "debug",
       });
+    }
+    for (const { key, dir, lane, subagents } of groups.values()) {
+      const entry = await ensureSession(key, { cwd: dir, role: "reviewer" });
       entry.busy = true;
       let outcome;
       try {
-        outcome = await entry.handle.send(buildReattachPrompt({ targetDir: dir, subagents, lane }), {
+        outcome = await entry.handle.send(buildReattachPrompt({ targetDir: dir, subagents }), {
           timeoutMs: turnTimeoutMs,
         });
       } finally {
@@ -1575,16 +1577,10 @@ export function createSessionPool(input = {}) {
     get ledger() {
       return ledger;
     },
-    get control() {
-      return control;
-    },
     async start() {
       const lock = await acquireLock();
       if (!lock.ok) return lock;
       started = true;
-      if (controlMode === "internal") {
-        await ensureSession("control", { cwd: opts.repo ?? process.cwd(), role: "control" });
-      }
       await reattachOnStart();
       await recoverWorkerSessions();
       persistState();
@@ -1592,28 +1588,26 @@ export function createSessionPool(input = {}) {
     },
     async stop() {
       started = false;
-      if (kindPool !== null) {
+      // Every kind's pool is ours to close. An injected pool (tests) is not:
+      // its owner decides when it ends.
+      for (const pool of kindPools.values()) {
         try {
-          await kindPool.close();
+          await pool.close();
         } catch (err) {
           log(`session: pool close failed: ${err.message}`);
         }
       }
+      kindPools.clear();
       for (const entry of [...sessions.values()]) sessions.delete(entry.key);
-      control = null;
       persistState();
       releaseLock();
       return { ok: true };
     },
     async tick(options = {}) {
-      const continueResult = await continueTurn();
       const cardResult = await routeCards(options);
       await evictIdle();
       persistState();
-      return { continue: continueResult, cards: cardResult };
-    },
-    async continueTurn() {
-      return continueTurn();
+      return { cards: cardResult };
     },
     async routeCards(options = {}) {
       return routeCards(options);
@@ -1623,7 +1617,6 @@ export function createSessionPool(input = {}) {
     },
     persistState,
     status() {
-      const continueState = readContinue(stateDir);
       const cards = readCards(stateDir).value.cards;
       const workerEntries = [...sessions.values()].filter((entry) => isWorkerKey(entry.key));
       const workerState = {
@@ -1645,13 +1638,10 @@ export function createSessionPool(input = {}) {
       return {
         running: started,
         controlMode,
-        control: state.control ?? null,
         projects: state.projects ?? {},
         workers: workerState,
         openSessions: [...sessions.keys()],
         liveSubagents: liveSubagents(ledger).length,
-        continuePending: continueState.pending !== null,
-        continueProcessing: continueState.processing !== null,
         cardPending: cards.filter((card) => card.status === "pending").length,
         cardProcessing: cards.filter((card) => card.status === "processing").length,
         questionPending: cards.filter(
@@ -1671,11 +1661,11 @@ export function createSessionPool(input = {}) {
  */
 export async function runSession(opts, deps = {}) {
   const log = deps.log ?? (() => {});
-  // The resident sessions load skills by name: the control session expands
-  // `/meerkat-loop`, and a project subagent uses the board skill. A missing
+  // The resident sessions load skills by name: the director lane runs
+  // `meerkat-director`, and workers/reviewers use the board skill. A missing
   // install is a hard error, not a session that silently cannot work.
   const paths = agentPaths(opts.home ?? homedir(), opts.actorKind ?? "claude");
-  const missing = [paths.loopSkill, paths.boardSkill].filter(
+  const missing = [paths.directorSkill, paths.boardSkill].filter(
     (dir) => !existsSync(join(dir, "SKILL.md")),
   );
   if (missing.length > 0) {
@@ -1715,10 +1705,10 @@ export async function runSession(opts, deps = {}) {
   // The heartbeat is independent of the tick: while a turn is in flight the
   // state file must still say "the pool is here".
   const heartbeat = setInterval(() => pool.persistState(), POOL_HEARTBEAT_MS);
-  // In external-control mode no control session holds the event loop, so the
+  // In external (take-over) mode no long-lived agent holds the event loop, so the
   // timers are the process's only handles: unref'd, the pool would exit the
   // moment it started and `--take-over` would never see it. The internal pool
-  // has the control session's process; unref'ing there lets a signalled
+  // has an agent process; unref'ing there lets a signalled
   // supervisor exit once that child closes.
   if (opts.control !== "external") {
     interval.unref?.();

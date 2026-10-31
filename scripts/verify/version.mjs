@@ -23,9 +23,9 @@
  * file and exits non-zero on drift — part of `npm run verify` and wired into CI, so the
  * mistake is caught at pull-request time rather than at tag time.
  *
- * The loop is **not** a version carrier: it is distributed by `install.sh` from
- * `skills/meerkat-loop/`, declares the *board* interface it requires rather than a
- * version of its own, and its two former carriers were the `plugins/loop` manifests that
+ * The supervisor is **not** a version carrier: `meerkat-director` and the role skills are
+ * distributed by `install.sh` from `skills/`, declare the *board* interface they require
+ * rather than a version of their own, and their former carriers were the `plugins/loop` manifests that
  * this repository no longer ships (ruling O4 is thereby retired — see the 2026-10-17
  * decision note in `design/plugin-distribution-plan.md`).
  *

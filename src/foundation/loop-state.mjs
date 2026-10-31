@@ -12,8 +12,6 @@ import { join } from "node:path";
 
 /** The files a queue row and the pool's registry live in. */
 export const QUEUE_FILES = Object.freeze({
-  continuePending: "continue.pending.json",
-  continueProcessing: "continue.processing.json",
   cards: "cards.queue.json",
   ledger: "subagents.state.json",
   sessions: "sessions.state.json",

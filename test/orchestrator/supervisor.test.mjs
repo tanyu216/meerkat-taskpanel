@@ -44,9 +44,10 @@ import {
   wakeCommand,
 } from "../../src/foundation/scheduling.mjs";
 import { emptySlaLedger, planSlaPatrol } from "../../src/foundation/sla-patrol.mjs";
-import { agentPaths, defaultRepo, loopCommandArgs, parseArgs, selectMode } from "../../src/orchestrator/options.mjs";
+import { agentPaths, defaultRepo, parseArgs, selectMode } from "../../src/orchestrator/options.mjs";
 import { loadSlaLedger, readPeerLastOk, readPeerMarker, saveLastOk, saveSlaLedger } from "../../src/orchestrator/runtime.mjs";
 import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick } from "../../src/orchestrator/runners.mjs";
+import { cliInvocation } from "../../src/orchestrator/runtime.mjs";
 import { resolveWakeDir } from "../../src/foundation/project-dir.mjs";
 import { PROJECT_DIR_CODES } from "../../src/foundation/project-dir.mjs";
 import { createCommands, createContext } from "../../src/core/commands/index.mjs";
@@ -524,7 +525,7 @@ describe("buildQuestionPrompt (pure)", () => {
   });
 
   it("carries the answer-or-escalate protocol and the lane's prohibitions", () => {
-    assert.match(text, /do not spawn a subagent for this row/);
+    assert.match(text, /never spawn a subagent/);
     assert.match(text, /--kind note/);
     assert.match(text, /issue move T-1 todo/);
     assert.match(text, /awaiting --awaiting-reason/);
@@ -551,14 +552,14 @@ describe("buildHandoff (pure)", () => {
     assert.ok(text.length < 3600, "the handoff must be bounded");
   });
 
-  it("places the worker in the project session and says the claim is already taken", () => {
+  it("places the worker in the project and says the claim is already taken", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
       agent: "alice",
       actorKind: "claude",
     });
-    assert.match(text, /^You are a worker subagent of the P1 project session/);
-    assert.match(text, /working directory is this project's directory/);
+    assert.match(text, /^You are the worker for the P1 project/);
+    assert.match(text, /working directory is this card's workspace/);
     assert.match(text, /never touch another project's paths/);
     assert.match(text, /already claimed this card for you: do not claim it again/);
   });
@@ -587,7 +588,7 @@ describe("buildHandoff (pure)", () => {
     assert.ok(text.length < 3900, `the handoff must be bounded (was ${text.length})`);
   });
 
-  it("asks the project session before splitting an epic, rather than promoting it", () => {
+  it("asks the director before splitting an epic, rather than promoting it", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
       agent: "alice",
@@ -595,7 +596,7 @@ describe("buildHandoff (pure)", () => {
     });
     assert.match(text, /Step 0/);
     // The decision ladder: a subagent does not decide a split (or a scope
-    // expansion) itself; it asks the project session, which may escalate E1.
+    // expansion) itself; it asks the director, which may escalate E1.
     assert.match(text, /Do not promote or split yourself/);
     assert.match(text, /add an agent question/);
     assert.match(text, /keep the card in_progress/);
@@ -626,7 +627,7 @@ describe("buildHandoff (pure)", () => {
     );
   });
 
-  it("sets the acceptance list before work and escalates questions to the project session", () => {
+  it("sets the acceptance list before work and escalates questions to the director", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
       agent: "alice",
@@ -642,7 +643,7 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /meta\.acceptance is only/);
     assert.match(text, /append, never replace or remove/i);
     assert.match(text, /acceptance_derived=yes/);
-    // The worker no longer enters awaiting itself: it asks the project session,
+    // The worker no longer enters awaiting itself: it asks the director,
     // which answers or escalates E1-E5 to the human.
     assert.match(text, /add an agent question comment/);
     assert.match(text, /Do not enter awaiting/);
@@ -728,8 +729,8 @@ describe("buildReviewHandoff (pure)", () => {
     assert.match(text, /On resume, re-read \.meerkat\/T-2\/card\.md/);
   });
 
-  it("is a reviewer subagent in the project session, with the claim already taken", () => {
-    assert.match(text, /^You are a reviewer subagent of the <project id> project session/);
+  it("is the reviewer for the project, with the claim already taken", () => {
+    assert.match(text, /^You are the reviewer for the <project id> project/);
     assert.match(text, /already claimed this review card for you: do not claim it again/);
     assert.match(text, /heartbeat only this review card/);
   });
@@ -821,6 +822,86 @@ describe("runPollTick (injected deps)", () => {
     assert.equal(result.spawned, 1);
     assert.equal(registry.running["T-1"].pid, 4242);
     assert.equal(registry.running["T-1"].agent, "alice");
+  });
+
+  it("claims as the supervisor's kind while the worker row carries its role's kind", () => {
+    // The claim is the supervisor's act; the session that follows runs as the
+    // role's own platform. `actorKind` is passed explicitly at the claim site.
+    const { argv } = cliInvocation(
+      { cli: "taskctl", actorKind: "claude" },
+      "Turing",
+      ["issue", "claim", "T-1"],
+      { actorKind: "claude" },
+    );
+    assert.equal(argv[argv.indexOf("--agent") + 1], "Turing");
+    assert.equal(argv[argv.indexOf("--actor-kind") + 1], "claude");
+  });
+
+  it("does not claim a card whose role no available platform carries", async () => {
+    let claims = 0;
+    const result = await runPollTick({
+      agents: ["Turing"],
+      registry: EMPTY_REGISTRY(),
+      config: BASE_CONFIG,
+      readCandidates: async () => [candidate("T-1", "Turing")],
+      authorize: () => ({ ok: false, why: "no available platform carries role Turing" }),
+      claim: async () => {
+        claims += 1;
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.equal(claims, 0, "the card stays todo, never claimed on a dead platform");
+    assert.equal(result.deferred, 1);
+    assert.equal(result.spawned, 0);
+  });
+
+  it("claims an unassigned card as the explicit default agent, not the first scan agent", async () => {
+    const claims = [];
+    const registry = EMPTY_REGISTRY();
+    const result = await runPollTick({
+      agents: ["Jobs", "Turing", "Worker"],
+      registry,
+      config: { ...BASE_CONFIG, claimUnassigned: true },
+      // The pool lists the same unassigned card for every scanner.
+      readCandidates: async (_agent) => [
+        { identifier: "T-1", agent: null, reason: "unassigned", project: "P1" },
+      ],
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      defaultAgent: "Worker",
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.deepEqual(claims, [["T-1", "Worker"]], "one claim, made as Worker");
+    assert.equal(result.spawned, 1);
+    assert.equal(registry.running["T-1"].agent, "Worker");
+  });
+
+  it("falls back to the scan agent when no Worker role is installed", async () => {
+    const claims = [];
+    await runPollTick({
+      agents: ["Jobs"],
+      registry: EMPTY_REGISTRY(),
+      config: { ...BASE_CONFIG, claimUnassigned: true },
+      readCandidates: async () => [
+        { identifier: "T-2", agent: null, reason: "unassigned", project: "P1" },
+      ],
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      defaultAgent: null,
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.deepEqual(claims, [["T-2", "Jobs"]], "the documented fallback is the scan agent");
   });
 
   it("does not spawn when the atomic claim is refused (claim is the only dispatch)", async () => {
@@ -1729,16 +1810,12 @@ describe("parseArgs — the workspace mode", () => {
     );
   });
 
-  it("reads the environment and carries the mode into the child args", () => {
+  it("reads the workspace mode from the environment", () => {
     const opts = parseArgs(["--actor-kind", "claude", "--once"], {
       ...ENV,
       MEERKAT_TASKPANEL_WORKSPACE: "shared",
     });
     assert.equal(opts.workspace, "shared");
-    const args = loopCommandArgs(opts);
-    const at = args.indexOf("--workspace");
-    assert.notEqual(at, -1, "the child must receive the resolved mode");
-    assert.equal(args[at + 1], "shared");
   });
 });
 
@@ -1866,34 +1943,9 @@ describe("parseArgs — the SLA attribution and liveness surface", () => {
     const implicit = parseArgs(["--home", "/tmp/home"], {});
     assert.equal(implicit.patrolInterval, 300);
     assert.equal(implicit.patrolIntervalExplicit, false);
-    assert.equal(loopCommandArgs(implicit).includes("--patrol-interval"), false);
 
     const explicit = parseArgs(["--home", "/tmp/home", "--patrol-interval", "300"], {});
     assert.equal(explicit.patrolIntervalExplicit, true);
-    const args = loopCommandArgs(explicit);
-    assert.ok(args.includes("--patrol-interval"), args.join(" "));
-    assert.equal(args[args.indexOf("--patrol-interval") + 1], "300");
-  });
-
-  it("carries the resident settings the child passes re-read", () => {
-    // The control turn's `passes.mjs poll` asks `poolStatus()` about the same
-    // state file, so a moved one or `--resident=no` must travel in the prompt.
-    const plain = loopCommandArgs(parseArgs(["--home", "/tmp/home"], {}));
-    assert.equal(plain.includes("--resident"), false, "auto is the default");
-    assert.equal(plain.includes("--session-state"), false, "the default path is derived");
-
-    const noResident = loopCommandArgs(parseArgs(["--home", "/tmp/home", "--resident=no"], {}));
-    assert.equal(noResident[noResident.indexOf("--resident") + 1], "no");
-
-    const moved = loopCommandArgs(
-      parseArgs(["--home", "/tmp/home", "--state", "/tmp/s.json", "--session-state", "/tmp/x/sessions.json"], {}),
-    );
-    assert.equal(moved[moved.indexOf("--session-state") + 1], "/tmp/x/sessions.json");
-
-    const perProject = loopCommandArgs(
-      parseArgs(["--home", "/tmp/home", "--max-concurrency", "8", "--project-concurrency", "3"], {}),
-    );
-    assert.equal(perProject[perProject.indexOf("--project-concurrency") + 1], "3");
   });
 });
 
@@ -2071,7 +2123,7 @@ describe("supervisor module", () => {
       [new URL("../../src/orchestrator/status.mjs", import.meta.url), ["probeSupervisor", "probeUnits", "takeOver", "stopSupervisor"]],
       [new URL("../../src/orchestrator/console.mjs", import.meta.url), ["consoleCycle"]],
       [new URL("../../src/orchestrator/doctor.mjs", import.meta.url), ["doctorReport"]],
-      [new URL("../../src/foundation/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation"]],
+      [new URL("../../src/foundation/scheduling.mjs", import.meta.url), ["buildHandoff", "buildQuestionPrompt", "planTick"]],
     ];
     for (const [url, names] of modules) {
       const mod = await import(url.href);
@@ -2444,12 +2496,10 @@ describe("the concurrency cap", () => {
     const dir = mkdtempSync(join(tmpdir(), "tp-kind-forward-"));
     try {
       const env = { MEERKAT_TASKPANEL_CONFIG_DIR: dir };
-      const byDefault = loopCommandArgs(parseArgs(["--actor-kind", "claude"], env));
-      assert.equal(byDefault.includes("--config"), false);
-      const explicit = loopCommandArgs(
-        parseArgs(["--actor-kind", "claude", "--config", join(dir, "explicit.env")], env),
-      );
-      assert.equal(explicit.includes("--config"), true);
+      const byDefault = parseArgs(["--actor-kind", "claude"], env);
+      assert.equal(byDefault.config, join(dir, ".env.claude"), "the per-kind default is resolved");
+      const explicit = parseArgs(["--actor-kind", "claude", "--config", join(dir, "explicit.env")], env);
+      assert.equal(explicit.config, join(dir, "explicit.env"));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -2457,23 +2507,6 @@ describe("the concurrency cap", () => {
 
   it("keeps zero as 'claim nothing'", () => {
     assert.equal(parseArgs(["--actor-kind", "claude", "--max-concurrency", "0"], ENV).maxConcurrency, 0);
-  });
-
-  it("carries the resolved cap into the child poll even when it equals the default", () => {
-    // The parent resolved 8 (the flag beats the env); the child must be told 8
-    // rather than re-reading the environment and resolving 5.
-    const args = loopCommandArgs(
-      parseArgs(["--actor-kind", "claude", "--max-concurrency", "8"], {
-        ...ENV,
-        MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5",
-      }),
-    );
-    assert.equal(args[args.indexOf("--max-concurrency") + 1], "8");
-
-    const fromEnv = loopCommandArgs(
-      parseArgs(["--actor-kind", "claude"], { ...ENV, MEERKAT_TASKPANEL_MAX_CONCURRENCY: "5" }),
-    );
-    assert.equal(fromEnv[fromEnv.indexOf("--max-concurrency") + 1], "5");
   });
 });
 
@@ -2637,8 +2670,9 @@ describe("parseArgs — the team scan set and roles root", () => {
     assert.equal(env.rolesDir, "/env-team");
   });
 
-  it("exposes the loop-skill roles path for every actor kind", () => {
+  it("exposes the director skill path for every actor kind", () => {
     const paths = agentPaths("/home/alice", "pi");
-    assert.equal(paths.loopRoles, "/home/alice/.agents/skills/meerkat-loop/roles");
+    assert.equal(paths.directorSkill, "/home/alice/.agents/skills/meerkat-director");
+    assert.equal(Object.hasOwn(paths, "loopRoles"), false, "roles no longer live in the skill tree");
   });
 });

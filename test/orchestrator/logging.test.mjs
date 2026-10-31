@@ -38,10 +38,10 @@ describe("orchestrator/logging — the loop's line logger", () => {
       logLevel: "info",
       actorKind: "claude",
     });
-    const text = captureStderr(() => log("/meerkat-loop Continue — timer turn"));
+    const text = captureStderr(() => log("tick: patrol 0 workflow 0 poll 0"));
     assert.match(
       text,
-      /^time=\d{4}-\d{2}-\d{2}T\S+ level=info component=supervisor msg="\/meerkat-loop Continue/m,
+      /^time=\d{4}-\d{2}-\d{2}T\S+ level=info component=supervisor msg="tick: patrol 0 workflow 0 poll 0"/m,
     );
   });
 

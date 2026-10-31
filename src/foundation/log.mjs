@@ -26,7 +26,7 @@
  * logfmt reader parses it and no bespoke grammar has to be learned:
  *
  *   time=2026-10-27T12:34:56.789Z level=info event=request method=GET status=200
- *   time=2026-10-27T12:34:56.790Z level=info component=supervisor msg="/meerkat-loop Continue"
+ *   time=2026-10-27T12:34:56.790Z level=info component=supervisor msg="tick: patrol 0 workflow 0 poll 0"
  *
  * `run_id`/`request_id` correlation comes from {@link withLogContext}
  * (`AsyncLocalStorage`), so a command logged deep inside the server automatically
@@ -246,7 +246,7 @@ const RESERVED = new Set(["ts", "time", "level", "event", "message", "msg", "err
  * same grammar; nothing is positional and no value is ever bare prose.
  *
  *   time=2026-10-27T12:34:56.789Z level=info event=request method=GET status=200
- *   time=2026-10-27T12:34:56.790Z level=info component=supervisor msg="/meerkat-loop Continue"
+ *   time=2026-10-27T12:34:56.790Z level=info component=supervisor msg="tick: patrol 0 workflow 0 poll 0"
  *
  * @param {object} record
  * @param {{component?: string|null, maxValueChars?: number, includeStack?: boolean, clock?: Function}} [options]

@@ -6,15 +6,13 @@
  * "an empty scan spawns nothing" without a board.
  */
 
-import { spawn, spawnSync } from "node:child_process";
-import { closeSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
-  buildContinuePrompt,
   buildHandoff,
   buildReviewHandoff,
-  planContinueInvocation,
   planPatrol,
   planTick,
 } from "../foundation/scheduling.mjs";
@@ -24,19 +22,24 @@ import {
   partitionSlaAlerts,
   recordSlaAlerts,
 } from "../foundation/sla-patrol.mjs";
-import { loadRoles, selectReviewerRole, selectRole } from "../foundation/roles.mjs";
-import { agentPaths, loopBoardCommand, loopCliCommand, resolveLoopConfig } from "./options.mjs";
-import { enqueueContinue } from "./queue.mjs";
+import {
+  loadRoles,
+  roleVariant,
+  selectReviewerRole,
+  selectRole,
+  selectWorkerRole,
+} from "../foundation/roles.mjs";
+import { resolveRolePlatform } from "../foundation/role-platforms.mjs";
+import { resolveLoopConfig } from "./options.mjs";
+import * as passes from "./passes.mjs";
+import { poolStatus } from "./session.mjs";
 import { workerKey } from "./worker-session.mjs";
 import {
   acquireContinueLock,
   createLogger,
   isProcessAlive,
-  openAppendFd,
-  recordContinuePid,
   releaseContinueLock,
 } from "./runtime.mjs";
-import { poolStatus } from "./session.mjs";
 
 /** Rows about the board, not one card — a single-card re-read cannot decide them. */
 const BOARD_LEVEL_ROWS = new Set(["leader_stalled", "inspector_liveness"]);
@@ -45,7 +48,7 @@ const BOARD_LEVEL_ROWS = new Set(["leader_stalled", "inspector_liveness"]);
  * One poll pass.
  *
  * `dispatch` is the side effect of a successful claim. In the resident model it
- * writes the card queue (the project session spawns the subagent); the legacy
+ * writes the card queue (the pool spawns the session); the legacy
  * direct wake still spawns an agent process. `admit` and `limit` are the claim
  * budget: a card beyond the pool's capacity is deferred **before** it is
  * claimed, so the board never shows a claim that has nowhere to run.
@@ -77,12 +80,20 @@ export async function runPollTick(deps) {
     claim,
     spawnWorker,
     dispatch = spawnWorker,
+    // Checked before admission and claim: a role no available kind carries must
+    // not leave the card claimed on a platform that cannot start.
+    authorize = null,
     admit = null,
     release = null,
     recordDefer = null,
     clearDeferral = null,
     limit = Number.POSITIVE_INFINITY,
     verb = "woke",
+    // The claim identity for a card no scan agent owns. The pool lists an
+    // unassigned card for every scanner, so taking the scan order's first name
+    // would make Jobs the default worker by accident. Explicit, or the scan
+    // agent as the documented fallback.
+    defaultAgent = null,
     now,
     log,
   } = deps;
@@ -90,7 +101,18 @@ export async function runPollTick(deps) {
   const candidates = [];
   for (const agent of agents) {
     const found = await readCandidates(agent, { claimUnassigned: config.claimUnassigned === true });
-    for (const candidate of found ?? []) candidates.push({ ...candidate, agent: candidate.agent ?? agent });
+    for (const candidate of found ?? []) {
+      const unassigned =
+        candidate.agent === null ||
+        candidate.agent === undefined ||
+        candidate.agent === "" ||
+        candidate.reason === "unassigned";
+      const who =
+        unassigned && typeof defaultAgent === "string" && defaultAgent !== ""
+          ? defaultAgent
+          : candidate.agent ?? agent;
+      candidates.push({ ...candidate, agent: who, ...(unassigned ? { unassigned: true } : {}) });
+    }
   }
 
   const actions = planTick({ candidates, registry, config });
@@ -115,6 +137,14 @@ export async function runPollTick(deps) {
     }
 
     const card = cardById.get(action.identifier);
+    if (authorize !== null) {
+      const verdict = authorize(action, card);
+      if (verdict?.ok === false) {
+        deferred += 1;
+        log(`defer ${action.identifier} (${verdict.why ?? "no platform carries the role"})`);
+        continue;
+      }
+    }
     // The claim budget is checked **before** the claim: a card with no place to
     // run must stay `todo`, where the next turn can offer it again. Admission
     // registers the brief watch first; a terminal card is written once and
@@ -182,7 +212,7 @@ export async function runPollTick(deps) {
  *
  * Poll calls this **before** its concurrency budget (a question is not a
  * subagent) and only when the resident pool advertises `question-lane`. It never
- * claims a card and never moves one: the project session answers the question
+ * claims a card and never moves one: the director answers the question
  * and moves the card. The attempt bound counts dispatches, so a broken turn is
  * retried twice and then left to the human.
  *
@@ -896,7 +926,7 @@ const EXPECTED_ACCEPTANCE_SKIP_CODES = new Set([
  * state rather than the clock (`actions_capped`).
  */
 /** A standing workflow-action failure re-notifies once per this bucket. */
-export const WORKFLOW_ACTION_ESCALATE_MS = 24 * 60 * 60 * 1000;
+const WORKFLOW_ACTION_ESCALATE_MS = 24 * 60 * 60 * 1000;
 
 const WORKFLOW_NOTIFY_TYPES = new Set([
   "reconcile",
@@ -952,42 +982,6 @@ function describeWorkflowAction(action) {
 }
 
 /**
- * Start a detached child and resolve as soon as it exists. `stderrFd` (or null)
- * is closed in the parent once spawn resolves or fails.
- *
- * @param {{command: string, args: string[], env: Record<string,string>, cwd: string|null}} invocation
- * @param {number|null} stderrFd
- * @returns {Promise<{ok: boolean, pid?: number, error?: string}>}
- */
-function spawnDetached(invocation, stderrFd) {
-  return new Promise((resolveResult) => {
-    const child = spawn(invocation.command, invocation.args, {
-      detached: true,
-      stdio: ["ignore", "ignore", stderrFd ?? "ignore"],
-      env: { ...process.env, ...invocation.env },
-      ...(invocation.cwd === null ? {} : { cwd: invocation.cwd }),
-    });
-    const release = () => {
-      if (stderrFd === null) return;
-      try {
-        closeSync(stderrFd);
-      } catch {
-        // Closing twice must never take the tick down.
-      }
-    };
-    child.once("error", (err) => {
-      release();
-      resolveResult({ ok: false, error: err.message });
-    });
-    child.once("spawn", () => {
-      release();
-      child.unref();
-      resolveResult({ ok: true, pid: child.pid });
-    });
-  });
-}
-
-/**
  * The handoff a claim produces — reviewer or worker. Shared by the resident
  * card queue and the legacy direct wake, so both routes say the same thing.
  *
@@ -998,7 +992,7 @@ function spawnDetached(invocation, stderrFd) {
  * @param {{projectDir?: string|null}} [context]
  * @returns {{isReview: boolean, role: "worker"|"reviewer", agentRole: string|null, roleWarnings: string[], handoff: string}}
  */
-export function wakeHandoff(opts, config, action, card, context = {}) {
+export function resolveRoleTarget(opts, config, action, card) {
   // A review card takes the reviewer handoff. The candidate projection carries
   // `review_of`, so the decision needs no second read; the agent-name fallback
   // keeps an older projection (one written before those fields existed) working
@@ -1018,42 +1012,60 @@ export function wakeHandoff(opts, config, action, card, context = {}) {
   const isReview = (typeof card?.review_of === "string" && card.review_of !== "") || dedicatedReviewer;
 
   // The role layer is optional. `opts.roles` is the injected/preloaded form the
-  // tests use; production reads the effective root each dispatch (the files are
-  // small, and a workflow edit must not need a pool restart). A broken manifest
-  // degrades to no role, never an exception.
-  const paths = typeof opts.home === "string" && typeof opts.actorKind === "string"
-    ? agentPaths(opts.home, opts.actorKind)
-    : null;
+  // tests use; production scans the installed role skills each dispatch (the
+  // files are small, and a role edit must not need a pool restart). A malformed
+  // role degrades to no role, never an exception.
+  const primaryKind = typeof opts.actorKind === "string" && opts.actorKind !== "" ? opts.actorKind : "claude";
   const roleSet = opts.roles ?? loadRoles({
+    home: typeof opts.home === "string" ? opts.home : null,
+    primaryKind,
     explicitDir: opts.rolesDir ?? null,
-    projectDir: context.projectDir ?? null,
-    loopSkillDir: paths?.loopSkill ?? null,
   });
   const role = isReview
     ? selectReviewerRole(roleSet, action.agent)
-    : selectRole(roleSet, action.agent, "worker");
+    : (selectRole(roleSet, action.agent, "worker") ?? selectWorkerRole(roleSet));
+
+  // Installation location is the routing. The chosen kind can fall back to
+  // another kind that also carries this role, and it can be `null` — then the
+  // caller must not claim or dispatch (the skill would not be there).
+  const platform = role === null
+    ? { effective: primaryKind, fallback: null }
+    : resolveRolePlatform(role, { primaryKind, available: opts.kindAvailable ?? null });
+  const actorKind = platform.effective;
+  return {
+    isReview,
+    roleSet,
+    role,
+    primaryKind,
+    actorKind,
+    platformFallback: platform.fallback ?? null,
+    files: role === null ? null : roleVariant(role, actorKind),
+  };
+}
+
+export function wakeHandoff(opts, config, action, card) {
+  const target = resolveRoleTarget(opts, config, action, card);
+  const { isReview, roleSet, role, actorKind, files } = target;
   const decisionPolicyPath = roleSet?.decisionPolicy?.path ?? null;
 
   const handoff = isReview
     ? buildReviewHandoff({
         card: card ?? { identifier: action.identifier },
         agent: action.agent,
-        actorKind: opts.actorKind,
+        actorKind,
         role,
-        roleWorkflowPath: role?.workflows?.reviewer ?? null,
-        reviewerPrompt: readRoleText(role?.reviewerPrompt),
-        reviewerPromptPath: role?.reviewerPrompt ?? null,
+        roleWorkflowPath: files?.workflow ?? null,
+        reviewerPrompt: readRoleText(files?.reviewerPrompt),
+        reviewerPromptPath: files?.reviewerPrompt ?? null,
         decisionPolicyPath,
       })
     : buildHandoff({
         card: card ?? { identifier: action.identifier },
         agent: action.agent,
-        actorKind: opts.actorKind,
-        review: reviewers.includes(action.agent),
-        standalone: context.standalone === true,
+        actorKind,
         role,
-        roleWorkflowPath: role?.workflows?.worker ?? null,
-        selfCheckPath: role?.selfCheck ?? null,
+        roleWorkflowPath: files?.workflow ?? null,
+        selfCheckPath: files?.selfCheck ?? null,
         decisionPolicyPath,
       });
   // Only claim the role as the card's named agent when the manifest actually names
@@ -1067,6 +1079,10 @@ export function wakeHandoff(opts, config, action, card, context = {}) {
     isReview,
     role: isReview ? "reviewer" : "worker",
     agentRole,
+    // `null` means "no kind that carries this role can start": the caller must
+    // report and refuse the dispatch instead of spawning on a wrong platform.
+    actorKind,
+    platformFallback: target.platformFallback,
     roleWarnings: roleSet?.warnings ?? [],
     handoff,
   };
@@ -1080,9 +1096,12 @@ export function wakeHandoff(opts, config, action, card, context = {}) {
  */
 export function buildHandoffRow(input = {}) {
   const { opts, config, action, card, projectDir = null, round = 1 } = input;
-  const result = wakeHandoff(opts, config, action, card, { projectDir, standalone: true });
+  const result = wakeHandoff(opts, config, action, card);
   return {
     ...result,
+    // The queue row carries the kind so the pool keys the session by
+    // (actor_kind, worker_key) and never resumes a session across kinds.
+    actor_kind: result.actorKind,
     worker_key: result.role === "worker" ? workerKey(action.identifier, round) : null,
   };
 }
@@ -1099,7 +1118,7 @@ function readRoleText(path) {
 
 
 /** A notify command may hang; the pass must not hang with it. */
-export const NOTIFY_TIMEOUT_MS = 10_000;
+const NOTIFY_TIMEOUT_MS = 10_000;
 
 /**
  * The one alert a cadence emits when no resident pool can dispatch: poll claims
@@ -1144,43 +1163,25 @@ export function notifyReal(opts, log, { timeoutMs = NOTIFY_TIMEOUT_MS } = {}) {
   };
 }
 
-/**
- * Start one continue turn and return as soon as the child exists. Its stderr
- * goes to the loop log, or a failed agent CLI would be silent.
- *
- * @param {{log: string}} opts
- * @param {{command: string, args: string[], env: Record<string,string>, cwd: string|null}} invocation
- * @param {(line: string) => void} log
- * @returns {Promise<{ok: boolean, pid?: number, error?: string}>}
- */
-export function spawnContinueTurn(opts, invocation, log) {
-  const stderrFd = openAppendFd(opts.log);
-  // A missing fd would make the agent's stderr vanish without a trace, which is
-  // exactly what this path exists to prevent (see `openAppendFd`'s contract).
-  if (stderrFd === null) {
-    log("continue: could not open the loop log — the agent's stderr will be discarded", {
-      level: "warn",
-    });
-  }
-  return spawnDetached(invocation, stderrFd);
-}
-
 // ---------------------------------------------------------------------------
-// The continue turn — the scheduler's periodic judgment turn
+// The tick — the supervisor runs the deterministic passes in-process
 // ---------------------------------------------------------------------------
 
 /**
- * Run one continue turn: build a bounded `Continue` prompt, take the
- * single-flight lock, start the agent. The prompt runs
- * `passes.mjs patrol → workflow → poll`; poll is last so a review card
- * dispatched in this turn can be claimed immediately.
+ * Run one tick: take the single-flight lock, then run
+ * `patrol → workflow → poll` in this process. Poll is last so a review card
+ * dispatched in this tick can be claimed immediately. No agent is spawned here;
+ * the resident pool opens worker/reviewer/director sessions from the queue.
  *
  * @param {object} opts
  * @param {{
- *   log: (line: string) => void,
+ *   log?: (line: string) => void,
+ *   env?: NodeJS.ProcessEnv,
  *   continueEnabled?: boolean,
  *   requirePool?: boolean,
- *   spawn?: (opts: object, invocation: object, log: (line: string) => void) => Promise<{ok: boolean, pid?: number, error?: string}>,
+ *   runPatrol?: Function,
+ *   runWorkflow?: Function,
+ *   runPoll?: Function,
  *   isAlive?: (pid: number) => boolean,
  *   now?: () => number,
  *   onSkip?: (holder: object|null) => void,
@@ -1191,93 +1192,43 @@ export function spawnContinueTurn(opts, invocation, log) {
 export async function runContinue(opts, deps = {}) {
   const log = deps.log ?? createLogger(opts);
   const continueEnabled = deps.continueEnabled ?? true;
-  const spawnTurn = deps.spawn ?? spawnContinueTurn;
   const isAlive = deps.isAlive ?? isProcessAlive;
   const now = deps.now ?? Date.now;
   const onSkip = deps.onSkip ?? null;
   const onAcquired = deps.onAcquired ?? null;
+  const env = deps.env ?? process.env;
+  const runPatrol = deps.runPatrol ?? passes.runPatrolOnce;
+  const runWorkflow = deps.runWorkflow ?? passes.runWorkflowOnce;
+  const runPoll = deps.runPoll ?? passes.runPollOnce;
 
   if (!continueEnabled) {
-    log("continue: disabled (--continue=no)");
+    log("tick: disabled (--continue=no)");
     return 0;
   }
 
-  const pool = (deps.poolStatus ?? poolStatus)({ opts, isAlive, now });
-  const stateDir = dirname(String(opts.state));
-
-  // The resident pool owns the continue turn: this process only queues it, and
-  // the control session runs `patrol → workflow → poll` in its own conversation.
-  if (pool.live) {
-    if (opts.dryRun) {
-      log(`continue: would enqueue for the resident control session (${pool.file})`);
+  // An event may not buy a tick that could dispatch nothing. The timer still
+  // runs: patrol + workflow are useful without a pool, and poll reports why it
+  // claims nothing.
+  if (deps.requirePool === true) {
+    const pool = (deps.poolStatus ?? poolStatus)({ opts, isAlive, now });
+    if (!pool.live) {
+      log(
+        `tick: event dispatch skipped — no resident session pool (${pool.reason ?? "unknown"}); ` +
+          "worker dispatch paused",
+      );
       return 0;
     }
-    const queued = enqueueContinue(stateDir, { reason: "timer" });
-    if (!queued.ok) {
-      log(`continue: could not enqueue the control turn: ${queued.error}`, { level: "warn" });
-      return 1;
-    }
-    log(`continue: enqueued for the resident control session${queued.coalesced ? " (coalesced)" : ""}`);
-    return 0;
   }
 
-  // The event path may not spend a turn when there is nothing it could
-  // dispatch: with no pool, poll claims nothing, so an event-triggered turn
-  // would be a patrol + workflow pass bought at the event cadence (60 s) rather
-  // than the continue cadence (600 s). The timer still runs that pass, and it
-  // owns the one-per-cadence operator alert. Brief refreshes are unaffected.
-  if (!pool.live && deps.requirePool === true) {
+  if (opts.dryRun) {
     log(
-      `continue: event dispatch skipped — no resident session pool (${pool.reason ?? "unknown"}); ` +
-        "worker dispatch paused",
+      `tick: would run patrol → workflow${deps.requirePool === true ? "" : " → poll"} ` +
+        `on ${opts.actorKind}`,
     );
     return 0;
   }
 
-  // No resident pool: the one-shot turn still runs what it can — patrol and
-  // workflow — but it claims nothing. Poll is left out of the prompt entirely,
-  // because the cards it would claim could not be dispatched to a project
-  // session. One alert per cadence is the operator's signal to start the pool.
-  log(
-    `continue: no resident session pool (${pool.reason ?? "unknown"}) — ` +
-      "patrol + workflow only; worker/reviewer dispatch paused",
-  );
-  if (!opts.dryRun) {
-    notifyNoResident(opts, log, pool, deps.notify ?? notifyReal(opts, log));
-  }
-
-  const agentFiles = agentPaths(opts.home, opts.actorKind);
-  const roleSet = opts.roles ?? loadRoles({
-    explicitDir: opts.rolesDir ?? null,
-    loopSkillDir: agentFiles.loopSkill,
-  });
-  const agent = opts.agents[0];
-  const prompt = buildContinuePrompt({
-    actorKind: opts.actorKind,
-    agent,
-    cliCommand: loopCliCommand(opts),
-    boardCommand: loopBoardCommand(opts),
-    continueIntervalSeconds: opts.continueInterval,
-    openedBy: opts.openedBy,
-    decisionPolicy: roleSet.decisionPolicy,
-    ownership: roleSet.ownership,
-    owners: roleSet.roles.map((role) => role.agent),
-    includePoll: false,
-  });
-  const invocation = planContinueInvocation({
-    actorKind: opts.actorKind,
-    prompt,
-    cwd: opts.repo,
-  });
-
-  if (opts.dryRun) {
-    const shown = invocation.args.map((arg) => (arg === prompt ? "<continue prompt>" : arg));
-    log(`continue: would run: ${invocation.command} ${shown.join(" ")} in ${invocation.cwd}`);
-    log(prompt);
-    return 0;
-  }
-
-  // A turn that hangs must not block the loop forever, but it does get much
+  // A tick that hangs must not block the next one forever, but it does get much
   // longer than its cadence: the cap is two cadences or two hours, whichever is
   // larger.
   const maxAgeMs = Math.max(2 * opts.continueInterval * 1000, 2 * 60 * 60 * 1000);
@@ -1285,57 +1236,41 @@ export async function runContinue(opts, deps = {}) {
   try {
     lock = acquireContinueLock(opts.continueState, { isAlive, now, maxAgeMs });
   } catch (err) {
-    log(`continue: could not take the lock (${err.message}) — skipping`);
+    log(`tick: could not take the lock (${err.message}) — skipping`);
     return 1;
   }
   if (!lock.acquired) {
     const holder = lock.holder;
-    const who = holder === null ? "another turn is starting" : `previous turn pid ${holder.pid} still running`;
-    log(`continue: skipped — ${who}`);
+    const who = holder === null ? "another tick is starting" : `previous tick pid ${holder.pid} still running`;
+    log(`tick: skipped — ${who}`);
     // The event subscriber keeps a pending dispatch instead of dropping one
-    // whose turn happened to be in flight.
+    // whose tick happened to be in flight.
     onSkip?.(holder);
     return 0;
   }
   onAcquired?.(lock.holder);
 
   try {
-    const outcome = await spawnTurn(opts, invocation, log);
-    if (!outcome?.ok) {
-      releaseContinueLock(opts.continueState);
-      log(`continue: wake failed: ${outcome?.error ?? "unknown error"}`, { level: "error" });
-      return 1;
-    }
-    if (outcome.pid !== undefined && outcome.pid !== null) {
-      try {
-        recordContinuePid(
-          opts.continueState,
-          outcome.pid,
-          lock.holder?.startedAt ?? new Date(now()).toISOString(),
-        );
-      } catch (err) {
-        log(`continue: could not record the turn pid (${err.message}) — the lock will expire`, {
-          level: "warn",
-        });
-      }
-    }
-    log(`continue: woke ${opts.actorKind} pid ${outcome.pid ?? "(none)"}`);
+    await runPatrol(opts, env);
+    await runWorkflow(opts, env);
+    await runPoll(opts, env);
     return 0;
   } catch (err) {
-    releaseContinueLock(opts.continueState);
-    log(`continue: wake failed: ${err.message}`, { level: "error" });
+    log(`tick: pass failed: ${err.message}`, { level: "error" });
     return 1;
+  } finally {
+    releaseContinueLock(opts.continueState);
   }
 }
 
 /**
- * One continue pass with the real per-kind config and logger.
+ * One tick with the real per-kind config and logger.
  *
  * @param {object} opts
  * @param {NodeJS.ProcessEnv} [env]
  * @param {{onSkip?: Function, onAcquired?: Function, requirePool?: boolean}} [hooks]
- *   `requirePool` is set by the event subscriber: an event may not buy a turn
- *   that could not dispatch anything.
+ *   `requirePool` is set by the event subscriber: an event keeps the tick to
+ *   patrol + workflow when no pool could dispatch its work.
  * @returns {Promise<number>}
  */
 export async function runContinueOnce(opts, env = process.env, hooks = {}) {
@@ -1343,6 +1278,7 @@ export async function runContinueOnce(opts, env = process.env, hooks = {}) {
   const { continueEnabled } = resolveLoopConfig(opts, env);
   return runContinue(opts, {
     log,
+    env,
     continueEnabled,
     requirePool: hooks.requirePool === true,
     onSkip: hooks.onSkip,

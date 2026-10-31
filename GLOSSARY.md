@@ -349,7 +349,7 @@ _Avoid_: pending, on hold, blocked
 
 **Question**:
 The `question` comment a worker writes — on entering `awaiting` for an E1–E5, or while
-staying `in_progress` for a question the project session may answer (the question lane). It
+staying `in_progress` for a question the director may answer (the question lane). It
 is the payload `awaiting` promises; **any human comment** answers it and the board re-queues
 the card. The board does not read the text — the resumed worker judges from its content
 whether the answer is a complete decision, and asks again if it is not.
@@ -357,9 +357,10 @@ _中文_: 提问
 _Avoid_: awaiting reason (that is the category, not the question), issue
 
 **Question lane**:
-The loop's path for an unanswered agent `question` on an `in_progress` card: poll enqueues a
-question row and the project session answers with a `note` (then moves the card to `todo`)
-or escalates E1–E5 to `awaiting`. It is not a card state and it never claims a card.
+The supervisor's path for an unanswered agent `question` on an `in_progress` card: poll
+enqueues a question row and the **director** lane answers with a `note` (then moves the card
+to `todo`) or escalates E1–E5 to `awaiting`. It is not a card state and it never claims a
+card.
 _中文_: 提问通道
 _Avoid_: awaiting (that is the human-only overlay), question queue (the queue is generic)
 
@@ -402,27 +403,37 @@ _中文_: 监督进程（调度器）
 _Avoid_: daemon (that is the board service), cron; and do not call it the thing that polls
 
 **Session pool**:
-The supervisor's long-lived `--session` manager: one **control session** in the taskpanel
-checkout, one **worker session** per card, and a **reviewer session** per directory
-opened on demand. It owns the queues, the ledger, concurrency, idle eviction and resume.
-It is started by the session unit and it is the only thing that can dispatch a worker.
+The supervisor's long-lived `--session` manager: one **worker session** per card, a
+**reviewer session** per directory, and a **director lane** per project directory, opened on
+demand. Each session is keyed by its actor kind as well as its card or directory, and a
+session records the kind it runs on, so two platforms never share a conversation. It owns
+the queues, the ledger, concurrency, idle eviction and resume. It is started by the session
+unit and it is the only thing that can dispatch a worker.
 _中文_: 常驻会话池
 _Avoid_: worker pool, daemon, agent team
 
-**Control session**:
-The board-wide conversation inside the pool whose cwd is the taskpanel checkout. It runs
-the `/meerkat-loop Continue` turn (patrol, workflow, poll). It never spawns a worker and
-never works a card itself.
-_中文_: 控制会话
-_Avoid_: supervisor session, main agent
+**Director lane**:
+The pool's decision conversation for one project directory — the `meerkat-director` skill
+answering question, route and escalation rows. It is not a role, receives no card, draws no
+worker budget, and always runs on the supervisor's primary kind.
+_中文_: 决策通道
+_Avoid_: project session, control lane
+
+**Role skill**:
+One of the five standalone skills — `jobs`, `linus`, `turing`, `reviewer`, `worker` — each a
+complete role (`SKILL.md`, `role.json`, `references/`). **Installation location is the
+routing**: a role present under a kind's `skills/` runs on that kind. There is no roles root
+and no manifest.
+_中文_: 角色技能
+_Avoid_: team manifest, role prompt, subagent definition
 
 **Worker session**:
 The card's own top-level conversation inside the pool, keyed `worker:<card>:r<round>` and
-launched in the card's workspace (its admitted worktree for a git project). It works
-exactly one card; a new round gets the full handoff, and a same-round re-dispatch is
-resumed by its stored session id.
+launched in the card's workspace (its admitted worktree for a git project) on the kind that
+carries the card's role. It works exactly one card; a new round gets the full handoff, and a
+same-round re-dispatch is resumed by its stored session id — never across a kind.
 _中文_: 工作会话
-_Avoid_: project session, subagent, worker process
+_Avoid_: subagent, worker process
 
 **Replay**:
 Opening a fresh session for a card whose native session can no longer be resumed (expired,
@@ -477,12 +488,11 @@ _中文_: 存活检查
 _Avoid_: poll (it finds no work), heartbeat (that is the card's, not the process's)
 
 **Continue**:
-The low-frequency judgment clock. It hands the resident control session a bounded
-`/meerkat-loop Continue` prompt (or starts a one-shot turn when no pool is live); that
-turn runs the deterministic entries (patrol, workflow, poll). It is the one LLM turn the
-scheduler pays for per cadence.
-_中文_: 继续回合
-_Avoid_: patrol (patrol is one of the entries the turn runs), wake (a wake is for a card)
+The low-frequency tick clock. Each firing runs the deterministic passes — patrol →
+workflow → poll — in the supervisor process under one single-flight lock. It spends no LLM
+turn; the director lane is opened only when a row needs a decision.
+_中文_: 继续节拍
+_Avoid_: patrol (patrol is one of the passes the tick runs), wake (a wake is for a card)
 
 **Poll**:
 The deterministic entry that scans for new claimable work, claims atomically and writes
@@ -567,7 +577,7 @@ cards. A split prototype card uses the same block for its verdict instead: the p
 brief, the questions, the verdict, the prototype path, the evidence, the rejected variants,
 the commit, the limitations and the open questions; a field that does not apply is
 `none — <reason>`. Only a producer card (Jobs design, Linus architecture) writes it; the
-project session copies it into the downstream card. Distinct from the wake **Handoff** above
+director copies it into the downstream card. Distinct from the wake **Handoff** above
 and from the role's **Self-check**.
 _中文_: 交接块
 _Avoid_: handoff, card handoff (both ambiguous here)
@@ -583,7 +593,7 @@ _Avoid_: workspace, scratch dir, card copy
 
 **Card queue**:
 The durable file the poll entry writes a claimed handoff into (`cards.queue.json`), and
-the project session reads from. Distinct cards are never merged; a handoff is removed only
+the director reads from. Distinct cards are never merged; a handoff is removed only
 after its subagent is recorded in the ledger.
 _中文_: 交接队列
 _Avoid_: job queue, work queue

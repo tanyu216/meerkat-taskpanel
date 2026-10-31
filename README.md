@@ -67,7 +67,7 @@ The board's mechanisms, in the order the two problems above need them.
 
 Meerkat TaskPanel is three thin layers, with the dependency arrow always pointing inward. `src/cli` and `src/server` are the front doors. `src/core` owns the domain model, SQLite storage and use-cases. `src/foundation` holds the DTOs and helpers they agree on.
 
-`meerkat-loop` is not one of these layers. It is a separate skill that drives the board through `taskctl`; see [The meerkat-loop scheduler](#the-meerkat-loop-scheduler). To install the skill or plugin for your agent kind, start with [Agent-kind install details](#agent-kind-install-details).
+The **supervisor** (`taskctl loop …`) is not one of these layers: it drives the board through `taskctl` and runs the deterministic passes, while the **director** skill makes the collaboration decisions. Role skills (`jobs`, `linus`, `turing`, `reviewer`, `worker`) are discovered per platform. See [The supervisor and the director](#the-supervisor-and-the-director). To install the skills or plugin for your agent kind, start with [Agent-kind install details](#agent-kind-install-details).
 
 The system record is [docs/architecture.md](docs/architecture.md) — boundaries, data model, contract, configuration, security and the canonical directory tree. The rules a change here must satisfy are [docs/tech-spec.md](docs/tech-spec.md), and [docs/README.md](docs/README.md) indexes which document owns which area.
 
@@ -94,8 +94,9 @@ meerkat-taskpanel/
 │   ├── server/                   #   local HTTP API + SSE
 │   └── foundation/               #   DTOs / constants / pure helpers
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
-├── skills/                       # the three skills: meerkat (board), meerkat-loop (scheduler),
-│                                 #   setup-meerkat (install/repair + team setup; Claude-only copy)
+├── skills/                       # meerkat (board), meerkat-director (decisions),
+│                                 #   jobs/linus/turing/reviewer/worker (roles),
+│                                 #   setup-meerkat (install/repair + migration; Claude-only copy)
 ├── .claude-plugin/               # marketplace + the board plugin manifest (plugin root = the repo root)
 ├── .pi/                          # the Pi extension (declared by package.json's `pi` field)
 ├── design/                       # design artifacts: DESIGN / BLOCKS, prototype/, brand/, assets/
@@ -168,84 +169,73 @@ The `Bundle` column is the per-agent manifest that the agent's own plugin system
 
 The repository root is the board's plugin root, so every harness reads the one `skills/` tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle too — see [`docs/ops/install.md`](docs/ops/install.md#openclaw).
 
-The `meerkat-loop` scheduler skill is not distributed through the marketplace. `install.sh --target claude|codex|pi` installs it. `--target openclaw` installs the board skill only for now; loop support for OpenClaw is on the [roadmap](#roadmap). See [The meerkat-loop scheduler](#the-meerkat-loop-scheduler).
+The `meerkat-director` and role skills are not distributed through the marketplace. `install.sh --target claude|codex|pi` installs them. `--target openclaw` installs the board skill only for now; supervisor support for OpenClaw is on the [roadmap](#roadmap). See [The supervisor and the director](#the-supervisor-and-the-director).
 
-The third skill, **`setup-meerkat`**, is the `/setup-meerkat` command. It detects what is installed, repairs what is missing, offers the Matt Pocock issue-tracker integration, and installs an optional Jobs/Linus/Turing plus reviewer team (role workflows, native agent definitions, and the plan-file / omission-check conventions). `install.sh --target claude` copies it to `~/.claude/skills/setup-meerkat`. Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
+The third skill, **`setup-meerkat`**, is the `/setup-meerkat` command. It detects what is installed, repairs what is missing, offers the Matt Pocock issue-tracker integration, moves role skills between agent platforms on request, and initializes a project's decision-rights pointer to the director. `install.sh --target claude` copies it to `~/.claude/skills/setup-meerkat`. Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
 
-The team's roles root is the skill's to own: `install.sh` ships none and never creates, writes or deletes one, so `/setup-meerkat` is the only way to install or upgrade a team.
+Role skills have no roles root to own: each one is discovered from the agent kind whose `skills/` tree carries it, and that installation location is the routing. `/setup-meerkat` copies a role between kinds only on request and never deletes one the user did not name.
 
-Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the agent's board identity, default `Worker`; it seeds the loop's `MEERKAT_TASKPANEL_AGENTS` scan set and the shipped shim. A team replaces the scan set with its roles; an existing value is kept without `--force`), `--no-automation` (skip the Codex scheduling units and the taskd guard), `--link` (symlink instead of copy), `--force` (**the only** way to overwrite existing files and managed keys — without it an existing value is kept and reported as `left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change nothing), `--skip-node-check` (bypass the Node >= 22 check).
+Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the agent's board identity, default `Worker`; it seeds the shipped shim and, by default, the `MEERKAT_TASKPANEL_AGENTS` scan set, which the installer seeds as `Jobs,Linus,Turing,Worker`; an existing value is kept without `--force`), `--no-automation` (skip the Codex scheduling units and the taskd guard), `--link` (symlink instead of copy), `--force` (**the only** way to overwrite existing files and managed keys — without it an existing value is kept and reported as `left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
 **Board configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root (the checkout root, or the npm package root) for the board URL, the client token, the allow-list and the SLA thresholds (`TASKD_SLA_*`, validated by the board and published on `GET /api/v1/sla`). The process environment wins key by key, and a CLI flag wins over both. `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file. `install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to the same file. Each actor kind also has a **per-kind config** — `<program root>/.env.<actor-kind>` (for example `.env.claude`) — read by `taskctl` as a per-agent default layer (identity, the engine location) and by `taskctl loop …` for the loop policy. Beside it sits **one** machine-local `projects.json`: the project → directory map, shared by every agent kind and maintained only with `taskctl project map` (never on the board). It is not board configuration, and the loader refuses loop-policy keys in `.env`. Every `taskctl` command also needs an identity: `--actor-kind claude` (or `codex`, `pi`, …; `--as-human` for a person), which the installed shim supplies. **Breaking change:** the old `<dataDir>/taskd.env` is no longer read — move its keys into `.env` by hand. Details: [`docs/ops/install.md`](docs/ops/install.md) and [`docs/agents/development.md`](docs/agents/development.md).
 
-## The meerkat-loop scheduler
+## The supervisor and the director
 
-`meerkat-taskpanel` is the board and the record. `taskctl` is the CLI that agents and the loop use. `taskd` is the local HTTP/SSE service the CLI auto-starts for the board UI. `meerkat-loop` is the scheduler that runs outside the agent application and keeps the board moving when no one is looking.
+`meerkat-taskpanel` is the board and the record. `taskctl` is the CLI that agents and the supervisor use. `taskd` is the local HTTP/SSE service the CLI auto-starts for the board UI. The **supervisor** (`taskctl loop …`) runs outside the agent application, keeps the board moving when no one is looking, and runs the deterministic passes itself. The **director** (`meerkat-director`) is the one LLM decision lane: it assigns unowned cards, answers worker questions, and escalates E1–E5 to the human.
 
-The board makes the workflow decisions. The loop executes them. It talks to the board only through `taskctl` — never through the HTTP API.
+The board makes the workflow decisions. The supervisor executes them. It talks to the board only through `taskctl` — never through the HTTP API.
 
 ### What it is
 
-The loop has two clocks and a resident session pool:
+The supervisor has two clocks and a resident session pool:
 
 - **ping**, every 60 seconds: prune worker-registry entries whose pid is gone. No board read, no model turn, $0.
-- **continue**, every 600 seconds: one bounded LLM turn that runs three deterministic passes in order.
-- **session pool**, long-lived: one control conversation, one worker conversation per card, and a reviewer conversation per target directory on demand.
+- **tick**, every 600 seconds (installed as the `continue` unit): run three deterministic passes in-process, under one lock. No model turn.
+- **session pool**, long-lived: one worker conversation per card, a reviewer lane per directory, and a director lane per project. The pool holds sessions of several agent kinds; a role runs on the platform where its skill is installed.
 
-The skill lives in [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md) and carries the decisions. The loop itself is part of the toolkit — [`src/orchestrator/`](src/orchestrator/) — and runs as `taskctl loop …`.
+The decision protocol lives in [`skills/meerkat-director/`](skills/meerkat-director/SKILL.md); the role workflows are the five skills `jobs`, `linus`, `turing`, `reviewer` and `worker`. The execution body is part of the toolkit — [`src/orchestrator/`](src/orchestrator/) — and runs as `taskctl loop …`.
 
-### Invoke it manually
+### Decide in a live session
 
-`meerkat-loop` is command-only. Its frontmatter sets `disable-model-invocation: true`, so the model never sees it in the skill list, never loads it from a keyword or description match, and never starts it on its own.
-
-You run it yourself, in a live session:
+`meerkat-director` is command-only (`disable-model-invocation: true`), so the model never starts it on its own. A human can run it as a decision front-end:
 
 ```text
-/meerkat-loop
+/meerkat-director
 ```
 
-That is **manual mode**, and it opens with an agenda rather than a scheduler pass:
+It walks the `awaiting` cards **one at a time**: it reads the card back, asks that card's whole question, shows the exact comment it is about to write, and writes it as your comment once you agree. A board-UI answer counts too. It also reports health and every `blocked` card with its reason, and releases `backlog → todo` on request — the only forward edge, since `in_progress` belongs to a claim. Every board write is shown first. It is not a second dispatcher: the supervisor keeps its clocks.
 
-1. **What is waiting on you.** One card at a time — the session reads the card back, asks that card's whole question, shows you the exact comment it is about to write, and writes it as your comment once you agree. A board-UI answer counts too; it will not ask again.
-2. **Loop health and blocks.** The supervisor verdict, stale heartbeats, anything aged in review, and every card sitting in `blocked` with its reason — reported, never changed behind your back.
-3. **The backlog.** Cards you want started move `backlog → todo` (the only forward edge; `in_progress` belongs to a claim), with an owner only if you name one.
-4. **Anything else.** Create, split, assign, accept, reopen, cancel, relate, attach — through the board with you watching.
+### What a tick does
 
-Every board write is shown before it happens. After the agenda the clock keeps running — a question tick every 60 s, a control tick every 600 s, for 30 minutes or until you say stop.
+Every tick runs three passes in this order:
 
-**Supervised mode is the same command, not a different brain.** If you install the scheduling units, they feed `/meerkat-loop Continue — …` to the resident control session. The unit is the clock; the model still did not decide to invoke the skill.
-
-So: if you want it to run on a schedule, install the units. Otherwise, invoke it yourself. The model never does.
-
-### What a continue turn does
-
-Every continue turn runs three passes in this order:
-
-1. **patrol** — a notify-only SLA pass. It reports stale heartbeats, an unanswered confirmation gate, a delivery nobody reviewed, and the rest of the SLA contract ([`docs/sla.md`](docs/sla.md)). It never moves a card.
-2. **workflow** — the write channel. The board computes the plan with `issue reconcile --workflow` (container rules, an independent reviewer per delivery, the verdict applied); the loop executes the plan's review actions. `--workflow=no` turns the channel off; `--reviewer` enables dispatch.
+1. **patrol** — a notify-only SLA pass. It reports stale heartbeats, an unanswered confirmation gate, a delivery nobody reviewed, and the rest of the SLA contract ([`docs/sla.md`](docs/sla.md)). It never moves a card; an action that needs a decision becomes a director row.
+2. **workflow** — the write channel. The board computes the plan with `issue reconcile --workflow` (container rules, an independent reviewer per delivery, the verdict applied); the supervisor executes the plan's review actions. `--workflow=no` turns the channel off; `--reviewer` enables dispatch.
 3. **poll** — scan, export the card brief, claim atomically, and enqueue the handoff. It never spawns a worker. An empty scan is $0. The first model turn for the work starts only after a successful claim.
 
-The pool runs each card in its own worker session, opened in the project directory or the card's worktree — so work starts where it lives. A same-round re-dispatch (the answer to a question, a rework, a crash) **resumes that session** by id instead of starting a new worker; if the native session is gone, the loop replays a bounded transcript into a fresh one and marks it.
+The pool runs each card in its own worker session, opened in the project directory or the card's worktree, on the kind that carries its role skill. A same-round re-dispatch (the answer to a question, a rework, a crash) **resumes that session** by id instead of starting a new worker; if the native session is gone, the supervisor replays a bounded transcript into a fresh one and marks it.
 
-On launchd/systemd, a subscribe daemon follows the board's local event hub (one SSE connection per board, shared by every local consumer). A dispatch-relevant event asks for a continue turn, so discovery is event-driven. The 600-second cadence is still the fallback and the only path for time-based work: stale claims, review aging and SLA. On cron there is no long-lived pool: patrol and workflow still run, but poll claims nothing and worker dispatch is paused. `--continue-interval` is the discovery lever there.
+A worker's question is answered by the director: it writes an agent `note` and moves the card back to `todo`, or escalates E1–E5 with `awaiting --awaiting-reason --question`. An unassigned card past 30 minutes is assigned by the director from the generated routing table. No separate project session handles either.
 
-The full design — the two clocks, the fire-only cost gate, idempotent wakes, the concurrency cap, the fail-safe and the per-agent-kind trigger differences — is in [`docs/scheduling.md`](docs/scheduling.md).
+On launchd/systemd, a subscribe daemon follows the board's local event hub (one SSE connection per board, shared by every local consumer). A dispatch-relevant event asks for an **early tick**, so discovery is event-driven. The 600-second cadence is still the fallback and the only path for time-based work: stale claims, review aging and SLA. On cron there is no long-lived pool: patrol and workflow still run, but poll claims nothing and worker dispatch is paused.
+
+The full design — the clocks, the fire-only cost gate, idempotent wakes, the concurrency cap, role discovery and platform routing, the director lane and the failure modes — is in [`docs/scheduling.md`](docs/scheduling.md).
 
 ### Turn it on (and what it costs)
 
-`install.sh --target claude|codex|pi` installs the `meerkat-loop` skill and writes that agent kind's launchd, systemd or cron units. It is not distributed through the marketplace.
+`install.sh --target claude|codex|pi` installs the `meerkat-director` and role skills on each requested kind and writes that kind's launchd, systemd or cron units. They are not distributed through the marketplace.
 
 A plain install only writes the units and prints the load command. It never starts a daemon for you. Loading is a separate, explicit act:
 
 ```bash
-install.sh --supervisor=enable     # load one loop supervisor (the first loop kind in --target)
-install.sh --supervisor=status     # see every loop kind: platform, scan set, what is loaded
-install.sh --supervisor=disable    # unload every loop kind
+install.sh --supervisor=enable     # load the supervisor on the primary kind
+install.sh --supervisor=status     # platform, scan set, role → platform map, what is loaded
+install.sh --supervisor=disable    # unload the supervisor
 ```
 
-One loop supervisor per machine is the rule: `enable` defaults to the first loop kind in `--target` (claude for `--target all`); running a second kind needs the explicit `--supervisor-actor-kinds claude,codex` and costs another poller, log and per-loop alarm ledger. `status` and `disable` always cover every loop kind. The installer also asks once whether the supervisor may claim unassigned cards (default yes) and remembers the answer in `<program root>/.env.<actor-kind>`.
+One supervisor per machine is the rule: `enable` defaults to the primary kind (the first loop kind in `--target`; claude for `--target all`). Other platforms join by installing a role skill there, not by starting a second supervisor. `status` and `disable` cover every kind a pre-rule install left behind. The installer also asks once whether the supervisor may claim unassigned cards (default yes) and remembers the answer in `<program root>/.env.<actor-kind>`.
 
-The loop carries no version of its own and declares no board interface: it ships in the same package as the board and moves with it, so it always drives the `taskctl` installed beside it.
+The supervisor carries no version of its own and declares no board interface: it ships in the same package as the board and moves with it, so it always drives the `taskctl` installed beside it.
 
 The cost model is simple. Ping is $0. Continue is one bounded LLM turn per cadence. Inside it, poll is the deterministic cost gate: a worker or reviewer turn starts only after a successful claim. On cron there is no pool, so there is no worker dispatch.
 
@@ -260,7 +250,7 @@ Installing the skill is one line. Working the board well is a set of habits. Eve
 3. **One card at a time.**
 4. **Keep a fresh heartbeat.** The board treats a claim as live for 10 minutes. `issue heartbeat <ref>` is the pulse; the board never sends one for you.
 5. **Deliver with a report.** This is the delivery gate.
-6. **Self-review is not acceptance.** Unless the card is `acceptance_mode: off`, an agent only reaches `in_review`. The [loop](#the-meerkat-loop-scheduler) applies its configured reviewer's verdict, or a human accepts to `done`. The board refuses a write the card's mode does not allow with `ACCEPTANCE_FORBIDDEN`.
+6. **Self-review is not acceptance.** Unless the card is `acceptance_mode: off`, an agent only reaches `in_review`. The [loop](#the-supervisor-and-the-director) applies its configured reviewer's verdict, or a human accepts to `done`. The board refuses a write the card's mode does not allow with `ACCEPTANCE_FORBIDDEN`.
 7. **Never preempt a conflict.** Re-read once, and retry only if the card is still claimable.
 8. **Stay traceable.** Carry the session id.
 
@@ -278,13 +268,13 @@ If you use Matt Pocock's engineering skills, we recommend running `/setup-matt-p
 
 `install.sh --target claude --agent-name <name>` deploys the whole bundle, not just the skill. It merges `~/.claude/settings.json` (adding `env.TASKCTL_AGENT` and a `SessionStart` hook that starts the board and lists your claimable cards), installs `~/.claude/commands/{board,claim,deliver}.md`, and ships a `taskctl` shim that injects `--agent <name>`.
 
-Drive the board with `taskctl`, stamping each write with the actor kind and session — `--actor-kind claude --session-id <id>` — so a card's trail points back at the conversation that did the work. Claude Code has no timers of its own, so the claim in rule 1 is driven from outside: the [scheduler](#the-meerkat-loop-scheduler) wakes a headless `claude -p` session (`--resume <sid>` to continue one), or you trigger it by hand from the SessionStart hook or a slash command.
+Drive the board with `taskctl`, stamping each write with the actor kind and session — `--actor-kind claude --session-id <id>` — so a card's trail points back at the conversation that did the work. Claude Code has no timers of its own, so the claim in rule 1 is driven from outside: the [scheduler](#the-supervisor-and-the-director) wakes a headless `claude -p` session (`--resume <sid>` to continue one), or you trigger it by hand from the SessionStart hook or a slash command.
 
 ## Codex
 
 `install.sh --target codex --agent-name <name>` deploys the whole bundle. It appends a claim-first snippet to `~/.codex/AGENTS.md`, writes the scheduling units (`--no-automation` skips them), and ships the `taskctl` shim.
 
-Work the board the same way, using the running thread as the session id — `--actor-kind codex --session-id "$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has no timers of its own, so rule 1 is driven by the [scheduler](#the-meerkat-loop-scheduler) waking a `codex exec` turn (or a Codex app automation).
+Work the board the same way, using the running thread as the session id — `--actor-kind codex --session-id "$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has no timers of its own, so rule 1 is driven by the [scheduler](#the-supervisor-and-the-director) waking a `codex exec` turn (or a Codex app automation).
 
 The agent-facing guide — claim-first, the status model, the delivery gate and the board workflow — lives in the skill at [`skills/meerkat/SKILL.md`](skills/meerkat/SKILL.md). Per-agent-kind install and trigger details are in [`docs/ops/install.md`](docs/ops/install.md).
 
@@ -318,11 +308,11 @@ Ordered by priority; IM integration is the next planned item.
 | **Installers** | `install.sh` + `scripts/install/<actor-kind>.sh` — the claude / openclaw / codex / pi agent-kind targets plus the `server` runtime, idempotent and merge-style | *landed* |
 | **Markdown export** | `src/core/storage/md/` — `taskctl export md` writes one canonical card per task | *landed* |
 | **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |
-| **meerkat-loop** | `skills/meerkat-loop/` — the external scheduler: a 60s ping, a 600s continue turn (SLA patrol → workflow → poll) and the resident session pool; drives the board through `taskctl` only | *landed* |
+| **supervisor + director** | `skills/meerkat-director/` and the five role skills — the external supervisor: a 60s ping, a 600s deterministic tick (SLA patrol → workflow → poll), the multi-kind session pool, and the director's decision lane; drives the board through `taskctl` only | *landed* |
 | **IM integration** | Push “needs a human” items (awaiting / agent questions / pending acceptance) to IM, record decisions and acceptances from IM, and answer progress questions. The engine gets a plugin host + `channel-kit`; each platform (Feishu, Slack, WeChat, WhatsApp, Teams, Telegram) is an independent adapter package built on a third-party SDK. See [docs/im-integration.md](docs/im-integration.md). | *(planned — priority above the items below)* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |
 | **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity | *(planned)* |
-| **OpenClaw loop support** | Install and run `meerkat-loop` for the `openclaw` target (scheduling units + session pool). Today `--target openclaw` installs the board skill only; how it should coexist with OpenClaw's own poll/patrol still needs design | *(planned)* |
+| **OpenClaw supervisor support** | Install and run the supervisor for the `openclaw` target (scheduling units + session pool). Today `--target openclaw` installs the board skill only; how it should coexist with OpenClaw's own poll/patrol still needs design | *(planned)* |
 | **OpenClaw setup-meerkat support** | Install and run `setup-meerkat` for the `openclaw` target. Today only `--target claude` copies it; OpenClaw can only read it from the shared bundle | *(planned)* |
 
 > The `M0`–`M6` labels are retired from this table: `M3` (the stdio MCP server) was landed

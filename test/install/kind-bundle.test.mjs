@@ -737,13 +737,14 @@ describe("agent bundle: retired project-map key", () => {
 // ---------------------------------------------------------------------------
 
 describe("agent bundle: --force preserves operator data", () => {
-  it("keeps a roles root across a forced loop-skill reinstall", () => {
+  it("keeps a legacy roles root across a forced reinstall", () => {
     const home = makeTempDir();
     const env = agentEnv(home);
     const first = runInstall(["--target", "claude"], env);
     assert.equal(first.status, 0, first.stderr);
 
-    // `roles/` is authored by `/setup-meerkat`; `install.sh` never ships one.
+    // A `roles/` tree from an older install is operator data: `install.sh` ships
+    // none and must never delete one.
     const roles = join(home, ".claude", "skills", "meerkat-loop", "roles");
     mkdirSync(join(roles, "jobs"), { recursive: true });
     writeFileSync(join(roles, "manifest.json"), '{"version":1,"roles":[]}\n', "utf8");

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The loop's deterministic passes — the one entry the continue turn runs.
+ * The loop's deterministic passes — the one entry the tick runs.
  *
  *   taskctl loop patrol      notify-only SLA; never moves a card
  *   taskctl loop workflow    apply the board's workflow plan
@@ -27,6 +27,7 @@ import {
   readBoard,
   readOpenQuestions,
   readProjectReviewers,
+  readUnownedTodos,
   runSlaPass,
   runWorkflowPass,
 } from "./board.mjs";
@@ -39,6 +40,7 @@ import {
 } from "./deferrals.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { mergeReviewerSets, parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
+import { loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
 import {
   createWorkspace,
@@ -55,6 +57,7 @@ import {
 import {
   buildHandoffRow,
   notifyNoResident,
+  resolveRoleTarget,
   notifyReal,
   runPatrolTick,
   runPollTick,
@@ -73,7 +76,7 @@ const PASS_USAGE = `Usage: taskctl loop <patrol|workflow|poll> [options]
 
   patrol     the notify-only SLA pass; no alert moves a card
   workflow   apply the board's workflow plan (issue reconcile --workflow)
-  poll       scan → atomic claim → enqueue the handoff for a project session
+  poll       scan → atomic claim → enqueue the handoff for the session pool
 
 Options are the loop's shared flags; run \`taskctl loop run --help\` for the list.
 `;
@@ -471,17 +474,32 @@ export function createQueueDispatch(input) {
     const projectDir = context?.projectDir ?? dir;
     const round = card?.delivery_round ?? card?.review_round ?? 1;
     const handoffRow = buildHandoffRow({ opts, config, action, card, projectDir, round });
-    const { role, agentRole, roleWarnings, handoff, worker_key } = handoffRow;
+    const { role, agentRole, actorKind, platformFallback, roleWarnings, handoff, worker_key } = handoffRow;
     for (const warning of roleWarnings) {
       if (loggedRoleWarnings.has(warning)) continue;
       loggedRoleWarnings.add(warning);
       log(`roles: ${warning}`);
+    }
+    if (platformFallback !== null) {
+      const key = `${agentRole ?? action.agent}->${platformFallback}`;
+      if (!loggedRoleWarnings.has(key)) {
+        loggedRoleWarnings.add(key);
+        log(`roles: ${agentRole ?? action.agent} runs on ${platformFallback} (its preferred kind is unavailable)`);
+      }
+    }
+    if (actorKind === null) {
+      const who = handoffRow.agent_role ?? action.agent;
+      return {
+        ok: false,
+        error: `no available platform carries role ${who}; not dispatching ${action.identifier}`,
+      };
     }
     const queued = enqueueCard(stateDir, {
       card: action.identifier,
       role,
       agent: action.agent,
       agent_role: agentRole,
+      actor_kind: actorKind,
       project: card?.project ?? null,
       project_dir: projectDir,
       target_dir: dir,
@@ -508,7 +526,7 @@ export function createQueueDispatch(input) {
  * One poll pass: scan, atomically claim, enqueue the handoff.
  *
  * **Poll never spawns.** It claims on the board and writes the handoff to the
- * card queue; a resident project session (one per target directory) takes the
+ * card queue; a resident lane session (one per target directory) takes the
  * handoff and spawns the worker/reviewer subagent in that directory. Without a
  * live pool there is nowhere to send the handoff, so this pass claims **nothing**
  * and alerts once — a claimed card that cannot run is worse than an untouched
@@ -539,7 +557,20 @@ export async function runPollOnce(opts, env = process.env) {
   const merged = mergeReviewerSets(opts, config, projectReviewers);
   config.reviewers = merged.reviewers;
   config.reviewerWorkers = merged.reviewerWorkers;
-  const agents = merged.scanAgents;
+  // The scan set is the configured names plus every discovered worker-lane role.
+  // A role installed on this kind but missing from `MEERKAT_TASKPANEL_AGENTS` would
+  // otherwise never see its cards; discovery is the routing, so it joins the scan.
+  // Reviewer-lane roles are not added here — a dedicated reviewer is configured,
+  // and adding it would let it claim the public pool.
+  const roleSet = opts.roles ?? loadRoles({
+    home: typeof opts.home === "string" ? opts.home : null,
+    primaryKind: opts.actorKind,
+    explicitDir: opts.rolesDir ?? null,
+  });
+  const discoveredWorkers = roleSet.roles
+    .filter((role) => Array.isArray(role.lanes) ? role.lanes.includes("worker") : true)
+    .map((role) => role.agent);
+  const agents = [...new Set([...merged.scanAgents, ...discoveredWorkers])];
 
   const pool = poolStatus({ opts, isAlive: isProcessAlive });
   if (!pool.live) {
@@ -549,7 +580,7 @@ export async function runPollOnce(opts, env = process.env) {
   }
 
   // The question lane rides poll: a worker's unanswered question is handed to
-  // the project session before the subagent budget is consulted (a question is
+  // the director lane before the subagent budget is consulted (a question is
   // not a subagent). The capability guard keeps an older pool from receiving
   // rows it would treat as handoffs.
   if (!opts.dryRun && (pool.capabilities ?? []).includes("question-lane")) {
@@ -563,8 +594,41 @@ export async function runPollOnce(opts, env = process.env) {
         log,
       });
       if (result.enqueued > 0) {
-        log(`questions: ${result.enqueued} open question(s) enqueued for the project session`);
+        log(`questions: ${result.enqueued} open question(s) enqueued for the director`);
       }
+    }
+  }
+
+  // The director's routing fallback: a `todo` card still unassigned past the
+  // window. A dedicated reviewer never takes it; the row is a decision row, not
+  // a handoff, so it consumes no worker slot.
+  if (!opts.dryRun && (pool.capabilities ?? []).includes("question-lane")) {
+    const routes = readUnownedTodos(opts, log);
+    if (routes.ok && routes.rows.length > 0) {
+      let routed = 0;
+      for (const row of routes.rows) {
+        const rowId = `route:${row.ref}`;
+        if (questionDispatches(stateDir, rowId) >= 2) continue;
+        const resolved = resolveWakeDir({ project: row.project, projectsJson: opts.projectsJson });
+        if (resolved?.ok !== true) {
+          log(`route ${row.ref}: ${resolved?.code ?? "no project directory"}`);
+          continue;
+        }
+        const queued = enqueueCard(stateDir, {
+          id: rowId,
+          queue_kind: "question",
+          role: "question",
+          card: row.ref,
+          project: row.project,
+          agent: agents[0] ?? "agent",
+          target_dir: resolved.dir,
+          route: true,
+          title: row.title,
+          updated_at: row.updated_at,
+        });
+        if (queued.ok && queued.coalesced !== true) routed += 1;
+      }
+      if (routed > 0) log(`route: ${routed} unowned card(s) enqueued for the director`);
     }
   }
 
@@ -653,10 +717,16 @@ export async function runPollOnce(opts, env = process.env) {
   });
   const dispatch = createQueueDispatch({ opts, config, stateDir, admission, log });
 
+  // An unassigned card is claimed as the Worker role, explicitly. Taking the
+  // scan order's first name would hand the public pool to whichever agent
+  // happens to be scanned first.
+  const defaultAgent = selectWorkerRole(roleSet)?.agent ?? null;
+
   const deps = {
     agents,
     registry,
     config,
+    defaultAgent,
     readCandidates: (agent, { claimUnassigned: claimPool }) => {
       const dedicatedReviewer =
         merged.reviewers.includes(agent) && !merged.reviewerWorkers.includes(agent);
@@ -697,6 +767,7 @@ export async function runPollOnce(opts, env = process.env) {
 
   log(
     `tick: kind=${opts.actorKind} agents=${agents.join(",")} claim_unassigned=${config.claimUnassigned ? "yes" : "no"} ` +
+      `default_agent=${defaultAgent ?? "(scan order)"} ` +
       `recover_stale=${config.recoverStale ? "yes" : "no"} pool=resident ` +
       `budget=${budget} projects_json=${opts.projectsJson}${opts.dryRun ? " (dry-run)" : ""}`,
   );
@@ -763,7 +834,7 @@ export async function runPatrolOnce(opts, env = process.env) {
     config,
     spawnPatrol: async (alert) => {
       if (opts.dryRun) return { ok: false };
-      // The LLM lane needs a resident project session to run in. Without one the
+      // The LLM lane needs a resident session to run in. Without one the
       // alert stays notify-only — no card is claimed, no process is started.
       const pool = poolStatus({ opts, isAlive: isProcessAlive });
       if (!pool.live) {
@@ -861,7 +932,7 @@ export async function runPatrolOnce(opts, env = process.env) {
       // Admission is proven: the card is no longer deferred.
       deferrals.clear(alert.identifier);
       const round = task?.delivery_round ?? 1;
-      const { role, handoff, worker_key } = buildHandoffRow({
+      const { role, handoff, worker_key, actorKind } = buildHandoffRow({
         opts,
         config,
         action,
@@ -869,11 +940,16 @@ export async function runPatrolOnce(opts, env = process.env) {
         projectDir,
         round,
       });
+      if (actorKind === null) {
+        log(`patrol: no available platform carries ${action.agent}'s role — not dispatching ${alert.identifier}`);
+        return { ok: false };
+      }
       const identity = reviewIdentityOf(task);
       const queued = enqueueCard(stateDir, {
         card: alert.identifier,
         role,
         agent: action.agent,
+        actor_kind: actorKind,
         project,
         project_dir: projectDir,
         target_dir: targetDir,

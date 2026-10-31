@@ -10,7 +10,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -99,19 +99,19 @@ describe("supervisor status", () => {
     assert.equal(report.pool.controlMode, "external");
   });
 
-  it("is busy while a continue turn is in flight", () => {
+  it("is busy while a one-shot tick holds the lock", () => {
     const dir = tempDir();
     writeFileSync(
-      join(dir, "continue.processing.json"),
-      JSON.stringify({ version: 1, reason: "timer" }),
+      join(dir, "continue.state.json"),
+      JSON.stringify({ pid: 4242, startedAt: new Date(NOW).toISOString() }),
     );
     const report = probeSupervisor(optsFor(dir), {
-      isAlive: () => false,
+      isAlive: () => true,
       now: () => NOW,
       run: noUnits(),
     });
     assert.equal(report.verdict, "busy");
-    assert.equal(report.continue.processing, true);
+    assert.equal(report.continue.oneShot.pid, 4242);
   });
 
   it("is configured-idle when the units are loaded but the pool is not", () => {
@@ -205,6 +205,33 @@ describe("supervisor status", () => {
     assert.match(text, /^supervisor: absent$/m);
     assert.match(text, /^ {2}platform: {2}codex \(~\/\.codex\)$/m);
     assert.match(text, /^ {2}scan set: {2}Jobs,Linus$/m);
+  });
+
+  it("reports each discovered role with where it is installed and where it runs", async () => {
+    const dir = tempDir();
+    // A role skill on the primary kind; detection reports it without a pool.
+    const skill = join(dir, ".claude", "skills", "jobs");
+    mkdirSync(skill, { recursive: true });
+    writeFileSync(join(skill, "SKILL.md"), "---\nname: jobs\n---\n");
+    writeFileSync(
+      join(skill, "role.json"),
+      JSON.stringify({ schema: "meerkat-role", id: "jobs", agent: "Jobs", lanes: ["worker"], shapes: ["product brief"] }),
+    );
+    const out = [];
+    const code = await main(
+      [
+        "--state", join(dir, "state.json"),
+        "--config", join(dir, "config.env"),
+        "--actor-kind", "claude",
+        "--home", dir,
+      ],
+      { HOME: dir },
+      { isAlive: () => false, now: () => NOW, run: noUnits() },
+      { out: (text) => out.push(text), err: () => {} },
+    );
+    assert.equal(code, 0);
+    const text = out.join("");
+    assert.match(text, /^ {2}role Jobs: installed on claude; dispatch /m);
   });
 
   it("is partial when only the subscriber is alive", () => {

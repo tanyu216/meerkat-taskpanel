@@ -67,11 +67,11 @@ gate on its own.
 
 - Show `--dry-run` output before writing.
 - Ask before loading/enabling the supervisor (`--supervisor=enable`).
-- Ask before splitting the team across platforms: a split means more than one loop
-  supervisor, and it must be explicit (`--supervisor-actor-kinds claude,codex`). One
-  platform for all roles is the recommended default.
-- Ask before `--force`; it replaces the skill's own files, but an installed `roles/`
-  directory is kept. The project map is not in the skill directory any more: an old
+- Ask before moving a role skill from one kind's skills tree to another; removing the
+  source copy is a separate, explicit yes, and a role the user did not name is never
+  touched. One kind for all roles is the recommended default.
+- Ask before `--force`; it replaces the skill's own files. A retired `meerkat-loop` tree is
+  reported as legacy and kept. The project map is not in the skill directory any more: an old
   skill-beside `projects.json` is migrated to the config root, never replaced.
 - A remote URL that the user did not name is never assumed.
 
@@ -84,41 +84,27 @@ gate on its own.
 MEERKAT_TASKPANEL_HUMAN_NAME="Terry" bash install.sh --target claude,server
 ```
 
-`--as-human` signs that name; it is never the loop's own voice.
+`--as-human` signs that name; it is never the supervisor's or a role's own voice.
 
-## The security toolchain
+## The security toolchain — Linus owns it
 
-After the install, check the tools the project's security scan needs. Detection is
-read-only and offline:
-
-```bash
-node <skill-dir>/scripts/security-tools.mjs --check --json --project <dir>
-```
-
-`--print` shows the install/upgrade command for every tool that is not `ok`. Act only
-after an explicit yes, and only on the named tools:
+The security toolchain is the Linus role skill's system-initialization duty. This skill does
+not check, install, upgrade or write CI security files. When a machine must be
+pre-provisioned, that work runs from the Linus skill:
 
 ```bash
-node <skill-dir>/scripts/security-tools.mjs --install --tool gitleaks --project <dir>
-node <skill-dir>/scripts/security-tools.mjs --upgrade --json --project <dir>
+node <linus-skill-dir>/scripts/security-tools.mjs --check --json --project <dir>
 ```
 
-`--dry-run` prints what those two would run and executes nothing. The host comes from
-`<dir>/.git/config`; `--host github|other` overrides it, which is how SAST defaults to
-CodeQL (public GitHub) or Semgrep (elsewhere). The defaults, official sources and the Vue
-caveat are in `references/security-tools.md`; the recorded floors are in
-`assets/security/toolchain.json`.
-
-The same check reads the project's CI configuration. When a pipeline exists but an arm has
-no scanner in it, ask before acting: `--ci-plan` shows what would change and `--ci-write`
-creates it for GitHub Actions, one file per arm. For any other provider the script prints the
-arm's command and the skill composes the addition in that provider's own pipeline file, diff
-first. A project with no CI is left alone — building the pipeline is the architecture flow's
-job.
+`--print`, `--install`, `--upgrade`, `--ci-plan` and `--ci-write` behave as Linus's
+`references/security-tools.md` documents; the recorded floors are
+`skills/linus/assets/security/toolchain.json`. Point the user at Linus rather than running
+it here.
 
 ## `setup-meerkat` itself
 
 `install.sh --target claude` copies `skills/setup-meerkat/` to
-`~/.claude/skills/setup-meerkat`. Other actor kinds keep the board/loop skills; the
+`~/.claude/skills/setup-meerkat`. Other actor kinds keep the board, director and role
+skills; the
 repository bundle and marketplace still expose the setup skill, but the bash installer
 does not copy it there. OpenClaw gets the board only.
