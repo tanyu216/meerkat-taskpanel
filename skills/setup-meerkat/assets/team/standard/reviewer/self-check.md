@@ -1,46 +1,32 @@
 # Reviewer — self-check before the verdict
 
-Run this after the audit and before delivering the report. It is an audit of the audit: it
-checks that the verdict rests on things you actually observed, not on things you remember
-reading. It never changes the card's state and never authorizes a move — the loop applies
-the verdict.
+The pre-verdict audit: it proves the verdict rests on what you observed, not on what you
+remember reading. It moves nothing — the loop applies the verdict. Board operations are the
+`meerkat` board skill's contract.
 
-Never edit `card.md`; re-export it. This is not the `## Handoff` block.
+## Checks
 
-## Core
-
-1. **The ledger is complete.** Every requirement from the description, comments, `plan.md`
-   and the handoff is a row, and every row names an acceptance item and an implementation
-   (path:line, test, visible behaviour). A row you skipped is an omission, not a detail —
-   go back and answer it.
-2. **Every answer has a pointer.** Each snapshot item carries `met`/`not_met`, one line of
-   how you checked, and an `evidence[n]` reference that exists in your own report's
-   `evidence[]`. The board refuses an APPROVE whose `met` items cite nothing, and an
-   APPROVE whose report contains no `command` anchor (you ran nothing).
-3. **The sha is recorded.** The report names the delivered commit you verified, and any
-   `path` anchor you relied on exists at that sha (`git show <sha>:<path>`). If the working
-   tree has moved past it, the report says so.
-4. **Earlier findings are answered.** Every item the baseline carries from an earlier round
-   is resolved with its evidence or explicitly deferred. None was dropped.
-5. **The gate is recorded.** You ran the declared gate yourself — including the project's
-   documented scan (dependency audit, default `osv-scanner`; secret scan; SAST) — or
-   recorded `n/a — none declared` and why the card has no runnable gate. Every row of
-   `security-checklist.md` has a disposition; a blank row is an omission. An arm you only
-   read about is recorded as read, with its CI job and the delivered sha — never as a run.
-6. **Must-fix items are numbered.** A REJECT's findings are a numbered list, each with
-   file/line, reproduction, expected versus actual and the missing case, because the loop
-   appends them to the original's acceptance.
-7. **Nothing was moved.** You claimed no original, moved no card, entered no `awaiting`,
-   and wrote no human decision kind.
+1. The ledger is complete: every requirement is a row with an acceptance item and an
+   implementation.
+2. Every answer has a pointer: each snapshot item carries `met`/`not_met`, how you checked it,
+   and an `evidence[n]` present in the report — including at least one `command` anchor.
+3. The sha is recorded: every `path` anchor exists at the delivered commit
+   (`git show <sha>:<path>`), and a moved tree is stated.
+4. Earlier findings are answered: resolved with evidence or explicitly deferred; none dropped
+   or softened into a note.
+5. The gate and scan are recorded: the declared gate ran, or `n/a — none declared` with the
+   reason; every row of `security-checklist.md` has a disposition; an arm only read about is
+   recorded as read, with its CI job and sha.
+6. A REJECT's must-fix items are numbered, each with file/line, reproduction, expected versus
+   actual and the missing case.
+7. Nothing moved: no card claimed, moved or awaited, no human decision written.
+8. The first line is `VERDICT: APPROVE` or `VERDICT: REJECT`.
 
 ## What may not be a leftover
 
-A red gate, a security finding, a missing acceptance item, a missing or invalid handoff
-path, and an uncovered requirement are verdicts, not notes. Do not soften any of them into
-a leftover or an "observation".
+A red gate, a security finding, a missing acceptance item, a missing or invalid handoff path
+and an uncovered requirement are verdicts, not notes.
 
 ## Delivery
 
-Deliver on the review card only, with `VERDICT: APPROVE` or `VERDICT: REJECT` as the first
-line. If any core check above is open, the verdict is REJECT and its findings say what to
-close; an APPROVE with an open check is the failure this file exists to prevent.
+Deliver on the review card only. Any open check above means REJECT.
