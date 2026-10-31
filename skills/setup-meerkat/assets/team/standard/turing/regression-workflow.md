@@ -1,75 +1,62 @@
-# Turing — post-fix regression verification
-
-Read this from the role workflow when a development fix must be verified, including a
-production bug. The question is narrow: does the fix remove the defect without breaking
-anything around it?
-
-Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
-`meerkat` board skill's contract; load it before the first write.
-
-## Inputs
-
-- the bug card and the fix card/report, with the commit or artifact under test;
-- this card's `.meerkat/<id>/plan.md` (written or adopted by you, not the fix card's plan);
-- the original reproduction, logs or production evidence;
-- the previous passing baseline and the relevant tests.
-
-The archived spec, PRD and prototype are not inputs here: a bug fix is verified against the
-defect, its reproduction, the frozen acceptance and the baseline.
-
-The regression card depends on the fix card. It is post-delivery verification: it does not
-replace the fix card's review gate, and a finding creates a fix/rework card. The project
-session creates and links it.
+# Turing — regression verification
 
 ## Steps
 
-### 1. Establish the baseline
+1. Plan (adopt and audit)
+2. Establish the baseline
+3. Reproduce before and after
+4. Blast radius
+5. Verify the fix
+6. Production verification (when the bug is in production)
+7. Evidence
 
-Record the symptom, the timeline, the affected scope and the current mitigation (for a
-production bug). Identify the last known good behaviour and the exact build that failed.
+Verifies a development fix, including a **production bug**: does the fix remove the defect
+without breaking what surrounds it? Board operations are the `meerkat` board skill's contract;
+the shared contract in `workflow.md` applies.
 
-### 2. Reproduce before and after
+Inputs: the bug card and the fix card/report, the commit under test, the original reproduction,
+logs or production evidence, and the previous passing baseline. The archived spec, PRD and
+prototype are not inputs here: verify against the defect, reproduction, frozen acceptance and
+baseline.
 
-Run the original failing case against the pre-fix commit or a faithful reproduction: it must
-fail. Run it against the fix: it must pass. A test that passes both before and after proves
-nothing. Keep both outputs as evidence.
+### 1. Plan (adopt and audit)
 
-### 3. Blast radius
+Purpose: make this card's verification plan cover the defect. Leave behind `plan.md`. This
+card's plan is the one written or adopted by you, not the fix card's plan; adopt an attached
+plan before writing. Audit it: the baseline, the before/after reproduction and the blast
+radius cover the frozen acceptance.
 
-List the callers, contracts, migrations, configuration, data and adjacent flows the fix
-could touch. Build the regression set: targeted, surrounding, contract/schema, and the API
-and browser-based cases for the touched surface.
+### 2. Establish the baseline
 
-### 4. Verify the fix
+Purpose: know the last good behaviour and the exact failing build. Leave behind the symptom,
+timeline, scope, mitigation and the failing build.
 
-Run the targeted test, the integration suite, the UI flow, and the boundary and
-concurrency/failure paths. Confirm the fix removes the cause and does not mask the symptom.
-Check the error handling and the rollback path.
+### 3. Reproduce before and after
 
-### 5. Production verification
+Purpose: prove the bug existed before and is gone after. Leave behind both outputs: the case
+fails on the pre-fix commit and passes on the fix. A case that passes both sides proves
+nothing.
 
-When the bug is in production, define the check before running it: logs, metrics, traces,
-a canary or feature flag, a smoke test, and any data repair. Confirm the symptom is gone and
-no new error signature appeared. Record the observation window and the rollback trigger.
-Never run a destructive production action without the human.
+### 4. Blast radius
 
-### 6. Evidence
+Purpose: find what the fix could touch. Leave behind callers, contracts, migrations, config,
+data and adjacent flows, plus targeted, surrounding, contract and API/browser cases.
 
-Record the commands, exit codes, before/after results, the coverage delta and the production
-observations. The evidence must let the reviewer reproduce the verdict.
+### 5. Verify the fix
 
-### 7. Deliver
+Purpose: show the cause is removed, not the symptom masked. Leave behind targeted, integration,
+UI, boundary and concurrency/failure results, plus error-handling and rollback observations.
 
-Commit the work on the card's branch before you report — a report that cites a path must
-carry the `commit` anchor (`DELIVERY_NEEDS_COMMIT`), and `report template` stamps `HEAD`
-only on a clean tree; on a dirty tree pass `--commit <sha>`. Do not merge, rebase or push
-from this card; landing and cleanup belong to the project session.
+### 6. Production verification
 
-Re-export the brief. Confirm there
-are no unrelated changes, the regression test is committed, and the fix card is still in
-the round you verified. Deliver at `in_review`; do not issue a verdict.
+When the bug is in production, define the check before running it. Leave behind logs, metrics,
+traces, canary or flag observations, the smoke test, any data repair, the observation window
+and the rollback trigger. A destructive production action needs the human.
 
-## Boundaries
+### 7. Evidence
 
-- Do not change the fix or the acceptance to make the verification pass.
-- Do not accept your own work; the reviewer is independent.
+Purpose: let the reviewer reproduce the verdict. Leave behind commands, exit codes, before and
+after results, the coverage delta and production observations in `regression.md`. No unrelated
+change; the fix card is still in the verified round.
+
+Then run the shared `self-check.md` and deliver per `workflow.md`.

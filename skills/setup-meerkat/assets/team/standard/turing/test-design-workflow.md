@@ -1,98 +1,78 @@
-# Turing — test design and acceptance
-
-Read this from the role workflow when the card builds or refreshes the test inventory for a
-feature or change. It covers planning, writing, review, execution, security and regression.
-
-Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
-`meerkat` board skill's contract; load it before the first write.
-
-## Inputs
-
-- `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot;
-- this card's `.meerkat/<id>/plan.md` and `.meerkat/<id>/test-plan.md`;
-- for a feature or behaviour change, the card's `## Handoff` block (`meta.design_stage`)
-  when it had a design stage: it names the archived spec/PRD, the acceptance source and the
-  implementation/fix card or report. Read the named report; do not assume it lives under
-  this card's id;
-- the standard at `docs/tech-spec.md` (the test layout, naming and gate it binds), the
-  architecture document and ADRs, when the repository has them.
-
-A card with `meta.product_change=none` is a small change or bug: build the inventory from
-the card, its acceptance and (for a bug) the defect surface; it does not read design
-artifacts.
+# Turing — test design
 
 ## Steps
 
-### 1. Inventory
+1. Plan (adopt and audit)
+2. Inventory
+3. Write
+4. Review the plan
+5. Execute
+6. Security
+7. Regression
 
-Enumerate the requirements and acceptance items, then the scenarios each needs. The PRD's
-Must items seed the inventory; the frozen acceptance remains the verdict. Classify each:
-unit, integration, API, browser/UI, boundary, security, regression; mark Must and Should.
-Use the canonical terms from `GLOSSARY.md`, `design/glossary.md` and the spec's
-`## Terminology` section. An acceptance item with no scenario is an omission.
+Builds or refreshes the test inventory for a feature or change. The implementation has
+already landed; this card verifies it, and the red-green cycle belongs to the implementation
+card. Board operations are the `meerkat` board skill's contract; the shared contract in
+`workflow.md` applies.
 
-### 2. Plan
+Inputs: `.meerkat/<id>/card.md`, the live card, the frozen acceptance, this card's `plan.md`
+and `test-plan.md`; for a feature or behaviour change, the `## Handoff` block names the
+`archived spec`/PRD, the acceptance source and the named report — read that report.
+`meta.product_change=none` means no design artifacts; add `docs/tech-spec.md`, the
+architecture document and ADRs when they exist.
 
-Run the decision round (the policy this handoff names) on the open test questions — one
-round, one question string, each with a recommendation — and record the answers in the test
-plan. Write `.meerkat/<id>/test-plan.md`: scope and out-of-scope, environments,
-data and fixtures, mock policy, risk-based priority, entry/exit criteria, a requirement →
-test traceability matrix, and the mandatory gates (100% pass, >80% coverage, mock boundary,
-security scan). The test plan is what the review reads; `plan.md` is the execution plan.
+### 1. Plan (adopt and audit)
+
+Purpose: settle what the tests must prove. Leave behind `plan.md` and `test-plan.md`.
+This card's plan already exists: extend it; otherwise adopt the plan `attachments` through the
+`meerkat` board skill (a text `plan.md`, or a transcribed `plan.pdf` with its source);
+no plan attached: write it from the card and the acceptance. Settle the branch `frontier` in
+one decision round and record the answers in `test-plan.md`. **Audit the plan** before
+starting: every requirement and frozen acceptance item maps to a scenario and its evidence; order,
+prerequisites, environments and mock boundaries are written; no scenario widens acceptance.
+`test-plan.md` carries scope, environments, data, mock policy, priority, entry/exit, the
+traceability matrix and the gates.
+
+### 2. Inventory
+
+Purpose: enumerate what must be tested; leave behind requirement → test rows. Requirements
+and acceptance items → scenarios, classified unit, integration, API, browser, boundary,
+security and regression, with Must and Should. An acceptance item with no scenario is an
+omission; a scenario that widens acceptance is a question, not a test.
 
 ### 3. Write
 
-Test-first where possible. A test uses real input → real path → real expected output. Cover
-the implied boundary cases (empty, maximum, unicode, concurrency, failure), real API
-endpoints/contracts, and real browser flows for a UI change. Keep tests deterministic and
-offline; reject coverage padding, mock-only and constructor-only tests.
+Purpose: express each scenario against the landed implementation; leave behind tests and
+evidence rows in `plan.md`. Real input → real path → real output; the quality line is that
+the test would fail if the behaviour regressed. Cover boundaries (empty, maximum, unicode,
+concurrency, failure), API contracts and browser flows. Keep tests deterministic, offline
+and isolated; reject coverage padding, constructor-only and mock-only tests.
 
-### 4. Check the plan
+### 4. Review the plan
 
-Every acceptance item has at least one test. API and browser-based flows are covered where
-the change exposes them. A test must fail for the right reason before it passes. No flaky
-sleep, no network dependency, no shared mutable state between tests. The coverage floor is
-met.
+Purpose: prove the inventory is complete and honest; leave behind the checked matrix, the
+coverage reading and the review findings in `test-plan.md`. Every acceptance item has a
+test; a test that still passes when the behaviour regresses is not evidence. Traceability,
+test quality, missing branches, data isolation and determinism are reviewed. Do not start
+the full run with an unhandled blocker.
 
-### 5. Test-case review
+### 5. Execute
 
-The project session or a designated peer reviews the plan — traceability, test quality,
-missing branches, data isolation, determinism — and records the findings and dispositions.
-Do not start the full run with an unhandled blocker.
+Purpose: validate the tests themselves; leave behind command, exit code, coverage and
+evidence rows. Run the unit, integration, API and browser suites. This validates the tests,
+not the delivery — the reviewer re-runs the gate.
 
-### 6. Execute your tests
+### 6. Security
 
-Run the unit, integration, API and browser-based suites you wrote to prove they fail for the
-right reason and pass with the change; record the command, exit code and coverage. This
-validates the tests, not the delivery — the reviewer re-runs the gate on the review card.
+Purpose: cover the change's security surface; leave behind findings with severity and the
+scan command or `n/a — <reason>`. Cover authorization, input validation, secrets, injection,
+path traversal and SSRF, including API authentication; the dependency audit defaults to
+`osv-scanner`. A serious finding blocks delivery — raise it as a question, not a leftover.
+The manual checklist is the reviewer's; deliver findings, never a security verdict.
 
-### 7. Security tests
+### 7. Regression
 
-Cover authorization boundaries, input validation, secrets, injection, path traversal and
-SSRF, including API authentication/authorization, and record severity. You may run the
-project's documented scan to find findings — the dependency audit defaults to
-`osv-scanner`; the scan is the reviewer's gate, and a serious finding blocks your plan.
-The manual checklist has no scanner behind it: it is the reviewer's, not yours. Deliver
-findings and evidence, never a security verdict.
+Purpose: keep the surrounding behaviour intact; leave behind the existing-suite run and the
+regression tests the change needs. Confirm no published contract, schema or migration broke.
 
-### 8. Regression
-
-Run the existing suite. Add the regression tests the change needs. Confirm no published
-contract or schema broke.
-
-### 9. Deliver
-
-Commit the work on the card's branch before you report — a report that cites a path must
-carry the `commit` anchor (`DELIVERY_NEEDS_COMMIT`), and `report template` stamps `HEAD`
-only on a clean tree; on a dirty tree pass `--commit <sha>`. Do not merge, rebase or push
-from this card; landing and cleanup belong to the project session.
-
-Re-export the brief, then deliver at
-`in_review` with the traceability matrix, the commands and results, the coverage, the
-security findings and the leftovers. Do not issue a verdict; the reviewer executes the
-mandatory gates.
-
-## Boundaries
-
-- Do not change acceptance, scope or the implementation to make a test pass.
-- Do not accept your own work; the reviewer is independent.
+Then run the shared `self-check.md` and deliver per `workflow.md`.
