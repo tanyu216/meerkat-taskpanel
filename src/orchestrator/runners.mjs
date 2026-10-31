@@ -27,6 +27,7 @@ import {
 import { loadRoles, selectReviewerRole, selectRole } from "../foundation/roles.mjs";
 import { agentPaths, loopBoardCommand, loopCliCommand, resolveLoopConfig } from "./options.mjs";
 import { enqueueContinue } from "./queue.mjs";
+import { workerKey } from "./worker-session.mjs";
 import {
   acquireContinueLock,
   createLogger,
@@ -1049,6 +1050,7 @@ export function wakeHandoff(opts, config, action, card, context = {}) {
         agent: action.agent,
         actorKind: opts.actorKind,
         review: reviewers.includes(action.agent),
+        standalone: context.standalone === true,
         role,
         roleWorkflowPath: role?.workflows?.worker ?? null,
         selfCheckPath: role?.selfCheck ?? null,
@@ -1067,6 +1069,21 @@ export function wakeHandoff(opts, config, action, card, context = {}) {
     agentRole,
     roleWarnings: roleSet?.warnings ?? [],
     handoff,
+  };
+}
+
+/**
+ * The queue row's handoff fields, shared by poll and patrol. A worker row names
+ * its own session; a review row keeps the batch/subagent path.
+ *
+ * @param {{opts: object, config: object, action: object, card?: object, projectDir?: string|null, round?: number}} input
+ */
+export function buildHandoffRow(input = {}) {
+  const { opts, config, action, card, projectDir = null, round = 1 } = input;
+  const result = wakeHandoff(opts, config, action, card, { projectDir, standalone: true });
+  return {
+    ...result,
+    worker_key: result.role === "worker" ? workerKey(action.identifier, round) : null,
   };
 }
 

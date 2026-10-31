@@ -350,6 +350,7 @@ export function createWorkspace(input) {
           project_dir: String(projectDir),
           created_by_loop: true,
           reused_branch: true,
+          created_at: new Date().toISOString(),
         },
       };
     }
@@ -383,6 +384,7 @@ export function createWorkspace(input) {
       base_ref: base.ref,
       project_dir: String(projectDir),
       created_by_loop: true,
+      created_at: new Date().toISOString(),
     },
   };
 }

@@ -232,4 +232,40 @@ describe("pi resident session", () => {
     assert.match(outcome.error, /timed out/);
     await session.close();
   });
+
+  it("marks a resumed turn that exits before settling", async (t) => {
+    const f = fixture(t);
+    const bin = join(f.dir, "fail-pi.mjs");
+    writeFileSync(
+      bin,
+      `#!/usr/bin/env node
+import { createInterface } from "node:readline";
+const args = process.argv.slice(2);
+const at = args.indexOf("--session-id");
+const sid = at === -1 ? "pi-fresh" : args[at + 1];
+const send = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
+const rl = createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.type === "get_state") {
+    send({ id: msg.id, type: "response", command: "get_state", success: true, data: { sessionId: sid } });
+    return;
+  }
+  if (msg.type === "prompt") {
+    send({ id: msg.id, type: "response", command: "prompt", success: true, data: {} });
+    process.exit(1);
+  }
+});
+`,
+      "utf8",
+    );
+    chmodSync(bin, 0o755);
+    const pool = createPiPool({ opts: {}, bin, log: () => {}, home: f.dir });
+    t.after(() => pool.close());
+    const resumed = pool.openSession({ cwd: f.project, sessionId: "pi-old", role: "worker" });
+    const failed = await resumed.send("resume", { timeoutMs: 5000 });
+    assert.equal(failed.ok, false);
+    assert.equal(failed.resumeFailed, true);
+    await resumed.close();
+  });
 });

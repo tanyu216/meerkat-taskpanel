@@ -24,6 +24,7 @@ what a change must comply with.
 | [0003](0003-delivery-report-anchors-at-write.md) | A `met` claim needs its evidence anchor at delivery, not only at close | Accepted |
 | [0004](0004-actor-kind-system.md) | The board writes as `system`; acceptance is decided by evidence, not by actor kind | Accepted |
 | [0005](0005-the-loop-ships-with-the-board.md) | The loop ships in the board's package, so the board-interface gate is removed | Accepted |
+| [0006](0006-first-class-worker-sessions.md) | A worker is its own pooled session, resumed by id in the same round; replay when the native session is gone | Accepted |
 
 ## Writing one
 

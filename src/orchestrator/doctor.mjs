@@ -27,7 +27,7 @@
  * would make an unhealthy loop indistinguishable from a broken doctor.
  */
 
-import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, openSync, readSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
@@ -45,6 +45,7 @@ import { liveSubagents, readLedger } from "./ledger.mjs";
 import { parseArgs } from "./options.mjs";
 import { readCards } from "./queue.mjs";
 import { readPeerMarker } from "./runtime.mjs";
+import { readWorkerSessions } from "./worker-session.mjs";
 import { probeSupervisor } from "./status.mjs";
 import {
   isStaleWorkspaceRecord,
@@ -841,6 +842,53 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     errors.push(`workspaces: ${error.message}`);
   }
 
+  // 8. The card-own worker sessions. A blocked/stale record means a resume was
+  // attempted and failed; a missing worktree means the session cannot run where
+  // it was created. A missing file is a fresh install, not an error.
+  const workers = {
+    total: 0,
+    running: 0,
+    by_status: {},
+    by_resume_state: {},
+    blocked: [],
+    stale: [],
+    missing_worktree: [],
+    error: null,
+  };
+  try {
+    const read = readWorkerSessions(stateDir);
+    const records = Object.entries(read.workers ?? {});
+    workers.total = records.length;
+    for (const [key, record] of records) {
+      const status = String(record?.status ?? "idle");
+      workers.by_status[status] = (workers.by_status[status] ?? 0) + 1;
+      if (status === "running") workers.running += 1;
+      const resumeState = String(record?.resumeState ?? "fresh");
+      workers.by_resume_state[resumeState] = (workers.by_resume_state[resumeState] ?? 0) + 1;
+      if (record?.blocked === true || status === "blocked") {
+        workers.blocked.push({ key, card: record?.card ?? null, error: record?.lastError ?? null });
+      }
+      if (status === "stale") {
+        workers.stale.push({ key, card: record?.card ?? null, error: record?.lastError ?? null });
+      }
+      if (
+        typeof record?.worktree === "string" &&
+        record.worktree !== "" &&
+        !existsSync(record.worktree)
+      ) {
+        workers.missing_worktree.push({
+          key,
+          card: record?.card ?? null,
+          worktree: record.worktree,
+        });
+      }
+    }
+    if (read.error !== null) workers.error = read.error;
+  } catch (error) {
+    workers.error = error.message;
+    errors.push(`workers: ${error.message}`);
+  }
+
   const attentionReasons = [];
   if (stuck.total > 0) attentionReasons.push(`stuck_cards: ${stuck.total}`);
   if (looping.total > 0) attentionReasons.push(`looping: ${looping.total}`);
@@ -850,6 +898,16 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   if (unlanded.total > 0) attentionReasons.push(`unlanded: ${unlanded.total}`);
   if (workspaces.stale.length > 0) {
     attentionReasons.push(`stale_workspaces: ${workspaces.stale.length}`);
+  }
+  const workerIssues = new Set([
+    ...workers.blocked.map((record) => record.key),
+    ...workers.stale.map((record) => record.key),
+  ]);
+  if (workerIssues.size > 0) {
+    attentionReasons.push(`workers: ${workerIssues.size}`);
+  }
+  if (workers.missing_worktree.length > 0) {
+    attentionReasons.push(`worker_worktrees: ${workers.missing_worktree.length}`);
   }
   if (queue.failed > 0) attentionReasons.push(`queue: ${queue.failed} failed`);
   if (supervisor?.verdict === "absent" || supervisor?.verdict === "partial") {
@@ -879,6 +937,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     blocked_acceptance: blockedAcceptance,
     unlanded,
     workspaces,
+    workers,
     errors,
     skipped,
   };
@@ -939,6 +998,12 @@ function humanReport(report) {
       `processing ${report.queue.processing}, failed ${report.queue.failed})`,
   );
   lines.push(`subagents   live ${report.subagents.live} / total ${report.subagents.total}`);
+  lines.push(
+    `workers     running ${report.workers.running} / total ${report.workers.total}` +
+      (report.workers.blocked.length + report.workers.stale.length > 0
+        ? ` (blocked ${report.workers.blocked.length}, stale ${report.workers.stale.length})`
+        : ""),
+  );
 
   lines.push(`stuck       ${report.stuck_cards.total} card(s): ${report.stuck_cards.in_progress.length} in_progress`);
   for (const card of report.stuck_cards.in_progress) {

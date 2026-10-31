@@ -190,7 +190,7 @@ The loop has two clocks and a resident session pool:
 
 - **ping**, every 60 seconds: prune worker-registry entries whose pid is gone. No board read, no model turn, $0.
 - **continue**, every 600 seconds: one bounded LLM turn that runs three deterministic passes in order.
-- **session pool**, long-lived: one control conversation, one project conversation per target directory, and a reviewer conversation there on demand.
+- **session pool**, long-lived: one control conversation, one worker conversation per card, and a reviewer conversation per target directory on demand.
 
 The skill lives in [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md) and carries the decisions. The loop itself is part of the toolkit — [`src/orchestrator/`](src/orchestrator/) — and runs as `taskctl loop …`.
 
@@ -225,7 +225,7 @@ Every continue turn runs three passes in this order:
 2. **workflow** — the write channel. The board computes the plan with `issue reconcile --workflow` (container rules, an independent reviewer per delivery, the verdict applied); the loop executes the plan's review actions. `--workflow=no` turns the channel off; `--reviewer` enables dispatch.
 3. **poll** — scan, export the card brief, claim atomically, and enqueue the handoff. It never spawns a worker. An empty scan is $0. The first model turn for the work starts only after a successful claim.
 
-The resident project session spawns the worker or reviewer as a subagent, which inherits the project directory as its cwd. So work starts where it lives.
+The pool runs each card in its own worker session, opened in the project directory or the card's worktree — so work starts where it lives. A same-round re-dispatch (the answer to a question, a rework, a crash) **resumes that session** by id instead of starting a new worker; if the native session is gone, the loop replays a bounded transcript into a fresh one and marks it.
 
 On launchd/systemd, a subscribe daemon follows the board's local event hub (one SSE connection per board, shared by every local consumer). A dispatch-relevant event asks for a continue turn, so discovery is event-driven. The 600-second cadence is still the fallback and the only path for time-based work: stale claims, review aging and SLA. On cron there is no long-lived pool: patrol and workflow still run, but poll claims nothing and worker dispatch is paused. `--continue-interval` is the discovery lever there.
 

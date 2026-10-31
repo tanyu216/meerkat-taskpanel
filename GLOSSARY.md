@@ -403,9 +403,9 @@ _Avoid_: daemon (that is the board service), cron; and do not call it the thing 
 
 **Session pool**:
 The supervisor's long-lived `--session` manager: one **control session** in the taskpanel
-checkout, plus one **project session** per target directory. It owns the queues, the
-ledger, concurrency, idle eviction and resume. It is started by the session unit and it
-is the only thing that can dispatch a worker.
+checkout, one **worker session** per card, and a **reviewer session** per directory
+opened on demand. It owns the queues, the ledger, concurrency, idle eviction and resume.
+It is started by the session unit and it is the only thing that can dispatch a worker.
 _中文_: 常驻会话池
 _Avoid_: worker pool, daemon, agent team
 
@@ -416,24 +416,42 @@ never works a card itself.
 _中文_: 控制会话
 _Avoid_: supervisor session, main agent
 
+**Worker session**:
+The card's own top-level conversation inside the pool, keyed `worker:<card>:r<round>` and
+launched in the card's workspace (its admitted worktree for a git project). It works
+exactly one card; a new round gets the full handoff, and a same-round re-dispatch is
+resumed by its stored session id.
+_中文_: 工作会话
+_Avoid_: project session, subagent, worker process
+
+**Replay**:
+Opening a fresh session for a card whose native session can no longer be resumed (expired,
+deleted, or the resume rejected) and giving it a bounded loop-owned transcript of that
+card's last turns, so the work continues instead of restarting. The record is marked
+`resumed_by_replay`; a replay that also fails marks the card blocked and raises it to the
+operator.
+_中文_: 回放
+_Avoid_: restore, rehydrate, resync
+
 **Project session**:
 The per-project conversation inside the pool, launched with the project's target directory
-as its cwd. It receives a batch of claimed handoffs and spawns one worker **subagent** per
-card, which inherits that directory. It does not work the cards itself.
+as its cwd. It is the **question lane**: when a worker asks a question it is woken, answers
+operationally with a note, or escalates to the human and moves the card to `awaiting`. It
+does not work cards itself.
 _中文_: 项目会话
 _Avoid_: worker, project agent, runner
 
 **Reviewer session**:
-The second resident conversation in a project's directory, opened with the `reviewer`
-role when a review card is queued. It spawns one reviewer **subagent** per review card;
-where the adapter has a role allowlist, that surface has no Write.
+The resident conversation for review cards in a project's directory, opened with the
+`reviewer` role when a review card is queued. It spawns one reviewer **subagent** per
+review card; where the adapter has a role allowlist, that surface has no Write.
 _中文_: 审核会话
-_Avoid_: review worker, project session (that is the worker lane)
+_Avoid_: review worker, worker session
 
 **Subagent**:
-A worker or reviewer started by a project or reviewer session through the agent kind's own
-subagent mechanism. It is not a separate supervisor process, and it inherits its parent
-session's cwd rather than being handed one.
+A reviewer started by a reviewer session through the agent kind's own subagent mechanism.
+It is not a supervisor process, and it inherits its parent session's cwd rather than being
+handed one. Workers are not subagents: each has its own **worker session**.
 _中文_: 子代理
 _Avoid_: worker process, child session (that is an agent-kind API term), thread
 
@@ -468,8 +486,8 @@ _Avoid_: patrol (patrol is one of the entries the turn runs), wake (a wake is fo
 
 **Poll**:
 The deterministic entry that scans for new claimable work, claims atomically and writes
-the handoff to the card queue. It does **not** spawn a worker: the project session does
-that. It is **not scheduled**; the continue turn runs it, and a human can run it too.
+the handoff to the card queue. It does **not** spawn a worker: the pool opens or resumes
+the card's worker session. It is **not scheduled**; the continue turn runs it, and a human can run it too.
 Without a resident pool it claims nothing.
 _中文_: 轮询
 _Avoid_: tick, scan, sweep; do not call the scheduler's ping clock a poll
@@ -526,18 +544,19 @@ _Avoid_: layer, slice, sub-task
 
 **Wake**:
 Starting one worker, once, with a bounded prompt. A wake is dispatched only for work the
-loop actually claimed, and it is idempotent. In the resident shape the wake is a project
-session spawning a subagent; the legacy one-shot shape starts an agent process through the
-glue.
+loop actually claimed, and it is idempotent. In the resident shape the wake opens or
+resumes the card's **worker session**; the legacy one-shot shape starts an agent process
+through the glue.
 _中文_: 唤醒
 _Avoid_: spawn, launch, trigger
 
 **Handoff**:
-The fresh, bounded briefing a wake gives a worker — the card, the exact commands to run,
-the identity to record, and the statement that the claim is already held. It is
-deliberately built new each time rather than resumed. It names the task's **process
-directory** (`.meerkat/<identifier>/`), relative to the project session's cwd, and points
-at the exported `card.md` inside it.
+The fresh, bounded briefing a new dispatch gives a worker — the card, the exact commands
+to run, the identity to record, and the statement that the claim is already held. It is
+built again for each **round**; a same-round re-dispatch resumes the worker with a short
+resume prompt (or a **Replay**) instead of rebuilding it. It names the task's **process
+directory** (`.meerkat/<identifier>/`), relative to the worker session's cwd, and points at
+the exported `card.md` inside it.
 _中文_: 交接
 _Avoid_: prompt, context, briefing
 

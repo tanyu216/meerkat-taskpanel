@@ -204,4 +204,47 @@ describe("codex resident session", () => {
     assert.equal(outcome.ok, false);
     assert.match(outcome.error, /spawn error|exited|initialize failed|closed/i);
   });
+
+  it("marks a rejected thread/resume as a resume failure", async (t) => {
+    const f = fixture(t);
+    const failBin = join(f.dir, "fail-codex.mjs");
+    writeFileSync(
+      failBin,
+      `#!/usr/bin/env node
+import { createInterface } from "node:readline";
+const send = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
+const rl = createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.method === "initialize") {
+    send({ jsonrpc: "2.0", id: msg.id, result: { userAgent: "fake", codexHome: ".", platformFamily: "unix", platformOs: "test" } });
+    return;
+  }
+  if (msg.method === "initialized") return;
+  if (msg.method === "thread/resume") {
+    send({ jsonrpc: "2.0", id: msg.id, error: { code: -32602, message: "thread not found" } });
+    return;
+  }
+  if (msg.method === "thread/start") {
+    send({ jsonrpc: "2.0", id: msg.id, result: { thread: { id: "th-new", sessionId: "th-new" } } });
+    return;
+  }
+  if (msg.method === "turn/start") {
+    send({ jsonrpc: "2.0", id: msg.id, result: { turn: { id: "turn-1", status: "inProgress" } } });
+    send({ jsonrpc: "2.0", method: "turn/completed", params: { threadId: msg.params.threadId, turn: { id: "turn-1", status: "completed", error: null } } });
+    return;
+  }
+  if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, result: {} });
+});
+`,
+      "utf8",
+    );
+    chmodSync(failBin, 0o755);
+    const pool = createCodexPool({ opts: {}, bin: failBin, log: f.log });
+    t.after(() => pool.close());
+    const resumed = pool.openSession({ cwd: f.app, sessionId: "th-old", role: "worker" });
+    const failed = await resumed.send("resume", { timeoutMs: 5000 });
+    assert.equal(failed.ok, false);
+    assert.equal(failed.resumeFailed, true);
+  });
 });

@@ -20,6 +20,7 @@ import {
   readCards,
   readContinue,
   recoverStaleCards,
+  reownCards,
   requeueCards,
   pruneCards,
   questionDispatches,
@@ -197,15 +198,74 @@ describe("card queue", () => {
       role: "question",
       question_id: questionId,
     });
-    assert.deepEqual(enqueueCard(dir, row("q-1")), { ok: true, coalesced: false, error: null });
-    assert.deepEqual(enqueueCard(dir, row("q-1")), { ok: true, coalesced: true, error: null });
-    assert.deepEqual(enqueueCard(dir, row("q-2")), { ok: true, coalesced: false, error: null });
+    const fresh = { ok: true, coalesced: false, replaced: false, superseded: false, error: null };
+    const coalesced = { ok: true, coalesced: true, replaced: false, superseded: false, error: null };
+    assert.deepEqual(enqueueCard(dir, row("q-1")), fresh);
+    assert.deepEqual(enqueueCard(dir, row("q-1")), coalesced);
+    assert.deepEqual(enqueueCard(dir, row("q-2")), fresh);
     assert.equal(readCards(dir).value.cards.length, 2, "two questions on one card are two rows");
 
     assert.equal(questionDispatches(dir, "q-1"), 1);
     const [claimed] = claimCards(dir, { claimedBy: "/work/app", queueKind: "question", limit: 5 }).cards;
     completeCards(dir, [claimed.id]);
     assert.equal(questionDispatches(dir, "q-1"), 1, "a completed dispatch still counts against the bound");
+  });
+
+  it("keeps a worker key and supersedes a pending row on a round change", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, { ...card("T-1"), round: 1, target_dir: "/w/a", worker_key: "worker:T-1:r1" });
+    const [first] = readCards(dir).value.cards;
+    assert.equal(first.worker_key, "worker:T-1:r1");
+    assert.equal(first.round, 1);
+
+    const again = enqueueCard(dir, {
+      ...card("T-1"),
+      round: 1,
+      target_dir: "/w/a",
+      worker_key: "worker:T-1:r1",
+    });
+    assert.equal(again.coalesced, true);
+
+    const replaced = enqueueCard(dir, {
+      ...card("T-1"),
+      round: 2,
+      target_dir: "/w/a-r2",
+      worker_key: "worker:T-1:r2",
+    });
+    assert.equal(replaced.replaced, true);
+    const rows = readCards(dir).value.cards;
+    assert.equal(rows.length, 1, "one row per (card, role)");
+    assert.equal(rows[0].round, 2);
+    assert.equal(rows[0].worker_key, "worker:T-1:r2");
+    assert.match(rows[0].lastError, /superseded by round 2/);
+  });
+
+  it("leaves a processing row alone when a new round arrives", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, { ...card("T-1"), round: 1, target_dir: "/w/a", worker_key: "worker:T-1:r1" });
+    claimCards(dir, { claimedBy: "/w/a", limit: 1 });
+    const result = enqueueCard(dir, {
+      ...card("T-1"),
+      round: 2,
+      target_dir: "/w/a-r2",
+      worker_key: "worker:T-1:r2",
+    });
+    assert.equal(result.superseded, true);
+    const [row] = readCards(dir).value.cards;
+    assert.equal(row.status, "processing");
+    assert.equal(row.round, 1);
+  });
+
+  it("re-owns a processing row after a restart", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    const [row] = claimCards(dir, { claimedBy: "/old", pid: 111, limit: 1 }).cards;
+    const reowned = reownCards(dir, [row.id], { claimedBy: "/new", claimedByPid: 222 });
+    assert.equal(reowned.ok, true);
+    assert.equal(reowned.cards.length, 1);
+    const [after] = readCards(dir).value.cards;
+    assert.equal(after.claimedBy, "/new");
+    assert.equal(after.claimedByPid, 222);
   });
 
   it("requeues below the attempt cap and fails at it", (t) => {

@@ -103,6 +103,8 @@ class CodexSession {
     this.cwd = input.cwd;
     this.role = input.role ?? "worker";
     this.sessionId = input.sessionId ?? null;
+    this.resumeId = input.sessionId ?? null;
+    this.resumeMismatch = false;
     this.threadId = null;
     this.turnId = null;
     this.closed = false;
@@ -125,6 +127,11 @@ class CodexSession {
       const thread = result?.thread ?? {};
       this.threadId = String(thread.id ?? resumeId ?? "");
       this.sessionId = String(thread.sessionId ?? thread.id ?? resumeId ?? this.sessionId ?? "");
+      if (resumeId !== null && this.threadId !== resumeId) {
+        this.resumeMismatch = true;
+        this.closed = true;
+        return { ok: false, error: `resumed thread id mismatch (${this.threadId} != ${resumeId})` };
+      }
       this.pool.onEvent?.({ type: "init", sessionId: this.sessionId, cwd: this.cwd });
       return { ok: true };
     } catch (err) {
@@ -177,7 +184,13 @@ class CodexSession {
     const current = this.current;
     this.current = null;
     clearTimeout(current.timer);
-    current.resolve({ ...outcome, sessionId: this.sessionId, cwd: this.cwd, ids: this.turnIds.slice() });
+    current.resolve({
+      ...outcome,
+      resumeFailed: outcome.resumeFailed === true || this.resumeMismatch === true,
+      sessionId: this.sessionId,
+      cwd: this.cwd,
+      ids: this.turnIds.slice(),
+    });
   }
 
   /**
@@ -192,7 +205,13 @@ class CodexSession {
     const ready = await this.ready;
     if (ready.ok !== true) {
       this.closed = true;
-      return { ok: false, error: ready.error ?? "thread could not be opened", sessionId: this.sessionId, cwd: this.cwd };
+      return {
+        ok: false,
+        resumeFailed: this.resumeId !== null,
+        error: ready.error ?? "thread could not be opened",
+        sessionId: this.sessionId,
+        cwd: this.cwd,
+      };
     }
     const timeoutMs = Number(options.timeoutMs ?? this.opts?.sessionTurnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS);
     this.turnIds = [];

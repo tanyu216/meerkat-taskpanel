@@ -333,7 +333,7 @@ does not start the subscriber; it checks the board and runs the same control pas
 The subscriber turns a **signal** into one continue turn, enqueued for the resident control
 session. It never claims, moves or wakes by itself. That is what keeps replay and duplicate frames
 harmless: the continue turn rescans board state, the claim CAS decides the winner, and the card
-queue plus the subagent ledger are the dispatch authorities.
+queue, the worker-session state and the ledger are the dispatch authorities.
 
 **Dispatch** (`DISPATCH_EVENTS`): `task_created`, `task_moved`, `task_reopened`, `task_delivered`,
 `report_written`, `report_waived`, `relation_added`, `relation_removed`, `import_completed`, plus
@@ -346,7 +346,10 @@ Everything else is named in `IGNORED_EVENTS`. Two entries are worth their reason
   it as a dispatch was a contradiction, not a behaviour.
 - `task_resumed` is ignored on purpose: the human's `comment_added` already refreshes the brief,
   and the next continue clock picks the returned card up. Whether it should wake a turn
-  immediately is a product decision.
+  immediately is a product decision. It is also only the **board's** status transition: the
+  loop resuming a card's worker session is a local fact (the stored session id in
+  `sessions.state.json`), and it emits no board event — see
+  [`scheduling.md` §Resume and replay](scheduling.md#the-resident-session-pool).
 
 A name neither list knows is a newer board and is ignored, never an error.
 

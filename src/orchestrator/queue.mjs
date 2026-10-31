@@ -232,37 +232,25 @@ export function cardKey(card) {
   return `${String(card.card ?? card.id ?? "")}\u0000${String(card.role ?? "worker")}`;
 }
 
-/**
- * Add one card handoff. A pending/processing entry for the same (card, role)
- * is idempotent, not duplicated.
- *
- * @param {string} stateDir
- * @param {{card: string, role?: string, [key: string]: unknown}} card
- * @returns {{ok: boolean, coalesced: boolean, error: string|null}}
- */
-export function enqueueCard(stateDir, card) {
-  const read = readCards(stateDir);
-  if (read.error !== null) return { ok: false, coalesced: false, error: read.error };
-  const value = read.value;
-  const key = cardKey(card);
-  const existing = value.cards.find(
-    (entry) => cardKey(entry) === key && (entry.status === "pending" || entry.status === "processing"),
-  );
-  if (existing !== undefined) return { ok: true, coalesced: true, error: null };
-  // A queue row's discriminator is `queue_kind` (`handoff`|`question`). The
-  // card's board `kind` (`task`|`epic`) is never copied onto a row: the two
-  // vocabularies must not be confused, and a caller that passes a candidate
-  // projection would otherwise smuggle one in.
-  const { kind: _boardKind, ...row } = card ?? {};
-  value.cards.push({
+/** A row's delivery round; older rows may only carry `delivery_round`. */
+function rowRound(row) {
+  const value = Number(row?.round ?? row?.delivery_round ?? 1);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+/** The canonical shape of one queue row. */
+function normaliseRow(row, id = undefined) {
+  return {
     version: 1,
     ...row,
-    id: row.id ?? `${row.card}-${row.role ?? "worker"}`,
+    id: id ?? row.id ?? `${row.card}-${row.role ?? "worker"}`,
     queue_kind: row.queue_kind ?? "handoff",
     role: row.role ?? "worker",
     // The board identity selected for this handoff (Jobs/Linus/Turing). It is
     // additive metadata: the dedupe key stays (card, role).
     agent_role: row.agent_role ?? null,
+    // A worker row names its own session; a review row keeps the batch path.
+    worker_key: row.worker_key ?? null,
     // The subscriber maps an event's UUID back to this row; keep the shape
     // stable even for a legacy caller that knows no UUID.
     task_id: row.task_id ?? null,
@@ -272,11 +260,121 @@ export function enqueueCard(stateDir, card) {
     enqueuedAt: row.enqueuedAt ?? new Date().toISOString(),
     claimedAt: null,
     claimedBy: null,
+    claimedByPid: null,
     attempts: Number(row.attempts ?? 0),
     lastError: null,
-  });
+  };
+}
+
+/**
+ * Add one card handoff. A pending/processing entry for the same (card, role,
+ * round, target) is idempotent. A **different round or worktree** supersedes a
+ * pending row in place; a processing row is left alone and reported as
+ * `superseded` so the caller can retry after the in-flight turn.
+ *
+ * @param {string} stateDir
+ * @param {{card: string, role?: string, round?: number, target_dir?: string, [key: string]: unknown}} card
+ * @returns {{ok: boolean, coalesced: boolean, replaced?: boolean, superseded?: boolean, error: string|null}}
+ */
+export function enqueueCard(stateDir, card) {
+  const read = readCards(stateDir);
+  if (read.error !== null) return { ok: false, coalesced: false, error: read.error };
+  const value = read.value;
+  const key = cardKey(card);
+  const existing = value.cards.find(
+    (entry) => cardKey(entry) === key && (entry.status === "pending" || entry.status === "processing"),
+  );
+  if (existing !== undefined) {
+    const sameRound = rowRound(existing) === rowRound(card);
+    const sameTarget = String(existing.target_dir ?? "") === String(card.target_dir ?? "");
+    if (sameRound && sameTarget) {
+      return { ok: true, coalesced: true, replaced: false, superseded: false, error: null };
+    }
+    if (existing.status === "processing") {
+      return { ok: true, coalesced: true, replaced: false, superseded: true, error: null };
+    }
+    // A pending row for an older round/tree is superseded in place: one row per
+    // (card, role), so the round bump cannot be swallowed by the coalescer.
+    const index = value.cards.indexOf(existing);
+    value.cards[index] = {
+      ...normaliseRow(card, existing.id),
+      attempts: 0,
+      lastError: `superseded by round ${rowRound(card)}`,
+    };
+    const written = writeCards(stateDir, value);
+    return { ok: written.ok, coalesced: false, replaced: true, superseded: false, error: written.error };
+  }
+  // A queue row's discriminator is `queue_kind` (`handoff`|`question`). The
+  // card's board `kind` (`task`|`epic`) is never copied onto a row: the two
+  // vocabularies must not be confused, and a caller that passes a candidate
+  // projection would otherwise smuggle one in.
+  const { kind: _boardKind, ...row } = card ?? {};
+  value.cards.push(normaliseRow(row));
   const written = writeCards(stateDir, value);
-  return { ok: written.ok, coalesced: false, error: written.error };
+  return { ok: written.ok, coalesced: false, replaced: false, superseded: false, error: written.error };
+}
+
+/**
+ * Re-own processing rows after a restart. The previous pool's pid is dead, so
+ * `recoverStaleCards` would requeue these; the worker recovery path takes them
+ * first and keeps the same row/id for the resume.
+ *
+ * @param {string} stateDir
+ * @param {string[]} ids
+ * @param {{claimedBy?: string, claimedByPid?: number, now?: string}} [options]
+ * @returns {{ok: boolean, cards: object[], error: string|null}}
+ */
+export function reownCards(stateDir, ids, options = {}) {
+  const wanted = new Set((ids ?? []).map(String));
+  const read = readCards(stateDir);
+  if (read.error !== null) return { ok: false, cards: [], error: read.error };
+  const value = read.value;
+  const now = options.now ?? new Date().toISOString();
+  const owned = [];
+  for (const entry of value.cards) {
+    if (!wanted.has(String(entry.id))) continue;
+    if (entry.status !== "processing") continue;
+    entry.claimedBy = String(options.claimedBy ?? entry.claimedBy ?? "unknown");
+    entry.claimedByPid = Number.isInteger(options.claimedByPid)
+      ? options.claimedByPid
+      : entry.claimedByPid ?? null;
+    entry.claimedAt = now;
+    owned.push(entry);
+  }
+  if (owned.length === 0) return { ok: true, cards: [], error: null };
+  const written = writeCards(stateDir, value);
+  return { ok: written.ok, cards: written.ok ? owned : [], error: written.error };
+}
+
+/**
+ * Return processing rows to pending **without** counting an attempt. Worker
+ * recovery uses this: a crash is not a delivery failure, and the next tick
+ * resumes the stored session.
+ *
+ * @param {string} stateDir
+ * @param {string[]} ids
+ * @param {{error?: string|null}} [options]
+ * @returns {{ok: boolean, resumed: number, error: string|null}}
+ */
+export function resumeCards(stateDir, ids, options = {}) {
+  const wanted = new Set((ids ?? []).map(String));
+  const read = readCards(stateDir);
+  if (read.error !== null) return { ok: false, resumed: 0, error: read.error };
+  const value = read.value;
+  let resumed = 0;
+  for (const entry of value.cards) {
+    if (!wanted.has(String(entry.id))) continue;
+    if (entry.status !== "processing") continue;
+    entry.status = "pending";
+    entry.claimedAt = null;
+    entry.claimedBy = null;
+    entry.claimedByPid = null;
+    entry.lastError = options.error ?? null;
+    resumed += 1;
+  }
+  if (resumed === 0) return { ok: true, resumed: 0, error: null };
+  const written = writeCards(stateDir, value);
+  return { ok: written.ok, resumed: written.ok ? resumed : 0, error: written.error };
 }
 
 /**
@@ -465,7 +563,7 @@ export function requeueCards(stateDir, ids, options = {}) {
  * Recover handoffs whose owner is gone or whose claim is older than the bound.
  *
  * @param {string} stateDir
- * @param {{isAlive?: (pid: number) => boolean, now?: number, maxAgeMs?: number, maxAttempts?: number}} [options]
+ * @param {{isAlive?: (pid: number) => boolean, now?: number, maxAgeMs?: number, maxAttempts?: number, isResumableWorker?: (row: object) => boolean}} [options]
  * @returns {{ok: boolean, recovered: number, failed: number, error: string|null}}
  */
 export function recoverStaleCards(stateDir, options = {}) {
@@ -473,12 +571,17 @@ export function recoverStaleCards(stateDir, options = {}) {
   const now = options.now ?? Date.now();
   const maxAgeMs = Number(options.maxAgeMs ?? 2 * 60 * 60 * 1000);
   const maxAttempts = Number(options.maxAttempts ?? DEFAULT_CARD_MAX_ATTEMPTS);
+  const isResumableWorker =
+    typeof options.isResumableWorker === "function" ? options.isResumableWorker : null;
   const read = readCards(stateDir);
   if (read.error !== null) return { ok: false, recovered: 0, failed: 0, error: read.error };
   const value = read.value;
   const stale = [];
   for (const entry of value.cards) {
     if (entry.status !== "processing") continue;
+    // A worker session with a durable record is recovered by `recoverWorkerSessions`,
+    // which resumes the same conversation instead of putting a second worker on the card.
+    if (entry.worker_key && isResumableWorker !== null && isResumableWorker(entry)) continue;
     const pid = Number(entry.claimedByPid);
     const claimedAt = Date.parse(String(entry.claimedAt ?? ""));
     const dead = Number.isInteger(pid) && pid > 0 && !isAlive(pid);

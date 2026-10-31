@@ -687,7 +687,7 @@ async function main(argv) {
   if (checkout.found && checkout.path === process.cwd() && !opts.checkout) warnings.push("using the current directory as the checkout");
   if (kind === "pi" && !piSubagents.installed) {
     warnings.push(
-      `pi has no subagent extension; the loop's project session cannot spawn worker/reviewer subagents — install it with \`${PI_SUBAGENTS_INSTALL}\``,
+      `pi has no subagent extension; the loop's reviewer lane cannot spawn its subagent, so review cards are never worked — install it with \`${PI_SUBAGENTS_INSTALL}\``,
     );
   }
 

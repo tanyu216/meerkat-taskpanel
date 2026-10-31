@@ -187,4 +187,34 @@ describe("claude resident session", () => {
     assert.match(outcome.error, /spawn error|closed/);
     await session.close();
   });
+
+  it("marks a resume that exits before its result, and not a fresh spawn", async (t) => {
+    const f = fixture(t);
+    const bin = join(f.dir, "fail-claude.mjs");
+    writeFileSync(
+      bin,
+      `#!/usr/bin/env node
+import { createInterface } from "node:readline";
+const rl = createInterface({ input: process.stdin });
+rl.on("line", () => process.exit(1));
+`,
+      "utf8",
+    );
+    chmodSync(bin, 0o755);
+    const pool = createClaudePool({ opts: {}, bin, log: () => {} });
+    t.after(() => pool.close());
+    const resumed = pool.openSession({ cwd: f.project, sessionId: "sid-old", role: "worker" });
+    const failed = await resumed.send("resume", { timeoutMs: 5000 });
+    assert.equal(failed.ok, false);
+    assert.equal(failed.resumeFailed, true, "a resume id that exits before a result is a resume failure");
+    await resumed.close();
+
+    const freshPool = createClaudePool({ opts: {}, bin, log: () => {} });
+    t.after(() => freshPool.close());
+    const fresh = freshPool.openSession({ cwd: f.project, role: "worker" });
+    const freshOutcome = await fresh.send("start", { timeoutMs: 5000 });
+    assert.equal(freshOutcome.ok, false);
+    assert.equal(freshOutcome.resumeFailed, false, "a fresh spawn failure is not a resume failure");
+    await fresh.close();
+  });
 });

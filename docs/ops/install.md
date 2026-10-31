@@ -277,7 +277,7 @@ place with a warning; repair it with `taskctl project map set`.
 | Artefact | Where | What |
 |---|---|---|
 | loop skill | `<agent-dir>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md` and `references/`. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked |
-| loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, `continue.state.json` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
+| loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, worker transcripts, `continue.state.json` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
 | launchd | `<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
 | systemd | `<agent-dir>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
 | cron | `<agent-dir>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue — **no pool**: no worker dispatch |
@@ -439,8 +439,8 @@ live. It is not a closure component — with no pool it skips the turn and the t
 runs patrol + workflow — and `--supervisor=status` reports whether it is `streaming`,
 `reconnecting` or `not running` from `subscribe.state.json`. To run without it, disable that
 one unit in the service manager; `--event-continue=no` is the runtime soft-off. Inside that turn the poll is still the
-$0 local scan; it claims and enqueues, and the project session spawns the
-subagent — so a worker turn still starts only when a claim succeeded (see
+$0 local scan; it claims and enqueues, and the pool opens or resumes the card's worker
+session — so a worker turn still starts only when a claim succeeded (see
 [`scheduling.md §The cost gate`](../scheduling.md#the-cost-gate-a-worker-turn-starts-only-on-fire)).
 A cron install has no pool; it runs the clocks only, and dispatch stays paused.
 
@@ -956,8 +956,8 @@ when neither is present:
 pi install npm:pi-subagents
 ```
 
-Install it before enabling the supervisor. Without it the project session can start, but it
-cannot spawn the worker/reviewer subagents, so cards are never worked.
+Install it before enabling the supervisor. Without it the pool can start and worker sessions
+still run, but the reviewer lane cannot spawn its subagent, so review cards are never worked.
 
 Uninstall:
 

@@ -104,6 +104,9 @@ class ClaudeSession {
     this.cwd = input.cwd;
     this.role = input.role ?? "worker";
     this.sessionId = input.sessionId ?? null;
+    this.resumeId = input.sessionId ?? null;
+    this.sawResult = false;
+    this.resumeMismatch = false;
     this.log = input.log;
     this.onEvent = input.onEvent ?? null;
     this.closed = false;
@@ -120,12 +123,20 @@ class ClaudeSession {
     this.child.stderr.on("data", lineSplitter((line) => this.log(`claude[${this.cwd}] ${line}`)));
     this.child.on("error", (err) => {
       this.log(`claude[${this.cwd}] spawn error: ${err.message}`);
-      this.finish({ ok: false, error: `spawn error: ${err.message}` });
+      this.finish({
+        ok: false,
+        resumeFailed: this.resumeId !== null && !this.sawResult,
+        error: `spawn error: ${err.message}`,
+      });
       this.closed = true;
     });
     this.child.on("exit", (code, signal) => {
       this.closed = true;
-      this.finish({ ok: false, error: `claude exited (code=${code ?? "null"}, signal=${signal ?? "null"})` });
+      this.finish({
+        ok: false,
+        resumeFailed: this.resumeId !== null && !this.sawResult,
+        error: `claude exited (code=${code ?? "null"}, signal=${signal ?? "null"})`,
+      });
     });
   }
 
@@ -144,6 +155,7 @@ class ClaudeSession {
     }
     if (typeof event?.session_id === "string" && event.session_id !== "") {
       this.sessionId = event.session_id;
+      if (this.resumeId !== null && this.sessionId !== this.resumeId) this.resumeMismatch = true;
     }
     if (event.type === "system" && event.subtype === "init") {
       this.onEvent?.({ type: "init", sessionId: this.sessionId, cwd: this.cwd });
@@ -167,6 +179,7 @@ class ClaudeSession {
       return;
     }
     if (event.type === "result") {
+      this.sawResult = true;
       this.onEvent?.({ type: "result", sessionId: this.sessionId, result: event });
       this.finish({
         ok: event.is_error !== true,
@@ -191,6 +204,7 @@ class ClaudeSession {
     clearTimeout(current.timer);
     current.resolve({
       ...outcome,
+      resumeFailed: outcome.resumeFailed === true || this.resumeMismatch === true,
       sessionId: this.sessionId,
       cwd: this.cwd,
       ids: this.turnIds.slice(),
@@ -212,6 +226,7 @@ class ClaudeSession {
     }
     const timeoutMs = Number(options.timeoutMs ?? this.opts?.sessionTurnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS);
     this.turnIds = [];
+    this.sawResult = false;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.finish({ ok: false, error: `turn timed out after ${timeoutMs}ms` });

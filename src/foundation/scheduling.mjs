@@ -620,7 +620,7 @@ export function planContinueInvocation(input = {}) {
  * `decisionPolicyPath`) append the role layer; without them the text is the
  * pre-roles handoff, byte for byte.
  *
- * @param {{card?: object, agent: string, actorKind: string, sessionId?: string|null, review?: boolean, role?: object|null, roleWorkflowPath?: string|null, selfCheckPath?: string|null, decisionPolicyPath?: string|null}} input
+ * @param {{card?: object, agent: string, actorKind: string, sessionId?: string|null, review?: boolean, standalone?: boolean, role?: object|null, roleWorkflowPath?: string|null, selfCheckPath?: string|null, decisionPolicyPath?: string|null}} input
  * @returns {string}
  */
 export function buildHandoff(input) {
@@ -648,14 +648,19 @@ export function buildHandoff(input) {
         : "stop at in_review — the loop dispatches an independent reviewer and a human accepts to done.";
   const brief = cardFileRel(ref);
   const processDir = cardDirRel(ref);
+  const standalone = input.standalone === true;
   const lines = [
-    `You are a worker subagent of the ${project} project session — one card: ${ref}.`,
+    standalone
+      ? `You are the worker for the ${project} project — one card: ${ref}. This is the card's own worker session; the loop holds its claim.`
+      : `You are a worker subagent of the ${project} project session — one card: ${ref}.`,
     `Title: ${title}`,
     `Task brief: ${brief} — exported by the loop; read it first, it is authoritative for this card.`,
     "The brief was exported just before the claim, so its status/assignee may lag one step; the loop already holds the claim.",
     `Never edit ${brief}: the loop overwrites it from the board. Put your process files (notes, logs, evidence, report drafts) under ${processDir}/.`,
     `Download attachments into that directory: taskctl attachment list ${ref} --json, then taskctl attachment download <attachment-id> --out ${processDir}/<filename>.`,
-    `Your working directory is this project's directory; never touch another project's paths.`,
+    standalone
+      ? "Your working directory is this card's workspace; never touch another project's paths."
+      : "Your working directory is this project's directory; never touch another project's paths.",
     "The loop already claimed this card for you: do not claim it again — heartbeat it to keep the claim.",
     "",
     `Flags (substitute <flags>): ${flags}`,
@@ -666,7 +671,7 @@ export function buildHandoff(input) {
     "  Several deliverables, or layers of one change? Do not promote or split yourself.",
     "  Add an agent question naming the pieces, keep the card in_progress, and stop. The",
     "  project session decides; a scope expansion is E1 and goes to the human.",
-    "    taskctl comment add ${ref} --kind question --body \"...\" <flags>",
+    `    taskctl comment add ${ref} --kind question --body "..." <flags>`,
     "    meta.epic_triage=off: do not promote; record the split question in a comment.",
     "",
     `Step 1 — acceptance list, on the card you work (<card> = ${ref}):`,

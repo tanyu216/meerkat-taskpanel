@@ -16,7 +16,7 @@ operators reading or repairing a map, not for an agent to implement.
 The directory is a **worker's** start directory, not a data location. Where a project keeps
 its results is the project's own business. The exception is the loop's own process data: the
 supervisor exports each dispatched card to `.meerkat/<identifier>/` under this directory
-(and the subagent keeps its notes, evidence and downloaded attachments there). That is loop
+(and the worker keeps its notes, evidence and downloaded attachments there). That is loop
 state, not a project-results store; a project should ignore `.meerkat/` in version control.
 
 ## Managed by `taskctl`

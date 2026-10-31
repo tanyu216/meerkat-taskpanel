@@ -255,9 +255,9 @@ test design, regression, performance, independent review — with one accountabl
 workflow each. A shape the table does not describe is not force-fit into a role: it goes to a
 worker whose board name is not in the manifest, which runs without a role workflow,
 responsibilities or boundaries — so that name must also be in the loop's scan set
-(`MEERKAT_TASKPANEL_AGENTS`) or its cards are never claimed. The project session receives the
-guide in full when it spawns a batch; the control/continue turn receives a compact summary
-and the path. It is prompt guidance, not a gate: the card's assignee still selects the
+(`MEERKAT_TASKPANEL_AGENTS`) or its cards are never claimed. The control/continue turn
+receives a compact summary and the path, and routing happens when the card is created. It is
+prompt guidance, not a gate: the card's assignee still selects the
 executing role, and it never changes who decides. **Creating a team card is the routing
 step**: the create carries the accountable role's board name as `--assignee <role>
 --assignee-kind agent`. An unassigned team card is unowned — the loop scans only the names in

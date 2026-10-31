@@ -33,7 +33,8 @@ The question is a **`question` comment**: an agent enters with
 land in one transaction. The payload the view shows is the newest `question` (falling back to
 the newest human comment for a card that predates the kind). **Any human comment** answers
 it — whatever its kind — and re-queues the card (`awaiting → todo`) in the same transaction,
-because the asking subagent has stopped. The board does not read the text: whether the answer
+because the asking worker has stopped for now; the dispatch resumes that worker's session with
+the answer. The board does not read the text: whether the answer
 is a complete decision is judged from its content by the resumed worker, and an incomplete or
 ambiguous answer sends the card back to `awaiting` for another human comment. A `decision` /
 `confirm` / `change` kind remains the explicit I5 record, not the resume gate. An answer is

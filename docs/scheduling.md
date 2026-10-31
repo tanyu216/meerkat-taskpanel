@@ -17,8 +17,8 @@ The design stance, in four sentences:
 - The board work is **deterministic passes** — `taskctl loop poll|patrol|workflow` — that the
   continue turn invokes; the model's invariants live in those passes and in the board, never
   in a prompt.
-- A **resident session pool** turns an abstract "dispatch" into one project session per
-  target directory and one subagent per card. Without it the loop still patrols and applies
+- A **resident session pool** turns an abstract "dispatch" into one top-level session per
+  card, running in the card's directory. Without it the loop still patrols and applies
   workflow, but it dispatches nothing.
 
 ## Design at a glance
@@ -30,7 +30,7 @@ The design stance, in four sentences:
 | **poll** | scans candidates, claims, enqueues the handoff | **the atomic claim is the single dispatch source** |
 | **patrol** | the SLA pass: stale claims, review aging, recovery | no silent state; every alert is re-checked before emit |
 | **workflow** | review dispatch, verdict application, containers | the delivery gate is enforced by the board, not the prompt |
-| **session pool** | one control session plus one project session per directory | one writer per card; concurrency is capped |
+| **session pool** | one control session plus one worker session per card | one writer per card; concurrency is capped |
 | **subscriber** | event-driven continue turns | a latency path only — the clocks remain the fallback |
 | **taskd guard** | keepalive for the board service itself | one guard per machine; one writer per data directory |
 | **loop supervisor** | the loop's clocks, pool and subscriber for one agent kind | one loop supervisor per machine; one mechanism per agent kind |
@@ -41,10 +41,10 @@ source, and every clock is a bounded, idempotent pass over state the board alrea
 Two execution shapes serve the same model:
 
 - **resident** (default on launchd/systemd): `taskctl loop session` runs a long-lived *session
-  pool* — one control conversation that runs the continue turn, plus one *project
-  session* per target directory whose subagents do the work. Poll claims a card and
-  **enqueues** the handoff; the pool spawns the worker/reviewer as a subagent of the
-  project session, so it inherits the project directory as its cwd.
+  pool* — one control conversation that runs the continue turn, plus one *worker session*
+  per card, opened in that card's directory. Poll claims a card and **enqueues** the
+  handoff; the pool opens or resumes the card's own session, so a same-round re-dispatch
+  continues the worker that already holds the context.
 - **one-shot** (cron, or an agent kind with no session service): each continue cadence
   starts one agent process for the judgment turn. With no resident pool, poll claims
   nothing and worker/reviewer dispatch is paused — see
@@ -86,11 +86,11 @@ separate `taskctl loop` verbs, and the continue turn invokes them.
 | | **ping** | **continue** | **session** |
 |---|---|---|---|
 | Cadence | 60 seconds | 600 seconds (10 minutes) | long-lived |
-| Job | process liveness: prune worker registry entries whose pid is gone | enqueue the bounded `/meerkat-loop Continue` turn for the control session (or run it one-shot when no pool is live) | hold the control and project conversations; route queued handoffs to project sessions |
+| Job | process liveness: prune worker registry entries whose pid is gone | enqueue the bounded `/meerkat-loop Continue` turn for the control session (or run it one-shot when no pool is live) | hold the control conversation and each card's worker session; route queued handoffs to them |
 | Reads | `supervisor.state.json` only | the scheduler reads nothing | the queues, the ledger, `sessions.state.json` |
-| On a hit | — | the control turn runs `patrol → workflow → poll` | poll claims + enqueues; the project session spawns the subagent |
-| Cost | one small file read | one bounded LLM turn | one agent conversation per active project |
-| Why it exists | a dead worker must not pin a concurrency slot | the loop's work needs a turn that can judge, claim and dispatch | a subagent inherits its parent session's cwd, so a project needs its own session |
+| On a hit | — | the control turn runs `patrol → workflow → poll` | poll claims + enqueues; the pool opens or resumes the card's worker session |
+| Cost | one small file read | one bounded LLM turn | one agent conversation per active card |
+| Why it exists | a dead worker must not pin a concurrency slot | the loop's work needs a turn that can judge, claim and dispatch | a session is bound to its launch cwd, so a card needs a session opened in its worktree |
 
 The split is deliberate. A 60-second clock that read the board would be a poll
 again; a 10-minute clock that ran the entries itself would keep the loop's
@@ -116,8 +116,8 @@ The deterministic passes are **not scheduled individually**:
 
 `taskctl loop doctor` is **not** one of these passes. It is the read-only inspection a human
 runs: one report covering the supervisor verdict, the resolved scan set,
-the patrol's last-successful-run marker, the tail of the loop log, the queue and subagent
-ledger, the cards that look stuck (a stale or unreadable heartbeat, judged by the patrol's own
+the patrol's last-successful-run marker, the tail of the loop log, the queue and the
+worker/reviewer ledger, the worker sessions and their resume state, the cards that look stuck (a stale or unreadable heartbeat, judged by the patrol's own
 plan — an `epic` container is not a stale worker), and the `in_review` cards waiting on a human
 with their age. That last list is **facts
 only**: review aging is the workflow pass's judgement and applies to review cards that are
@@ -129,8 +129,8 @@ cards that keep going round the same loop, from the snapshot and the rows alread
 **rework rounds** (`delivery_round >= 4`, i.e. the work came back three times),
 **review reopens** (a review card at the workflow's re-dispatch bound — `meta.review_retry >= 2`
 or its own round `>= 3`), **dispatch retries** (five handoffs for one card, or two handoffs that
-each exhausted their attempt budget, inside the queue's 24 h retention), **subagent
-failures** (three `failed`/`interrupted`/`stale` ledger rows for one card inside the ledger's
+each exhausted their attempt budget, inside the queue's 24 h retention), **worker and
+subagent failures** (three `failed`/`interrupted`/`stale` ledger rows for one card inside the ledger's
 7-day retention), and **deferred admission** (three consecutive card-scoped admission
 failures in `deferrals.json` — the card is never enqueued, so no queue row can show it). A
 card the board snapshot knows is `done`/`canceled` is dropped from the three local halves;
@@ -259,7 +259,7 @@ line) double-starts work. Guards:
   failed or timed-out turn) re-reads the card first: one that has already left
   `todo`/`in_progress` — the worker delivered just before the interrupt — is
   completed locally instead of being re-dispatched. A timed-out turn also closes
-  its session rather than reusing it. A **successful** turn that reports no
+  its session rather than reusing it. A **successful reviewer batch** that reports no
   subagent id for a card follows the same rule against a weaker test: a card that
   has left `todo` — including one still `in_progress`, which is where a missing id
   usually comes from — is completed locally as `handoff already in flight`,
@@ -283,9 +283,9 @@ poll entry
  ├─ admit      project → target_dir + per-project cap → no directory? defer before the claim
  ├─ brief      register the watch → .meerkat/<id>/card.md → failed? defer unclaimed
  ├─ claim      taskctl issue claim …             → refused? stop. no handoff
- └─ enqueue    cards.queue.json (handoff, target_dir, role, task_id)
+ └─ enqueue    cards.queue.json (handoff, worker_key, round, target_dir, role)
                      ↓
-                project session (cwd = target_dir) → one subagent per card  ← the tokens
+                worker session (cwd = the card's workspace) → one card  ← the tokens
 ```
 
 A **card-scoped** admission or brief-watch failure is recorded in `deferrals.json`; a
@@ -295,73 +295,77 @@ backpressure, not a stuck card, and are not counted. Three consecutive failures 
 
 The continue turn itself is the one LLM turn the scheduler pays for, once per
 cadence, whether or not the board has work: it is the loop's judgment turn.
-Inside it, the poll entry is still the deterministic cost gate above. The project
-session's turn — one per batch of handoffs for a directory, not one per card — is
-the second cost, and it buys a subagent that starts in the right directory.
+Inside it, the poll entry is still the deterministic cost gate above. The worker
+session's turn — one per card — is the second cost, and it buys a conversation that
+starts, and on a same-round re-dispatch resumes, in the card's own workspace.
 `--dry-run` prints the plan and starts neither a claim nor a worker.
 
 ## The resident session pool
 
-A subagent inherits the **launch cwd of the session that spawns it**; a main
-session that `cd`s later does not move its subagents. Claude Code's Agent tool
-also ignores a per-call `cwd`. One board-wide session therefore cannot give two
-projects two directories — so the pool keeps **one worker session per target
-directory**, each launched in that directory, and the subagents it spawns are
-already where they belong. A review card gets a **second conversation in the same
-directory**, opened with the `reviewer` role: a subagent inherits its session's
-permission surface, and only that lane's surface excludes Write.
+A session is bound to the **cwd it was launched with**: an agent tool that spawns a
+subagent takes no per-call directory (Claude's `Agent` ignores `cwd`), and a main session
+that `cd`s later does not move the subagents it already spawned. One board-wide session
+cannot give two cards two workspaces — so the pool keeps **one top-level worker session per
+card**, opened in the card's own worktree, and resumes that same session when the card
+comes back. A review card gets a **reviewer session in the same directory**, opened with
+the `reviewer` role: the allowlist that excludes `Write` is per session.
 
 ```text
 session service (`taskctl loop session`)
 ├── control session        cwd = the taskpanel checkout
 │     /meerkat-loop Continue → patrol → workflow → poll
 │     poll: export .meerkat/<id>/card.md, claim, write the handoff queue
-├── project session        cwd = <project target_dir>   (one per directory)
-│     batch prompt → spawn one worker subagent per card
-│     worker subagents inherit the project directory
-└── reviewer session       cwd = the same target_dir     (opened on demand)
+├── worker session         cwd = the card's workspace          (one per card)
+│     worker:<card>:r<round> — the card's worker, resumed by session id
+└── reviewer session       cwd = the same target_dir           (opened on demand)
       batch prompt → spawn one reviewer subagent per review card
       the reviewer allowlist has no Write
 ```
 
 - **Control session** — runs the judgment turn; it never spawns a worker and never
   works a card itself. Poll only claims and enqueues.
-- **Project sessions** — created on demand from the machine-local
+- **Worker sessions** — keyed `worker:<card>:r<round>` and opened from the machine-local
   `projects.json` at the config root (`local_path ?? run_dir`, through the same
-  `resolveWakeDir` the glue uses). A card whose project is unmapped or names no directory is **deferred
-  before the claim**, so the board never shows a claim that has nowhere to run.
-  The batch prompt tells the session to spawn one subagent per card, **in the
-  listed order** (the loop pairs agent ids with cards by position), and return
-  without working them.
-- **Reviewer sessions** — keyed `<dir>#reviewer`, opened only when a review card
-  is queued and evicted by the same idle clock. The batch prompt is the reviewer
-  variant: no question ladder, verdict-only. The allowlist is real for Claude and
-  Pi; Codex, OpenCode and Cursor adapters have no per-role tool surface, and the
-  pool logs a one-time warning for them.
-- **Ledger** (`subagents.state.json`) — the application-level record of each
-  subagent: `sessionKey` (the project directory), `lane` (`worker`/`reviewer`),
-  actor kind, subagent id, role, card, status. The live-row reap is the only
-  completion signal the supervisor trusts beyond a finished turn.
-- **Resume** — the control and project sessions resume by session id. Subagents do
-  not: on start the pool sends a re-attach prompt (native reattach where the agent kind
-  supports it — Claude `SendMessage`, Codex child `thread/resume`, Pi subagent
-  resume), and anything that cannot be
-  reattached is marked stale and left to the board's claim recovery.
-- **Capacity** — `--session-pool-max` (8), `--project-concurrency`
-  (default `--max-concurrency`) and `--max-concurrency` bound the pool. Poll's
-  claim budget is `max-concurrency − live subagents − queued cards`; at zero it
-  claims nothing and says so. `--max-concurrency` is **one cap for all
-  subagents**: workers and reviewers share it and compete for slots by demand —
-  the loop reserves no slots per role, so a review backlog may take the whole cap
-  (at the default 8, 6 workers + 2 reviewers is the nominal steady state, not a
-  guarantee). `--session-pool-max` bounds **lanes**, so a directory running both
-  a worker and a reviewer session holds two of them. An idle lane closes after
-  `--project-idle-ms` (30 min) and keeps its session id; every session gets a
-  fresh conversation after `--session-max-age` (24 h).
-- **Concurrency and the working tree.** Planning and claiming are sequential; the project
-  turns then fan out, so one slow project does not serialize the others. The per-tick
+  `resolveWakeDir` the glue uses). A card whose project is unmapped or names no directory
+  is **deferred before the claim**, so the board never shows a claim that has nowhere to
+  run. The handoff tells the session it is the card's own worker — not a subagent of a
+  shared conversation — and that the loop holds the claim. The session's cwd is the card's
+  admitted worktree, and its id is persisted **before** the turn so a crash can resume it.
+- **Reviewer sessions** — keyed `<dir>#reviewer`, opened only when a review card is queued
+  and evicted by the same idle clock. The batch prompt is the reviewer variant: no question
+  ladder, verdict-only. The allowlist is real for Claude and Pi; Codex, OpenCode and Cursor
+  adapters have no per-role tool surface, and the pool logs a one-time warning for them.
+- **Resume and replay** — a same-round re-dispatch (a human answer to an `awaiting`
+  question, same-round rework, crash recovery) opens the stored session id and sends a
+  **resume** prompt carrying the answer or reason, in the same workspace. A **round bump**
+  or a recreated workspace is a new generation: the old record is retired and the card
+  starts fresh. When the native session is gone (expired, deleted, or the resume is
+  rejected), the pool replays a **bounded, loop-owned transcript** — the last 12 worker
+  turns, at most 8 000 characters — into a fresh session in the same workspace and marks
+  the record `resumed_by_replay`. If replay fails too, the record is `stale`/`blocked`, the
+  queue row fails, and the doctor raises it. The loop never silently starts a second worker
+  for a card whose session it could not restore.
+- **Ledger** (`subagents.state.json`) — the application-level record of each reviewer
+  subagent: `sessionKey` (the project directory), `lane` (`worker`/`reviewer`), actor kind,
+  subagent id, role, card, status. A worker session writes only a **terminal** audit row
+  (`type: "worker-session"`) when its turn ends; its live concurrency slot is the
+  processing queue row, so one worker turn is never counted twice.
+- **Capacity** — `--max-concurrency` bounds worker sessions and running reviewer
+  subagents together; poll's claim budget is `max-concurrency − live subagents − queued
+  cards`, and at zero it claims nothing and says so. The loop reserves no slots per role,
+  so a review backlog may take the whole cap. When open worker sessions reach the cap, the
+  pool closes the **least recently used idle** one and keeps its session id, so the next
+  dispatch resumes it. `--session-pool-max` (8) bounds the non-worker lanes (the reviewer
+  sessions) and does not count worker sessions or the control session; `--project-concurrency` (default
+  `--max-concurrency`) still caps one project's in-flight cards across its worktrees. An
+  idle worker closes after `--project-idle-ms` (30 min) and keeps its session id; past
+  `--session-max-age` (24 h) it is marked `needsReplay`, so the next dispatch replays
+  rather than starting a silent new worker. `--session-max-age` on a control or reviewer
+  lane opens a fresh conversation.
+- **Concurrency and the working tree.** Planning and claiming are sequential; the worker
+  turns then fan out, so one slow card does not serialize the others. The per-tick
   budget is fixed before the first send, and `--project-concurrency` counts a project's
-  worktrees and both of its lanes as one project. Each card in a git project runs in its own
+  worktrees and all of its worker sessions as one project. Each card in a git project runs in its own
   worktree (see "Per-card workspace isolation" below); `--workspace=shared` is the explicit
   opt-out and logs one warning per directory when parallel cards share a git checkout.
 - **One lock** — a second `taskctl loop session` on the same state directory is refused
@@ -416,7 +420,7 @@ With an **external-control** pool the pool row does not apply: the pool exists, 
 claims; the live session, not a headless control, runs the turn.
 
 This is the cron shape: cron cannot host a long-lived process, so a cron install
-runs ping + a one-shot continue and **cannot dispatch worker/reviewer subagents**.
+runs ping + a one-shot continue and **cannot dispatch workers or reviewers**.
 An agent kind with a session service gets the full loop. `--resident=no` forces the
 fallback even when a pool is running.
 
@@ -814,8 +818,9 @@ inlined at the start of the review handoff, bounded at 2,400 characters. Every r
 to write and maintain `.meerkat/<identifier>/plan.md`, which the reviewer reads.
 
 **Ownership.** If a team ships an `ownership.md`, it is the work→role routing guide: the
-project session receives it in full (bounded at 2,500 characters) when it spawns a batch, and
-the control/continue turn receives a compact summary and its path. It assigns one accountable
+control/continue turn receives a compact summary and its path, and routing happens when the
+card is created — its assignee is the role. A worker session is handed its role by the card
+and does not re-route. The guide assigns one accountable
 role per work shape; the card's assignee still selects the executing role, and it never
 changes who decides. A shape the guide does not describe is not force-fit into a role — it
 goes to a worker outside the roles, whose board name must be in `MEERKAT_TASKPANEL_AGENTS`
@@ -825,15 +830,15 @@ control turn's bounded fallback — it carries the role names, since its lane ca
 guide — and with `claim_unassigned: no` the workflow pass reports it as `unowned_todo`
 instead of letting a scan race for it.
 
-**Decisions.** A subagent does not decide an unauthorized question: it writes an agent
+**Decisions.** A worker does not decide an unauthorized question: it writes an agent
 `question` comment on the `in_progress` card and stops. Poll's **question lane** sees the
 unanswered question and enqueues a question row for the directory, so the project session is
 woken without waiting for the claim to go stale. It answers operationally with a `note`
 (and moves the card to `todo`), or escalates to the human with
 `issue move <ref> awaiting --awaiting-reason E1..E5`; any human comment resumes an awaiting
-card, whatever its kind, and the resumed worker judges from its content whether it is a
-complete decision. A question row is not a card handoff: it is never claimed, never opens a
-reviewer lane, and does not consume a subagent slot. The read is bounded by `--board-limit`
+card, whatever its kind, and the **same worker session** judges from its content whether it
+is a complete decision. A question row is not a card handoff: it is never claimed, never
+opens a reviewer lane, and does not consume a worker slot. The read is bounded by `--board-limit`
 and costs one `comment list` per `in_progress` card per poll. The ladder is the loop's
 `references/decision-policy.md`; it is the single decision-authority source, and a team file
 cannot override it.
@@ -855,26 +860,34 @@ creates, writes or deletes a roles root, and a forced loop reinstall replaces th
 not the team — its `roles/` directory is kept, as is any config key the installer's template
 does not carry.
 
-## Continuity: a fresh handoff, not a resumed pile
+## Continuity: the same worker, resumed by id
 
-Every wake hands the worker a **bounded, fresh handoff** built by
-`buildHandoff()`: the card id and title, that it is a subagent of the project
-session and already holds the claim (heartbeat, do not re-claim), the working
-directory it inherits, the acceptance-list step (read the card with
-`issue get --json`, work to an existing list, or derive one and persist it with
-`meta.acceptance_derived=yes`), the exact `taskctl` commands to read and deliver it, and
-the attribution flags `--agent <name> --actor-kind <kind> --session-id <id>`. The handoff
-is capped at **under 3600 characters** (a test pins it, including a maximum title and a
-UUID session id) so a wake never drags an unbounded context into the model.
+A **new** dispatch hands the worker a **bounded handoff** built by `buildHandoff()`: the
+card id and title, that it is the card's own worker session and the loop already holds the
+claim (heartbeat, do not re-claim), the working directory it runs in, the acceptance-list
+step (read the card with `issue get --json`, work to an existing list, or derive one and
+persist it with `meta.acceptance_derived=yes`), the exact `taskctl` commands to read and
+deliver it, and the attribution flags `--agent <name> --actor-kind <kind> --session-id
+<id>`. The handoff is capped at **under 3600 characters** (a test pins it, including a
+maximum title and a UUID session id) so a wake never drags an unbounded context into the
+model.
 
-It names the task's **process directory**, relative to the project session's cwd:
+A **same-round** re-dispatch does not build that handoff again. It opens the stored
+session id and sends a bounded **resume** prompt carrying what changed — the human's
+answer, the rework reason, or "the previous turn was interrupted" — and tells the worker to
+re-read `card.md` and the comments before continuing, not to start over. When the native
+session cannot be restored, a **replay** prompt carries the loop-owned transcript instead
+(bounded at 12 turns / 8 000 characters) and the record is marked `resumed_by_replay`. A
+**new round** is a new generation: it gets the full handoff and a fresh session.
+
+The handoff names the task's **process directory**, relative to the session's cwd:
 `.meerkat/<identifier>/`. `card.md` inside it is the loop's authoritative export of the
 card: poll registers it with the local event hub before the claim, the hub writes the first
 snapshot synchronously (a temp file plus an atomic rename), and the registration keeps it
-fresh until the card is `done` or `canceled`. The handoff tells the subagent to read it
+fresh until the card is `done` or `canceled`. The handoff tells the worker to read it
 first, to re-read it on resume, and never to edit it. Every other process file — notes, logs, evidence, report drafts, downloaded
 attachments — belongs in the same directory. The board still holds no directory (O3): the
-project session's cwd **is** the directory, and `.meerkat/` is the loop's convention under
+worker session's cwd **is** the directory, and `.meerkat/` is the loop's convention under
 it — see [Where a worker runs](#where-a-worker-runs).
 
 The hub owns the refresh for every registration: a debounced batch updates each watched file
@@ -882,14 +895,12 @@ The hub owns the refresh for every registration: a debounced batch updates each 
 event wakes a continue turn. The refresh is a file write, not an LLM turn; a failure leaves
 the previous brief in place.
 
-Continuity across wakes comes from the **board**, not the prompt: the card's
-comments, reports and session record are durable, so a resumed conversation can
-re-attach to the same work. When a session id is known, the wake adds the agent kind's
-own resume form: Claude resumes with `claude -p … --resume <sid>`, Codex with
-`codex exec resume <sid> <prompt>`, and Pi with `pi --print --session <sid>
-<prompt>`. All three are verified against the real CLIs;
-`scripts/verify/kind-resume-matrix.mjs` probes each binary's help output when the CLI
-is installed.
+Continuity across wakes comes from the **session**, with the board as the durable record:
+the card's comments, reports and session record survive a session that is closed, and a
+resume re-attaches to the same work. The three resident adapters resume by their own form:
+Claude `--resume <sid>`, Codex `thread/resume`, Pi `--session-id <sid>`. All three are
+verified against the real CLIs; `scripts/verify/kind-resume-matrix.mjs` probes each
+binary's help output when the CLI is installed.
 
 ## Where a worker runs
 
@@ -904,7 +915,7 @@ So the directory is resolved **locally by the poll pass**, against the one
 `local_path ?? run_dir`, **validated** (absolute, exists, is a directory).
 
 The directory is a **worker's** start directory. The loop writes its own per-task process
-data beneath it (`.meerkat/<identifier>/`: `card.md` plus the subagent's files). That is
+data beneath it (`.meerkat/<identifier>/`: `card.md` plus the worker's files). That is
 loop state, not project data — where a project keeps its results is still its own business
 — and a project should ignore `.meerkat/` in version control. A target directory where the
 hub cannot write the brief blocks dispatch: a failed registration (or a card already
@@ -917,9 +928,9 @@ the review card. The covered card belongs to the other registration and is never
 on a refused claim.
 
 Poll resolves the candidate's project before claiming it and writes the result into
-the queue entry as `target_dir`; the pool launches the project session in that
-directory, and the subagent inherits it. If the project is unmapped or names no
-directory, the card is **deferred before the claim** — it stays `todo`, where the
+the queue entry as `target_dir`; the pool launches the card's worker session in that
+directory (its admitted worktree, when the project is a git checkout). If the project is
+unmapped or names no directory, the card is **deferred before the claim** — it stays `todo`, where the
 next turn can offer it again, and the log says why. There is no fallback directory:
 a session that runs in the wrong checkout produces confident, misplaced work, which
 is worse than no session.
@@ -969,7 +980,8 @@ timers** — their hooks fire only on session events. So the loop lives outside:
 | the OpenClaw agent framework | on OpenClaw, the framework itself is the supervisor |
 
 The application is just a worker: the poll entry claims on the board, then the resident
-project session spawns the agent's subagent in the project directory.
+pool runs the card in its own worker session, in the project directory or the card's
+worktree.
 
 ### What the loop's units run with
 
@@ -1507,7 +1519,9 @@ directory**:
 ├── cards.queue.json              runtime (claim → handoff dispatch queue)
 ├── workspaces.json               runtime (per-card worktree/branch records)
 ├── deferrals.json                runtime (consecutive admission failures per card)
-└── subagents.state.json          runtime (ledger: subagent id → project, role, card, status)
+├── subagents.state.json          runtime (ledger: worker/reviewer id → project, role, card, status)
+└── worker-transcripts/           runtime (bounded worker turn transcript per worker:<card>:r<round>,
+                                  used only to replay a session the native CLI can no longer resume)
 ```
 
 The log is **not** here. There is one supervisor log for every actor kind, at the config
@@ -1614,7 +1628,7 @@ MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
 
 The reason is **required**; `--allow-all-tools` without it is a startup error. With
 it the Claude adapter runs `--permission-mode bypassPermissions`, and the control,
-project and subagent sessions alike have the installing user's full OS
+worker and reviewer sessions alike have the installing user's full OS
 permissions. **The project directory is not an isolation boundary** — cwd is
 where the work happens, not a sandbox. Codex uses `approvalPolicy: "never"` with
 the full-access sandbox, and Pi adds `--approve`. The flag is printed in `--supervisor=status`, and the
@@ -1635,9 +1649,9 @@ differ. The supervisor's `--actor-kind` selects the one-shot continue command; t
 | **OpenClaw** | *n/a — no self-scheduler* | the agent framework's own `poll`/`patrol` automations — this design is their statement | the framework keeps the id stable across resumes |
 
 The wake command column is what the *agent CLI* is called with for a one-shot
-continue turn. A resident pool spawns the provider CLI directly instead, and the
-project session spawns the worker subagent in the mapped directory — see
-[Where a worker runs](#where-a-worker-runs).
+continue turn. A resident pool spawns the provider CLI directly instead: the control
+session runs the turn, and each card's worker session runs that card in the mapped
+directory or its worktree — see [Where a worker runs](#where-a-worker-runs).
 
 **Resident adapters:** the pool ships one per agent kind, each on that agent kind's native
 persistent protocol.
@@ -1647,6 +1661,10 @@ persistent protocol.
 | Claude Code | one `claude -p --input-format stream-json --output-format stream-json` process per session | `--resume <session_id>` | Agent tool's `agentId`; reattach with `SendMessage` |
 | Codex | one `codex app-server --listen stdio://`; one **thread** per session | `thread/resume` | child thread (`receiverThreadIds`) |
 | Pi | one `pi --mode rpc` process per session | `--session-id <id>` | the `pi-subagents` extension's `agentId` |
+
+A **worker session is a top-level session**: the identity column is what the pool stores and
+resumes for it, and it needs no subagent support. The subagent handle column now applies to
+the reviewer lane only.
 
 Claude, Codex and Pi are verified against the real CLIs (Codex's app-server
 schema is pinned by `codex app-server generate-json-schema`);
@@ -1661,7 +1679,7 @@ Pi has no native subagents. The pool's Pi adapter warns when no `pi-subagents` p
 found — `~/.pi/agent/npm/node_modules/pi-subagents` for a pi 1.x npm install, or the legacy
 `~/.pi/agent/extensions/{subagent,pi-subagents}` pair; `setup-meerkat` reports the same
 check and `install.sh --target pi` prints `pi install npm:pi-subagents`. Without the
-extension the project session cannot spawn worker/reviewer subagents.
+extension the reviewer lane cannot spawn its subagent; worker sessions do not depend on it.
 
 Installers also install the **loop skill** itself, at `<agent-dir>/skills/meerkat-loop/` —
 the operator's documentation and the decisions the loop applies. It is always a copy:
@@ -1718,7 +1736,7 @@ briefs fresh but no event wakes a turn.
 
 The loop has **one** control turn. A live `/meerkat-loop` session can host it instead of the
 installed clock: the pool starts with `--control=external` (no control session,
-`continue.pending` untouched; project sessions still dispatch) and the session runs
+`continue.pending` untouched; worker sessions still dispatch) and the session runs
 `patrol → workflow → poll`. The session's **opening pass is an agenda**, and only then does the
 control turn repeat on the clock (question tick 60 s, control tick 600 s, 30 min TTL): it asks
 the human about the `awaiting` cards **one card at a time**, records the answer as a
@@ -1961,10 +1979,11 @@ describes.
   `install.sh` with the install's agent name, replaced by `/setup-meerkat` with the team's
   roles). A flag here would outrank that key and leave a team's role cards unclaimed. The continue turn starts the
   agent kind's headless entry point directly with the bounded `Continue` prompt — no
-  project directory. Poll claims a card and enqueues it; a resident project session
-  spawns the worker as a subagent of the provider CLI, which runs non-interactively
-  (`claude -p "<handoff>" [--resume <sid>]` / `codex exec "<handoff>"` /
-  `pi --print "<handoff>"` are the one-shot shapes).
+  project directory. Poll claims a card and enqueues it; the resident pool runs the
+  card in its own worker session, and a resumed session continues it
+  (`claude --resume <sid>` / `codex thread/resume` / `pi --session-id <sid>` are the
+  resident resume forms; `claude -p "<handoff>" [--resume <sid>]` etc. are the one-shot
+  shapes).
 - **Logs.** `<config root>/logs/supervisor.log` (the supervisor's `--log`) — one file for
   every actor kind, each line tagged `actor_kind=<kind>` — written and rotated by the loop
   itself. The units do **not** redirect their stdout/stderr into it — that would duplicate
@@ -2037,7 +2056,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--repo <path>` | this checkout — or, for a agent-installed copy, the `MEERKAT_TASKPANEL_REPO` in the per-kind config | repository root: what `--cli` is resolved from, and the fallback working directory |
 | `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids; no board read |
 | `--continue-interval <sec>` | `600` | judgment clock: wake the agent kind for one `Continue` turn |
-| `--max-concurrency <n>` | `8` | cap on simultaneously running subagents; workers and reviewers share it and the split follows demand (no per-role reservation) |
+| `--max-concurrency <n>` | `8` | cap on simultaneously running worker sessions and reviewer subagents; both share it and the split follows demand (no per-role reservation) |
 | `--workspace=worktree\|shared` | `worktree` | a git project's cards each run in `.worktrees/<ref>[-r<round>]` on `lane/<ref>[-r<round>]`; a creation failure defers the card (no fallback). `shared` restores the old shared-checkout behaviour |
 | `--claim-unassigned=yes\|no` | from per-kind config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |

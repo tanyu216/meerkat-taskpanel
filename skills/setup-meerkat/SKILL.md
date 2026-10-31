@@ -395,8 +395,8 @@ Native agent definitions are written for every host with a native format: Claude
 (`.claude/agents/<name>.md`), Codex (`.codex/agents/<name>.toml`) and Pi
 (`~/.pi/agent/agents/<name>.md`, or `.pi/agents/<name>.md`). Pi's subagents come from the
 `pi-subagents` extension (`pi install npm:pi-subagents`); the definition is inert until
-that extension is installed. The loop's project session also uses that extension to spawn
-one subagent per card; `detect.mjs` reports a missing extension and `install.sh --target pi`
+that extension is installed. The loop's reviewer lane also uses that extension to spawn one
+subagent per review card; `detect.mjs` reports a missing extension and `install.sh --target pi`
 prints the install command. `--native-agent-defs none` writes none of them.
 
 ### Which platform runs which role

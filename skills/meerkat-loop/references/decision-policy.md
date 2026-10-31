@@ -46,9 +46,9 @@ Operational and plan/acceptance-internal choices:
   acceptance item is E2).
 
 The main session records its answer as an agent `note` with the decision and the why,
-then either answers the live subagent or moves the card to `todo` so a fresh worker
-re-claims it with the answer in the trail. It never writes `decision` / `confirm` /
-`change`, and never uses `--as-human` for its own decision.
+then moves the card to `todo`; dispatch resumes the card's **worker session** with the
+answer in its trail, so the worker that asked continues. It never writes `decision` /
+`confirm` / `change`, and never uses `--as-human` for its own decision.
 
 ### The human decides — E1-E5
 

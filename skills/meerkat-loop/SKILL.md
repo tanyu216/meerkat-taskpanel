@@ -1,6 +1,6 @@
 ---
 name: meerkat-loop
-description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation, one worker session per target directory, and a reviewer session there on demand. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the worker or reviewer session spawns the matching subagent in the project directory. In manual mode a person runs it from a live session, where it is an agenda: decide the cards waiting on them one card at a time, report loop health and blocked cards, release backlog work into the queue, and manage cards — showing every board write before it happens. Runs under launchd / systemd / cron units for claude, codex and pi; OpenClaw is excluded.
+description: The external scheduler for a Meerkat TaskPanel board. Runs a 60-second liveness ping, a 10-minute continue turn, and a resident session pool that holds one control conversation, one worker session per card, and a reviewer session per directory on demand. The continue turn runs the notify-only SLA patrol, the board's review workflow, and the poll that claims a card and enqueues its handoff; the worker session runs its card in the card's workspace and is resumed by id when the same card returns, while the reviewer lane spawns its subagent in the project directory. In manual mode a person runs it from a live session, where it is an agenda: decide the cards waiting on them one card at a time, report loop health and blocked cards, release backlog work into the queue, and manage cards — showing every board write before it happens. Runs under launchd / systemd / cron units for claude, codex and pi; OpenClaw is excluded.
 disable-model-invocation: true
 ---
 
@@ -13,13 +13,15 @@ resident shape — a long-lived **session pool**:
 |---|---|---|
 | **ping** (`taskctl loop run --ping-once`) | 60s | prune registry entries whose pid is gone. No board read, no claim, no LLM |
 | **continue** (`taskctl loop run --continue-once`) | 600s | hand the control session a bounded `/meerkat-loop` continue prompt (or run it one-shot when no pool is live); that turn runs the entries below |
-| **session** (`taskctl loop session`) | long-lived | one control conversation, one project conversation per target directory, and a reviewer conversation per directory on demand; each lane spawns its worker/reviewer subagent in that directory |
+| **session** (`taskctl loop session`) | long-lived | one control conversation, one worker conversation per card, and a reviewer conversation per directory on demand; the worker session runs in the card's workspace, the reviewer lane spawns its subagent in the project directory |
 
-A subagent inherits the **launch cwd** of the session that spawns it, so one board-wide session
-cannot serve two project directories. That is why the pool keeps one worker session per
-directory, and a reviewer session in the same directory when a review card is queued. Without a
-live pool, poll claims nothing and only patrol and workflow run — see
-`references/operation.md` §No resident pool.
+A session is bound to the **launch cwd** it was opened with, and a spawned subagent takes no
+per-call directory — so the pool opens one worker session per card, in that card's workspace,
+and resumes that session when the card comes back. A same-round re-dispatch (a human answer,
+reworks, a crash) resumes it by id; a native session that can no longer be resumed is replayed
+from a bounded transcript and marked `resumed_by_replay`. A review card gets a reviewer session
+in the project directory. Without a live pool, poll claims nothing and only patrol and workflow
+run — see `references/operation.md` §No resident pool.
 
 The continue turn runs these in order — the three deterministic passes, and a bounded routing
 read between workflow and poll when the project has a team:
@@ -47,11 +49,11 @@ read between workflow and poll when the project has a team:
    its shape. The prompt carries the role names, because the control lane can run `taskctl`
    but cannot `Read` the guide. Assignment is not a claim: it writes the route, not the
    execution lock. A fresh card is still the creator's to route; an ambiguous one is the
-   project session's. Never invent a role name.
+   control turn's. Never invent a role name.
 4. **poll** — scan, **register the card brief watch**, atomically claim, **enqueue the handoff**. It
    also runs the **question lane**: an unanswered agent `question` on an `in_progress` card is
-   enqueued for the project session (no claim, no subagent slot). It never spawns a worker: the
-   resident project session does, as a subagent that inherits the project directory. Runs last
+   enqueued for the project session (no claim, no worker slot). It never spawns a worker: the
+   pool opens or resumes the card's own worker session in its workspace. Runs last
    so a review card dispatched in this turn can be claimed immediately. At the concurrency cap,
    with no project directory for the card, or when the brief cannot be written, nothing is
    claimed.
@@ -151,8 +153,9 @@ keep the clock — the question tick (60 s) and the control tick (600 s) continu
    UI are one thing, so the board comment stays authoritative and the in-session question is
    only the front-end.
 3. **Loop health and blocks.** Report `doctor`'s verdict, `attention_reasons`, `stuck_cards`
-   (stale heartbeats), `looping` (rework rounds, review reopens, dispatch retries, subagent
-   failures, deferred admission), `stale_workspaces` (a non-terminal tree and branch both
+   (stale heartbeats), `looping` (rework rounds, review reopens, dispatch retries, worker and
+   subagent failures, deferred admission), `workers` (running/total, `resumed_by_replay`,
+   blocked or stale sessions, a missing worktree), `stale_workspaces` (a non-terminal tree and branch both
    gone), `waiting.in_review`, `queue`, and a truncated board read. Then
    the cards in `blocked` status — read through the `meerkat` board skill, because `doctor`
    counts them but lists none: ref, title, `blocked_reason`, how long, assignee, and what the
@@ -225,13 +228,13 @@ logs and skips). Cron cannot host a long-lived process. The daemon publishes
 
 Every task the loop dispatches gets one directory under the project's working directory — the
 resolved `target_dir` (from the machine-local map at the config root: `local_path ?? run_dir`),
-which is also the subagent's cwd:
+which is also the worker session's cwd:
 
 ```text
 .meerkat/<identifier>/
   card.md          the board card, exported by the loop (read-only)
   plan.md          the worker's plan (goals, steps, risks, acceptance mapping)
-  …                the subagent's notes, logs, evidence, report drafts, attachments
+  …                the worker's notes, logs, evidence, report drafts, attachments
 ```
 
 - **Before the claim**, poll registers the card with the local event hub, naming
@@ -242,7 +245,7 @@ which is also the subagent's cwd:
   has nowhere to run. A card-scoped admission failure is recorded in `deferrals.json`; three
   consecutive failures write one `Orchestrator` note on the card, and `loop doctor` reports it
   under `looping`.
-- `card.md` is the **authoritative brief** handed to the subagent and re-read on resume. The
+- `card.md` is the **authoritative brief** handed to the worker session and re-read on resume. The
   hub rewrites it from the board: **never edit it**. It is a snapshot; the live card (read as
   JSON through the `meerkat` board skill) is the live state and the source of the `version` a
   write needs.
@@ -263,9 +266,9 @@ Precedence is whole-manifest: `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, the
 `<project>/.meerkat/roles/`, then `<agent-dir>/skills/meerkat-loop/roles/`. With no roles root
 the loop behaves exactly as before. The loop's own `references/decision-policy.md` is the
 single decision-authority source; a team's `decision-policy.md` is ignored. An `ownership.md`,
-if the team has one, is a short routing guide the project session reads to assign one
-accountable role per work shape; the create names that role as the card's assignee, and the
-assignee still selects the executing role. A shape
+if the team has one, is a short routing guide: the create names the accountable role as the
+card's assignee, and the control turn applies it to a card still unowned after 30 minutes. The
+assignee still selects the executing role, and a worker session does not re-route. A shape
 the guide does not describe goes to a worker outside the roles — a board name absent from the
 manifest — rather than being force-fit into a role.
 `MEERKAT_TASKPANEL_AGENTS` lists the team's board names; without it the loop only scans its
@@ -274,10 +277,11 @@ to be discovered from.
 
 ### Questions and decision rights
 
-The ladder is **subagent → main session → human**, and the full protocol is
-`references/decision-policy.md`. A subagent never decides an unauthorized question: it writes
-an agent `question` comment, keeps the card `in_progress`, and stops. Poll's **question lane**
-wakes the project session with the unanswered question (no claim, no subagent slot); it answers
+The ladder is **worker session → project session → human**, and the full protocol is
+`references/decision-policy.md`. A worker never decides an unauthorized question: it writes
+an agent `question` comment, keeps the card `in_progress`, and stops — its session stays on
+record, so the answer resumes it rather than starting a new worker. Poll's **question lane**
+wakes the project session with the unanswered question (no claim, no worker slot); it answers
 with a `note` and moves the card to `todo`, or escalates E1-E5 to the human with `awaiting`.
 Only a human comment resumes an awaiting card, whatever its kind; the board does not read it,
 and the resumed worker judges from its content whether the decision is complete. The loop

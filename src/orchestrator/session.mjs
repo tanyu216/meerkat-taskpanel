@@ -23,7 +23,23 @@ import { loadRoles } from "../foundation/roles.mjs";
 import { buildContinuePrompt, buildQuestionPrompt } from "../foundation/scheduling.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths, loopBoardCommand, loopCliCommand } from "./options.mjs";
-import { readCardForRedispatch } from "./runtime.mjs";
+import { readCardForRedispatch, readRedispatchContext } from "./runtime.mjs";
+import {
+  appendWorkerTurn,
+  buildWorkerDispatchPrompt,
+  buildWorkerReplayPrompt,
+  buildWorkerResumePrompt,
+  isWorkerHandoff,
+  isWorkerKey,
+  parseWorkerKey,
+  planWorkerOpen,
+  readWorkerSessions,
+  readWorkerTranscript,
+  retireWorkerGenerations,
+  roundOf,
+  transcriptFile,
+  workerKey,
+} from "./worker-session.mjs";
 
 /** Role warnings are configuration noise; say each one once per process. */
 const loggedRoleWarnings = new Set();
@@ -40,6 +56,7 @@ import {
   recoverStaleCards,
   requeueCards,
   requeueContinue,
+  resumeCards,
   retireLegacyDispatched,
   writeJsonFile,
 } from "./queue.mjs";
@@ -94,12 +111,14 @@ export function reviewerKey(dir) {
 
 /** The lane a pool session key belongs to. */
 export function laneOf(key) {
+  if (isWorkerKey(key)) return "worker-session";
   return String(key).endsWith(REVIEWER_KEY_SUFFIX) ? "reviewer" : "worker";
 }
 
-/** The directory a pool session key runs in. */
+/** The directory a lane key runs in; a worker key carries its cwd on the entry. */
 export function targetDirOf(key) {
   const value = String(key);
+  if (isWorkerKey(value)) return "";
   return laneOf(value) === "reviewer" ? value.slice(0, -REVIEWER_KEY_SUFFIX.length) : value;
 }
 
@@ -154,12 +173,15 @@ function lockFile(stateDir) {
 
 /** @param {string} stateDir */
 function readSessionsState(stateDir) {
-  const read = readJsonFile(sessionsFile(stateDir), { version: 1, control: null, projects: {} });
-  if (read.error !== null) return { value: { version: 1, control: null, projects: {} }, error: read.error };
+  const empty = { version: 3, control: null, projects: {} };
+  const read = readJsonFile(sessionsFile(stateDir), empty);
+  if (read.error !== null) return { value: { ...empty }, error: read.error };
   const value = read.value && typeof read.value === "object" ? read.value : {};
   return {
+    // v1/v2 files are read as the same {control, projects} shape; the version is
+    // informational, not a gate. v3 adds `worker:` records to `projects`.
     value: {
-      version: 1,
+      version: 3,
       control: value.control ?? null,
       projects: value.projects && typeof value.projects === "object" ? value.projects : {},
     },
@@ -204,6 +226,7 @@ export function poolStatus(input = {}) {
     poolPid: null,
     control: null,
     projects: {},
+    workers: {},
     capabilities: [],
   };
 
@@ -217,6 +240,10 @@ export function poolStatus(input = {}) {
   if (value === null || typeof value !== "object") return { ...empty, reason: "no session state" };
   const control = value.control ?? null;
   const projects = value.projects && typeof value.projects === "object" ? value.projects : {};
+  const workers = {};
+  for (const [key, record] of Object.entries(projects)) {
+    if (isWorkerKey(key)) workers[key] = record;
+  }
   const capabilities = Array.isArray(value.capabilities)
     ? value.capabilities.filter((entry) => typeof entry === "string")
     : [];
@@ -228,12 +255,13 @@ export function poolStatus(input = {}) {
       reason: poolPid === null ? "no pool pid" : `pool pid ${poolPid} is gone`,
       control,
       projects,
+      workers,
       capabilities,
     };
   }
   const beat = Date.parse(String(value.heartbeatAt ?? ""));
   if (!Number.isFinite(beat)) {
-    return { ...empty, reason: "no heartbeat", poolPid, control, projects, capabilities };
+    return { ...empty, reason: "no heartbeat", poolPid, control, projects, workers, capabilities };
   }
   const age = now() - beat;
   if (age > POOL_STALE_MS) {
@@ -243,6 +271,7 @@ export function poolStatus(input = {}) {
       poolPid,
       control,
       projects,
+      workers,
       capabilities,
     };
   }
@@ -253,6 +282,7 @@ export function poolStatus(input = {}) {
     poolPid,
     control,
     projects,
+    workers,
     capabilities,
     heartbeatAgeMs: Math.max(0, age),
   };
@@ -405,10 +435,50 @@ export function createSessionPool(input = {}) {
     return kindPool;
   };
 
+  function workerPersistRecord(entry, previous = {}) {
+    const worker = entry.worker ?? {};
+    return {
+      ...previous,
+      kind: "worker-session",
+      actorKind: opts.actorKind ?? "claude",
+      role: "worker",
+      cwd: entry.cwd,
+      worktree: worker.worktree ?? entry.cwd,
+      workspace_created_at: worker.workspace_created_at ?? previous.workspace_created_at ?? null,
+      card: worker.card ?? previous.card ?? null,
+      round: worker.round ?? previous.round ?? 1,
+      project: worker.project ?? previous.project ?? null,
+      projectDir: worker.projectDir ?? previous.projectDir ?? null,
+      agent: worker.agent ?? previous.agent ?? null,
+      agentRole: worker.agentRole ?? previous.agentRole ?? null,
+      queueId: worker.queueId ?? previous.queueId ?? null,
+      sessionId: entry.handle?.sessionId ?? entry.sessionId ?? null,
+      pid: entry.handle?.pid ?? null,
+      generation: worker.generation ?? previous.generation ?? 1,
+      status: entry.busy === true ? "running" : worker.status ?? previous.status ?? "idle",
+      resumeState: worker.resumeState ?? previous.resumeState ?? "fresh",
+      needsReplay: worker.needsReplay === true,
+      worktree_gone: worker.worktree_gone === true,
+      blocked: worker.blocked === true,
+      transcriptPath: worker.transcriptPath ?? transcriptFile(stateDir, entry.key),
+      lastBoardStatus: worker.lastBoardStatus ?? previous.lastBoardStatus ?? null,
+      startedAt: entry.startedAt,
+      lastHeartbeatAt: nowIso(now),
+      lastUsedAt: entry.lastUsedAt,
+      lastResumeAt: worker.lastResumeAt ?? previous.lastResumeAt ?? null,
+      lastError: worker.lastError ?? null,
+      closedAt: null,
+    };
+  }
+
   const persistState = () => {
     const projects = { ...(state.projects ?? {}) };
     for (const [key, entry] of sessions) {
       if (key === "control") continue;
+      if (isWorkerKey(key)) {
+        projects[key] = workerPersistRecord(entry, projects[key]);
+        continue;
+      }
       projects[key] = {
         actorKind: opts.actorKind ?? "claude",
         cwd: entry.cwd,
@@ -422,11 +492,11 @@ export function createSessionPool(input = {}) {
     }
     const controlEntry = sessions.get("control") ?? null;
     const next = {
-      // 2 — the question lane. A poll from this release only enqueues question
-      // rows when the live pool advertises the capability, so an older pool is
-      // never handed a row it would dispatch as a card handoff.
-      version: 2,
-      capabilities: ["question-lane"],
+      // 3 — worker sessions. The question lane is unchanged; a poll from this
+      // release only enqueues question rows when the live pool advertises the
+      // capability, and worker rows carry their own `worker:` session key.
+      version: 3,
+      capabilities: ["question-lane", "worker-sessions"],
       // The pool manager's own pid, not an agent child's: an orphaned agent process
       // would otherwise keep answering "resident" after its manager died.
       poolPid: process.pid,
@@ -462,12 +532,116 @@ export function createSessionPool(input = {}) {
   }
 
   /**
+   * Open (or resume/replay) a card's own worker session.
+   *
    * @param {string} key
-   * @param {{cwd: string, role: string, sessionId?: string|null}} options
+   * @param {{cwd: string, role: string, worker?: {row?: object, workspace?: object|null, forceReplay?: boolean}}} options
+   */
+  function openWorkerSession(key, options) {
+    const stored = storedSession(key);
+    const worker = options.worker ?? {};
+    const row = worker.row ?? null;
+    const parsed = parseWorkerKey(key);
+    const card = row?.card ?? parsed?.card ?? stored?.card ?? null;
+    const round = roundOf(row ?? stored ?? {});
+    const plan =
+      worker.forceReplay === true
+        ? {
+            mode: "replay",
+            generation: Number(stored?.generation ?? 1),
+            reason: "native resume failed",
+          }
+        : planWorkerOpen(stored, {
+            targetDir: options.cwd,
+            workspaceCreatedAt: worker.workspace?.created_at ?? null,
+            now: now(),
+            maxAgeMs: sessionMaxAgeMs,
+          });
+    if (plan.mode === "blocked") {
+      throw new Error(`worker session ${key} is blocked: ${plan.reason}`);
+    }
+    if (plan.mode === "fresh" && stored !== null && card !== null) {
+      // A round bump starts a new generation; old records/transcripts retire.
+      retireWorkerGenerations(stateDir, card, round);
+    }
+    if (plan.transcriptReset === true) {
+      try {
+        rmSync(transcriptFile(stateDir, key), { force: true });
+      } catch {
+        // A missing transcript is already the reset state.
+      }
+    }
+    const resumeId = plan.mode === "resume" ? plan.sessionId ?? null : null;
+    const handle = getKindPool().openSession({
+      cwd: options.cwd,
+      sessionId: resumeId,
+      role: "worker",
+    });
+    const entry = {
+      key,
+      cwd: options.cwd,
+      role: "worker",
+      handle,
+      sessionId: resumeId,
+      startedAt: nowIso(now),
+      lastUsedAt: nowIso(now),
+      busy: false,
+      batch: null,
+      worker: {
+        ...(stored ?? {}),
+        kind: "worker-session",
+        worktree: options.cwd,
+        workspace_created_at:
+          worker.workspace?.created_at ?? stored?.workspace_created_at ?? null,
+        card,
+        round,
+        project: row?.project ?? stored?.project ?? null,
+        projectDir: row?.project_dir ?? stored?.projectDir ?? null,
+        agent: row?.agent ?? stored?.agent ?? null,
+        agentRole: row?.agent_role ?? stored?.agentRole ?? null,
+        queueId: row?.id ?? stored?.queueId ?? null,
+        generation: plan.generation,
+        planMode: plan.mode,
+        reason: plan.reason,
+        transcriptPath: transcriptFile(stateDir, key),
+        status: "idle",
+        resumeState: plan.mode === "replay" ? "resumed_by_replay" : "fresh",
+        needsReplay: plan.mode === "replay",
+        blocked: false,
+        lastResumeAt: stored?.lastResumeAt ?? null,
+        lastError: stored?.lastError ?? null,
+        lastBoardStatus: stored?.lastBoardStatus ?? null,
+      },
+    };
+    sessions.set(key, entry);
+    persistState();
+    log(
+      `session: opened worker ${key} (cwd=${options.cwd}, ` +
+        `${plan.mode === "resume" ? `resume=${resumeId}` : plan.mode === "replay" ? `replay=${plan.reason}` : "fresh"})`,
+    );
+    return entry;
+  }
+
+  /**
+   * @param {string} key
+   * @param {{cwd: string, role: string, sessionId?: string|null, worker?: object}} options
    */
   function openSession(key, options) {
     const open = sessions.get(key);
-    if (open !== undefined) return open;
+    if (open !== undefined) {
+      // The session is already open: a second handoff for the same card is a
+      // resume turn, not a fresh briefing. The live id comes from the adapter
+      // once it has spoken; before that the first turn is still in flight.
+      if (isWorkerKey(key) && open.worker !== undefined && open.worker.planMode !== "replay") {
+        const liveId = open.handle?.sessionId ?? open.sessionId ?? null;
+        if (liveId !== null && liveId !== undefined && liveId !== "") {
+          open.worker.planMode = "resume";
+          open.worker.reason = "same-round re-dispatch";
+        }
+      }
+      return open;
+    }
+    if (isWorkerKey(key)) return openWorkerSession(key, options);
     const stored = storedSession(key);
     const storedAge =
       stored?.startedAt === undefined ? Number.POSITIVE_INFINITY : now() - Date.parse(String(stored.startedAt));
@@ -539,6 +713,15 @@ export function createSessionPool(input = {}) {
   function writeLedgerState() {
     const written = writeLedger(stateDir, ledger);
     if (!written.ok) log(`session: could not write ledger: ${written.error}`);
+  }
+
+  async function closeOlderWorkerGenerations(card, round) {
+    for (const entry of [...sessions.values()]) {
+      if (!isWorkerKey(entry.key)) continue;
+      const parsed = parseWorkerKey(entry.key);
+      if (parsed === null || parsed.card !== card || parsed.round >= round) continue;
+      await closeEntry(entry, { dropSession: true });
+    }
   }
 
   async function closeEntry(entry, { dropSession = false } = {}) {
@@ -690,10 +873,18 @@ export function createSessionPool(input = {}) {
    * Route pending card handoffs to their project sessions.
    */
   async function routeCards() {
+    const workerRecords = readWorkerSessions(stateDir).workers;
     const recovered = recoverStaleCards(stateDir, {
       isAlive,
       now: now(),
       maxAgeMs: 2 * turnTimeoutMs,
+      // A worker with a durable record is recovered by `recoverWorkerSessions`
+      // and resumed; requeueing it here would put a second worker on the card.
+      isResumableWorker: (row) =>
+        typeof row?.worker_key === "string" &&
+        row.worker_key !== "" &&
+        workerRecords[row.worker_key] !== undefined &&
+        workerRecords[row.worker_key].blocked !== true,
     });
     // A silent requeue hides a dead worker; one line, only when something moved.
     if (recovered.recovered > 0) {
@@ -728,6 +919,7 @@ export function createSessionPool(input = {}) {
     if (handoffRows.length === 0) {
       return { ok: true, dispatched: 0, answered };
     }
+    const questionCards = new Set(questionRows.map((row) => String(row.card ?? "")));
     const groups = new Map();
     for (const card of handoffRows) {
       const dir = String(card.target_dir ?? "");
@@ -738,14 +930,27 @@ export function createSessionPool(input = {}) {
       }
       // A review card runs in its own conversation: the reviewer subagent
       // inherits that session's tool surface, which has no Write.
-      const lane = String(card.role ?? "worker") === "reviewer" ? "reviewer" : "worker";
-      const key = lane === "reviewer" ? reviewerKey(dir) : dir;
-      let group = groups.get(key);
-      if (group === undefined) {
-        group = { key, dir, lane, cards: [] };
-        groups.set(key, group);
+      if (String(card.role ?? "worker") === "reviewer") {
+        const key = reviewerKey(dir);
+        let group = groups.get(key);
+        if (group === undefined) {
+          group = { key, dir, lane: "reviewer", cards: [] };
+          groups.set(key, group);
+        }
+        group.cards.push(card);
+        continue;
       }
-      group.cards.push(card);
+      // A worker card is its own top-level session, keyed by card + round.
+      // While its question row is open, the project session owns the card; the
+      // handoff waits one tick rather than racing a second writer.
+      if (questionCards.has(String(card.card ?? ""))) {
+        log(`session: worker ${card.card} has an open question — leaving its handoff pending`);
+        continue;
+      }
+      const key = typeof card.worker_key === "string" && card.worker_key !== ""
+        ? card.worker_key
+        : workerKey(card.card, roundOf(card));
+      groups.set(key, { key, dir, lane: "worker-session", cards: [card] });
     }
     let dispatched = 0;
     /**
@@ -798,9 +1003,27 @@ export function createSessionPool(input = {}) {
         log(`session: global concurrency cap reached (${maxConcurrency}) — leaving ${cards.length} card(s) pending`);
         break;
       }
-      if (!sessions.has(key) && [...sessions.keys()].filter((entryKey) => entryKey !== "control").length >= poolMax) {
-        log(`session: project session pool is full (${poolMax}) — leaving ${dir} (${lane}) pending`);
+      if (
+        lane !== "worker-session" &&
+        !sessions.has(key) &&
+        [...sessions.keys()].filter((entryKey) => entryKey !== "control" && !isWorkerKey(entryKey)).length >=
+          poolMax
+      ) {
+        log(`session: lane session pool is full (${poolMax}) — leaving ${dir} (${lane}) pending`);
         continue;
+      }
+      if (lane === "worker-session" && !sessions.has(key)) {
+        const openWorkers = [...sessions.values()].filter((session) => isWorkerKey(session.key));
+        if (openWorkers.length >= maxConcurrency) {
+          const victim = openWorkers
+            .filter((session) => session.busy !== true && session.worker?.status !== "running")
+            .sort((a, b) => Date.parse(a.lastUsedAt) - Date.parse(b.lastUsedAt))[0];
+          if (victim === undefined) {
+            log(`session: worker session cap reached (${maxConcurrency}) — leaving ${cards[0].card} pending`);
+            continue;
+          }
+          await closeEntry(victim, { dropSession: false });
+        }
       }
       if (lane === "reviewer" && !ROLE_ALLOWLIST_KINDS.has(String(opts.actorKind ?? "")) && !warnedReviewerAllowlist) {
         warnedReviewerAllowlist = true;
@@ -809,10 +1032,24 @@ export function createSessionPool(input = {}) {
             "the reviewer boundary is prompt-only for this actor kind",
         );
       }
-      const entry = await ensureSession(key, {
-        cwd: dir,
-        role: lane === "reviewer" ? "reviewer" : "project",
-      });
+      if (lane === "worker-session") {
+        const parsed = parseWorkerKey(key);
+        if (parsed !== null) await closeOlderWorkerGenerations(parsed.card, parsed.round);
+      }
+      let entry;
+      try {
+        entry = await ensureSession(key, {
+          cwd: dir,
+          role: lane === "reviewer" ? "reviewer" : lane === "worker-session" ? "worker" : "project",
+          ...(lane === "worker-session"
+            ? { worker: { row: cards[0], workspace: cards[0].workspace ?? null } }
+            : {}),
+        });
+      } catch (err) {
+        completeCards(stateDir, [cards[0].id], { status: "failed", error: err.message });
+        log(`session: worker ${cards[0].card} could not open a session: ${err.message} — failed`);
+        continue;
+      }
       const live = liveSubagents(ledger);
       // A project's cards may run in several worktrees; the cap is on the
       // project, not on one directory. A row written before worktrees carries
@@ -869,8 +1106,66 @@ export function createSessionPool(input = {}) {
     // handle. Planning and claiming finished before the first send, so the
     // per-tick budget is fixed. Results are applied serially — the ledger and
     // the queue are single files.
+    const sendWorkerJob = async (job) => {
+      const row = job.cards[0];
+      const plan = job.entry.worker?.planMode ?? "fresh";
+      let answer = null;
+      if (plan !== "fresh") {
+        const context = await readRedispatchContext(opts, row.card, log);
+        answer = context.ok === true ? context.answer : null;
+      }
+      const run = async (entry, planMode) => {
+        const prompt =
+          planMode === "replay"
+            ? buildWorkerReplayPrompt({
+                row,
+                handoff: row.handoff,
+                reason: entry.worker?.reason,
+                answer,
+                transcript: readWorkerTranscript(stateDir, job.key),
+                nativeError: entry.worker?.lastError,
+              })
+            : planMode === "resume"
+              ? buildWorkerResumePrompt({
+                  row,
+                  handoff: row.handoff,
+                  reason: entry.worker?.reason,
+                  answer,
+                  sessionId: entry.sessionId,
+                })
+              : buildWorkerDispatchPrompt({ row, handoff: row.handoff });
+        appendWorkerTurn(stateDir, job.key, { kind: "dispatch", text: `${planMode} ${row.card}` });
+        entry.busy = true;
+        entry.worker.status = "running";
+        persistState();
+        try {
+          return await entry.handle.send(prompt, { timeoutMs: turnTimeoutMs });
+        } finally {
+          entry.busy = false;
+          entry.lastUsedAt = nowIso(now);
+        }
+      };
+      let entry = job.entry;
+      let usedPlan = plan;
+      let outcome = await run(entry, plan);
+      if (outcome?.resumeFailed === true && plan === "resume") {
+        await closeEntry(entry, { dropSession: false });
+        entry = openSession(job.key, {
+          cwd: job.dir,
+          role: "worker",
+          worker: { row, workspace: row.workspace ?? null, forceReplay: true },
+        });
+        job.entry = entry;
+        usedPlan = "replay";
+        outcome = await run(entry, "replay");
+        entry.worker.resumeState = "resumed_by_replay";
+        persistState();
+      }
+      return { outcome, ids: [], plan: usedPlan };
+    };
     const settled = await Promise.allSettled(
       jobs.map(async (job) => {
+        if (job.lane === "worker-session") return sendWorkerJob(job);
         job.entry.batch = { cards: job.cards, ids: [] };
         job.entry.busy = true;
         let outcome;
@@ -902,12 +1197,91 @@ export function createSessionPool(input = {}) {
         const error = String(settledJob.reason?.message ?? settledJob.reason ?? "project turn failed");
         requeueCards(stateDir, batch.map((card) => card.id), { error });
         log(`session: ${lane} turn for ${dir} failed: ${error} — ${batch.length} card(s) requeued`);
+        if (isWorkerKey(entry.key)) {
+          entry.worker.status = "idle";
+          entry.worker.lastError = error;
+          persistState();
+        }
         if (/closed|exited|spawn error|timed out/.test(error)) {
           await closeEntry(entry, { dropSession: false });
         }
         continue;
       }
-      const { outcome, ids } = settledJob.value;
+      const { outcome, ids, plan = null } = settledJob.value;
+      if (lane === "worker-session") {
+        const row = batch[0];
+        if (outcome?.ok === true) {
+          appendWorkerTurn(stateDir, job.key, { kind: "result", text: String(outcome.result ?? "") });
+          ledger = upsertSubagent(ledger, {
+            sessionKey: job.key,
+            lane: "worker",
+            actorKind: opts.actorKind,
+            subagentId: entry.sessionId,
+            role: "worker",
+            card: row.card,
+            type: "worker-session",
+            status: "completed",
+            lastResult: "worker session turn completed",
+            queueId: row.id,
+            project: row.project ?? null,
+            projectDir: row.project_dir ?? job.dir,
+            workspace: row.workspace?.path ?? row.target_dir,
+            round: roundOf(row),
+          });
+          completeCards(stateDir, [row.id]);
+          entry.worker.status = "idle";
+          entry.worker.planMode = "resume";
+          entry.worker.resumeState =
+            plan === "resume" ? "resumed" : plan === "replay" ? "resumed_by_replay" : "fresh";
+          entry.worker.lastResumeAt = nowIso(now);
+          dispatched += 1;
+          persistState();
+          writeLedgerState();
+          continue;
+        }
+        const error = String(outcome?.error ?? "worker turn failed");
+        if (plan === "replay" || outcome?.resumeFailed === true) {
+          entry.worker.status = "stale";
+          entry.worker.blocked = true;
+          entry.worker.lastError = error;
+          completeCards(stateDir, [row.id], {
+            status: "failed",
+            error: `worker session resume/replay failed: ${error}`,
+          });
+          log(`session: worker ${row.card} is blocked after a failed resume: ${error}`, {
+            level: "error",
+          });
+          persistState();
+          continue;
+        }
+        let stillWorkable = true;
+        if (revalidateCard !== null) {
+          const live = await revalidateCard({ card: row.card, row });
+          if (
+            live?.ok === true &&
+            typeof live.status === "string" &&
+            live.status !== "todo" &&
+            live.status !== "in_progress"
+          ) {
+            completeCards(stateDir, [row.id], {
+              status: "done",
+              error: `not re-dispatched: card is ${live.status}`,
+            });
+            entry.worker.status = "idle";
+            stillWorkable = false;
+            log(`session: worker ${row.card} is ${live.status} after a failed turn — handoff completed`);
+          }
+        }
+        if (stillWorkable) {
+          requeueCards(stateDir, [row.id], { error });
+          log(`session: worker ${row.card} failed: ${error} — requeued`);
+        }
+        if (/closed|exited|spawn error|timed out/.test(error)) {
+          await closeEntry(entry, { dropSession: false });
+        }
+        persistState();
+        continue;
+      }
       if (outcome?.ok !== true) {
         // A failed (often timed-out) turn is not proof the work is unfinished:
         // the worker may have delivered just before the interrupt. Re-check each
@@ -1021,6 +1395,44 @@ export function createSessionPool(input = {}) {
     const live = liveSubagents(ledger);
     for (const entry of [...sessions.values()]) {
       if (entry.busy === true || entry.batch !== null) continue;
+      if (isWorkerKey(entry.key)) {
+        if (entry.worker?.status === "running") continue;
+        const dir = entry.worker?.worktree ?? entry.cwd;
+        const age = now() - Date.parse(String(entry.startedAt));
+        const idle = now() - Date.parse(String(entry.lastUsedAt));
+        if (!existsSync(dir)) {
+          entry.worker.worktree_gone = true;
+          entry.worker.status = "idle";
+          await closeEntry(entry, { dropSession: false });
+          const record = state.projects?.[entry.key];
+          if (record !== undefined) {
+            record.worktree_gone = true;
+            record.sessionId = null;
+            record.status = "idle";
+          }
+          persistState();
+          log(`session: worker ${entry.key} — its workspace is gone; will start fresh`);
+          continue;
+        }
+        if (sessionMaxAgeMs > 0 && age > sessionMaxAgeMs) {
+          entry.worker.needsReplay = true;
+          entry.worker.status = "idle";
+          await closeEntry(entry, { dropSession: false });
+          const record = state.projects?.[entry.key];
+          if (record !== undefined) {
+            record.needsReplay = true;
+            record.sessionId = null;
+            record.status = "idle";
+          }
+          persistState();
+          log(`session: worker ${entry.key} reached max-age — will replay on the next dispatch`);
+        } else if (projectIdleMs >= 0 && idle > projectIdleMs) {
+          entry.worker.status = "idle";
+          await closeEntry(entry, { dropSession: false });
+          log(`session: worker ${entry.key} idle — closed; resume id kept`);
+        }
+        continue;
+      }
       const dir = targetDirOf(entry.key);
       const lane = laneOf(entry.key);
       const held = live.some(
@@ -1102,6 +1514,41 @@ export function createSessionPool(input = {}) {
     }
   }
 
+  /**
+   * A crash leaves a worker row `processing` and its session record durable.
+   * Return the row to pending **without** an attempt so the next tick resumes
+   * the same conversation; a replay or a fresh open is never a second worker.
+   */
+  async function recoverWorkerSessions() {
+    const read = readCards(stateDir);
+    if (read.error !== null) return 0;
+    const workers = readWorkerSessions(stateDir).workers;
+    const ids = [];
+    for (const row of read.value.cards) {
+      if (row.status !== "processing") continue;
+      if (typeof row.worker_key !== "string" || row.worker_key === "") continue;
+      const record = workers[row.worker_key];
+      if (record === undefined || record.blocked === true) continue;
+      ids.push(String(row.id));
+    }
+    if (ids.length === 0) return 0;
+    const resumed = resumeCards(stateDir, ids, { error: "worker session recovered; resuming" });
+    for (const row of read.value.cards) {
+      if (!ids.includes(String(row.id))) continue;
+      const key = row.worker_key;
+      if (typeof key === "string" && state.projects?.[key] !== undefined) {
+        state.projects[key] = {
+          ...state.projects[key],
+          status: "idle",
+          lastError: null,
+        };
+      }
+    }
+    persistState();
+    log(`session: recovered ${resumed.resumed} worker session(s) for resume`, { level: "debug" });
+    return resumed.resumed;
+  }
+
   async function acquireLock() {
     ensureStateDir(stateDir);
     const existing = readJsonFile(lockFile(stateDir), null);
@@ -1139,6 +1586,7 @@ export function createSessionPool(input = {}) {
         await ensureSession("control", { cwd: opts.repo ?? process.cwd(), role: "control" });
       }
       await reattachOnStart();
+      await recoverWorkerSessions();
       persistState();
       return { ok: true };
     },
@@ -1177,11 +1625,29 @@ export function createSessionPool(input = {}) {
     status() {
       const continueState = readContinue(stateDir);
       const cards = readCards(stateDir).value.cards;
+      const workerEntries = [...sessions.values()].filter((entry) => isWorkerKey(entry.key));
+      const workerState = {
+        open: workerEntries.length,
+        running: 0,
+        paused: 0,
+        stale: 0,
+        blocked: 0,
+        byResumeState: { fresh: 0, resumed: 0, resumed_by_replay: 0, stale: 0 },
+      };
+      for (const entry of workerEntries) {
+        const status = String(entry.worker?.status ?? "idle");
+        if (Object.hasOwn(workerState, status)) workerState[status] += 1;
+        const resumeState = String(entry.worker?.resumeState ?? "fresh");
+        if (Object.hasOwn(workerState.byResumeState, resumeState)) {
+          workerState.byResumeState[resumeState] += 1;
+        }
+      }
       return {
         running: started,
         controlMode,
         control: state.control ?? null,
         projects: state.projects ?? {},
+        workers: workerState,
         openSessions: [...sessions.keys()],
         liveSubagents: liveSubagents(ledger).length,
         continuePending: continueState.pending !== null,
