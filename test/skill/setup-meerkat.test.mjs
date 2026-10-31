@@ -261,29 +261,29 @@ describe("skill frontmatter and assets", () => {
     assert.match(row, /exit-code/i);
   });
 
-  it("runs a design card as plan → prototype → PRD → self-check → deliver", () => {
+  it("runs a product card as frame → define → decide → validate → converge → deliver", () => {
     const jobs = join(SKILL, "assets", "team", "standard", "jobs");
     const workflow = readFileSync(join(jobs, "workflow.md"), "utf8");
     const ui = readFileSync(join(jobs, "ui-workflow.md"), "utf8");
     const selfCheck = readFileSync(join(jobs, "self-check.md"), "utf8");
 
-    assert.match(workflow, /ui-workflow\.md/, "the role workflow points at the UI sub-flow");
+    assert.match(workflow, /ui-workflow\.md/, "the product flow points at the prototype flow");
     assert.match(workflow, /design\/specs\//, "planning artifacts live under design/specs");
     assert.match(workflow, /design\/prototype\//, "prototypes live under design/prototype");
     assert.match(workflow, /design\/prds\//, "PRDs live under design/prds");
 
-    const stages = [
-      "### 1. Plan and freeze the direction",
-      "### 2. Validate with a prototype",
-      "### 3. Write the PRD",
-      "### 4. Archive the product artifacts",
-      "### 5. Self-check the PRD and the archive",
+    const steps = [
+      "### 1. Frame the problem",
+      "### 2. Define the outcome and the constraints",
+      "### 3. Decide the product direction",
+      "### 4. Plan validation and enter the prototype flow",
+      "### 5. Converge the solution and specify the PRD",
       "### 6. Deliver",
     ];
     let at = -1;
-    for (const stage of stages) {
-      const next = workflow.indexOf(stage);
-      assert.ok(next > at, `stage must exist in order: ${stage}`);
+    for (const step of steps) {
+      const next = workflow.indexOf(step);
+      assert.ok(next > at, `step must exist in order: ${step}`);
       at = next;
     }
 
@@ -791,7 +791,8 @@ describe("skill frontmatter and assets", () => {
     assert.match(ui, /on demand|only when/i);
 
     assert.match(jobs, /\.meerkat\/<id>\/spec\.md/, "the working spec stays in the card");
-    assert.match(jobs, /### 4\. Archive the product artifacts/, "archiving is a stage");
+    assert.match(jobs, /Archive .*spec\.md.*prd\.md/, "archiving is part of delivery");
+    assert.match(jobs, /self-check\.md/, "delivery runs the pre-delivery audit");
     assert.match(jobs, /<content-slug>/, "design filenames use a content slug");
     assert.match(jobsCheck, /Archive check/, "the self-check covers the archive");
 
@@ -1275,21 +1276,21 @@ describe("skill frontmatter and assets", () => {
       const check = readFileSync(join(team, role, "self-check.md"), "utf8");
       assert.match(check, /pre-delivery audit/, `${role} self-check names the audit`);
       assert.match(check, /not\s+the `## Handoff` block/, `${role} self-check is not the handoff`);
-      if (role === "linus") {
+      if (role === "linus" || role === "jobs") {
         assert.match(
           check,
           /refresh the card brief/i,
-          "linus self-check refreshes the brief through the skill",
+          `${role} self-check refreshes the brief through the skill`,
         );
         assert.doesNotMatch(
           check,
           /re-export/i,
-          "linus self-check leaves board mechanics to the skill",
+          `${role} self-check leaves board mechanics to the skill`,
         );
         assert.doesNotMatch(
           check,
           /card\.md/,
-          "linus self-check leaves the brief file to the skill",
+          `${role} self-check leaves the brief file to the skill`,
         );
       } else {
         assert.match(check, /refresh the brief|re-export/i, `${role} self-check refreshes the brief`);
@@ -1569,6 +1570,55 @@ describe("skill frontmatter and assets", () => {
         `${name} leaves board mechanics to the skill`,
       );
     }
+  });
+
+  it("keeps the Jobs flows step-navigable, concise and board-delegated", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const workflow = readFileSync(join(team, "jobs", "workflow.md"), "utf8");
+    const ui = readFileSync(join(team, "jobs", "ui-workflow.md"), "utf8");
+    const check = readFileSync(join(team, "jobs", "self-check.md"), "utf8");
+    const texts = { workflow, "ui-workflow": ui, "self-check": check };
+
+    for (const [name, text] of Object.entries({ workflow, "ui-workflow": ui })) {
+      assert.ok(text.includes("## Steps at a glance"), `${name} opens with a step list`);
+      const start = text.indexOf("## Steps at a glance");
+      const glance = text.slice(start, text.indexOf("\n## ", start + 1));
+      const listed = [...glance.matchAll(/^(\d+)\. /gm)].map((match) => Number(match[1]));
+      const headings = [...text.matchAll(/^### (\d+)\. /gm)].map((match) => Number(match[1]));
+      assert.deepEqual(listed, [1, 2, 3, 4, 5, 6], `${name} lists six steps`);
+      assert.deepEqual(listed, headings, `${name} step list matches its headings`);
+    }
+    assert.match(ui, /## Phase 1/, "the prototype flow has a planning phase");
+    assert.match(ui, /## Phase 2/, "the prototype flow has a design phase");
+
+    for (const [name, text] of [["workflow", workflow], ["ui-workflow", ui]]) {
+      for (const block of text.split(/^### \d+\. /m).slice(1)) {
+        assert.match(block, /\*\*Purpose\.\*\*/, `${name} step has a purpose`);
+        assert.match(block, /\*\*Watch for\.\*\*/, `${name} step has a watch-for`);
+        assert.match(block, /\*\*Essentials\.\*\*/, `${name} step has essentials`);
+      }
+    }
+
+    const ceilings = { workflow: 200, "ui-workflow": 140, "self-check": 130 };
+    for (const [name, ceiling] of Object.entries(ceilings)) {
+      const lines = texts[name].split("\n").length;
+      assert.ok(lines <= ceiling, `${name} stays under ${ceiling} lines (${lines})`);
+    }
+
+    for (const [name, text] of Object.entries(texts)) {
+      assert.match(
+        text,
+        /`meerkat`[^\n]*(board skill|card operation|card brief)/i,
+        `${name} delegates card operations to the board skill`,
+      );
+      assert.doesNotMatch(
+        text,
+        /re-export|card\.md|agent question|in_progress|--as-human|TASKCTL_HUMAN|report template/,
+        `${name} leaves board mechanics to the skill`,
+      );
+    }
+    assert.match(workflow, /not one card per layer/i);
+    assert.match(check, /never one child per layer/i);
   });
 
   it("keeps the reviewer workflow step-navigable, concise and board-delegated", () => {

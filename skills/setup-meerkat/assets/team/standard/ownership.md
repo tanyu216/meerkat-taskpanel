@@ -34,6 +34,5 @@ not describe is not forced into a row.
    process. Do not widen a role's row to absorb work it does not own.
 5. **Ambiguous goes to the project session.** If two rows claim it, the project session
    decides which; it does not guess a role.
-6. **Design hands off; it does not implement.** A Jobs delivery hands the archived
-   spec/prototype/PRD to the project session, which creates the implementation and
-   verification cards.
+6. **Design hands off; it does not implement.** A product flow hands a validation brief to the
+   prototype flow or a prototype card; the verdict returns before the PRD.
