@@ -281,11 +281,12 @@ project session. The last stage of every workflow is **Deliver**: run the self-c
 handoff block on a producer card, then deliver at `in_review` (the `meerkat` board skill owns
 the delivery command).
 
-A Jobs card keeps its working artifacts in `.meerkat/<id>/` — `spec.md`, `prototype/` and
-`prd.md` — and the workflow's **mandatory archive stage** promotes them to the **project's**
-`design/` tree under one content slug: `design/specs/<content-slug>.md`,
-`design/prototype/<content-slug>/` and `design/prds/<content-slug>.md`. A design filename
-never carries the task id; a same-topic artifact is updated, not duplicated. Jobs also keeps
+A Jobs card keeps its working artifacts in `.meerkat/<id>/`: the product flow owns `spec.md`,
+`validation-brief.md` and `prd.md`, the prototype flow owns `prototype/`. **Delivery archives**
+them to the **project's** `design/` tree under one content slug:
+`design/specs/<content-slug>.md`, `design/prototype/<content-slug>/` and
+`design/prds/<content-slug>.md`. A design filename never carries the task id; a same-topic
+artifact is updated, not duplicated. Jobs also keeps
 `design/glossary.md` (product language) and `design/adr/NNNN-<slug>.md` (product decisions).
 `.meerkat/<id>/plan.md` stays the card index and links the archived paths. The cross-card
 channel is the `## Handoff` block in the delivery report: it names the archived paths, the

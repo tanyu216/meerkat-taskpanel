@@ -88,19 +88,21 @@ level, is a REJECT unless a human accepts the risk under E4.
 
 ## Project artifacts
 
-While a design card runs, its product artifacts are **working copies** in the card
-directory:
+The product flow and the prototype flow keep separate working copies in the card directory:
 
 ```text
 .meerkat/<id>/
-├── spec.md                   # product planning: problem, direction, assumptions
-├── prototype/                # prototype, screenshots, verification evidence
-└── prd.md                    # the PRD, written after the prototype validates the design
+├── spec.md                   # product flow: problem, outcome, product direction
+├── validation-brief.md       # product flow: what must be learned and what would change the decision
+├── prototype/                # prototype flow: plan, variants, screenshots, test evidence
+└── prd.md                    # product flow: the PRD, after the verdict
 ```
 
-Archiving is a mandatory workflow stage, not an afterthought. At archive time the working
-copies are promoted to the **project's** `design/` tree under one **content slug** — a
-kebab-case name that describes the topic and never carries the task id:
+On one card the two flows run in sequence and deliver once. The project session may split them
+into a product card and a prototype card; the prototype card then delivers its evidence and
+hands the verdict back. Archiving is part of delivery: the working copies are promoted to the
+**project's** `design/` tree under one **content slug** — a kebab-case name that describes the
+topic and never carries the task id:
 
 ```text
 design/
@@ -112,20 +114,22 @@ design/
 ```
 
 A same-topic artifact is updated rather than duplicated, with the revision recorded in the
-decision log. The working copies stay in `.meerkat/<id>/` as the task trail.
+decision log. The working copies stay in `.meerkat/<id>/` as the task trail, and the prototype
+flow reuses the product flow's content slug.
 
 `.meerkat/<id>/plan.md` stays the card index: it links the archived paths and carries the
 acceptance mapping, risks and open questions. The `## Handoff` block is the cross-card
 channel: the project session copies it into the downstream card's description, and the
-reviewer reads the archived paths from it — never from the task id or another card's plan.
-Linus and Turing read the archived spec and PRD for a feature or behaviour change only
-through the handoff; a bug fix and its regression verification use the defect, its
+reviewer reads the archived paths from it — never from the task id or another card's plan. A
+split prototype card's block names its product card or brief, the questions, the verdict, the
+prototype path, the evidence, the rejected variants, the commit, the limitations and the open
+questions. Linus and Turing read the archived spec and PRD for a feature or behaviour change
+only through the handoff; a bug fix and its regression verification use the defect, its
 reproduction and the frozen acceptance instead, and do not treat the design artifacts as
-inputs. All paths are project-relative; never use an absolute path or another project's
-tree.
+inputs. All paths are project-relative; never use an absolute path or another project's tree.
 
-`ui-workflow.md` also runs standalone: no card, a `<content-slug>` directly under
-`design/`, the brief in `design/specs/<content-slug>.md` is the acceptance source, and
+`ui-workflow.md` also runs standalone: no card, a `<content-slug>` directly under `design/`,
+the brief in `design/specs/<content-slug>.md` is the acceptance source, and
 `design/prds/<content-slug>.md` is written only when the change is product-scoped.
 
 ## Engineering artifacts

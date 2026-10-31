@@ -544,9 +544,12 @@ _Avoid_: prompt, context, briefing
 **Handoff block**:
 A `## Handoff` section in a producer card's delivery report `conclusion` — the archived
 spec/PRD/prototype paths, the acceptance source, the delivery shape and the proposed next
-cards. Only a producer card (Jobs design, Linus architecture) writes it; the project
-session copies it into the downstream card. Distinct from the wake **Handoff** above and
-from the role's **Self-check**.
+cards. A split prototype card uses the same block for its verdict instead: the product card or
+brief, the questions, the verdict, the prototype path, the evidence, the rejected variants,
+the commit, the limitations and the open questions; a field that does not apply is
+`none — <reason>`. Only a producer card (Jobs design, Linus architecture) writes it; the
+project session copies it into the downstream card. Distinct from the wake **Handoff** above
+and from the role's **Self-check**.
 _中文_: 交接块
 _Avoid_: handoff, card handoff (both ambiguous here)
 
