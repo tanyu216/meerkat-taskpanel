@@ -118,6 +118,9 @@ class PiSession {
     this.cwd = input.cwd;
     this.role = input.role ?? "worker";
     this.sessionId = input.sessionId ?? null;
+    this.resumeId = input.sessionId ?? null;
+    this.resumeMismatch = false;
+    this.sawSettled = false;
     this.log = input.log;
     this.onEvent = input.onEvent ?? null;
     this.closed = false;
@@ -137,14 +140,22 @@ class PiSession {
     this.child.stderr.on("data", lineSplitter((line) => this.log(`pi[${this.cwd}] ${line}`)));
     this.child.on("error", (err) => {
       this.log(`pi[${this.cwd}] spawn error: ${err.message}`);
-      this.finish({ ok: false, error: `spawn error: ${err.message}` });
+      this.finish({
+        ok: false,
+        resumeFailed: this.resumeId !== null && !this.sawSettled,
+        error: `spawn error: ${err.message}`,
+      });
       this.closed = true;
     });
     this.child.on("exit", (code, signal) => {
       this.closed = true;
-      this.finish({ ok: false, error: `pi exited (code=${code ?? "null"}, signal=${signal ?? "null"})` });
+      this.finish({
+        ok: false,
+        resumeFailed: this.resumeId !== null && !this.sawSettled,
+        error: `pi exited (code=${code ?? "null"}, signal=${signal ?? "null"})`,
+      });
     });
-    if (this.sessionId === null) this.fetchState();
+    this.fetchState();
   }
 
   get pid() {
@@ -168,6 +179,7 @@ class PiSession {
     const id = data?.sessionId ?? data?.session_id ?? null;
     if (typeof id !== "string" || id === "" || id === this.sessionId) return;
     this.sessionId = id;
+    if (this.resumeId !== null && id !== this.resumeId) this.resumeMismatch = true;
     this.onEvent?.({ type: "init", sessionId: id, cwd: this.cwd });
   }
 
@@ -227,6 +239,7 @@ class PiSession {
       return;
     }
     if (event.type === "agent_settled") {
+      this.sawSettled = true;
       this.finish({ ok: true, result: this.text });
       return;
     }
@@ -256,6 +269,7 @@ class PiSession {
     clearTimeout(current.timer);
     current.resolve({
       ...outcome,
+      resumeFailed: outcome.resumeFailed === true || this.resumeMismatch === true,
       sessionId: this.sessionId,
       cwd: this.cwd,
       ids: this.turnIds.slice(),
@@ -274,6 +288,7 @@ class PiSession {
     const timeoutMs = Number(options.timeoutMs ?? this.opts?.sessionTurnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS);
     this.turnIds = [];
     this.text = "";
+    this.sawSettled = false;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.finish({ ok: false, error: `turn timed out after ${timeoutMs}ms` });

@@ -165,7 +165,8 @@ describe("orchestrator/workspace — create and remove", () => {
       exists: () => true,
     });
     assert.equal(result.ok, true);
-    assert.deepEqual(result.workspace, {
+    const { created_at, ...workspace } = result.workspace;
+    assert.deepEqual(workspace, {
       identifier: "TP-0001",
       project: "TP",
       round: 2,
@@ -175,6 +176,7 @@ describe("orchestrator/workspace — create and remove", () => {
       project_dir: "/p",
       created_by_loop: true,
     });
+    assert.match(created_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     const add = calls.find((call) => call.argv.includes("worktree"));
     assert.deepEqual(add.argv, [
       "-C",

@@ -32,6 +32,7 @@ import {
 } from "../foundation/log.mjs";
 import { pruneRegistry } from "../foundation/scheduling.mjs";
 import { emptySlaLedger } from "../foundation/sla-patrol.mjs";
+import { isHumanComment, isQuestionComment, newestQuestion } from "./questions.mjs";
 
 // ---------------------------------------------------------------------------
 // Registry (crash survival) + process liveness
@@ -192,6 +193,61 @@ export function readCardForRedispatch(opts, ref, log = () => {}, run = runCli) {
   }
   const status = read.data?.task?.status;
   return { ok: true, status: typeof status === "string" ? status : null, error: null };
+}
+
+/**
+ * The human/project answer that caused a same-round re-dispatch.
+ *
+ * Any **human** comment newer than the latest agent question counts, whatever
+ * its kind; a project session's `decision:` note counts too. The text is
+ * bounded because it goes into a resume prompt.
+ *
+ * @param {object} opts
+ * @param {string} ref
+ * @param {(line: string) => void} [log]
+ * @param {Function} [run]
+ * @returns {{ok: boolean, status: string|null, answer: string|null, error: string|null}}
+ */
+export function readRedispatchContext(opts, ref, log = () => {}, run = runCli) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, status: null, answer: null, error: "no agent configured" };
+  const read = run(opts, agent, [
+    "issue",
+    "get",
+    String(ref),
+    "--json",
+    "--include",
+    "comments",
+    "--limit",
+    "50",
+  ]);
+  if (!read.ok) {
+    log(`re-dispatch context for ${ref} failed: ${read.error}`);
+    return { ok: false, status: null, answer: null, error: read.error };
+  }
+  const task = read.data?.task ?? {};
+  const status = typeof task.status === "string" ? task.status : null;
+  const comments = Array.isArray(read.data?.comments) ? read.data.comments : [];
+  const question = newestQuestion(comments);
+  let newer;
+  if (question !== null) {
+    const index = comments.indexOf(question);
+    newer = comments
+      .slice(0, index)
+      .filter((comment) => isHumanComment(comment) || !isQuestionComment(comment));
+  } else {
+    newer = comments.filter((comment) => !isQuestionComment(comment)).slice(0, 2);
+  }
+  const answer = newer
+    .slice()
+    .reverse()
+    .map((comment) => {
+      const text = String(comment?.body ?? "").trim();
+      return `${isHumanComment(comment) ? "[human]" : "[agent]"} ${text}`;
+    })
+    .filter((line) => line.trim() !== "[human]" && line.trim() !== "[agent]")
+    .join("\n");
+  return { ok: true, status, answer: answer.slice(0, 2000), error: null };
 }
 
 /**

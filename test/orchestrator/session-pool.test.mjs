@@ -16,8 +16,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { enqueueCard, enqueueContinue, readCards, readContinue } from "../../src/orchestrator/queue.mjs";
+import {
+  claimCards,
+  enqueueCard,
+  enqueueContinue,
+  readCards,
+  readContinue,
+} from "../../src/orchestrator/queue.mjs";
 import { readLedger, upsertSubagent, writeLedger } from "../../src/orchestrator/ledger.mjs";
+import { workerKey } from "../../src/orchestrator/worker-session.mjs";
 import {
   POOL_HEARTBEAT_MS,
   POOL_STALE_MS,
@@ -78,7 +85,13 @@ function fakePool({ behavior } = {}) {
           this.prompts.push(prompt);
           const result = (await behavior?.({ handle: this, prompt })) ?? {};
           if (result.ok === false) {
-            return { ok: false, error: result.error ?? "fake failure", sessionId: this.sessionId, cwd };
+            return {
+              ok: false,
+              error: result.error ?? "fake failure",
+              ...(result.resumeFailed === true ? { resumeFailed: true } : {}),
+              sessionId: this.sessionId,
+              cwd,
+            };
           }
           const count = (prompt.match(/^\s+\d+\)/gm) ?? []).length;
           const ids =
@@ -171,10 +184,10 @@ describe("session pool", () => {
     enqueueCard(join(f.dir), card(f, "T-1", f.app));
     enqueueCard(join(f.dir), card(f, "T-2", f.api));
     await pool.tick();
-    const projectSessions = fake.opened.filter((handle) => handle.role === "project");
-    assert.equal(projectSessions.length, 2);
-    assert.deepEqual(projectSessions.map((handle) => handle.cwd).sort(), [f.app, f.api].sort());
-    assert.ok(projectSessions.every((handle) => handle.prompts[0].includes("You are the project session")));
+    const workerSessions = fake.opened.filter((handle) => handle.role === "worker");
+    assert.equal(workerSessions.length, 2);
+    assert.deepEqual(workerSessions.map((handle) => handle.cwd).sort(), [f.app, f.api].sort());
+    assert.ok(workerSessions.every((handle) => /^work T-/.test(handle.prompts[0])));
     const cards = readCards(f.dir).value.cards;
     assert.equal(cards.filter((entry) => entry.status === "done").length, 2);
     assert.equal(pool.ledger.subagents.filter((entry) => entry.status === "completed").length, 2);
@@ -207,8 +220,8 @@ describe("session pool", () => {
 
     enqueueCard(join(f.dir), card(f, "T-1", f.app));
     await pool.tick();
-    const projectSessions = fake.opened.filter((handle) => handle.role === "project");
-    assert.equal(projectSessions.length, 1, "project sessions still dispatch the handoff");
+    const workerSessions = fake.opened.filter((handle) => handle.role === "worker");
+    assert.equal(workerSessions.length, 1, "a worker session still dispatches the handoff");
     assert.equal(readCards(f.dir).value.cards.find((entry) => entry.card === "T-1").status, "done");
     await pool.stop();
   });
@@ -299,21 +312,20 @@ describe("session pool", () => {
     enqueueCard(join(f.dir), card(f, "R-1", f.app, "reviewer"));
     await pool.tick();
 
-    const worker = fake.opened.find((handle) => handle.role === "project" && handle.cwd === f.app);
+    const worker = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
     const reviewer = fake.opened.find((handle) => handle.role === "reviewer" && handle.cwd === f.app);
-    assert.ok(worker, "the worker lane keeps its project session");
+    assert.ok(worker, "a worker card gets its own worker session");
     assert.ok(reviewer, "the review card gets its own reviewer conversation");
-    assert.match(worker.prompts[0], /You are the project session/);
-    assert.match(worker.prompts[0], /T-1 \(worker\) handoff/);
-    assert.doesNotMatch(worker.prompts[0], /R-1 \(reviewer\) handoff/);
+    assert.match(worker.prompts[0], /work T-1/);
+    assert.doesNotMatch(worker.prompts[0], /work R-1/);
     assert.match(reviewer.prompts[0], /You are the reviewer session/);
     assert.match(reviewer.prompts[0], /R-1 \(reviewer\) handoff/);
-    assert.doesNotMatch(reviewer.prompts[0], /T-1 \(worker\) handoff/);
+    assert.doesNotMatch(reviewer.prompts[0], /work T-1/);
     assert.doesNotMatch(reviewer.prompts[0], /Subagent questions/, "reviewers never answer questions");
     await pool.stop();
   });
 
-  it("claims each directory's own rows, not the first rows in the queue", async (t) => {
+  it("gives each worker its own session in its own directory", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
     const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
@@ -325,14 +337,21 @@ describe("session pool", () => {
     enqueueCard(join(f.dir), card(f, "B-2", f.api));
     await pool.tick();
 
-    const appPrompt = fake.opened.find((handle) => handle.cwd === f.app).prompts[0];
-    const apiPrompt = fake.opened.find((handle) => handle.cwd === f.api).prompts[0];
-    assert.match(appPrompt, /A-1 \(worker\) handoff/);
-    assert.match(appPrompt, /A-2 \(worker\) handoff/);
-    assert.doesNotMatch(appPrompt, /B-1 \(worker\) handoff/);
-    assert.match(apiPrompt, /B-1 \(worker\) handoff/);
-    assert.match(apiPrompt, /B-2 \(worker\) handoff/);
-    assert.doesNotMatch(apiPrompt, /A-1 \(worker\) handoff/);
+    const workers = fake.opened.filter((handle) => handle.role === "worker");
+    assert.equal(workers.length, 4);
+    for (const [ref, dir] of [
+      ["A-1", f.app],
+      ["A-2", f.app],
+      ["B-1", f.api],
+      ["B-2", f.api],
+    ]) {
+      const handle = workers.find((entry) => entry.prompts[0].includes(`work ${ref}`));
+      assert.ok(handle, `${ref} has a worker session`);
+      assert.equal(handle.cwd, dir);
+      for (const other of ["A-1", "A-2", "B-1", "B-2"]) {
+        if (other !== ref) assert.doesNotMatch(handle.prompts[0], new RegExp(`work ${other}`));
+      }
+    }
     await pool.stop();
   });
 
@@ -429,7 +448,7 @@ describe("session pool", () => {
     assert.equal(row.status, "done", "a delivered card is not retried");
     assert.equal(row.lastError, "not re-dispatched: card is in_review");
     assert.deepEqual(checks, ["T-1"]);
-    const handle = fake.opened.find((entry) => entry.role === "project");
+    const handle = fake.opened.find((entry) => entry.role === "worker");
     assert.equal(handle.closed, true, "a timed-out session is closed");
     await pool.stop();
   });
@@ -450,11 +469,11 @@ describe("session pool", () => {
 
     const [row] = readCards(f.dir).value.cards;
     assert.equal(row.status, "done");
-    const project = fake.opened.find((entry) => entry.role === "project");
+    const worker = fake.opened.find((entry) => entry.role === "worker");
     assert.equal(
-      project?.prompts.length ?? 0,
+      worker?.prompts.length ?? 0,
       0,
-      "no project turn is sent for a delivered card",
+      "no worker turn is sent for a delivered card",
     );
     await pool.stop();
   });
@@ -473,9 +492,9 @@ describe("session pool", () => {
     setAttempts(f.dir, "T-1", 1);
     await pool.tick();
 
-    const project = fake.opened.find((entry) => entry.role === "project");
-    assert.ok(project, "a still-claimable card is retried");
-    assert.match(project.prompts[0], /T-1 \(worker\) handoff/);
+    const worker = fake.opened.find((entry) => entry.role === "worker");
+    assert.ok(worker, "a still-claimable card is retried");
+    assert.match(worker.prompts[0], /work T-1/);
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
     await pool.stop();
   });
@@ -497,8 +516,8 @@ describe("session pool", () => {
     const [row] = readCards(f.dir).value.cards;
     assert.equal(row.status, "pending", "an unreadable check does not spawn a worker");
     assert.equal(row.attempts, 2);
-    const project = fake.opened.find((entry) => entry.role === "project");
-    assert.equal(project?.prompts.length ?? 0, 0, "no turn is sent on an unreadable check");
+    const worker = fake.opened.find((entry) => entry.role === "worker");
+    assert.equal(worker?.prompts.length ?? 0, 0, "no turn is sent on an unreadable check");
     await pool.stop();
   });
 
@@ -626,14 +645,9 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  // The adapter only captures a subagent id from a tool result, so a background
-  // spawn that has not returned by turn end reports none — and the session may
-  // also stand down on its own when the lane already holds the card. Either way
-  // a card that is no longer `todo` got its handoff; retrying it would spawn a
-  // second worker for the same card.
-  it("completes a handoff when a successful turn reports no id and the card is in flight", async (t) => {
+  it("completes a successful worker turn without a separate subagent id", async (t) => {
     const f = fixture(t);
-    const fake = fakePool({ behavior: () => ({ ids: [] }) });
+    const fake = fakePool();
     const checks = [];
     const pool = createSessionPool({
       opts: optsFor(f),
@@ -649,16 +663,16 @@ describe("session pool", () => {
     await pool.tick();
 
     const [row] = readCards(f.dir).value.cards;
-    assert.equal(row.status, "done", "a missing id is a reporting gap, not missing work");
-    assert.equal(row.lastError, "handoff already in flight");
+    assert.equal(row.status, "done");
+    assert.equal(row.lastError, null);
     assert.equal(row.attempts, 0);
-    assert.deepEqual(checks, ["T-1"]);
+    assert.deepEqual(checks, [], "a worker turn is its own completion signal");
     await pool.stop();
   });
 
-  it("requeues an unmatched card that the board still calls todo", async (t) => {
+  it("requeues a failed worker turn when the board still calls the card todo", async (t) => {
     const f = fixture(t);
-    const fake = fakePool({ behavior: () => ({ ids: [] }) });
+    const fake = fakePool({ behavior: () => ({ ok: false, error: "boom" }) });
     const pool = createSessionPool({
       opts: optsFor(f),
       kindPool: fake,
@@ -672,13 +686,13 @@ describe("session pool", () => {
     const [row] = readCards(f.dir).value.cards;
     assert.equal(row.status, "pending");
     assert.equal(row.attempts, 1);
-    assert.match(row.lastError, /project session reported 0 subagent\(s\)/);
+    assert.match(row.lastError, /boom/);
     await pool.stop();
   });
 
-  it("requeues an unmatched card when the board check cannot be read", async (t) => {
+  it("requeues a failed worker turn when the board check cannot be read", async (t) => {
     const f = fixture(t);
-    const fake = fakePool({ behavior: () => ({ ids: [] }) });
+    const fake = fakePool({ behavior: () => ({ ok: false, error: "boom" }) });
     const pool = createSessionPool({
       opts: optsFor(f),
       kindPool: fake,
@@ -695,7 +709,7 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("pairs the ids it got and revalidates only the tail", async (t) => {
+  it("pairs reviewer ids and revalidates only the tail", async (t) => {
     const f = fixture(t);
     const fake = fakePool({
       behavior: ({ prompt }) => (prompt.startsWith("/meerkat-loop") ? { ids: [] } : { ids: ["a-one"] }),
@@ -707,8 +721,8 @@ describe("session pool", () => {
     });
     t.after(() => pool.stop());
     await pool.start();
-    enqueueCard(join(f.dir), card(f, "T-1", f.app));
-    enqueueCard(join(f.dir), card(f, "T-2", f.app));
+    enqueueCard(join(f.dir), card(f, "R-1", f.app, "reviewer"));
+    enqueueCard(join(f.dir), card(f, "R-2", f.app, "reviewer"));
     await pool.tick();
 
     const rows = readCards(f.dir).value.cards;
@@ -718,7 +732,7 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("closes an idle project session but keeps its session id for resume", async (t) => {
+  it("closes an idle worker session but keeps its session id for resume", async (t) => {
     const f = fixture(t);
     let clock = Date.parse("2026-01-01T00:00:00.000Z");
     const fake = fakePool();
@@ -731,22 +745,25 @@ describe("session pool", () => {
     await pool.start();
     enqueueCard(join(f.dir), card(f, "T-1", f.app));
     await pool.tick();
-    const first = fake.opened.find((handle) => handle.cwd === f.app);
+    const key = workerKey("T-1", 1);
+    const first = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
     assert.ok(first);
     clock += 2000;
     await pool.tick();
-    assert.equal(first.closed, true, "the idle project session was closed");
+    assert.equal(first.closed, true, "the idle worker session was closed");
     const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
-    assert.equal(state.projects[f.app].sessionId, first.sessionId);
-    enqueueCard(join(f.dir), card(f, "T-2", f.app));
+    assert.equal(state.projects[key].sessionId, first.sessionId);
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
     await pool.tick();
-    const second = fake.opened.filter((handle) => handle.cwd === f.app).at(-1);
+    const second = fake.opened
+      .filter((handle) => handle.role === "worker" && handle.cwd === f.app)
+      .at(-1);
     assert.notEqual(second, first);
-    assert.equal(second.sessionId, first.sessionId, "the reopened session resumed the stored id");
+    assert.equal(second.sessionId, first.sessionId, "the reopened worker resumed the stored id");
     await pool.stop();
   });
 
-  it("starts a fresh session after max-age", async (t) => {
+  it("replays with a fresh session after max-age", async (t) => {
     const f = fixture(t);
     let clock = Date.parse("2026-01-01T00:00:00.000Z");
     const fake = fakePool();
@@ -759,14 +776,17 @@ describe("session pool", () => {
     await pool.start();
     enqueueCard(join(f.dir), card(f, "T-1", f.app));
     await pool.tick();
-    const first = fake.opened.find((handle) => handle.cwd === f.app);
+    const first = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
     clock += 2000;
     await pool.tick();
     assert.equal(first.closed, true);
-    enqueueCard(join(f.dir), card(f, "T-2", f.app));
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
     await pool.tick();
-    const second = fake.opened.filter((handle) => handle.cwd === f.app).at(-1);
-    assert.notEqual(second.sessionId, first.sessionId, "max-age forces a fresh conversation");
+    const second = fake.opened
+      .filter((handle) => handle.role === "worker" && handle.cwd === f.app)
+      .at(-1);
+    assert.notEqual(second.sessionId, first.sessionId, "max-age forces a replay (new session)");
+    assert.match(second.prompts[0], /could not be resumed/i, "the replay prompt carries the reason");
     await pool.stop();
   });
 
@@ -1024,5 +1044,248 @@ describe("session pool", () => {
       { lane: "reviewer" },
     );
     assert.doesNotMatch(prompt, /## Work routing/);
+  });
+});
+
+describe("worker session resume", () => {
+  it("resumes an open same-round worker session with the answer", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    const first = fake.opened.find((handle) => handle.role === "worker");
+    assert.ok(first);
+
+    enqueueCard(join(f.dir), {
+      id: "T-1-worker-resume",
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+
+    const workers = fake.opened.filter((handle) => handle.role === "worker");
+    assert.equal(workers.length, 1, "the same handle is reused");
+    assert.equal(first.prompts.length, 2);
+    assert.match(first.prompts[1], /same-round resume/i);
+    assert.match(first.prompts[1], /work T-1/);
+    const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
+    assert.equal(state.projects[workerKey("T-1", 1)].resumeState, "resumed");
+  });
+
+  it("replays into a fresh session when the native resume fails", async (t) => {
+    const f = fixture(t);
+    let calls = 0;
+    const fake = fakePool({
+      behavior: () => {
+        calls += 1;
+        if (calls === 1) return {};
+        if (calls === 2) return { ok: false, resumeFailed: true, error: "session not found" };
+        return {};
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    enqueueCard(join(f.dir), {
+      id: "T-1-worker-resume",
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+
+    const workers = fake.opened.filter((handle) => handle.role === "worker");
+    assert.equal(workers.length, 2, "a new handle was opened for the replay");
+    assert.match(workers[1].prompts[0], /could not be resumed/i);
+    const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
+    assert.equal(state.projects[workerKey("T-1", 1)].resumeState, "resumed_by_replay");
+    const row = readCards(f.dir).value.cards.find((entry) => entry.id === "T-1-worker-resume");
+    assert.equal(row.status, "done");
+  });
+
+  it("blocks the card when both resume and replay fail", async (t) => {
+    const f = fixture(t);
+    let calls = 0;
+    const fake = fakePool({
+      behavior: () => {
+        calls += 1;
+        if (calls === 1) return {};
+        return { ok: false, resumeFailed: calls === 2, error: "cannot resume" };
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    enqueueCard(join(f.dir), {
+      id: "T-1-worker-resume",
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+
+    assert.equal(
+      fake.opened.filter((handle) => handle.role === "worker").length,
+      2,
+      "exactly one replay attempt",
+    );
+    const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
+    const record = state.projects[workerKey("T-1", 1)];
+    assert.equal(record.blocked, true);
+    assert.equal(record.status, "stale");
+    const row = readCards(f.dir).value.cards.find((entry) => entry.id === "T-1-worker-resume");
+    assert.equal(row.status, "failed");
+    assert.match(row.lastError, /resume\/replay failed/);
+  });
+
+  it("recovers a processing worker row and resumes its stored session", async (t) => {
+    const f = fixture(t);
+    const key = workerKey("T-1", 1);
+    writeFileSync(
+      join(f.dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 3,
+        control: null,
+        projects: {
+          [key]: {
+            kind: "worker-session",
+            card: "T-1",
+            round: 1,
+            worktree: f.app,
+            cwd: f.app,
+            sessionId: "sid-old",
+            status: "running",
+            startedAt: new Date().toISOString(),
+            lastUsedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    );
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: key,
+    });
+    claimCards(join(f.dir), { claimedBy: f.app, pid: 999999, limit: 1 });
+    assert.equal((await pool.start()).ok, true);
+    await pool.tick();
+
+    const handle = fake.opened.find((entry) => entry.role === "worker");
+    assert.ok(handle);
+    assert.equal(handle.sessionId, "sid-old");
+    assert.match(handle.prompts[0], /same-round resume/i);
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+  });
+
+  it("starts a fresh generation on a round bump and closes the old one", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    const first = fake.opened.find((handle) => handle.role === "worker");
+    enqueueCard(join(f.dir), {
+      id: "T-1-r2",
+      ...card(f, "T-1", f.app),
+      round: 2,
+      worker_key: workerKey("T-1", 2),
+    });
+    await pool.tick();
+
+    const workers = fake.opened.filter((handle) => handle.role === "worker");
+    assert.equal(workers.length, 2);
+    assert.equal(first.closed, true, "the old generation is closed");
+    assert.notEqual(workers[1].sessionId, first.sessionId);
+    assert.doesNotMatch(workers[1].prompts[0], /same-round resume/i);
+    const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
+    assert.equal(state.projects[workerKey("T-1", 1)], undefined, "the old record retired");
+    assert.ok(state.projects[workerKey("T-1", 2)]);
+  });
+
+  it("waits for the question lane before dispatching a worker handoff", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "question:T-1:q-1",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      question_id: "q-1",
+      question: "Which?",
+      asked_at: "2026-01-01T00:00:00Z",
+    });
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    assert.equal(
+      fake.opened.filter((handle) => handle.role === "worker").length,
+      0,
+      "the worker waits while its question is open",
+    );
+    const workerRow = readCards(f.dir).value.cards.find((entry) => entry.id === "T-1-worker");
+    assert.equal(workerRow.status, "pending");
+    await pool.tick();
+    assert.equal(
+      fake.opened.filter((handle) => handle.role === "worker").length,
+      1,
+      "the worker runs after the question",
+    );
+  });
+
+  it("does not let worker sessions consume the lane pool", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f, { sessionPoolMax: 1 }),
+      kindPool: fake,
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    enqueueCard(join(f.dir), card(f, "T-2", f.api));
+    await pool.tick();
+    assert.equal(
+      fake.opened.filter((handle) => handle.role === "worker").length,
+      2,
+      "workers are bounded by max-concurrency, not by sessionPoolMax",
+    );
   });
 });

@@ -53,12 +53,12 @@ import {
   WORKSPACE_CODES,
 } from "./workspace.mjs";
 import {
+  buildHandoffRow,
   notifyNoResident,
   notifyReal,
   runPatrolTick,
   runPollTick,
   runQuestionTick,
-  wakeHandoff,
 } from "./runners.mjs";
 import {
   createLogger,
@@ -469,9 +469,9 @@ export function createQueueDispatch(input) {
     // Roles and the decision policy resolve from the project checkout, not the
     // worktree: `.meerkat/roles/` lives at the project root.
     const projectDir = context?.projectDir ?? dir;
-    const { role, agentRole, roleWarnings, handoff } = wakeHandoff(opts, config, action, card, {
-      projectDir,
-    });
+    const round = card?.delivery_round ?? card?.review_round ?? 1;
+    const handoffRow = buildHandoffRow({ opts, config, action, card, projectDir, round });
+    const { role, agentRole, roleWarnings, handoff, worker_key } = handoffRow;
     for (const warning of roleWarnings) {
       if (loggedRoleWarnings.has(warning)) continue;
       loggedRoleWarnings.add(warning);
@@ -486,7 +486,8 @@ export function createQueueDispatch(input) {
       project_dir: projectDir,
       target_dir: dir,
       workspace: context?.workspace ?? null,
-      round: card?.delivery_round ?? card?.review_round ?? 1,
+      round,
+      worker_key,
       handoff,
       // The subscriber maps an event's `task_id` (UUID) back to the card; the
       // identifier alone is not in the event. A review row also keeps its
@@ -859,13 +860,15 @@ export async function runPatrolOnce(opts, env = process.env) {
       }
       // Admission is proven: the card is no longer deferred.
       deferrals.clear(alert.identifier);
-      const { role, handoff } = wakeHandoff(
+      const round = task?.delivery_round ?? 1;
+      const { role, handoff, worker_key } = buildHandoffRow({
         opts,
         config,
         action,
-        task ?? { identifier: alert.identifier },
-        { projectDir },
-      );
+        card: task ?? { identifier: alert.identifier },
+        projectDir,
+        round,
+      });
       const identity = reviewIdentityOf(task);
       const queued = enqueueCard(stateDir, {
         card: alert.identifier,
@@ -875,7 +878,8 @@ export async function runPatrolOnce(opts, env = process.env) {
         project_dir: projectDir,
         target_dir: targetDir,
         workspace: prepared.workspace,
-        round: task?.delivery_round ?? 1,
+        round,
+        worker_key,
         handoff,
         task_id: task?.id ?? null,
         review_of: identity.originalRef,

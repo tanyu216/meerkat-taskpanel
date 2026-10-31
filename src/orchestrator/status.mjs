@@ -331,11 +331,19 @@ function humanReport(report) {
     ...Object.entries(report.units.systemd.loaded).map(([u, v]) => `systemd:${u}=${v ? "enabled" : "not enabled"}`),
     `cron:block=${report.units.cron.any ? "present" : "absent"}`,
   ].join(", ");
+  const workerRecords = Object.values(report.pool.workers ?? {});
+  const workerLine =
+    `${workerRecords.filter((record) => String(record?.status) === "running").length} running / ` +
+    `${workerRecords.length} total` +
+    (workerRecords.some((record) => record?.blocked === true)
+      ? ` (blocked ${workerRecords.filter((record) => record?.blocked === true).length})`
+      : "");
   return [
     `supervisor: ${report.verdict}`,
     `  platform:  ${report.platform} (~/${AGENT_DIRS[report.platform] ?? report.platform})`,
     `  scan set:  ${report.agents.length > 0 ? report.agents.join(",") : "(none)"}`,
     `  pool:      ${pool}`,
+    ...(workerRecords.length > 0 ? [`  workers:   ${workerLine}`] : []),
     `  continue:  ${report.continue.processing ? "processing" : report.continue.pending ? "pending" : report.continue.oneShot ? `one-shot pid ${report.continue.oneShot.pid}` : "idle"}`,
     `  subscribe: ${report.subscribe.live ? `running (pid ${report.subscribe.pid})` : "not running"}`,
     `  units:     ${units}`,

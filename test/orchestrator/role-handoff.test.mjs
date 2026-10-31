@@ -83,9 +83,11 @@ describe("handoffs without a role stay byte-identical", () => {
     // reviewed default, not the old human fallback.
     // Re-pinned when Step 0 began sizing by deliverable: the worker is told that
     // layers of one change are not several deliverables (TP-0002's split).
+    // Re-pinned when the split question's command line interpolated the real
+    // card ref instead of printing a literal `${ref}`.
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "6bd41a12559eea832d22d54990ab2e6b5f1691be20dbb22b4772339ffa331368",
+      "4a730982a99629ea0d1436e386807ada32736dd7bb683ab71ed9eaaffc10cc6b",
     );
   });
 

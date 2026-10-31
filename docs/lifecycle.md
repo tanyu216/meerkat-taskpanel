@@ -154,10 +154,10 @@ read can claim blocked work.
 - **`awaiting`** is the attention overlay. Only `in_progress → awaiting` enters it, with an
   enumeration (`E1`…`E5`) and, for an agent, a `question` comment written in the same
   transaction. **Any human comment answers it**, whatever its kind, and re-queues the card to
-  `todo` in that transaction — the asking subagent is a one-shot and is gone, so only the
-  queue gets it dispatched again. The board does not read the prose; the resumed worker judges
-  whether the answer is complete. A `decision`/`confirm`/`change` comment remains the explicit
-  record, not the resume gate.
+  `todo` in that transaction — dispatch reopens the card's worker session (same round, same
+  workspace) and sends it the answer. The board does not read the prose; the resumed worker
+  judges whether the answer is complete. A `decision`/`confirm`/`change` comment remains the
+  explicit record, not the resume gate.
 
 `awaiting → in_progress` is a **resume of the same attempt**, not a rework: the round does not
 move and the round's report, once written, still counts. The forbidden exits are the point:

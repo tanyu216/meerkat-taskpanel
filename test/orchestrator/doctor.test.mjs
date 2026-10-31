@@ -1134,3 +1134,36 @@ describe("loop doctor — deferred admission and stale workspaces", () => {
     assert.deepEqual(report.workspaces.stale, [], "a git failure is not evidence of absence");
   });
 });
+
+describe("loop doctor — worker sessions", () => {
+  it("reports blocked/stale worker sessions and a missing worktree", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir);
+    seedState(dir);
+    writeJson(join(dir, "sessions.state.json"), {
+      version: 3,
+      control: null,
+      projects: {
+        "worker:T-900:r1": {
+          kind: "worker-session",
+          card: "T-900",
+          round: 1,
+          worktree: join(dir, "gone"),
+          sessionId: "sid-1",
+          status: "stale",
+          blocked: true,
+          resumeState: "stale",
+          lastError: "replay failed",
+        },
+      },
+    });
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+    assert.equal(report.workers.total, 1);
+    assert.equal(report.workers.by_status.stale, 1);
+    assert.equal(report.workers.blocked.length, 1);
+    assert.equal(report.workers.stale.length, 1);
+    assert.equal(report.workers.missing_worktree.length, 1);
+    assert.ok(report.attention_reasons.includes("workers: 1"));
+    assert.ok(report.attention_reasons.includes("worker_worktrees: 1"));
+  });
+});

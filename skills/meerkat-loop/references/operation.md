@@ -33,13 +33,14 @@ takes the execution lock.
 The agent's `taskctl` shim carries `--agent` / `--actor-kind`; add them explicitly from a shell
 that does not go through the shim. `--control=external` is the pool half of the manual mode: it
 opens no control session and skips `continue.pending`; the live session runs the control turn
-and the pool keeps only the project sessions. `loop status --take-over` starts exactly that,
+and the pool keeps the worker and reviewer sessions. `loop status --take-over` starts exactly that,
 records its pid, and `--stop` stops only that process.
 
 `loop doctor` is the daily read-only inspection: one report over the supervisor verdict, the
-scan set, the patrol marker, the log tail, the queue and ledger, the stuck cards, and the
+scan set, the patrol marker, the log tail, the queue and ledger, the worker sessions (running,
+`resumed_by_replay`, blocked or stale, a missing worktree), the stuck cards, and the
 cards that keep looping (`looping`: rework rounds, review reopens, dispatch retries, failed
-subagents, and deferred admission). A stale `workspaces.json` record — a non-terminal card
+workers or subagents, and deferred admission). A stale `workspaces.json` record — a non-terminal card
 whose worktree is gone and whose branch no longer resolves — is reported as
 `stale_workspaces`. It is not a pass and writes nothing; when something needs a human, the
 report says so in `attention` and the exit code still reads 0.
@@ -71,7 +72,7 @@ card's own `acceptance_mode` is authoritative.
 
 ## No resident pool
 
-Poll is the only claim path, and the project session is the only dispatcher, so the loop
+Poll is the only claim path, and the pool is the only dispatcher, so the loop
 refuses to claim when the pool is not live (`sessions.state.json`: pid alive and heartbeat
 younger than 60s) or when `--resident=no` is set: poll logs why and emits one `--notify`
 alert per cadence (`kind: no_resident`); an event-triggered turn is skipped; a one-shot
@@ -119,8 +120,8 @@ control turn repeats on the clock — question tick 60 s, control tick 600 s, TT
    - Only a human comment resumes `awaiting`, whatever its kind. A tick that lands mid-question
      is a no-op: re-read that card's trail and wait.
 3. **Health and blocks.** From the doctor report: verdict, `attention_reasons`, `stuck_cards`
-   (stale heartbeats), `looping` (rework rounds, review reopens, dispatch retries, subagent
-   failures), `waiting.in_review`, `queue`, `board.truncated`. Then the
+   (stale heartbeats), `looping` (rework rounds, review reopens, dispatch retries, worker or
+   subagent failures), `workers` (running/total, `resumed_by_replay`, blocked or stale), `waiting.in_review`, `queue`, `board.truncated`. Then the
    `blocked` cards through the `meerkat` board skill — `doctor` counts them but never lists
    them — with `blocked_reason` (`clarify · decision · dependency · out_of_bounds · defect ·
    external · resource · unknown`), the age and the assignee. Report only; the loop never
@@ -162,7 +163,7 @@ registration has no TTL. If registration fails — or the card is already termin
 Patrol's `--patrol-llm=yes` lane registers the same way.
 
 **The brief is authoritative for dispatch and resume.** The handoff names the relative path
-(its cwd is the project directory), says to read it first, and says never to edit it: only
+(its cwd is the card's workspace — the admitted worktree for a git project), says to read it first, and says never to edit it: only
 the hub watch overwrites it (the `meerkat` board skill can produce the same file manually,
 but the loop never needs one). The live card stays in the handoff for status and the
 `version` a write needs. A resumed session re-reads the brief before continuing.
@@ -229,10 +230,11 @@ wedges a tick. Roles are optional: with none, the loop behaves as it did before.
 
 ## Questions and decision rights
 
-The ladder is **subagent → main session → human**; the full policy is
-`references/decision-policy.md`. A subagent never decides an unauthorized question: it writes
-an agent `question` comment, keeps the card `in_progress`, and stops. Poll's **question lane**
-then enqueues the unanswered question for the project session (no claim, no subagent slot),
+The ladder is **worker session → project session → human**; the full policy is
+`references/decision-policy.md`. A worker never decides an unauthorized question: it writes
+an agent `question` comment, keeps the card `in_progress`, and stops. Its session stays on
+record, so the eventual answer resumes that same worker. Poll's **question lane**
+then enqueues the unanswered question for the project session (no claim, no worker slot),
 which answers with a `note` and moves the card to `todo`, or escalates E1-E5 to the human by
 moving the card to `awaiting` with the reason and the question (the `meerkat` board skill owns
 the move).

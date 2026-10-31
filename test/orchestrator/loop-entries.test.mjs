@@ -679,7 +679,7 @@ describe("the resident poll dispatch", () => {
     assert.equal(entry.task_id, "uuid-1", "the subscriber locates the row by UUID");
     assert.equal(entry.review_of, null);
     assert.equal(entry.review_round, null);
-    assert.match(entry.handoff, /^You are a worker subagent of the P project session/);
+    assert.match(entry.handoff, /^You are the worker for the P project/);
     assert.match(entry.handoff, /\.meerkat\/T-1\/card\.md/);
     assert.equal(entry.handoff.includes("/meerkat-loop"), false, "a handoff is not a continue turn");
   });

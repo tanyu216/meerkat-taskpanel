@@ -172,7 +172,7 @@ Who answers what the loop cannot: `--opened-by human` means the control turn may
 operator in that conversation; the default (`supervisor`, for systemd/launchd/cron) leaves the
 card `awaiting` for the human's comment.
 
-### The subagent's file surface
+### The worker's file surface
 
 The loop itself never downloads an attachment. The handoff tells a worker/reviewer to keep
 everything it produces — including downloaded attachments — under `.meerkat/<identifier>/`:
@@ -184,7 +184,7 @@ taskctl attachment download <attachment-id> --out .meerkat/<identifier>/<filenam
 
 `download` is the byte half of `add`; it writes to an existing parent directory and returns
 `data.{attachment_id,out,size,content_type}`. `card.md` in that directory is the loop's export
-and is never edited by the subagent.
+and is never edited by the worker.
 
 ## 8. Live stream — `events follow` (hub) / `events tail` (direct)
 
