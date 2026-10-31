@@ -67,7 +67,7 @@ Meerkat TaskPanel 是为 AI Agent 团队而生的任务看板。它关注的是 
 
 Meerkat TaskPanel 是三层薄结构，依赖方向始终向内。`src/cli` 与 `src/server` 是入口。`src/core` 持有领域模型、SQLite 存储与用例。`src/foundation` 是它们共享的 DTO 与辅助函数。
 
-`meerkat-loop` 不属于这三层。它是一个独立 skill，只通过 `taskctl` 驱动看板，见 [meerkat-loop 调度器](#meerkat-loop-调度器)。想为自己的 agent kind 安装 skill/插件，见[安装（agent kind 细节）](#安装agent-kind-细节)。
+**supervisor**（`taskctl loop …`）不属于这三层：它通过 `taskctl` 驱动看板并执行确定性 pass，而 **director** skill 负责协作决策；角色 skill（`jobs`、`linus`、`turing`、`reviewer`、`worker`）按平台发现。见 [supervisor 与 director](#supervisor-与-director)。想为自己的 agent kind 安装 skill/插件，见[安装（agent kind 细节）](#安装agent-kind-细节)。
 
 系统记录见 [docs/architecture.md](docs/architecture.md)：边界、数据模型、契约、配置、安全与权威目录树。一次改动必须满足的规则见 [docs/tech-spec.md](docs/tech-spec.md)；哪份文档拥有哪个领域，见 [docs/README.md](docs/README.md)。
 
@@ -94,8 +94,9 @@ meerkat-taskpanel/
 │   ├── server/                   #   本地 HTTP API + SSE
 │   └── foundation/               #   DTO / 常量 / 纯函数
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
-├── skills/                       # 三个 skill：meerkat（看板）、meerkat-loop（调度器）、
-│                                 #   setup-meerkat（安装/修复 + 团队配置；仅复制给 Claude）
+├── skills/                       # meerkat（看板）、meerkat-director（决策）、
+│                                 #   jobs/linus/turing/reviewer/worker（角色）、
+│                                 #   setup-meerkat（安装/修复 + 迁移；仅复制给 Claude）
 ├── .claude-plugin/               # marketplace + board 插件清单（插件根 = 仓根）
 ├── .pi/                          # Pi 扩展（由 package.json 的 `pi` 字段声明）
 ├── design/                       # 设计文档：DESIGN / BLOCKS、prototype/、brand/、assets/
@@ -168,86 +169,75 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 仓根就是 board 的插件根，每个 harness 都就地读那一份 `skills/`，不再各拿一份副本。OpenClaw 同样消费这个 Claude 格式的 bundle —— 见 [`docs/ops/install.md`](docs/ops/install.md#openclaw)。
 
-`meerkat-loop` 调度器 skill 不走 marketplace 分发。`install.sh --target claude|codex|pi` 会安装它。`--target openclaw` 目前只装看板 skill；OpenClaw 的 loop 支持列在[路线图](#路线图)里。见 [meerkat-loop 调度器](#meerkat-loop-调度器)。
+`meerkat-director` 与角色 skill 不走 marketplace 分发。`install.sh --target claude|codex|pi` 会安装它们。`--target openclaw` 目前只装看板 skill；OpenClaw 的 supervisor 支持列在[路线图](#路线图)里。见 [supervisor 与 director](#supervisor-与-director)。
 
-第三个 skill **`setup-meerkat`** 就是 `/setup-meerkat` 命令。它会探测已安装的部分、补齐缺失、提供 Matt Pocock issue-tracker 集成，并按需安装 Jobs/Linus/Turing 加独立 reviewer 的团队（角色 workflow、原生 agent 定义、计划文件与遗漏检查的约定）。`install.sh --target claude` 会把它复制到 `~/.claude/skills/setup-meerkat`。其他 agent kind（包括 OpenClaw）可以从共享 bundle 就地读到；为 OpenClaw 提供专门支持列在[路线图](#路线图)里。
+第三个 skill **`setup-meerkat`** 就是 `/setup-meerkat` 命令。它会探测已安装的部分、补齐缺失、提供 Matt Pocock issue-tracker 集成、按请求把角色 skill 从一个 agent 平台迁到另一个，并把项目的决策权指针初始化到 director。`install.sh --target claude` 会把它复制到 `~/.claude/skills/setup-meerkat`。其他 agent kind（包括 OpenClaw）可以从共享 bundle 就地读到；为 OpenClaw 提供专门支持列在[路线图](#路线图)里。
 
-团队的 roles root 归这个 skill 所有：`install.sh` 不附带、也不会创建、写入或删除任何 roles root，因此 `/setup-meerkat` 是安装或升级团队的唯一途径。
+角色 skill 没有 roles root：每个角色从承载它的 agent kind 的 `skills/` 树里被发现，**安装位置就是路由**。`/setup-meerkat` 只在用户要求时把角色复制到另一个 kind，且绝不删除用户没点名的角色。
 
-常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，默认 `Worker`；它同时种入 loop 的 `MEERKAT_TASKPANEL_AGENTS` 扫描集和随包 shim。团队会用角色名替换扫描集；既有值不加 `--force` 会保留）、`--no-automation`（跳过 Codex 调度单元与 taskd guard）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 —— 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
+常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，默认 `Worker`；它同时种入随包 shim，并默认把 `MEERKAT_TASKPANEL_AGENTS` 扫描集种为 `Jobs,Linus,Turing,Worker`；既有值不加 `--force` 会保留）、`--no-automation`（跳过 Codex 调度单元与 taskd guard）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 —— 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
 **看板配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的 `.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于两者。`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每个 actor kind 还有一份**按 kind 的配置** —— `<program root>/.env.<actor-kind>`（例如 `.env.claude`）—— `taskctl` 会把它作为 per-agent 默认层读取（身份、引擎位置），`taskctl loop …` 则从同一份文件读 loop 策略。旁边还有**一份**机器本地的 `projects.json`：项目 → 目录映射，所有 agent kind 共用，只能通过 `taskctl project map` 维护（从不进看板）。它不是看板配置，loader 也拒绝把 loop 策略键写进 `.env`。每条 `taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其中的键搬进 `.env`。详见 [`docs/ops/install.md`](docs/ops/install.md) 与 [`docs/agents/development.md`](docs/agents/development.md)。
 
-## meerkat-loop 调度器
+## supervisor 与 director
 
-`meerkat-taskpanel` 是看板与记录。`taskctl` 是 Agent 和 loop 使用的 CLI。`taskd` 是 CLI 自动启动、给看板 UI 用的本地 HTTP/SSE 服务。`meerkat-loop` 是跑在 agent 应用之外的调度器，在没有人在看的时候让看板继续转起来。
+`meerkat-taskpanel` 是看板与记录。`taskctl` 是 Agent 和 supervisor 使用的 CLI。`taskd` 是 CLI 自动启动、给看板 UI 用的本地 HTTP/SSE 服务。**supervisor**（`taskctl loop …`）跑在 agent 应用之外，在没人看着时让看板继续转，并自己执行确定性 pass。**director**（`meerkat-director`）是唯一的 LLM 决策通道：派单、回答 worker 提问、把 E1–E5 升级给人。
 
-看板负责算 workflow 决策，loop 负责执行。loop 只通过 `taskctl` 跟看板打交道，从不调用 HTTP API。
+看板负责算 workflow 决策，supervisor 负责执行。它只通过 `taskctl` 跟看板打交道，从不调用 HTTP API。
 
 ### 它是什么
 
-loop 有两个时钟和一个常驻会话池：
+supervisor 有两个时钟和一个常驻会话池：
 
 - **ping**，每 60 秒：清掉 worker registry 里进程已退出的条目。不读看板、不起模型，$0。
-- **continue**，每 600 秒：一个有界的模型回合，按顺序跑三个确定性 pass。
-- **会话池**，常驻：一个控制会话，每个目标目录一个项目会话，按需一个 reviewer 会话。
+- **tick**，每 600 秒（安装单元名仍是 `continue`）：在进程内按顺序跑三个确定性 pass，一把锁。没有模型回合。
+- **会话池**，常驻：每张卡一个 worker 会话、每个目录一个 reviewer lane、每个项目一个 director lane。池可以同时持有多个 agent kind 的会话；角色在它 skill 所安装的平台上运行。
 
-skill 在 [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)，只承载决策。loop 本身属于工具链（[`src/orchestrator/`](src/orchestrator/)），以 `taskctl loop …` 运行。
+决策协议在 [`skills/meerkat-director/`](skills/meerkat-director/SKILL.md)；角色工作流是五个独立 skill：`jobs`、`linus`、`turing`、`reviewer`、`worker`。执行体属于工具链（[`src/orchestrator/`](src/orchestrator/)），以 `taskctl loop …` 运行。
 
-### 手动调用
+### 在活会话里做决策
 
-`meerkat-loop` 是命令式 skill。它的 frontmatter 设了 `disable-model-invocation: true`，所以模型在 skill 列表里看不到它，不会因为关键词或描述匹配加载它，也**不会自己启动**。
-
-需要你在一段活着的会话里亲手输入：
+`meerkat-director` 是命令式 skill（`disable-model-invocation: true`），模型不会自己启动它。人可以把它当作决策前端：
 
 ```text
-/meerkat-loop
+/meerkat-director
 ```
 
-这就是**手动模式**，开场是一份议程，而不是一次调度回合：
+它一次一张卡地走 `awaiting`：把卡读回来，问完这张卡的全部问题，把准备写入的评论原文给你看，你点头后才以你的身份写下去。你在板上 UI 里回答也算数。它也报告健康状态和每张 `blocked` 卡的原因，并按请求放行 `backlog → todo`（唯一的前进边；`in_progress` 属于认领）。每次写板都先给你看。它不是第二个派发者：supervisor 的时钟照常运行。
 
-1. **在等你的是什么。** 一次一张卡：会话把卡读回来，问完这张卡的全部问题，把它准备写入的评论原文给你看，你点头后才以你的身份写下去。你直接在板上 UI 里回答也算数，它不会重复问。
-2. **Loop 健康与阻塞。** 监管者裁定、停滞的心跳、迟迟没有验收的卡，以及每一张停在 `blocked` 的卡和它的原因——只报告，绝不背着你改动。
-3. **Backlog。** 你想启动的卡走 `backlog → todo`（唯一的前进边；`in_progress` 属于一次认领），只有你指名时才会写负责人。
-4. **其余一切。** 建卡、拆卡、指派、验收、重开、取消、加关联、加附件——都在你眼皮底下走板子。
+### 一次 tick 做什么
 
-每一次写板都会先给你看。议程走完后时钟继续走——每 60 秒一次问询、每 600 秒一次控制回合，持续 30 分钟或直到你叫停。
+每个 tick 按顺序跑三个 pass：
 
-**监管模式用的是同一条命令，不是另一套大脑。** 如果你安装了调度单元，它们会把 `/meerkat-loop Continue — …` 喂给常驻控制会话。单元是时钟；模型仍然没有自己决定去调用这个 skill。
-
-所以：想让它按计划跑，就安装单元；否则就由你手动调用。模型永远不会替你调用。
-
-### 一个 continue 回合做什么
-
-每个 continue 回合按顺序跑三个 pass：
-
-1. **patrol** —— 只通知的 SLA 巡检。它报告过期心跳、无人应答的确认门、没人验收的交付，以及 SLA 契约（[`docs/sla.md`](docs/sla.md)）的其余各项。它绝不动卡。
-2. **workflow** —— 写入通道。看板用 `issue reconcile --workflow` 计算计划（容器规则、为每笔交付派出独立审核员、应用结论）；loop 执行计划里的审核动作。`--workflow=no` 关闭这条通道；`--reviewer` 启用派发。
+1. **patrol** —— 只通知的 SLA 巡检。报告过期心跳、无人应答的确认门、没人验收的交付，以及 SLA 契约（[`docs/sla.md`](docs/sla.md)）的其余各项。它绝不动卡；需要决策的动作变成 director 行。
+2. **workflow** —— 写入通道。看板用 `issue reconcile --workflow` 计算计划（容器规则、为每笔交付派出独立审核员、应用结论）；supervisor 执行计划里的审核动作。`--workflow=no` 关闭这条通道；`--reviewer` 启用派发。
 3. **poll** —— 扫描、导出卡片 brief、原子认领、写交接队列。它不 spawn worker。空扫描 $0。只有认领成功后，这笔工作的第一个模型回合才会开始。
 
-常驻的项目会话把 worker 或 reviewer 作为子代理启动，子代理继承项目目录作为 cwd。工作一开始就在它该在的目录里。
+会话池把每张卡放进它自己的 worker 会话，在项目目录或卡片 worktree 里打开，并跑在承载该角色 skill 的 kind 上。同轮重派（问题得到回答、返工、崩溃）会按 id **恢复**原会话；原生会话不存在时，supervisor 把一段有界转录重放进新会话并标记。
 
-在 launchd/systemd 上，subscribe 守护进程跟随看板的本地事件 hub（每块板一条 SSE，所有本地消费者共享）。可派发的事件会请求一个 continue 回合，所以发现是事件驱动的。600 秒周期仍是兜底，也是处理时间型工作（过期认领、审核老化、SLA）的唯一路径。cron 没有长驻会话池：patrol 与 workflow 照跑，但 poll 不认领，worker 派发暂停；`--continue-interval` 是那里的发现节奏旋钮。
+worker 的提问由 director 回答：写 agent `note` 并把卡移回 `todo`，或用 `awaiting --awaiting-reason --question` 升级 E1–E5。超过 30 分钟仍未分配的卡由 director 按生成的路由表指派。不再另起专门的项目会话处理这些。
 
-完整设计 —— 两个时钟、只在触发时计费的成本闸门、幂等唤醒、并发上限、失效兜底，以及各 agent kind 的触发差异 —— 见 [`docs/scheduling.md`](docs/scheduling.md)。
+在 launchd/systemd 上，subscribe 守护进程跟随看板的本地事件 hub（每块板一条 SSE，所有本地消费者共享）。可派发的事件会请求一次**提前 tick**，所以发现是事件驱动的。600 秒周期仍是兜底，也是处理时间型工作（过期认领、审核老化、SLA）的唯一路径。cron 没有长驻会话池：patrol 与 workflow 照跑，但 poll 不认领，worker 派发暂停。
+
+完整设计 —— 时钟、只在触发时计费的成本闸门、幂等唤醒、并发上限、角色发现与平台路由、director lane 与失败模式 —— 见 [`docs/scheduling.md`](docs/scheduling.md)。
 
 ### 如何开启（以及成本）
 
-`install.sh --target claude|codex|pi` 会安装 `meerkat-loop` skill，并写入该 agent kind 的 launchd、systemd 或 cron 单元。它不走 marketplace 分发。
+`install.sh --target claude|codex|pi` 会在所选每个 kind 上安装 `meerkat-director` 与角色 skill，并写入该 kind 的 launchd、systemd 或 cron 单元。它们不走 marketplace 分发。
 
 普通安装只**写**单元并**打印**加载命令，绝不替你启动守护进程。加载是单独的显式动作：
 
 ```bash
-install.sh --supervisor=enable     # 加载一套 loop supervisor（--target 里第一个 loop kind）
-install.sh --supervisor=status     # 查看每个 loop kind：平台、扫描集、加载状态
-install.sh --supervisor=disable    # 卸载每个 loop kind
+install.sh --supervisor=enable     # 在主 kind 上加载 supervisor
+install.sh --supervisor=status     # 平台、扫描集、role → 平台映射、加载状态
+install.sh --supervisor=disable    # 卸载 supervisor
 ```
 
-一台机器只跑一套 loop supervisor：`enable` 默认只作用于 `--target` 里的第一个 loop kind（`--target all` 即 claude）；要再跑一个 kind 必须显式 `--supervisor-actor-kinds claude,codex`，代价是多一套轮询、日志和按 loop 去重的告警账本。`status` 与 `disable` 始终覆盖所有 loop kind。安装时还会问一次是否允许 supervisor 认领未分配的卡（默认允许），并把答案记在 `<program root>/.env.<actor-kind>`。
+一台机器只跑一套 supervisor：`enable` 默认作用于主 kind（`--target` 里第一个 loop kind；`--target all` 即 claude）。其他平台通过在那里安装角色 skill 加入，而不是再起一套 supervisor。`status` 与 `disable` 覆盖旧规则遗留的所有 kind。安装时还会问一次是否允许 supervisor 认领未分配的卡（默认允许），并把答案记在 `<program root>/.env.<actor-kind>`。
 
-loop 自身不带版本号，也不声明看板接口：它与看板同一个包发布、同步演进，因此总是驱动安装时与它同在一棵树里的 `taskctl`。
+supervisor 自身不带版本号，也不声明看板接口：它与看板同一个包发布、同步演进，因此总是驱动安装时与它同在一棵树里的 `taskctl`。
 
-成本模型很简单。ping 是 $0。continue 每个周期一个有界模型回合。回合里的 poll 是确定性的成本闸门：只有认领成功，才会起 worker 或 reviewer 回合。cron 上没有会话池，也就没有 worker 派发。
+成本模型很简单。ping 是 $0；tick 也不花 token（确定性 pass）。只有认领成功后打开的 worker/reviewer 会话，以及 question/route/escalation 派生的 director 行才是模型回合。cron 上没有会话池，也就没有 worker 派发。
 
 OpenClaw 目前只拿到看板 skill —— 没有 loop，也没有调度单元。`setup-meerkat` 也一样：OpenClaw 能从共享 bundle 读到它，但不能单独安装。两项都在[路线图](#路线图)里。
 
@@ -260,7 +250,7 @@ OpenClaw 目前只拿到看板 skill —— 没有 loop，也没有调度单元�
 3. **一次一卡。**
 4. **心跳保持新鲜。** 看板把认领视为存活 10 分钟。`issue heartbeat <ref>` 就是续期命令，看板不会代你续期。
 5. **交付带报告。** 这就是交付门禁。
-6. **自评不等于验收。** 除非卡片是 `acceptance_mode: off`，Agent 只到 `in_review`。由 [loop](#meerkat-loop-调度器) 应用审核员结论，或由人验收 `done`。越权的移动会被 `ACCEPTANCE_FORBIDDEN` 拒绝。
+6. **自评不等于验收。** 除非卡片是 `acceptance_mode: off`，Agent 只到 `in_review`。由 [loop](#supervisor-与-director) 应用审核员结论，或由人验收 `done`。越权的移动会被 `ACCEPTANCE_FORBIDDEN` 拒绝。
 7. **冲突不抢占。** 重读一次，仍可领才重试。
 8. **保持可追溯。** 带上会话 id。
 
@@ -278,13 +268,13 @@ agent kind 之间的差异，只在**由谁执行这些规则**。
 
 `install.sh --target claude --agent-name <名>` 会部署完整 bundle，而不只是 skill。它会合并写入 `~/.claude/settings.json`（新增 `env.TASKCTL_AGENT` 与一个 `SessionStart` hook：启动看板并列出你的待领卡），安装 `~/.claude/commands/{board,claim,deliver}.md`，并随包提供注入 `--agent <名>` 的 `taskctl` 包装脚本。
 
-随后用 `taskctl` 驱动看板，并在每次写入时带上 actor kind 与会话 —— `--actor-kind claude --session-id <id>` —— 让卡的轨迹指回动手的那段对话。Claude Code 本身没有定时器，所以规则 1 的认领由外部驱动：[调度器](#meerkat-loop-调度器)唤醒一个 `claude -p` 无头会话（用 `--resume <sid>` 续接同一会话），你也可以从 SessionStart hook 或 slash 命令手动触发。
+随后用 `taskctl` 驱动看板，并在每次写入时带上 actor kind 与会话 —— `--actor-kind claude --session-id <id>` —— 让卡的轨迹指回动手的那段对话。Claude Code 本身没有定时器，所以规则 1 的认领由外部驱动：[调度器](#supervisor-与-director)唤醒一个 `claude -p` 无头会话（用 `--resume <sid>` 续接同一会话），你也可以从 SessionStart hook 或 slash 命令手动触发。
 
 ## Codex
 
 `install.sh --target codex --agent-name <名>` 会部署完整 bundle。它向 `~/.codex/AGENTS.md` 追加 claim-first 片段，写入调度单元（`--no-automation` 跳过），并随包提供 `taskctl` 包装脚本。
 
-以同样方式操作看板，并用当前线程作为会话 id —— `--actor-kind codex --session-id "$CODEX_THREAD_ID"` —— 做会话级归属。Codex 本身没有定时器，所以规则 1 由[调度器](#meerkat-loop-调度器)唤醒 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
+以同样方式操作看板，并用当前线程作为会话 id —— `--actor-kind codex --session-id "$CODEX_THREAD_ID"` —— 做会话级归属。Codex 本身没有定时器，所以规则 1 由[调度器](#supervisor-与-director)唤醒 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
 
 面向 agent 的指南 —— claim-first、状态模型、交付门与看板 workflow —— 在 skill 内：[`skills/meerkat/SKILL.md`](skills/meerkat/SKILL.md)。各 agent kind 的安装与触发细节见 [`docs/ops/install.md`](docs/ops/install.md)。
 
@@ -318,11 +308,11 @@ npm run check
 | **安装器** | `install.sh` + `scripts/install/<actor-kind>.sh` —— claude / openclaw / codex / pi 四个 agent kind 目标，外加 `server` 运行时；幂等且合并式写入 | *已落地* |
 | **md 导出** | `src/core/storage/md/` —— `taskctl export md` 为每张卡写一份规范 markdown | *已落地* |
 | **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |
-| **meerkat-loop** | `skills/meerkat-loop/` —— 外部调度器：60 秒 ping、600 秒 continue 回合（SLA 巡检 → workflow → poll）与常驻会话池；只通过 `taskctl` 驱动看板 | *已落地* |
+| **supervisor + director** | `skills/meerkat-director/` 与五个角色 skill —— 外部 supervisor：60 秒 ping、600 秒确定性 tick（SLA 巡检 → workflow → poll）、多 kind 会话池与 director 决策通道；只通过 `taskctl` 驱动看板 | *已落地* |
 | **IM 集成** | 把“需要人”的项（awaiting / agent question / 待验收）推到 IM，在 IM 里记录决策与验收，并回答进展查询。引擎只提供插件宿主 + `channel-kit`；每个平台（飞书、Slack、微信、WhatsApp、Teams、Telegram）是独立适配器包，基于第三方 SDK。见 [docs/im-integration.md](docs/im-integration.md)。 | *（规划中 —— 优先于下列项）* |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合 | *（规划中）* |
 | **迭代管理** | 迭代（sprint）周期管理：任务归入迭代、迭代内进度与容量 | *（规划中）* |
-| **OpenClaw 的 loop 支持** | 为 `openclaw` 目标安装并运行 `meerkat-loop`（调度单元 + 会话池）。当前 `--target openclaw` 只装看板 skill；与 OpenClaw 自带 poll/patrol 如何共存仍待设计 | *（规划中）* |
+| **OpenClaw 的 supervisor 支持** | 为 `openclaw` 目标安装并运行 supervisor（调度单元 + 会话池）。当前 `--target openclaw` 只装看板 skill；与 OpenClaw 自带 poll/patrol 如何共存仍待设计 | *（规划中）* |
 | **OpenClaw 的 setup-meerkat 支持** | 为 `openclaw` 目标安装并运行 `setup-meerkat`。当前只有 `--target claude` 会复制它，OpenClaw 只能从共享 bundle 读到 | *（规划中）* |
 
 > 本表已弃用 `M0`–`M6` 编号：`M3`（stdio MCP 服务器）是先落地、后被整体移除的 —— 见

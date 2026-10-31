@@ -926,6 +926,10 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     generated_at: new Date(nowMs).toISOString(),
     supervisor,
     agents,
+    // Where each discovered role is installed and where it will run; the same
+    // report `loop status` prints, carried here so a daily inspection can see a
+    // role stranded on a kind whose CLI cannot start.
+    roles: Array.isArray(supervisor?.roles) ? supervisor.roles : [],
     patrol,
     board,
     log,
@@ -955,9 +959,10 @@ function humanReport(report) {
   const lines = [`loop doctor  ${report.generated_at}`];
 
   const pool = report.supervisor?.pool;
+  for (const line of report.roles ?? []) lines.push(`  ${line}`);
   lines.push(
     `supervisor  ${report.supervisor?.verdict ?? "unknown"}` +
-      (pool?.live === true ? `  pool pid ${pool.poolPid} (control ${pool.controlMode})` : ""),
+      (pool?.live === true ? `  pool pid ${pool.poolPid}` : ""),
   );
   lines.push(`agents      ${report.agents.length > 0 ? report.agents.join(", ") : "(none resolved)"}`);
 

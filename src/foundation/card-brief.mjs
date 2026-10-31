@@ -1,7 +1,7 @@
 /**
  * The loop's per-task process directory.
  *
- * A worker/reviewer subagent inherits the project session's cwd, so the loop can
+ * A worker/reviewer session inherits the project cwd, so the loop can
  * name one **relative** location for everything a task produces:
  *
  *     .meerkat/<identifier>/card.md      the board's export (read-only)

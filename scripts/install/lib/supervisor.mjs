@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The `meerkat-loop` supervisor's **enable / disable / status** actions, plus the
+ * The `meerkat-director` supervisor's **enable / disable / status** actions, plus the
  * installer-only `restart-if-changed` (an `INTERNAL_ACTIONS` member, not part of the
  * documented user surface).
  *
@@ -142,7 +142,7 @@ export function scanSetFromConfig(path) {
  * @param {string} stateDir the directory holding `sessions.state.json` etc.
  * @param {{isAlive?: (pid: number) => boolean, now?: () => number}} [options]
  * @returns {{live: boolean, pid: number|null, heartbeatAgeMs: number|null, liveSubagents: number,
- *            cardsQueued: number, continueQueued: boolean, reason: string}}
+ *            cardsQueued: number, reason: string}}
  */
 export function poolReport(stateDir, options = {}) {
   const isAlive = options.isAlive ?? pidAlive;
@@ -159,7 +159,6 @@ export function poolReport(stateDir, options = {}) {
   const sessions = readJson(QUEUE_FILES.sessions);
   const ledger = readJson(QUEUE_FILES.ledger);
   const cards = readJson(QUEUE_FILES.cards);
-  const pendingContinue = readJson(QUEUE_FILES.continuePending);
   const liveSubagents = Array.isArray(ledger?.subagents)
     ? ledger.subagents.filter((row) => LIVE_STATUSES.includes(String(row?.status ?? ""))).length
     : 0;
@@ -167,11 +166,10 @@ export function poolReport(stateDir, options = {}) {
     ? cards.cards.filter(
         (row) =>
           (row?.status === "pending" || row?.status === "processing") &&
-          // A question row is a project-session turn, not a queued card.
+          // A question row is a director decision row, not a queued handoff.
           String(row?.queue_kind ?? "handoff") === "handoff",
       ).length
     : 0;
-  const continueQueued = pendingContinue !== null;
   const pid = Number.isInteger(sessions?.poolPid) ? sessions.poolPid : null;
   const beat = Date.parse(String(sessions?.heartbeatAt ?? ""));
   const heartbeatAgeMs = Number.isFinite(beat) ? Math.max(0, now() - beat) : null;
@@ -182,7 +180,6 @@ export function poolReport(stateDir, options = {}) {
       heartbeatAgeMs,
       liveSubagents,
       cardsQueued,
-      continueQueued,
       reason: pid === null ? "no session state" : `pool pid ${pid} is gone`,
     };
   }
@@ -192,7 +189,6 @@ export function poolReport(stateDir, options = {}) {
     heartbeatAgeMs,
     liveSubagents,
     cardsQueued,
-    continueQueued,
     reason: "",
   };
 }
@@ -1142,7 +1138,6 @@ export function runSupervisorAction(options) {
     const pool = poolReport(paths.stateDir, { now: options.now });
     const detail = pool.live
       ? `pid ${pool.pid}, ${pool.liveSubagents} live subagent(s), ${pool.cardsQueued} card(s) queued` +
-        `${pool.continueQueued ? ", continue queued" : ""}` +
         `${pool.heartbeatAgeMs === null ? "" : `, heartbeat ${Math.round(pool.heartbeatAgeMs / 1000)}s`}`
       : pool.reason;
     log(`supervisor:   session: ${pool.live ? "running" : "not running"} (${detail})`);

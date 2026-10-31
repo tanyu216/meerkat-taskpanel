@@ -73,7 +73,7 @@ time=2026-10-27T12:34:56.789Z level=info component=taskd event=startup url=http:
 time=2026-10-27T12:34:56.790Z level=info event=request method=GET path=/api/v1/tasks status=200 duration_ms=3 request_id=9f1c… actor=human:local
 time=2026-10-27T12:34:56.791Z level=warn event=command_failed command=moveStatus code=VERSION_CONFLICT http=409 duration_ms=1
 time=2026-10-27T12:34:56.792Z level=error event=request_failed method=POST path=/api/v1/tasks status=500 request_id=9f1c… code=VALIDATION_FAILED
-time=2026-10-27T12:34:56.793Z level=info component=supervisor msg="/meerkat-loop Continue — timer turn"
+time=2026-10-27T12:34:56.793Z level=info component=supervisor msg="tick: kind=claude patrol → workflow → poll"
 ```
 
 - A header-less request carries `actor=human:local` unless `TASKCTL_HUMAN` names the

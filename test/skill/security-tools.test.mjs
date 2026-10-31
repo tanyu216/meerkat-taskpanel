@@ -1,5 +1,5 @@
 /**
- * Tests for `skills/setup-meerkat/scripts/security-tools.mjs` — the security toolchain
+ * Tests for `skills/linus/scripts/security-tools.mjs` — the security toolchain
  * preflight.
  *
  * The script must be usable offline: it finds tools on PATH, reads their `--version`,
@@ -29,9 +29,9 @@ import { describe, it } from "node:test";
 import { baseEnv } from "../helpers/base-env.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const SCRIPT = join(ROOT, "skills", "setup-meerkat", "scripts", "security-tools.mjs");
-const MATRIX = join(ROOT, "skills", "setup-meerkat", "assets", "security", "toolchain.json");
-const REFERENCE = join(ROOT, "skills", "setup-meerkat", "references", "security-tools.md");
+const SCRIPT = join(ROOT, "skills", "linus", "scripts", "security-tools.mjs");
+const MATRIX = join(ROOT, "skills", "linus", "assets", "security", "toolchain.json");
+const REFERENCE = join(ROOT, "skills", "linus", "references", "security-tools.md");
 
 function temp(t, prefix = "tp-security-tools-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -422,7 +422,7 @@ describe("security-tools.mjs — the matrix stays honest", () => {
 
   it("gives every arm CI tokens, a workflow asset, and every tool a CI command", () => {
     const matrix = JSON.parse(readFileSync(MATRIX, "utf8"));
-    const dir = join(ROOT, "skills", "setup-meerkat", "assets", "security");
+    const dir = join(ROOT, "skills", "linus", "assets", "security");
     for (const [arm, entry] of Object.entries(matrix.arms)) {
       assert.ok(
         Array.isArray(entry.ciMatch) && entry.ciMatch.length > 0,
@@ -440,7 +440,7 @@ describe("security-tools.mjs — the matrix stays honest", () => {
   });
 
   it("ships workflows pinned, least-privilege and free of repo-local scripts", () => {
-    const dir = join(ROOT, "skills", "setup-meerkat", "assets", "security", "github");
+    const dir = join(ROOT, "skills", "linus", "assets", "security", "github");
     for (const name of ["dependency-audit.yml", "secret-scan.yml", "sast.yml", "sbom.yml"]) {
       const text = readFileSync(join(dir, name), "utf8");
       assert.match(text, /^permissions:\n  contents: read$/m, `${name} is least privilege`);

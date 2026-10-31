@@ -165,11 +165,11 @@ taskctl issue create --project <id> --title <t> [flags]
 | `--review-of <ref> [--review-round <n>]` | Create a review card for that original and round. |
 
 **Routing is the handoff.** In a team project `--assignee` is part of the create, not a later
-step: the loop scans only the names in `MEERKAT_TASKPANEL_AGENTS`, so a card with no assignee
-(or one assigned to a name nobody scans) is never claimed. Read the project's `ownership.md`
-and pass the one accountable role (`--assignee <role> --assignee-kind agent`) in the same
-call. Without a team roles root, leave it unassigned — the public pool, claimed by the default
-worker — or name your own worker identity; never invent a role name.
+step: the supervisor scans the role skills it discovers plus `MEERKAT_TASKPANEL_AGENTS`, so a
+card assigned to a name nobody scans is never claimed. Read the role skill whose shapes fit
+the work and pass that one accountable role (`--assignee <role> --assignee-kind agent`) in the
+same call. An unassigned card is claimed as `Worker`, or routed by `meerkat-director`; never
+invent a role name.
 
 ### The weight order (every task list)
 
@@ -507,9 +507,9 @@ board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `session`); the
 | `loop tick [--passes <list>]` | Run `patrol,workflow,poll` (or `--passes` order) in one command — the cron/unit entry. |
 | `loop console` | One read-only question / frontier cycle. |
 | `loop doctor` | One read-only daily-inspection report: supervisor verdict, the resolved scan set, the patrol's last-successful-run marker, the log tail, queue and ledger depth, the cards whose heartbeat is stale or unreadable, the `in_review` cards waiting on a human (age only — review aging stays the workflow pass's judgement), and the cards carrying an acceptance marker for their current round while still `in_review` (`blocked_acceptance` — the board refused the close), and the `done` cards whose lane branch is not in the project's current branch (`unlanded`), and the cards that keep going round the same loop (`looping`: rework rounds, review reopens, dispatch retries, subagent failures — read-only facts, with the queue/ledger windows named in `docs/scheduling.md`). Writes nothing and exits 0 whenever it produced a report — read `attention` from `--json`. |
-| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict, the agent platform (`--actor-kind`) and the scan set it resolved; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
+| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict, the agent platform (`--actor-kind`), the discovered role platforms and the scan set it resolved; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
 | `loop run [--ping-once] [--continue-once]` | The two clocks as a daemon; either `--*-once` runs one pass and exits. |
-| `loop subscribe` | The event subscriber daemon; it dispatches continues. |
+| `loop subscribe` | The event subscriber daemon; it requests an early tick. |
 | `loop session` | The resident session pool daemon. |
 
 `loop tick` stops at the first failing pass and returns its exit code. `loop run` refuses
@@ -523,16 +523,16 @@ are output fields, not new flags.
 <!-- shared-flags:loop:begin -->
 **Paths and state.** `--state-dir <dir>` places the loop's runtime state — `supervisor.state.json`,
 the queue, the ledger, `session.lock`, `continue.state.json`; `--state <file>` is the older
-explicit spelling of the registry file. `--roles-dir <dir>` names the team-roles root;
+explicit spelling of the registry file. `--roles-dir <dir>` names an explicit custom-team directory (a directory of role directories; it replaces discovery for this loop);
 `--home <dir>` the home the agent directories derive from; `--repo <dir>` the board checkout the loop drives; `--cli <path>`
 the `taskctl` entry its child calls use; `--config <file>` the per-kind config (`<program root>/.env.<actor-kind>`);
 `--log <file>` the loop log; `--continue-state`, `--session-state`, `--sla-ledger`,
 `--workflow-ledger`, `--sla-last-ok` and `--sla-peer` override the individual state files.
 
 **Cadence and policy.** `--ping-interval <sec>` and `--continue-interval <sec>` set the two
-clocks; `--continue <yes|no>` enables the continue clock. `--opened-by <human|supervisor>`
-records who opened the loop; `--control <internal|external>` and `--resident <auto|no>` say
-who owns the control turn and whether a resident pool is expected. `--session-max-age`,
+clocks; `--continue <yes|no>` enables the tick clock. `--opened-by <human|supervisor>`
+records who opened the loop; `--resident <auto|no>` says whether a resident pool is expected.
+`--control` is inert and kept only for CLI compatibility (there is no control turn). `--session-max-age`,
 `--session-turn-timeout` (1200..7199 s), `--session-poll-ms`, `--session-pool-max`,
 `--project-concurrency` and `--project-idle-ms` bound the pool. `--max-concurrency` caps the
 whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) decides the
@@ -627,7 +627,7 @@ an honest `404` on download. Removal deletes the row and the bytes in one transa
 **not recoverable**. An attachment id must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`.
 `--meta attachments=…` stores literal text, not an array; it is not a channel into this table.
 Loop convention: `card.md` and every downloaded attachment for a task live under
-`.meerkat/<identifier>/`; see the loop skill's card-brief section.
+`.meerkat/<identifier>/`; see `meerkat-director/references/operation.md` §Card briefs.
 
 ### `depends_on` — a `blocks` edge, written the other way round
 

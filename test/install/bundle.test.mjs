@@ -178,10 +178,10 @@ describe("bundle: parseMarketplace", () => {
 
   it("lists the board, sourced at the repository root, and nothing else", async () => {
     // The marketplace used to list two plugins — the board and the loop, the latter sourced
-    // at a `plugins/loop` bundle that carried the loop skill and nothing else, so that
-    // installing `meerkat-loop` alone could not quietly bring the board with it. The loop's
-    // bundle is gone: `meerkat-loop` is installed by `install.sh --target claude|codex|pi`
-    // only, and the marketplace now has a single entry.
+    // at a `plugins/loop` bundle that carried the supervisor skill and nothing else, so that
+    // installing `meerkat-director` alone could not quietly bring the board with it. The
+    // loop's bundle is gone: `meerkat-director` is installed by `install.sh --target
+    // claude|codex|pi` only, and the marketplace now has a single entry.
     const market = parseMarketplace(ROOT);
     assert.equal(market.ok, true, market.error);
 

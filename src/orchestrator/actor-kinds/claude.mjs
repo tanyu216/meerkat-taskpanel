@@ -3,12 +3,12 @@
  *
  * One `claude -p --input-format stream-json --output-format stream-json` process
  * owns one conversation. The process stays alive between turns; `send()` writes
- * one user message and waits for that turn's `result` event. A project session
+ * one user message and waits for that turn's `result` event. A lane session
  * is opened with `cwd = target_dir`, so the worker/reviewer subagents it spawns
  * inherit the project directory.
  *
  * The adapter never uses `--bare`: it would skip skill discovery, including the
- * command-only `meerkat-loop` skill the control session invokes.
+ * command-only `meerkat-director` skill a human can invoke.
  */
 
 import { spawn } from "node:child_process";
@@ -29,8 +29,8 @@ export function allowedToolsFor(role) {
   // The Agent tool is the project/reviewer session's subagent mechanism (older
   // CLIs spell it `Task`; an allowlist entry that never matches is inert).
   switch (role) {
-    case "control":
-      return "Read,Bash(taskctl *),Bash(node *)";
+    case "director":
+      return "Read,Grep,Glob,Bash(taskctl *),Bash(node *)";
     case "reviewer":
       // `npm run` / `node` / `bash` are here because the reviewer's contract is
       // to re-run the project's gate itself; a lane that cannot run a command
@@ -112,9 +112,12 @@ class ClaudeSession {
     this.closed = false;
     this.current = null;
     this.turnIds = [];
+    // The session's own kind environment: its shim directory leads PATH and
+    // TASKCTL_ACTOR_KIND is pinned, so a codex worker spawned by a claude
+    // supervisor still writes as codex.
     this.child = spawn(input.bin ?? "claude", sessionArgs(input), {
       cwd: this.cwd,
-      env: { ...process.env, TP_NODE: process.execPath },
+      env: { ...(input.env ?? process.env), TP_NODE: process.execPath },
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child.stdout.setEncoding("utf8");
@@ -296,6 +299,7 @@ export function createClaudePool(input) {
         sessionId: options.sessionId ?? null,
         role: options.role ?? "worker",
         bin: input.bin,
+        env: input.env,
         log: input.log,
         onEvent: input.onEvent,
       });

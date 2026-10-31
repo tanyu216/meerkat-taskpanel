@@ -58,17 +58,14 @@ describe("board skill: creating a card", () => {
   it("routes a team card at creation instead of leaving it unowned", () => {
     // The root of the loop defect: `issue create` is the handoff, but the canonical
     // examples left the assignee off, so every card landed in the public pool and no
-    // role workflow could ever load. The create must read the ownership guide and
-    // name the one accountable role in the same call.
-    assert.match(create, /ownership\.md/, "the team's routing guide is named at the create");
+    // role workflow could ever load. The create must read the role skill whose shapes
+    // fit the work and name the one accountable role in the same call.
+    assert.match(create, /role skill/i, "the role skill is the routing source at the create");
+    assert.match(create, /SKILL\.md/, "the role workflow it is read from is named");
     assert.match(create, /--assignee <role>/, "the create carries the accountable role");
     assert.match(create, /--assignee-kind agent/, "…and its kind, so the dictionary records a role");
     assert.match(create, /unowned|not a handoff/i, "an unassigned team card is named as unowned");
-    assert.match(
-      create,
-      /without (?:an? )?(?:team|roles? root)|no (?:team|ownership)/i,
-      "the no-team case is stated",
-    );
+    assert.match(create, /no role installed/i, "the no-team case is stated");
     assert.match(create, /invent|do not guess|private role name/i, "no role is invented without a guide");
   });
 

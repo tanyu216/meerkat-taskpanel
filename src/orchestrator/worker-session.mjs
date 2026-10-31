@@ -1,7 +1,7 @@
 /**
  * A card's worker is its own resident conversation.
  *
- * The loop used to wake a project session and let it spawn a worker subagent.
+ * The loop used to wake a lane session and let it spawn a worker subagent.
  * That made resume parent-mediated and platform-specific. A worker session is
  * addressed by `worker:<card>:r<round>`, stored in `sessions.state.json`, and
  * resumed by the same top-level session id every actor kind already supports.
@@ -134,7 +134,7 @@ function clip(value, max) {
 /**
  * The first turn of a card's own worker session. The handoff is already built
  * in its standalone form; the session wrapper only guards against the old
- * "subagent of the project session" wording.
+ * "worker for the project" wording.
  */
 export function buildWorkerDispatchPrompt(input = {}) {
   return String(input.handoff ?? "").trim();

@@ -86,11 +86,11 @@ the per-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the render
   "server": {"url": "…", "urlSource": "flag|env|env-file|pointer|default", "loopback": true,
              "class": "loopback|remote", "probed": true, "reachable": true, "health": {}, "error": null},
   "human": {"configured": true, "name": "…", "source": "env|settings|config|shim|env-file|fallback"},
-  "skills": {"board": {}, "loop": {}, "setup": {}},
-  "skillsByKind": {"claude": {"board": true, "loop": true, "setup": true}},
+  "skills": {"board": {}, "director": {}, "setup": {}},
+  "skillsByKind": {"claude": {"board": true, "director": true, "setup": true}},
   "platforms": {
     "claude": {"kind": "claude", "dir": ".claude",
-               "skills": {"board": true, "loop": true, "setup": true, "names": ["…"]},
+               "skills": {"board": true, "director": true, "setup": true, "names": ["…"]},
                "loopState": {}, "supervisor": {},
                "config": {"path": "…", "present": true, "agents": ["Jobs", "Linus"], "reviewer": "Reviewer"},
                "roles": {}, "capabilities": ["design", "…"], "piSubagents": {"installed": null}, "available": true}
@@ -101,7 +101,8 @@ the per-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the render
                     "assignments": [{"roleId": "turing", "agent": "Turing", "platform": "codex", "tags": ["tests"]}]},
   "loopState": {"installed": true, "path": "…"},
   "supervisor": {"installed": true, "body": "…", "units": [], "running": false, "poolPid": null, "reason": "…"},
-  "roles": {"global": {}, "project": {}, "explicit": {}, "effective": {}},
+  "roles": {"source": "skills", "installedOn": {"claude": ["Jobs"]}, "list": [{"id": "jobs", "agent": "Jobs", "installedOn": ["claude"], "effective": "claude", "fallback": null}]},
+  "legacy": [],
   "mattPocock": {"skill": {}, "tracker": {"path": null, "exists": false, "mentionsTaskpanel": false, "unrelated": false}},
   "piSubagents": {"installed": false, "extensionDir": "…/.pi/agent/extensions/subagent", "recommended": "pi install npm:pi-subagents"},
   "missing": [],
@@ -110,9 +111,10 @@ the per-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the render
 }
 ```
 
-`roles.effective` is the root the loop will actually load (`source` =
-`explicit|project|loop-skill`, plus the manifest, role count and the `id`/`agent`/`lanes`
-list the proposal reads), or `null` when there is none. `--no-network` leaves
+`roles` is the discovery report: `source` is `skills` (or `null`), `installedOn` lists the
+roles found per kind, and `list` carries each role's `id`, `agent`, `lanes`, `installedOn`,
+`effective` and `fallback`. `legacy` names any retired `meerkat-loop` skill, roles tree or
+`MEERKAT_TASKPANEL_ROLES_DIR` value — reported, never read or deleted. `--no-network` leaves
 `server.probed` false and does not mark the server missing. `--fail-on-missing` exits 1 when
 `missing` is non-empty.
 
@@ -127,13 +129,16 @@ interview needs before it can ask **which platform runs which role**:
 - `loopState` and `supervisor` — whether this kind can run the loop at all;
 - `config.agents` / `config.reviewer` — this platform's *current* scan set and reviewer from
   its own `<program root>/.env.<kind>`, so a proposal only names real diffs;
-- `roles` — this kind's **global** roles root (`<agent-dir>/skills/meerkat-loop/roles/`);
-  global roles are per kind, which is why a split needs project scope, per-kind installs, or
-  `MEERKAT_TASKPANEL_ROLES_DIR`;
+- `roles` — the role skills this kind carries (`<agent-dir>/skills/<role>/role.json` with
+  the `meerkat-role` marker), as agent names; installation location is the routing;
 - `capabilities` — a static heuristic table (`PLATFORM_CAPABILITIES`), not detection;
 - `piSubagents` — pi cannot spawn workers without the extension, so it is unavailable then;
-- `available` — loop skill present, plus the pi-subagent gate.
+- `available` — director skill present, plus the pi-subagent gate.
 
-`rolePlatforms` is the proposal only. `status` is `single` (one platform for the whole team),
-`split` (more than one), or `no-platform`; `singlePlatform` is always a valid
+`roles` (top level) is the discovery report: every role with `installedOn`, `effective` and
+`fallback`, plus `legacy` for a retired `meerkat-loop` skill, roles tree or
+`MEERKAT_TASKPANEL_ROLES_DIR` value — reported, never read or deleted.
+
+`rolePlatforms` is the capability proposal only. `status` is `single` (one platform for the
+whole team), `split` (more than one), or `no-platform`; `singlePlatform` is always a valid
 one-supervisor alternative. Nothing is enabled or written from detection.

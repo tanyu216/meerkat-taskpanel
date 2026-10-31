@@ -262,7 +262,7 @@ export function createCodexPool(input) {
   let initError = null;
 
   const child = spawn(input.bin ?? "codex", ["app-server", "--listen", "stdio://"], {
-    env: { ...process.env, TP_NODE: process.execPath },
+    env: { ...(input.env ?? process.env), TP_NODE: process.execPath },
     stdio: ["pipe", "pipe", "pipe"],
   });
   child.stdout.setEncoding("utf8");

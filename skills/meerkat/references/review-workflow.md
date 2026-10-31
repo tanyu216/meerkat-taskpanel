@@ -147,7 +147,7 @@ baseline. It also refuses one it cannot check:
 
 A `met` that cannot be reproduced is `not_met`; `partial` never softens a requirement that
 was not implemented. These are the same rules the role assets state
-(`skills/setup-meerkat/assets/team/standard/reviewer/`), and the loop mirrors them before it
+(`skills/reviewer/references/security-checklist.md`), and the supervisor mirrors them before it
 plans an `approve` (`verdict_unsupported`, then the bounded `reopen_review`).
 
 ### Deliver

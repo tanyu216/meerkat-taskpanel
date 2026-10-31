@@ -3,9 +3,9 @@
  * Read-only detection for `/setup-meerkat`.
  *
  * It answers: what is installed, which board is this CLI pointed at, is that
- * board local or remote, which skills/loop state/supervisor exist, which roles
- * root is effective, what is the fixed human name, and is the Matt Pocock setup
- * skill present. It never writes, never starts a board (`TASKD_NO_AUTOSTART=1`)
+ * board local or remote, which skills/loop state/supervisor exist, which role
+ * skills live on which agent kind, what is the fixed human name, and is the Matt
+ * Pocock setup skill present. It never writes, never starts a board (`TASKD_NO_AUTOSTART=1`)
  * and never calls a board command other than `--version`.
  */
 
@@ -27,12 +27,10 @@ import {
   isAgentKind,
   kindConfigFile,
   loopStateDir,
-  loopSkillDir,
   serverRoot,
   shimFile,
   skillDir,
 } from "./lib/agent-kinds.mjs";
-import { readTeam } from "./lib/validate.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_URL = "http://localhost:9527";
@@ -353,25 +351,104 @@ function readdirSafe(dir) {
   }
 }
 
-function rolesAt(dir) {
-  if (!dir || !existsSync(join(dir, "manifest.json"))) {
-    return { present: false, manifest: null, roles: 0, list: [], valid: false, warnings: [], errors: [] };
+/** The marker every role skill carries; anything else is not a role. */
+const ROLE_SCHEMA = "meerkat-role";
+
+/**
+ * The role skills installed for one kind: `skills/<role>/role.json` carrying the
+ * schema marker. A malformed or unmarked file is skipped, never fatal.
+ */
+function roleSkillsIn(dir, kind) {
+  const found = [];
+  for (const name of readdirSafe(dir)) {
+    const roleJson = join(dir, name, "role.json");
+    if (!existsSync(roleJson)) continue;
+    const raw = readJson(roleJson);
+    if (raw === null || raw.schema !== ROLE_SCHEMA) continue;
+    found.push({
+      id: String(raw.id ?? name).trim(),
+      agent: String(raw.agent ?? raw.id ?? name).trim(),
+      lanes: Array.isArray(raw.lanes) && raw.lanes.length > 0 ? [...raw.lanes] : ["worker"],
+      skill: name,
+      skillDir: join(dir, name),
+    });
   }
-  const team = readTeam(dir);
+  return found.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function roleSkillsAt(home, kind) {
+  const skillsDir = join(agentBase(home, kind), "skills");
+  const found = [];
+  for (const name of readdirSafe(skillsDir)) {
+    const dir = join(skillsDir, name);
+    const roleJson = join(dir, "role.json");
+    if (!existsSync(roleJson)) continue;
+    const raw = readJson(roleJson);
+    if (raw === null || raw.schema !== ROLE_SCHEMA) continue;
+    found.push({
+      id: String(raw.id ?? name).trim(),
+      agent: String(raw.agent ?? raw.id ?? name).trim(),
+      lanes: Array.isArray(raw.lanes) && raw.lanes.length > 0 ? [...raw.lanes] : ["worker"],
+      skill: name,
+      skillDir: dir,
+    });
+  }
+  return found.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * Installation location is the routing: the same role may sit on several kinds.
+ * `installedOn` records every carrier; `effective` is the primary kind when it
+ * carries the role, else the first fixed-order carrier.
+ */
+function discoverRoles(home, primaryKind) {
+  const installedOn = {};
+  const byId = new Map();
+  for (const kind of LOOP_KINDS) {
+    const roles = roleSkillsAt(home, kind);
+    installedOn[kind] = roles.map((role) => role.agent);
+    for (const role of roles) {
+      const seen = byId.get(role.id);
+      if (seen !== undefined) {
+        seen.installedOn.push(kind);
+        continue;
+      }
+      byId.set(role.id, { ...role, installedOn: [kind] });
+    }
+  }
+  const list = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+  for (const role of list) {
+    role.effective = role.installedOn.includes(primaryKind)
+      ? primaryKind
+      : role.installedOn[0] ?? null;
+    role.fallback = role.effective !== role.installedOn[0] ? role.effective : null;
+  }
   return {
-    present: true,
-    manifest: join(dir, "manifest.json"),
-    roles: team.roles.length,
-    // The role→platform proposal needs the ids and lanes, not the prose.
-    list: team.roles.map((role) => ({
-      id: role.id,
-      agent: role.agent,
-      lanes: Array.isArray(role.lanes) ? [...role.lanes] : [],
-    })),
-    valid: team.ok,
-    warnings: team.warnings,
-    errors: team.errors,
+    source: list.length > 0 ? "skills" : null,
+    installedOn,
+    list,
+    effective: list.length > 0,
   };
+}
+
+/** Retired structures are reported, never deleted or read. */
+function legacyRoles(home, project, kind, env, explicitDir = null) {
+  const found = [];
+  const loopSkill = skillDir(home, kind, "meerkat-loop");
+  if (existsSync(loopSkill)) found.push({ kind: "skill", path: loopSkill });
+  for (const [label, path] of [
+    ["loop-skill-roles", join(loopSkill, "roles")],
+    ["project-roles", join(project, ".meerkat", "roles")],
+  ]) {
+    if (existsSync(path)) found.push({ kind: label, path });
+  }
+  const explicit = env.MEERKAT_TASKPANEL_ROLES_DIR;
+  if (typeof explicit === "string" && explicit.trim() !== "") {
+    found.push({ kind: "roles-dir-env", path: resolve(explicit.trim()) });
+  } else if (typeof explicitDir === "string" && explicitDir !== "") {
+    found.push({ kind: "roles-dir-flag", path: explicitDir });
+  }
+  return found;
 }
 
 /** A comma/whitespace list from a config value — `[]` when unset or empty. */
@@ -493,8 +570,8 @@ function detectMatt(project, home) {
  *
  * pi 1.x puts the package under `~/.pi/agent/npm/node_modules` and never creates
  * `~/.pi/agent/extensions`; the latter is the legacy layout the package's own
- * git-clone installer writes. Pi has no native subagent mechanism, and the loop's
- * project session needs one to spawn the worker/reviewer. A directory check is a
+ * git-clone installer writes. Pi has no native subagent mechanism, and the supervisor's
+ * supervisor needs one to spawn the worker/reviewer. A directory check is a
  * heuristic, not a load test.
  */
 const PI_SUBAGENT_DIRS = [
@@ -524,10 +601,14 @@ function humanReport(report) {
   );
   lines.push(`  taskctl:   ${report.taskctl.found ? `${report.taskctl.path} ${report.taskctl.version ?? ""}` : "not found"}`);
   lines.push(`  server:    ${report.server.url} (${report.server.urlSource}); ${report.server.class}; ${report.server.probed ? (report.server.reachable ? "reachable" : "unreachable") : "not probed"}`);
-  lines.push(`  skills:    board=${report.skills.board.installed} loop=${report.skills.loop.installed} setup=${report.skills.setup.installed}`);
+  lines.push(`  skills:    board=${report.skills.board.installed} director=${report.skills.director.installed} setup=${report.skills.setup.installed}`);
   lines.push(`  loop state: ${report.loopState.installed ? report.loopState.path : "not installed"}`);
   lines.push(`  supervisor: ${report.supervisor.running ? "running" : "not running"}${report.supervisor.reason ? ` (${report.supervisor.reason})` : ""}`);
-  lines.push(`  roles:     global=${report.roles.global.present} project=${report.roles.project.present}${report.roles.explicit.present ? ` explicit=${report.roles.explicit.present}` : ""}`);
+  const roleLines = report.roles.list.map(
+    (role) =>
+      `${role.agent}@${role.installedOn.join(",")}${role.fallback ? `→${role.effective}` : ""}`,
+  );
+  lines.push(`  roles:     ${roleLines.length > 0 ? roleLines.join("; ") : "none discovered"}`);
   lines.push(`  human:     ${report.human.name}${report.human.configured ? ` (${report.human.source})` : " (fallback; confirm)"}`);
   lines.push(`  matt:      skill=${report.mattPocock.skill.installed} tracker=${report.mattPocock.tracker.exists ? report.mattPocock.tracker.path : "none"}`);
   if (report.actorKind === "pi" || report.actorKind === "all") {
@@ -586,42 +667,53 @@ async function main(argv) {
   const taskctl = detectTaskctl(opts, checkout, opts.home, kind, env);
   const skills = {
     board: detectSkill(opts.home, kind, "meerkat"),
-    loop: detectSkill(opts.home, kind, "meerkat-loop"),
+    director: detectSkill(opts.home, kind, "meerkat-director"),
     setup: detectSkill(opts.home, kind, "setup-meerkat"),
   };
   const skillsByKind = {};
   for (const candidate of Object.keys(AGENT_KINDS)) {
     skillsByKind[candidate] = {
       board: detectSkill(opts.home, candidate, "meerkat").installed,
-      loop: detectSkill(opts.home, candidate, "meerkat-loop").installed,
+      director: detectSkill(opts.home, candidate, "meerkat-director").installed,
       setup: detectSkill(opts.home, candidate, "setup-meerkat").installed,
     };
   }
   const loopState = detectLoopState(opts.home, kind);
   const supervisor = detectSupervisor(opts.home, kind);
-  const explicitRoles = opts.rolesDir
-    ?? (env.MEERKAT_TASKPANEL_ROLES_DIR ? resolve(env.MEERKAT_TASKPANEL_ROLES_DIR) : null);
-  const roles = {
-    global: rolesAt(join(loopSkillDir(opts.home, kind), "roles")),
-    project: rolesAt(join(opts.project, ".meerkat", "roles")),
-    explicit: rolesAt(explicitRoles),
-  };
-  // The loader's precedence, resolved once so a caller need not re-derive it.
-  const effectiveRoles =
-    roles.explicit.present
-      ? { source: "explicit", ...roles.explicit }
-      : roles.project.present
-        ? { source: "project", ...roles.project }
-        : roles.global.present
-          ? { source: "loop-skill", ...roles.global }
-          : null;
-  roles.effective = effectiveRoles;
+  // Role discovery: installation location is the routing, so there is no roles
+  // root to resolve. Retired trees are reported for migration, never read.
+  // An explicit roles directory (the `--roles-dir` / env form) still selects a
+  // custom team in the new shape: a directory of role directories. It replaces
+  // the scanned set, exactly as the supervisor's loader does. An old roles tree
+  // (a manifest, no role.json) is reported as legacy instead of being read.
+  const explicitRolesDir = opts.rolesDir
+    ?? (typeof env.MEERKAT_TASKPANEL_ROLES_DIR === "string" && env.MEERKAT_TASKPANEL_ROLES_DIR.trim() !== ""
+      ? resolve(env.MEERKAT_TASKPANEL_ROLES_DIR.trim())
+      : null);
+  const legacy = legacyRoles(opts.home, opts.project, kind, env, opts.rolesDir);
+  let roles = discoverRoles(opts.home, kind);
+  if (explicitRolesDir !== null && existsSync(explicitRolesDir)) {
+    const explicit = roleSkillsIn(explicitRolesDir, kind);
+    if (explicit.length > 0) {
+      const list = explicit.map((role) => ({
+        ...role,
+        installedOn: [kind],
+        effective: kind,
+        fallback: null,
+      }));
+      roles = { source: "explicit", installedOn: { [kind]: list.map((role) => role.agent) }, list, effective: true };
+      // A usable explicit directory is not a retired structure.
+      for (let i = legacy.length - 1; i >= 0; i -= 1) {
+        if (legacy[i].kind.startsWith("roles-dir")) legacy.splice(i, 1);
+      }
+    }
+  }
   const human = detectHuman(opts, opts.home, kind, env, envFile, config);
   const mattPocock = detectMatt(opts.project, opts.home);
   const piSubagents = detectPiSubagents(opts.home);
 
   // Per platform: what a role→platform decision needs before it is offered. `available` is
-  // the hard gate (the loop skill, and for pi its subagent extension); `capabilities` is
+  // the hard gate (the director skill, and for pi its subagent extension); `capabilities` is
   // the heuristic table the recommendation reads. `config` is this platform's current
   // assignment, so the interview can show the truth and propose only real diffs.
   const platforms = {};
@@ -651,29 +743,23 @@ async function main(argv) {
         agents: splitList(platformConfig.get("MEERKAT_TASKPANEL_AGENTS")),
         reviewer: typeof reviewer === "string" && reviewer.trim() !== "" ? reviewer.trim() : null,
       },
-      roles: rolesAt(join(loopSkillDir(opts.home, candidate), "roles")),
+      roles: roleSkillsAt(opts.home, candidate).map((role) => role.agent),
       capabilities: [...(PLATFORM_CAPABILITIES[candidate] ?? [])],
       piSubagents: kindSubagents,
-      available: kindSkills.loop === true && (candidate !== "pi" || kindSubagents.installed === true),
+      available: kindSkills.director === true && (candidate !== "pi" || kindSubagents.installed === true),
     };
   }
-  const rolePlatforms = recommendRolePlatforms(effectiveRoles?.list ?? [], platforms);
+  const rolePlatforms = recommendRolePlatforms(roles.list, platforms);
 
   const missing = [];
   if (!taskctl.found) missing.push("taskctl");
   if (opts.network && !health.reachable) missing.push("server");
   if (!skills.board.installed) missing.push("board-skill");
-  if (!skills.loop.installed) missing.push("loop-skill");
+  if (!skills.director.installed) missing.push("director-skill");
   if (!skills.setup.installed) missing.push("setup-skill");
   if (!loopState.installed) missing.push("loop-state");
   if (!supervisor.installed) missing.push("supervisor");
-  if (
-    !roles.global.present &&
-    !roles.project.present &&
-    !roles.explicit.present
-  ) {
-    missing.push("roles");
-  }
+  if (roles.list.length === 0) missing.push("role-skills");
   if (kind === "pi" && !piSubagents.installed) missing.push("pi-subagents");
 
   const warnings = [];
@@ -687,16 +773,28 @@ async function main(argv) {
   if (checkout.found && checkout.path === process.cwd() && !opts.checkout) warnings.push("using the current directory as the checkout");
   if (kind === "pi" && !piSubagents.installed) {
     warnings.push(
-      `pi has no subagent extension; the loop's reviewer lane cannot spawn its subagent, so review cards are never worked — install it with \`${PI_SUBAGENTS_INSTALL}\``,
+      `pi has no subagent extension; the supervisor's reviewer lane cannot spawn its subagent, so review cards are never worked — install it with \`${PI_SUBAGENTS_INSTALL}\``,
     );
+  }
+  for (const retired of legacy) {
+    if (retired.kind === "roles-dir-env") {
+      warnings.push(
+        `MEERKAT_TASKPANEL_ROLES_DIR is set to ${retired.path}; roles are discovered from each kind's skills tree now — this path is no longer read (nothing was deleted)`,
+      );
+    } else {
+      warnings.push(
+        `${retired.path} is a retired ${retired.kind === "skill" ? "meerkat-loop skill" : "roles tree"}; role skills under <kind>/skills/<role>/ replace it — reported only, nothing was deleted`,
+      );
+    }
   }
 
   const actions = [];
-  if (!taskctl.found || !skills.board.installed || !skills.loop.installed) actions.push("install-or-repair");
+  if (!taskctl.found || !skills.board.installed || !skills.director.installed) actions.push("install-or-repair");
   if (opts.network && !health.reachable && loopback) actions.push("start-local-server");
   if (opts.network && !health.reachable && !loopback) actions.push("ask-remote-url");
   if (!human.configured) actions.push("configure-human-name");
-  if (roles.effective === null) actions.push("install-roles");
+  if (roles.list.length === 0) actions.push("install-role-skills");
+  if (legacy.length > 0) actions.push("report-retired-role-trees");
   if (kind === "pi" && !piSubagents.installed) actions.push("install-pi-subagents");
   if (mattPocock.skill.installed && !mattPocock.tracker.exists) actions.push("offer-matt-integration");
   if (mattPocock.tracker.exists && mattPocock.tracker.unrelated) actions.push("ask-tracker-overwrite");
@@ -738,6 +836,7 @@ async function main(argv) {
     loopState,
     supervisor,
     roles,
+    legacy,
     mattPocock,
     piSubagents,
     missing,

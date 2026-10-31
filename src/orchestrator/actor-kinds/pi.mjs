@@ -86,7 +86,7 @@ export function sessionArgs(input = {}) {
  */
 export function allowedToolsFor(role) {
   switch (role) {
-    case "control":
+    case "director":
       return "read,bash";
     case "reviewer":
       return "read,bash,subagent,subagents_enable";
@@ -131,7 +131,7 @@ class PiSession {
     this.pending = new Map();
     this.child = spawn(input.bin ?? "pi", sessionArgs(input), {
       cwd: this.cwd,
-      env: { ...process.env, TP_NODE: process.execPath },
+      env: { ...(input.env ?? process.env), TP_NODE: process.execPath },
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child.stdout.setEncoding("utf8");
@@ -335,7 +335,7 @@ export function createPiPool(input) {
   const home = input.home ?? homedir();
   if (!piSubagentsInstalled(home)) {
     input.log(
-      `pi: no subagent extension found — the project session cannot spawn worker/reviewer subagents; install it with ${PI_SUBAGENTS_INSTALL}`,
+      `pi: no subagent extension found — the reviewer lane cannot spawn review subagents; install it with ${PI_SUBAGENTS_INSTALL}`,
     );
   }
   const sessions = new Set();
@@ -348,6 +348,7 @@ export function createPiPool(input) {
         sessionId: options.sessionId ?? null,
         role: options.role ?? "worker",
         bin: input.bin,
+        env: input.env,
         log: input.log,
         onEvent: input.onEvent,
       });

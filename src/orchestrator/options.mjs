@@ -1,8 +1,8 @@
 /**
  * The loop's option surface — one parser for the scheduler and every entry.
  *
- * Flags are declared in `FLAGS`; the parse loop is generic. The continue prompt
- * re-serialises only the values a child entry must share (`loopCommandArgs`).
+ * Flags are declared in `FLAGS`; the parse loop is generic. There is no child
+ * prompt to re-serialise: the tick runs the passes in-process.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -24,7 +24,6 @@ import {
   DEFAULT_PING_SECONDS,
   parseEnvFile,
   parseYesNo,
-  quoteArg,
   resolveClaimUnassigned,
   resolveContinueEnabled,
   resolveRecoverStale,
@@ -57,7 +56,7 @@ import {
 import { statePathsForDir } from "../foundation/loop-state.mjs";
 
 /** Parse a `KEY=value` env file, or `{}` when it is absent/unreadable. */
-export function readConfigFile(path) {
+function readConfigFile(path) {
   try {
     return parseEnvFile(readFileSync(path, "utf8"));
   } catch {
@@ -585,7 +584,7 @@ export function selectMode(opts) {
  * @param {boolean} reviewerIsWorker
  * @returns {string[]}
  */
-export function buildScanAgents(opts, workflow, reviewerIsWorker) {
+function buildScanAgents(opts, workflow, reviewerIsWorker) {
   return workflow.workflow && workflow.reviewer !== null && !reviewerIsWorker
     ? [...opts.agents, workflow.reviewer]
     : [...opts.agents];
@@ -706,118 +705,6 @@ export function resolveLoopConfig(opts, env = process.env) {
   };
 }
 
-/**
- * The argv a child entry must share with the scheduler that woke it. Only
- * consistency-critical values are emitted; policies the child can re-read from
- * the per-kind config are passed only when they were stated explicitly.
- *
- * @param {object} opts
- * @returns {string[]}
- */
-export function loopCommandArgs(opts) {
-  const args = ["--actor-kind", opts.actorKind];
-  for (const agent of opts.agents) args.push("--agent", agent);
-  args.push("--log", opts.log, "--state", opts.state);
-
-  const add = (flag, value) => {
-    if (value === null || value === undefined || value === "") return;
-    args.push(flag, String(value));
-  };
-  // Only state values that differ from what the child would derive anyway,
-  // or every line of the prompt carries a dozen redundant absolute paths.
-  const beside = statePaths(opts.state);
-  const defaults = {
-    config: opts.kindConfigDefault ?? resolveKindConfigPath({ actorKind: opts.actorKind }),
-    repo: defaultRepo(opts.config),
-    cli: join(opts.repo, "src", "cli", "index.mjs"),
-    slaLedger: beside.slaLedger,
-    workflowLedger: beside.workflowLedger,
-    slaLastOk: beside.slaLastOk,
-  };
-  for (const [flag, key] of [
-    ["--config", "config"],
-    ["--repo", "repo"],
-    ["--cli", "cli"],
-    ["--sla-ledger", "slaLedger"],
-    ["--workflow-ledger", "workflowLedger"],
-    ["--sla-last-ok", "slaLastOk"],
-  ]) {
-    if (opts[key] !== defaults[key]) add(flag, opts[key]);
-  }
-  for (const [flag, value] of [
-    ["--url", opts.url],
-    ["--env-file", opts.envFile],
-    ["--sla-peer", opts.slaPeer],
-    ["--sla-leader", opts.slaLeader],
-    ["--notify", opts.notify],
-    ["--claim-unassigned", opts.claimUnassigned],
-    ["--recover-stale", opts.recoverStale],
-    ["--workflow", opts.workflow],
-    ["--reviewer", opts.reviewer],
-    ["--workflow-max-actions", opts.workflowMaxActions],
-    ["--review-aging-minutes", opts.reviewAgingMinutes],
-  ]) {
-    add(flag, value);
-  }
-  // 0034 — only the non-default origin needs carrying; a child that omits it is
-  // a supervisor-started loop, which is what it would have inherited anyway.
-  if (opts.openedBy === "human") add("--opened-by", "human");
-  if (opts.patrolIntervalExplicit === true || opts.patrolInterval !== DEFAULT_PATROL_SECONDS) {
-    add("--patrol-interval", opts.patrolInterval);
-  }
-  if (opts.boardLimit !== DEFAULT_BOARD_LIMIT) add("--board-limit", opts.boardLimit);
-  if (opts.trailLimit !== DEFAULT_TRAIL_LIMIT) add("--trail-limit", opts.trailLimit);
-  // Always carry the resolved value: the child poll must not re-resolve the cap
-  // from an env or per-kind config that differs from the one this process used.
-  add("--max-concurrency", opts.maxConcurrency);
-  if (opts.patrolLlm) args.push("--patrol-llm");
-  // The resident settings the child `passes.mjs` re-reads: it must ask
-  // `poolStatus()` about the *same* state file, and `--resident=no` must reach
-  // the poll that would otherwise claim.
-  const sessionDefault = join(dirname(opts.state), "sessions.state.json");
-  if (opts.resident === "no") add("--resident", "no");
-  if (opts.sessionState !== sessionDefault) add("--session-state", opts.sessionState);
-  if (opts.projectConcurrency !== opts.maxConcurrency) {
-    add("--project-concurrency", opts.projectConcurrency);
-  }
-  // The child pass must use the same workspace mode it was resolved with.
-  add("--workspace", opts.workspace ?? "worktree");
-  return args;
-}
-
-/**
- * The command a headless turn runs for the loop's passes *and* its board reads.
- *
- * The interpreter is the bare name `node`, never `process.execPath`: the control
- * session's tool allowlist is `Bash(node *)`, which matches a command whose first
- * token is literally `node`. An absolute interpreter path matches no allowlist
- * entry, so `--permission-mode dontAsk` refuses every pass — the loop then runs
- * its clocks but can never touch the board. The scheduling unit's PATH always
- * carries node's own directory (`scripts/install/lib/unit-path.mjs`), so the bare
- * name resolves where the turn runs.
- *
- * @param {object} opts
- * @returns {string}
- */
-export function loopCliCommand(opts) {
-  return ["node", quoteArg(opts.cli), ...loopCommandArgs(opts).map(quoteArg)].join(" ");
-}
-
-/**
- * The command a headless turn runs for its *board* reads and writes.
- *
- * Not `loopCliCommand`: that one carries the loop's own flags (`--log`, `--state`,
- * `--max-concurrency`, …), which the board subcommands do not accept. A
- * `taskctl issue list` needs only the identity, so the prefix stops there. Same
- * bare interpreter, same allowlist entry.
- *
- * @param {object} opts
- * @returns {string}
- */
-export function loopBoardCommand(opts) {
-  return ["node", quoteArg(opts.cli), "--actor-kind", opts.actorKind, "--agent", opts.agents[0] ?? "agent"].join(" ");
-}
-
 export const USAGE = `Usage: taskctl loop <patrol|workflow|poll|tick|console|doctor|status|run|subscribe|session> [options]
 
 Run it through \`taskctl loop <verb>\`; this page lists the shared options. The
@@ -827,16 +714,16 @@ surface: \`loop session\` is the resident pool, \`loop subscribe\` the event dae
 
 The loop's scheduler. In its default resident shape it owns a session pool:
   session    long-lived — one control conversation (cwd = this checkout) plus one
-             project conversation per target directory; a project session spawns
+             lane conversation per target directory; the pool spawns
              the worker/reviewer subagent, which inherits that directory.
 It also owns two clocks:
   ping       every ${DEFAULT_PING_SECONDS}s — prune dead worker pids; no board read, no LLM.
-  continue   every ${DEFAULT_CONTINUE_SECONDS}s — hand the control session a bounded
+  continue   every ${DEFAULT_CONTINUE_SECONDS}s — run patrol → workflow → poll in-process
              "Continue" prompt; that turn runs the poll, patrol and workflow entries.
              With no resident pool it runs patrol + workflow one-shot and claims nothing.
 
 --subscribe adds an optional event daemon beside those clocks: it holds one SSE
-connection and asks for a continue turn when a dispatch-relevant event arrives.
+connection and asks for a tick when a dispatch-relevant event arrives.
 The clocks stay as the fallback (and as the only path for time-based work).
 
 Options:
@@ -851,13 +738,13 @@ Options:
                             copy takes it from --config — MEERKAT_TASKPANEL_REPO).
   --ping-interval <sec>     Liveness clock (default: ${DEFAULT_PING_SECONDS}).
   --continue-interval <sec> Judgment clock (default: ${DEFAULT_CONTINUE_SECONDS} = 10 minutes).
-  --continue=yes|no         Enable the continue turn (default: yes).
-  --continue-state <path>   Continue lock (default: continue.state.json beside --state).
+  --continue=yes|no         Enable the tick (default: yes). A tick runs patrol,
+                            workflow and poll in-process under one lock.
+  --continue-state <path>   Tick lock (default: continue.state.json beside --state).
   --control=internal|external
-                            Who owns the control turn (default: internal). With
-                            external, the pool opens no control session and skips
-                            continue.pending — a live /meerkat-loop session is the
-                            control; project sessions still dispatch.
+                            DEPRECATED and inert: there is no LLM control turn. Kept
+                            only so older scripts and units parse; the value is
+                            accepted and ignored.
   --resident=auto|no        Use a live resident pool for continue (default: auto);
                             no forces the one-shot fallback with poll skipped.
   --session-state <path>    Sessions state file (default: sessions.state.json beside --state).
@@ -873,7 +760,7 @@ Options:
   --project-concurrency <n> Max live subagents per project (default: --max-concurrency).
   --workspace <worktree|shared>
                             Per-card git worktree for a git project (default: worktree).
-  --project-idle-ms <ms>    Close an idle project session after this (default: 1800000).
+  --project-idle-ms <ms>    Close an idle lane session after this (default: 1800000).
   --allow-all-tools         Enable every agent tool. Requires --allow-all-tools-reason;
                             the session runs with the operator's full OS permissions.
   --allow-all-tools-reason <text>
@@ -881,7 +768,7 @@ Options:
   --once                    Internal one-shot switch; the documented form is
                             \`taskctl loop run --ping-once|--continue-once\`.
   --ping-only               With --once, prune the worker registry and exit.
-  --continue-only           With --once, run one continue turn.
+  --continue-only           With --once, run one tick.
   --url <url>               Board URL (default: TASKD_URL in the process env or
                             install-root .env, then the runtime pointer).
   --env-file <path>         Config file (default: MEERKAT_TASKPANEL_ENV_FILE,
@@ -892,7 +779,7 @@ Options:
   --event-debounce-ms <ms>  Coalesce a burst of events (default: 300).
   --event-debounce-max-ms <ms>
                             Never delay the first pending event past this (default: 2000).
-  --event-continue=yes|no   Let events wake a continue turn (default: yes).
+  --event-continue=yes|no   Let events wake a tick (default: yes).
   --event-continue-min-ms <ms>
                             At most one event-triggered turn per interval (default: 60000).
   --patrol-interval <sec>   SLA measurement period P (default: the board's
@@ -905,7 +792,7 @@ Options:
   --claim-unassigned=yes|no Also claim unassigned cards (default: yes).
   --assignee-only           Alias for --claim-unassigned=no.
   --recover-stale=yes|no    Also recover stale in_progress claims (default: yes).
-  --workflow=yes|no         Run the workflow pass when the continue turn calls it (default: yes).
+  --workflow=yes|no         Run the workflow pass in each tick (default: yes).
   --reviewer <agent>        The independent reviewer. Unset disables review dispatch.
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
@@ -934,5 +821,5 @@ The deterministic passes are also runnable on their own:
   taskctl loop patrol     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
   taskctl loop workflow   apply the board's workflow plan
   taskctl loop poll       scan → atomic claim → enqueue the handoff;
-                                          a resident project session spawns the subagent`;
+                                          the resident pool spawns the worker session`;
 

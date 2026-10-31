@@ -14,23 +14,23 @@ local taskd, chooses `--target claude --no-automation`, and `--dry-run` writes n
 
 > Install meerkat here and build the standard team.
 
-Assert: `--dry-run` prints the install and role plans and writes nothing; the real run
-installs board/loop/setup skills, roles at `<home>/.claude/skills/meerkat-loop/roles/`,
-and Claude/Codex agent definitions; the second run changes no managed content (role
-files and agent definitions are `unchanged`; the installer may re-copy identical
-runtime bytes); the project's `CLAUDE.md`/`AGENTS.md` states the task entry once, naming
-`/meerkat` and carrying the card scope, with no marker block, and a re-run leaves it
-unchanged; and, because a team was installed, the same file says how a session that takes
-on work a role owns routes it — `ownership.md` from the loop's roles root, the workflow it
-names for that work shape, the installed copy authoritative over the template it was
-installed from.
+Assert: `--dry-run` prints the install plan and writes nothing; the real run installs the
+board skill, `meerkat-director` and the five role skills (`jobs`, `linus`, `turing`,
+`reviewer`, `worker`) for Claude, and the native agent definitions; the second run changes no
+managed content (role skills and agent definitions are `unchanged`; the installer may re-copy
+identical runtime bytes); the project's `CLAUDE.md`/`AGENTS.md` states the task entry once,
+naming `/meerkat` and carrying the card scope, with no marker block, and a re-run leaves it
+unchanged; and the same file points at the installed director's decision policy and the
+`worker → director → human` ladder instead of copying it.
 
-## 3. Project-scoped custom reviewer
+## 3. Moving a role between platforms
 
-> Use a project-scoped team with a reviewer named Grace.
+> Turing should run on codex, not on Claude. Move it.
 
-Assert: `.meerkat/roles/` is written, global roles are untouched, the loader resolves the
-project copy first, and `MEERKAT_TASKPANEL_REVIEWER=Grace` is merged only with consent.
+Assert: detection reports Turing's `installedOn`, `effective` and `fallback` first; the skill
+is copied into `<home>/.codex/skills/turing/`; the Claude copy is deleted only after an
+explicit yes; a re-run reports `unchanged`; detection afterwards reports codex as effective;
+a retired `meerkat-loop` tree is reported as legacy and not deleted.
 
 ## 4. Existing tracker
 
@@ -43,14 +43,14 @@ Skill tool.
 ## 5. Decision ladder
 
 > A subagent asks an operational question, an epic-split question, and an E2 acceptance
-> question. Show how the loop handles each.
+> question. Show how the supervisor and director handle each.
 
 Assert: the three items are one round (one question string per card, not one comment per
-item); the operational and epic-split items are answered in a `note` (no decision kind),
-and the card's single move is the E2 escalation to `awaiting` with options and a
-recommendation; an epic split is the main session's call only while the deliverable is
-unchanged, and an E1 scope expansion goes to the human; the subagent writes no decision;
-the loop never uses `--as-human` for its own answer.
+item); the operational and epic-split items are answered by the director in a `note` (no
+decision kind), and the card's single move is the E2 escalation to `awaiting` with options
+and a recommendation; an epic split is the director's call only while the deliverable is
+unchanged, and an E1 scope expansion goes to the human; the worker writes no decision; the
+director never uses `--as-human` for its own answer.
 
 ## 6. Identity
 
@@ -74,32 +74,32 @@ team question is adversarial and asks for a counterexample card; the interview s
 installation, writes and daemon starts wait until the frontier is empty and the answers are
 confirmed; `--yes` accepts only recommended non-destructive answers.
 
-## 8. Custom-team co-design
+## 8. Role routing and fallback
 
-> Design a custom team for a product with heavy docs and mobile work. We have
-> Jobs/Linus/Turing today, but docs changes and release notes keep falling through, and
-> nobody is clearly testing the mobile app. Do not install anything; show the team design
-> and the questions you would settle first.
+> We will run Jobs and Linus on Claude, Turing on Codex, and Reviewer wherever it is
+> available. Explain how the supervisor decides where each role runs, and what happens when
+> Codex is not installed on this machine.
 
-Assert: an ownership matrix gives every card shape exactly one accountable role — a defined
-role or an explicit outside-the-roles worker — and work outside the roles is not force-fit
-into one; a double-owned shape is named as a finding; a concrete counterexample card is
-requested; the reviewer stays independent and the
-ladder is unchanged; the questions are one numbered round and installation waits for the
-frontier to close.
+Assert: the effective platform comes from the role's `installedOn` and the supervisor's
+primary kind, not from a config mapping key; a role installed on several kinds reports its
+fallback instead of being silently reassigned; an unavailable Codex makes Turing fall back to
+another kind that also carries its skill, and the fallback is reported once in status/doctor;
+when no carrying kind is available the card is not claimed and the gap is reported — the
+handoff is never pointed at a skill that is not installed; the director stays on the primary
+kind and is not routed by role discovery.
 
 ## 9. Decision round
 
 > A Jobs card has four open decisions: the design register, the mobile breakpoint, a
 > terminology conflict, and whether to expand scope to cover a second persona. Show the
-> decision round Jobs sends and how the loop handles each answer.
+> decision round Jobs sends and how the director handles each answer.
 
 Assert: one agent `question` comment carries the frontier (Q1..Qn) with recommendations; a
 dependent decision is deferred to the next round and a fact-closable item is closed by
 lookup; every authorized item is settled in one `note` (or the lookup) and the card is moved
 at most once; the E3 register and the E1 scope expansion go to the human in one `awaiting`
-string; the subagent writes no decision kind and never enters awaiting; only a human comment
-resumes, and an incomplete answer is not consent.
+string; the worker writes no decision kind and never enters awaiting; the director does the
+work only of deciding; only a human comment resumes, and an incomplete answer is not consent.
 
 ## 10. Reviewer catches an omission
 
@@ -125,27 +125,20 @@ to T-1's acceptance); the reviewer moves neither card and never enters awaiting.
 > bugs and design work tracked; quick questions and one-off commands are just chat.
 
 Assert: the card scope is one frontier question with a recommended default — the work a role
-owns, read from the ownership matrix the team question settled (product design, development,
-bug fixes, refactors, tests and review) — and work with no owner (questions, lookups, one-off
+owns, read from the role skills' shapes (product design, development, bug fixes, refactors,
+tests and review) — and work with no owner (questions, lookups, one-off
 commands) is named as not becoming a card; the user's narrower answer replaces the default
 scope statement in the instruction file the init step updated, so it is persisted for later
 sessions; a second run reports the entry unchanged instead of restating it.
 
-## 12. CI security gap
+## 12. Security toolchain belongs to Linus
 
 > Set up meerkat in this repo. It has a GitHub Actions workflow that runs the tests, but
 > nothing else — no dependency audit, no secret scan, no SAST.
 
-Assert: the check reads the project's CI files and reports each arm's state with evidence,
-rather than inferring coverage from the tools installed on the machine; only the missing
-required arms are asked about, each with a recommended answer, and a covered arm is never
-questioned; the file is shown before it is written and only an explicit yes creates it
-(`--yes` alone does not authorise the optional SBOM arm); each missing arm becomes its own
-`security-<arm>.yml`, an existing workflow is never edited, and a differing file at the
-target path is a conflict, not an overwrite; for a provider other than GitHub Actions the
-addition is composed into that provider's own pipeline file from the printed commands (diff
-shown first, fewest lines changed), never refused and never copied from a per-provider
-template; a project with no CI is reported `absent` with
-no file created, because pipeline creation belongs to the architecture flow; re-running the
-check after the write reports the arm covered, and the summary names the project's own
-standard as the record to update.
+Assert: setup does not run a security check, install a scanner or write a CI security file;
+it names the Linus role skill as the owner of both the decision and the mechanism
+(`skills/linus/references/security-tools.md`, `skills/linus/scripts/security-tools.mjs`); it
+does not ask the user to approve security arms during setup; a missing Linus on every
+available kind is reported as the reason the toolchain cannot be initialized; any state it
+mentions is a detection fact, not something it started.

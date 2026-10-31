@@ -251,12 +251,12 @@ describe("install.sh: the supervisor flag surface", () => {
 
     assert.equal(run.status, 2);
     assert.match(run.stderr, /--supervisor-actor-kinds openclaw/);
-    assert.match(run.stderr, /OpenClaw has no meerkat-loop supervisor/);
+    assert.match(run.stderr, /OpenClaw has no meerkat-director supervisor/);
     assert.equal(existsSync(join(home, ".claude")), false, "nothing is installed when the request is invalid");
     assert.deepEqual(loads(manager), [], "and nothing is loaded");
   });
 
-  it("accepts a comma-separated --supervisor-actor-kinds list (dry run loads nothing)", () => {
+  it("refuses a multi-kind enable: one supervisor already holds every kind", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
@@ -267,10 +267,11 @@ describe("install.sh: the supervisor flag surface", () => {
       installEnv(home, manager),
     );
 
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /supervisor: dry-run — would enable \(kind=claude,/);
-    assert.match(run.stdout, /supervisor: dry-run — would enable \(kind=pi,/);
-    assert.deepEqual(loads(manager), [], "a dry run asks no service manager");
+    assert.equal(run.status, 2, "a second supervisor would double the cadences");
+    assert.match(run.stderr, /names ONE primary kind/);
+    assert.match(run.stderr, /role placement/);
+    assert.equal(existsSync(join(home, ".claude")), false, "nothing is installed");
+    assert.deepEqual(loads(manager), [], "and nothing is loaded");
   });
 
   it("rejects an unknown --supervisor-actor-kinds entry and an unknown --scheduler", () => {
@@ -903,7 +904,7 @@ describe("install.sh: --dry-run and per-agent-kind selection", () => {
 
     // Every loop agent kind is still installed — the selection is about the *action*, not the files.
     for (const agentDir of [".claude", ".codex", ".agents"]) {
-      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-loop", "SKILL.md")), `${agentDir} loop skill`);
+      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-director", "SKILL.md")), `${agentDir} director skill`);
     }
   });
 
@@ -919,7 +920,7 @@ describe("install.sh: --dry-run and per-agent-kind selection", () => {
     assert.match(run.stdout, /no loop actor kind to act on \(OpenClaw runs openclaw-team's own poll\/patrol\)/);
     assert.doesNotMatch(run.stdout, /supervisor: enabled/);
     assert.equal(existsSync(join(home, ".openclaw", "scheduling")), false, "OpenClaw still gets no units");
-    assert.equal(existsSync(join(home, ".openclaw", "skills", "meerkat-loop")), false, "and no loop skill");
+    assert.equal(existsSync(join(home, ".openclaw", "skills", "meerkat-director")), false, "and no director skill");
     assert.deepEqual(calls(manager), [], "nothing is loaded for it");
   });
 
@@ -1040,7 +1041,7 @@ describe("install.sh: one loop supervisor per machine", () => {
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /^install\.sh: supervisor: enable \(kinds:claude, scheduler: launchd\)$/m);
     assert.match(run.stdout, /one loop supervisor per machine/);
-    assert.match(run.stdout, /--supervisor-actor-kinds <list>/, "and the way to opt into more");
+    assert.match(run.stdout, /role placement is how another platform joins/, "one process holds every kind");
 
     const loaded = bootstraps(manager);
     assert.equal(loaded.length, 4, "claude's four units");
@@ -1064,7 +1065,7 @@ describe("install.sh: one loop supervisor per machine", () => {
     for (const line of loaded) assert.ok(line.includes(join(".agents", "scheduling")), line);
   });
 
-  it("an explicit multi-kind list still works, and says the rule is waived", () => {
+  it("refuses an explicit multi-kind enable: a second supervisor is never the answer", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
@@ -1075,9 +1076,9 @@ describe("install.sh: one loop supervisor per machine", () => {
       installEnv(home, manager),
     );
 
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /^install\.sh: supervisor: enable \(kinds:claude,codex, scheduler: launchd\)$/m);
-    assert.match(run.stdout, /warning — 2 loop supervisors on one machine/);
+    assert.equal(run.status, 2);
+    assert.match(run.stderr, /names ONE primary kind/);
+    assert.deepEqual(loads(manager), []);
   });
 
   it("--supervisor=disable defaults to every loop kind in --target, so no stray is left", () => {
@@ -1086,7 +1087,7 @@ describe("install.sh: one loop supervisor per machine", () => {
     const env = installEnv(home, manager);
     assert.equal(
       runInstall(
-        ["--target", "all", "--prefix", home, "--supervisor=enable", "--supervisor-actor-kinds", "claude,codex,pi", "--scheduler=launchd"],
+        ["--target", "all", "--prefix", home, "--supervisor=enable", "--supervisor-actor-kinds", "claude", "--scheduler=launchd"],
         env,
       ).status,
       0,
@@ -1117,8 +1118,9 @@ describe("install.sh: one loop supervisor per machine", () => {
     }
     assert.match(run.stdout, /^supervisor:   platform: claude \(~\/\.claude\)$/m);
     assert.match(run.stdout, /^supervisor:   scan set: Jobs,Linus,Turing \(from .*\.env\.claude\)$/m);
-    // The seeded per-kind file carries the agent name until setup-meerkat writes a team.
-    assert.match(run.stdout, /^supervisor:   scan set: alice \(from .*\.env\.codex\)$/m);
+    // The seeded per-kind file carries the union scan set plus the installing agent
+    // until setup-meerkat writes a team.
+    assert.match(run.stdout, /^supervisor:   scan set: Jobs,Linus,Turing,Worker,alice \(from .*\.env\.codex\)$/m);
   });
 
   it("enable warns when another loop kind is already loaded", () => {

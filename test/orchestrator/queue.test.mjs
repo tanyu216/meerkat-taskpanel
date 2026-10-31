@@ -1,5 +1,5 @@
 /**
- * The loop's durable queues: continue turns coalesce, card handoffs do not.
+ * The loop's durable card queue: handoffs coalesce per (card, role), work does not.
  *
  * Run with: node --test
  */
@@ -12,19 +12,14 @@ import { describe, it } from "node:test";
 
 import {
   claimCards,
-  claimContinue,
   completeCards,
-  completeContinue,
   enqueueCard,
-  enqueueContinue,
   readCards,
-  readContinue,
   recoverStaleCards,
   reownCards,
   requeueCards,
   pruneCards,
   questionDispatches,
-  requeueContinue,
   retireLegacyDispatched,
 } from "../../src/orchestrator/queue.mjs";
 
@@ -33,54 +28,6 @@ function dirFor(t) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
-
-describe("continue queue", () => {
-  it("coalesces a second request into the one pending turn", (t) => {
-    const dir = dirFor(t);
-    assert.deepEqual(enqueueContinue(dir, { reason: "timer", requestedAt: "2026-01-01T00:00:00.000Z" }), {
-      ok: true,
-      coalesced: false,
-      error: null,
-    });
-    assert.equal(enqueueContinue(dir, { reason: "event" }).coalesced, true);
-    const state = readContinue(dir);
-    assert.equal(state.pending.reason, "event");
-    assert.equal(state.processing, null);
-  });
-
-  it("claims the pending turn once and completes it", (t) => {
-    const dir = dirFor(t);
-    enqueueContinue(dir, { reason: "timer" });
-    const first = claimContinue(dir);
-    assert.equal(first.request.reason, "timer");
-    assert.equal(claimContinue(dir).request, null, "a second claim sees the in-flight turn");
-    assert.deepEqual(completeContinue(dir), { ok: true, error: null });
-    assert.equal(readContinue(dir).processing, null);
-  });
-
-  it("requeues a claimed turn, and a newer pending request wins", (t) => {
-    const dir = dirFor(t);
-    enqueueContinue(dir, { reason: "timer", requestedAt: "2026-01-01T00:00:00.000Z" });
-    claimContinue(dir);
-    const requeued = requeueContinue(dir);
-    assert.equal(requeued.requeued, true);
-    assert.equal(readContinue(dir).pending.attempts, 1);
-
-    claimContinue(dir);
-    enqueueContinue(dir, { reason: "event" });
-    const superseded = requeueContinue(dir);
-    assert.equal(superseded.superseded, true);
-    assert.equal(readContinue(dir).pending.reason, "event");
-  });
-
-  it("treats a corrupt continue file as empty and reports why", (t) => {
-    const dir = dirFor(t);
-    writeFileSync(join(dir, "continue.pending.json"), "{not json", "utf8");
-    const state = readContinue(dir);
-    assert.equal(state.pending, null);
-    assert.equal(state.errors.length, 1);
-  });
-});
 
 describe("card queue retention", () => {
   it("drops a terminal row past its retention and keeps live ones", (t) => {

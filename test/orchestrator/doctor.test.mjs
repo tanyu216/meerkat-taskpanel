@@ -1142,8 +1142,7 @@ describe("loop doctor — worker sessions", () => {
     seedState(dir);
     writeJson(join(dir, "sessions.state.json"), {
       version: 3,
-      control: null,
-      projects: {
+        projects: {
         "worker:T-900:r1": {
           kind: "worker-session",
           card: "T-900",

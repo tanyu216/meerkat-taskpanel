@@ -34,7 +34,7 @@ describe("agent-paths — the installed agent's directories", () => {
       paths.state,
       join("/home/op", ".claude", "meerkat-taskpanel", "supervisor.state.json"),
     );
-    assert.equal(paths.loopSkill, join("/home/op", ".claude", "skills", "meerkat-loop"));
+    assert.equal(paths.directorSkill, join("/home/op", ".claude", "skills", "meerkat-director"));
     assert.equal(paths.boardSkill, join("/home/op", ".claude", "skills", "meerkat"));
     assert.equal(paths.stateDir, join("/home/op", ".claude", "meerkat-taskpanel"));
   });

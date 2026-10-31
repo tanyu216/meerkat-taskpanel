@@ -13,9 +13,9 @@
  *  4. A tick that never resolves while the heartbeat keeps writing → `live` true
  *     forever, so nothing can tell a wedged pool from a healthy one.
  *  5. A live pid with a stale heartbeat (event loop blocked) → `live` false, so
- *     `continue` starts a second control turn (real duplicate execution).
+ *     a second tick while one holds the lock is skipped (no duplicate execution).
  *  6. The pool startup window (`phase:"starting"`) → `live` false for the same
- *     reason, so a second control turn can start beside the starting pool.
+ *     reason, so a second tick can start beside the starting pool.
  *  7. A SIGKILLed pool that restarts → in-flight cards are redispatched while
  *     the orphaned agent children still run.
  *
@@ -50,8 +50,12 @@ import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 
 import { readCards, recoverStaleCards } from "../../src/orchestrator/queue.mjs";
-import { spawnContinueTurn } from "../../src/orchestrator/runners.mjs";
-import { isProcessAlive } from "../../src/orchestrator/runtime.mjs";
+import { runContinue } from "../../src/orchestrator/runners.mjs";
+import {
+  acquireContinueLock,
+  isProcessAlive,
+  releaseContinueLock,
+} from "../../src/orchestrator/runtime.mjs";
 import { poolStatus } from "../../src/orchestrator/session.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -262,16 +266,34 @@ baseline("2. writing to stdout after the reader closes does not kill the process
 // 3. A detached spawn that exits immediately is a failure, not a success
 // ---------------------------------------------------------------------------
 
-baseline("3. spawnDetached reports an immediate exit instead of {ok:true,pid}", async () => {
+baseline("3. a second tick while one holds the lock is skipped, not run twice", async () => {
   const dir = tempDir();
-  const outcome = await spawnContinueTurn(
-    { log: join(dir, "loop.log") },
-    { command: process.execPath, args: ["-e", "process.exit(127)"], env: {}, cwd: null },
-    () => {},
-  );
-
-  assert.equal(outcome.ok, false, "a turn that exits 127 did not wake an agent");
-  assert.match(String(outcome.error ?? ""), /exited immediately|code 127/i);
+  const lock = join(dir, "continue.state.json");
+  acquireContinueLock(lock, { isAlive: () => true });
+  let ran = 0;
+  try {
+    const code = await runContinue(
+      {
+        actorKind: "claude",
+        agents: ["alice"],
+        home: dir,
+        state: join(dir, "supervisor.state.json"),
+        continueState: lock,
+        continueInterval: 600,
+      },
+      {
+        log: () => {},
+        isAlive: () => true,
+        runPatrol: async () => { ran += 1; },
+        runWorkflow: async () => { ran += 1; },
+        runPoll: async () => { ran += 1; },
+      },
+    );
+    assert.equal(code, 0);
+    assert.equal(ran, 0, "a tick that cannot take the lock runs no pass");
+  } finally {
+    releaseContinueLock(lock);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -289,7 +311,6 @@ baseline("4. a stuck tick on a live pid is reported as wedged, not as a healthy 
     heartbeatAt: new Date(now).toISOString(),
     // The turn has been in flight for three hours; the heartbeat kept beating.
     tickStartedAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
-    control: null,
     projects: {},
   });
 
@@ -302,7 +323,7 @@ baseline("4. a stuck tick on a live pid is reported as wedged, not as a healthy 
 // 5. A stale heartbeat on a live pid is "unresponsive", not "gone"
 // ---------------------------------------------------------------------------
 
-baseline("5. a live pid with a stale heartbeat stays live so continue cannot start a second turn", async () => {
+baseline("5. a live pid with a stale heartbeat stays live so a second tick is skipped", async () => {
   const dir = tempDir();
   const sleeper = await startSleeper();
   const now = Date.now();
@@ -312,7 +333,6 @@ baseline("5. a live pid with a stale heartbeat stays live so continue cannot sta
     phase: "running",
     // A synchronous board call blocked the event loop; the heartbeat is ten minutes old.
     heartbeatAt: new Date(now - 10 * 60 * 1000).toISOString(),
-    control: null,
     projects: {},
   });
 
@@ -329,7 +349,7 @@ baseline("5. a live pid with a stale heartbeat stays live so continue cannot sta
 // 6. The startup window is a live pool, not an absent one
 // ---------------------------------------------------------------------------
 
-baseline("6. a pool in its startup window is live so continue does not start a second turn", async () => {
+baseline("6. a pool in its startup window is live so a second tick is skipped", async () => {
   const dir = tempDir();
   const sleeper = await startSleeper();
   writeState(dir, {
@@ -339,7 +359,6 @@ baseline("6. a pool in its startup window is live so continue does not start a s
     startStartedAt: new Date().toISOString(),
     // No heartbeat yet: the first one is written once start() returns.
     heartbeatAt: null,
-    control: null,
     projects: {},
   });
 
@@ -428,7 +447,6 @@ function writeSessionPid(dir, { projectDir, pid, poolPid }) {
     version: 2,
     poolPid,
     heartbeatAt: new Date().toISOString(),
-    control: null,
     projects: {
       [projectDir]: {
         actorKind: "claude",

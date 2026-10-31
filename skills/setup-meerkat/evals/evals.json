@@ -17,30 +17,30 @@
     {
       "id": 2,
       "name": "standard-team",
-      "prompt": "Install meerkat here and build the standard team.",
-      "expected_output": "Board, loop and setup skills installed for Claude with the server; the standard team installed under the loop skill's roles/ directory, with Claude and Codex native agent definitions. A second run reports every action as unchanged.",
+      "prompt": "Install meerkat here with the standard team.",
+      "expected_output": "Board, director and the five role skills installed for Claude beside the existing server; the supervisor enabled; the project's task entry names the role skills and points at the director's decision policy. A second run reports unchanged.",
       "files": [],
       "assertions": [
         "The install uses --target claude and includes the server (or explains why it skipped it).",
-        "<home>/.claude/skills/setup-meerkat/SKILL.md exists after installation.",
-        "The roles root is <home>/.claude/skills/meerkat-loop/roles with manifest.json, an ownership routing guide, and four roles.",
-        ".claude/agents/jobs.md and .codex/agents/reviewer.toml exist.",
-        "A second identical run leaves the role files and native agent definitions unchanged (content-hash identical), and the role installer reports every action as unchanged.",
+        "<home>/.claude/skills/meerkat-director/SKILL.md and <home>/.claude/skills/{jobs,linus,turing,reviewer,worker}/SKILL.md exist after installation.",
+        "Each installed role skill carries a role.json with schema \"meerkat-role\".",
+        "A second identical run leaves the role skills and native agent definitions unchanged, and every action reports unchanged.",
         "The project's CLAUDE.md (or AGENTS.md) states the task entry once — /meerkat as the entry and the card scope — in the instruction file's own shape, with no marker block, and a second run leaves it unchanged.",
-        "The same file says a session that takes on work a role owns reads the team's ownership.md from the loop's roles root and follows the workflow it names, with the installed copy authoritative over the template it was installed from."
+        "The same file points at the installed meerkat-director decision policy and the worker -> director -> human ladder, without copying the policy body."
       ]
     },
     {
       "id": 3,
-      "name": "project-scoped-reviewer",
-      "prompt": "Use a project-scoped team with a reviewer named Grace.",
-      "expected_output": "The team is installed under <project>/.meerkat/roles, the global roles skill directory is untouched, the manifest's reviewer agent is Grace, and the effective roles root is the project's.",
+      "name": "move-role-between-platforms",
+      "prompt": "Turing should run on codex, not on Claude. Move it.",
+      "expected_output": "Detection reports Turing's installedOn/effective; the skill is copied into the codex skills tree, the Claude copy is removed only after an explicit yes, and detection then reports codex as the effective platform.",
       "files": [],
       "assertions": [
-        "<project>/.meerkat/roles/manifest.json exists.",
-        "The global <home>/.claude/skills/meerkat-loop/roles is not created or modified.",
-        "The reviewer role's agent in the manifest is Grace.",
-        "Detection after the install reports the project roles root as the effective root."
+        "Detection reports every role with installedOn, effective and fallback before any write.",
+        "The target copy is written under <home>/.codex/skills/turing/ and includes role.json.",
+        "The source <home>/.claude/skills/turing/ is deleted only after the user explicitly agrees; a role the user did not name is never touched.",
+        "A re-run of the same move reports unchanged.",
+        "Detection after the move reports Turing's effective platform as codex, and a retired meerkat-loop tree (if present) is reported as legacy and not deleted."
       ]
     },
     {
@@ -59,15 +59,15 @@
     {
       "id": 5,
       "name": "decision-ladder",
-      "prompt": "A subagent asks an operational question, an epic-split question, and an E2 acceptance question. Show how the loop handles each.",
-      "expected_output": "The operational and epic-split questions are answered by the project session (a note plus reattach/requeue, no awaiting); the E2 question is escalated to awaiting with options and a recommendation. The subagent writes no decision comment and the loop never uses --as-human for its own answer.",
+      "prompt": "A worker asks an operational question, an epic-split question, and an E2 acceptance question. Show how the supervisor and director handle each.",
+      "expected_output": "The supervisor enqueues a director row; the director answers the operational and epic-split items with one agent note and moves the card back to todo, and escalates the E2 item to awaiting with options and a recommendation. The worker writes no decision comment and the director never uses --as-human.",
       "files": [],
       "assertions": [
-        "Each subagent question is recorded as an agent question comment on an in_progress card.",
+        "Each worker question is recorded as an agent question comment on an in_progress card; the supervisor enqueues a director row, not a new project session.",
         "The operational and epic-split items are answered in a note (never a decision kind or awaiting), and the card's single move is the E2 escalation to awaiting; the note preserves the operational answers for the resumed worker.",
-        "The epic split is presented as the project session's decision; only a scope expansion is said to be E1 for the human.",
+        "The epic split is presented as the director's decision; only a scope expansion is said to be E1 for the human.",
         "The E2 question moves the card to awaiting with the E2 reason and a question carrying options and a recommendation.",
-        "No example has the subagent writing decision, confirm or change.",
+        "No example has the worker writing decision, confirm or change, and no example has the director doing the work, claiming the card or moving it to done.",
         "The questions are one round: one question string per card (one question comment), not one comment per item."
       ]
     },
@@ -86,43 +86,42 @@
     {
       "id": 7,
       "name": "setup-interview",
-      "prompt": "Set up Meerkat TaskPanel for Claude on this repo. The board is remote at http://board.internal:9527, I want a project-scoped team, and I am not sure the standard team fits. Do not install or write anything - show me the setup interview you would run first.",
-      "expected_output": "Detection first, used as facts; one numbered frontier round with recommended answers worded so 'yes' accepts them; the standard-team fit is challenged with a counterexample card shape; no install, write or daemon before the frontier closes.",
+      "prompt": "Set up Meerkat TaskPanel for Claude on this repo. The board is remote at http://board.internal:9527, and I am not sure the five roles fit. Do not install or write anything - show me the setup interview you would run first.",
+      "expected_output": "Detection first, used as facts; one numbered frontier round with recommended answers worded so 'yes' accepts them; the role routing is challenged with a counterexample card shape; no install, write or daemon before the frontier closes.",
       "files": [],
       "assertions": [
         "The response runs detection (or names the facts it would detect) before asking, and never asks for a fact detection can establish.",
         "The open decisions are one numbered round (Q1..Qn), each with a recommended answer worded so 'yes' accepts it.",
-        "The team question is adversarial: it asks for a counterexample card or a card shape that would fall between roles.",
+        "The routing question is adversarial: it asks for a counterexample card or a card shape that would fall between roles, and says a shape none describes goes to Worker.",
         "The interview states that installation, writes and daemon starts wait until the frontier is empty and the answers are confirmed - the gate is part of the procedure, not just a promise not to execute.",
         "--yes is described as accepting only recommended non-destructive answers."
       ]
     },
     {
       "id": 8,
-      "name": "custom-team-co-design",
-      "prompt": "Design a custom team for a product with heavy docs and mobile work. We have Jobs/Linus/Turing today, but docs changes and release notes keep falling through, and nobody is clearly testing the mobile app. Do not install anything; show the team design and the questions you would settle first.",
-      "expected_output": "A card-shape ownership matrix with exactly one accountable role per shape — a defined role or an explicit outside-the-roles worker; work outside the roles not force-fit into one; at least one double-owned shape named as a finding; a counterexample card; an independent reviewer; one numbered round; no install before the frontier closes.",
+      "name": "role-routing-and-fallback",
+      "prompt": "We will run Jobs and Linus on Claude, Turing on Codex, and Reviewer wherever it is available. Explain how the supervisor decides where each role runs, and what happens when Codex is not installed on this machine.",
+      "expected_output": "Installation location is the routing: each role runs on a kind whose skills tree carries it, the supervisor's primary kind wins when several do. An unavailable preferred kind falls back only to another kind that carries that role; if none does, the card is not claimed and the gap is reported.",
       "files": [],
       "assertions": [
-        "The design lists card shapes and gives each exactly one accountable role, or an explicit outside-the-roles worker.",
-        "A shape outside the roles is assigned to a worker outside them rather than force-fit into a role.",
-        "At least one shape (docs/release notes or mobile testing) is named as double-owned, or as outside the roles with a worker of its own.",
-        "It asks for a concrete counterexample card the proposed split would get wrong.",
-        "The reviewer remains independent and the ladder (subagent -> main session -> human) is unchanged.",
-        "The questions are one numbered round with recommendations, and the answer states that installation waits for the frontier to close."
+        "The explanation says the effective platform comes from the role's installedOn and the supervisor's primary kind, not from a config mapping key.",
+        "A role installed on several kinds is reported with its fallback, not silently reassigned.",
+        "When Codex cannot start, Turing falls back to another kind that also carries its skill, and the fallback is reported once in status/doctor.",
+        "If no kind carrying the role is available, the card is not claimed and the gap is reported - the handoff is never pointed at a skill that is not installed.",
+        "The director stays on the supervisor's primary kind and is not routed by role discovery."
       ]
     },
     {
       "id": 9,
       "name": "decision-round",
-      "prompt": "A Jobs card has four open decisions: the design register, the mobile breakpoint, a terminology conflict, and whether to expand scope to cover a second persona. Show the decision round Jobs sends and how the loop handles each answer.",
-      "expected_output": "One question comment carrying Q1..Q4 with recommendations; the operational items answered by the project session in one note with one move; E3 (register) and E1 (scope expansion) escalated in one awaiting string; the subagent writes no decision kind and never enters awaiting; only a human comment resumes.",
+      "prompt": "A Jobs card has four open decisions: the design register, the mobile breakpoint, a terminology conflict, and whether to expand scope to cover a second persona. Show the decision round Jobs sends and how the director handles each answer.",
+      "expected_output": "One question comment carrying Q1..Q4 with recommendations; the operational items answered by the director in one note with one move; E3 (register) and E1 (scope expansion) escalated in one awaiting string; the worker writes no decision kind and never enters awaiting; only a human comment resumes.",
       "files": [],
       "assertions": [
         "The open frontier is one question comment (Q1..Qn) with a recommendation each; a dependent decision is explicitly deferred to a later round rather than dripped as a second comment, and an item closable by a fact is closed by lookup.",
-        "The design register (E3) and the scope expansion (E1) are escalated to the human, not decided by the subagent or the project session.",
-        "Every item the project session is authorized to answer is settled by the lookup or in one note, and the card is moved at most once for the round.",
-        "The subagent keeps the card in_progress, writes no decision/confirm/change, and does not enter awaiting.",
+        "The design register (E3) and the scope expansion (E1) are escalated to the human, not decided by the worker or the director.",
+        "Every item the director is authorized to answer is settled by the lookup or in one note, and the card is moved at most once for the round.",
+        "The worker keeps the card in_progress, writes no decision/confirm/change, and does not enter awaiting.",
         "Only a human comment resumes awaiting; an incomplete answer is not consent."
       ]
     },
@@ -146,11 +145,11 @@
       "id": 11,
       "name": "card-scope",
       "prompt": "Set up meerkat here. Not everything should become a task card — we mostly want features, bugs and design work tracked; quick questions and one-off commands are just chat.",
-      "expected_output": "The setup interview asks the card scope as one frontier question with a recommended answer — the work a role owns, read from the ownership matrix (product design, development, bug fixes, refactors, tests and review) — and records the user's narrower answer; the instruction file the init step updated carries that answer rather than the default; a second run reports it unchanged instead of restating it.",
+      "expected_output": "The setup interview asks the card scope as one frontier question with a recommended answer — the work a role owns, read from the role skills' shapes (product design, development, bug fixes, refactors, tests and review) — and records the user's narrower answer; the instruction file the init step updated carries that answer rather than the default; a second run reports it unchanged instead of restating it.",
       "files": [],
       "assertions": [
         "The card scope is asked as its own frontier question with a recommended default, not silently assumed.",
-        "The recommended default is the work a role owns (the ownership matrix just settled) — product design, development, bug fixes — and work with no owner (questions, lookups, one-off commands) is stated as not becoming a card.",
+        "The recommended default is the work the role skills' shapes assign to a role — product design, development, bug fixes — and work with no owner (questions, lookups, one-off commands) is stated as not becoming a card.",
         "The user's narrower answer is written into the instruction file the init step updated, replacing the default scope statement.",
         "The answer is persisted in the project's instruction file, not only in the conversation.",
         "A second run reports the entry unchanged rather than restating or duplicating it."
@@ -158,18 +157,16 @@
     },
     {
       "id": 12,
-      "name": "ci-security-gap",
+      "name": "security-toolchain-belongs-to-linus",
       "prompt": "Set up meerkat in this repo. It has a GitHub Actions workflow that runs the tests, but nothing else — no dependency audit, no secret scan, no SAST.",
-      "expected_output": "The security check reports the pipeline as GitHub Actions with those three arms missing and secret-scan covered only if a scanner is really in a workflow; the setup round asks about each missing arm once, with the recommended answer yes, and writes nothing before the answer; on yes it shows the file first (`--ci-plan`) and then creates one self-contained `security-<arm>.yml` per arm with `--ci-write`, never editing the existing workflow; an arm already covered in CI is never asked about; a project with no CI at all is reported and left to the architecture flow.",
+      "expected_output": "Setup does not check, install or write security tooling: the security toolchain is the Linus role skill's system-initialization duty. Setup reports the gap as Linus's, points at skills/linus/references/security-tools.md and scripts/security-tools.mjs, and does not add a CI file itself.",
       "files": [],
       "assertions": [
-        "The check reads the project's CI files and reports every arm's state with its evidence, rather than assuming coverage from the tool being installed on the machine.",
-        "Only the missing required arms are asked about, each with a recommended answer; a covered arm is not questioned.",
-        "The write is previewed before it happens, and only an explicit yes creates a file — `--yes` alone does not authorise the optional SBOM arm.",
-        "Each missing arm becomes its own `security-<arm>.yml`; an existing workflow file is never edited, and a differing file at the target path is reported as a conflict instead of overwritten.",
-        "For a provider other than GitHub Actions the skill composes the addition into that provider's own pipeline file from the printed commands — diff shown first, fewest lines changed — rather than refusing the case or shipping a per-provider template.",
-        "A project with no CI configuration is reported `absent` and no file is created — pipeline creation belongs to the architecture flow.",
-        "Re-running the check after the write reports the arm covered, and the summary says the project's own standard (docs/tech-spec.md § Security toolchain) is the record to update."
+        "The setup response does not run a security check, install a scanner or write a CI security file.",
+        "It names the Linus role skill as the owner of the decision and the mechanism, pointing at skills/linus/.",
+        "It does not ask the user to approve security arms during setup.",
+        "If Linus is not installed on any available kind, that absence is reported as the reason the toolchain cannot be initialized.",
+        "Any scanner/CI state it mentions comes from detection facts, not from a tool it started."
       ]
     }
   ]

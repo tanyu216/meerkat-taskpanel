@@ -562,16 +562,16 @@ export const SSE_SUBSCRIBE_IDLE_MS = 45_000;
 export const EVENT_DEBOUNCE_MS = 300;
 /** ...but never delay a dispatch longer than this, however busy the stream is. */
 export const EVENT_DEBOUNCE_MAX_MS = 2_000;
-/** At most one event-triggered continue turn per this interval. */
+/** At most one event-triggered tick per this interval. */
 export const EVENT_CONTINUE_MIN_MS = 60_000;
 /**
  * At most one event-triggered **card-brief refresh** batch per this interval.
  *
  * The brief is a file, not an LLM turn: it can follow events far more cheaply
- * than a continue turn, while still coalescing a worker's comment/report burst.
+ * than a tick, while still coalescing a worker's comment/report burst.
  */
 export const CARD_REFRESH_MIN_MS = 5_000;
-/** How soon to retry a dispatch whose continue turn was already in flight. */
+/** How soon to retry a dispatch whose tick was already in flight. */
 export const SUBSCRIBE_RETRY_MS = 5_000;
 /** The reconnect ladder's ceiling, matching the web client's 30 s. */
 export const SUBSCRIBE_BACKOFF_MAX_MS = 30_000;

@@ -4,6 +4,8 @@
 
 Accepted — 2026-10-30.
 
+> **Note (2026-10-31):** the loop skill this ADR names is now `skills/meerkat-director/` (ADR 0007). The decision itself — the loop ships in the board's package — is unchanged.
+
 ## Context
 
 The loop used to declare a foreign *board interface generation* and a minimum board release, and

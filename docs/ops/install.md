@@ -1,19 +1,23 @@
 # Installation
 
-Meerkat TaskPanel ships as **a local server**, **three Agent Skills** and **one plugin root**
-— the repository itself, which every harness reads in place:
+Meerkat TaskPanel ships as **a local server**, **the board, director and five role skills**, and
+**one plugin root** — the repository itself, which every harness reads in place:
 
 - **`meerkat`** (`skills/meerkat/`) — the board. Installed for all four
   agents.
-- **`meerkat-loop`** (`skills/meerkat-loop/`) — the external supervisor that keeps a
-  board moving when no agent is looking. Installed for **every agent except OpenClaw**
-  (claude, codex, pi); OpenClaw gets the board on its own, because the
-  openclaw-team framework already runs an equivalent poll / patrol (see
+- **`meerkat-director`** (`skills/meerkat-director/`) — the decision hub and the
+  supervisor's operator skill: assignment, worker questions and E1–E5 escalation. Installed
+  for **every agent except OpenClaw** (claude, codex, pi); OpenClaw gets the board on its
+  own, because the openclaw-team framework already runs an equivalent poll / patrol (see
   [`scheduling.md`](../scheduling.md#openclaw-no-loop-units)).
+- **`jobs`, `linus`, `turing`, `reviewer`, `worker`** (`skills/<role>/`) — the five
+  standalone role skills. Each is a complete role: `SKILL.md`, `role.json` and `references/`.
+  Installed beside the director for the same three kinds; installation location is the
+  platform the role runs on.
 - **`setup-meerkat`** (`skills/setup-meerkat/`) — the user-invoked `/setup-meerkat`
   command: it detects what is installed, repairs what is missing, offers the Matt Pocock
-  issue-tracker integration, and installs an optional Jobs/Linus/Turing plus reviewer
-  team. The bash installer copies it **with the Claude bundle only**; the repository
+  issue-tracker integration, and moves role skills between platforms. The bash installer
+  copies it **with the Claude bundle only**; the repository
   bundle and marketplace still carry it for the other agent kinds.
 
 > **"Actor kind" and "agent".** An **actor kind** is the application that runs the agent — Claude
@@ -27,8 +31,8 @@ There are three layers, and it is worth keeping them straight:
 1. **The skills** — `SKILL.md` + `references/` + a wrapper, copied (or, for the board
    skill, symlinked) into the agent's skill directory by `install.sh`. This is
    deterministic, offline, and needs no agent tooling. The board skill is what makes the
-   agent able to drive `taskctl`; the loop skill carries the decisions the loop applies,
-   and the loop itself runs as `taskctl loop …`.
+   agent able to drive `taskctl`; the role skills carry each role's workflow, and the
+   supervisor itself runs as `taskctl loop …`.
 2. **The agent bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
    deploys the rest of that agent's setup too, not just the skill: the agent's own settings
    (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
@@ -44,10 +48,10 @@ There are three layers, and it is worth keeping them straight:
    it; it prints the command and you run it once. The repository root *is* the board's
    plugin root (`.claude-plugin/plugin.json`), which is what lets every harness share the
    one `skills/` tree instead of receiving a copy. The marketplace has a single entry —
-   `meerkat-taskpanel`, sourced at `./`. `meerkat-loop` and `setup-meerkat` are **not**
-   separate marketplace plugins: the root bundle carries them from the same tree, and
-   `install.sh` copies them into an agent's skill directory (the loop for the three
-   non-OpenClaw agents, the setup command for Claude).
+   `meerkat-taskpanel`, sourced at `./`. `meerkat-director`, the role skills and
+   `setup-meerkat` are **not** separate marketplace plugins: the root bundle carries them
+   from the same tree, and `install.sh` copies them into an agent's skill directory (the
+   director and roles for the three non-OpenClaw agents, the setup command for Claude).
 
 > **Status: the engine has landed in full.** The skill is discoverable, the `taskctl`
 > commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
@@ -177,12 +181,12 @@ match the assignee the board uses for it; it defaults to `Worker`.
 
 ## Where things land
 
-| Agent | `--target` | Board skill | Loop skill | Bundle |
+| Agent | `--target` | Board skill | Director + role skills | Bundle |
 |---|---|---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/meerkat` | `~/.claude/skills/meerkat-loop` | `.` — the repository root (`.claude-plugin/plugin.json`) |
+| Claude Code | `claude` | `~/.claude/skills/meerkat` | `~/.claude/skills/{meerkat-director,jobs,linus,turing,reviewer,worker}` | `.` — the repository root (`.claude-plugin/plugin.json`) |
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat` | **none** — see [OpenClaw](../scheduling.md#openclaw-no-loop-units) | `.` — the same root bundle |
-| Codex | `codex` | `~/.codex/skills/meerkat` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
+| Codex | `codex` | `~/.codex/skills/meerkat` | `~/.codex/skills/{meerkat-director,jobs,linus,turing,reviewer,worker}` | `.` — the same root bundle, through the marketplace |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat` | `~/.agents/skills/{meerkat-director,jobs,linus,turing,reviewer,worker}` | `.` — the root `package.json`'s `pi` field |
 
 The **setup skill** is an extra row with no column of its own: `install.sh --target claude`
 copies `setup-meerkat` to `~/.claude/skills/setup-meerkat`, and no other target copies it.
@@ -200,10 +204,11 @@ bundle of its own.
 Every agent above has both routes: a `--target` that lands the skill on disk, and a
 plugin/bundle that agent's own plugin system reads in place.
 
-`--link` applies to the **board** skill only. The loop skill is always copied: it is small
-and standalone (docs plus decisions), and a symlink would put a checkout into the load path
-of a skill that is meant to read the same in every install. The loop's execution body is not
-in the skill at all — it is `taskctl loop …`, shipped with the runtime tree.
+`--link` applies to the **board** skill only. The director and role skills are always
+copied: they are small and standalone (docs plus decisions), and a symlink would put a
+checkout into the load path of a skill meant to read the same in every install. The
+supervisor's execution body is not in the skill at all — it is `taskctl loop …`, shipped
+with the runtime tree.
 
 **Every agent kind gets a `taskctl` shim**, at `<agent-dir>/bin/taskctl`
 (`~/.claude/bin/taskctl`, `~/.codex/bin/taskctl`, `~/.agents/bin/taskctl`, …), and it injects
@@ -276,7 +281,8 @@ place with a warning; repair it with `taskctl project map set`.
 
 | Artefact | Where | What |
 |---|---|---|
-| loop skill | `<agent-dir>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md` and `references/`. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked |
+| director skill | `<agent-dir>/skills/meerkat-director/` | the decision hub as a skill: its `SKILL.md` plus the decision policy and operator view. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked |
+| role skills | `<agent-dir>/skills/{jobs,linus,turing,reviewer,worker}/` | each role's workflow, `role.json` and references. Always **copied**; where a role is installed is the platform that runs it |
 | loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, worker transcripts, `continue.state.json` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
 | launchd | `<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
 | systemd | `<agent-dir>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
@@ -298,7 +304,7 @@ See [`scheduling.md` §What the loop's units run with](../scheduling.md#what-the
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/subscribe.state.json` | the event daemon's pid, last connection/event and pending reconnect — what `--supervisor=status` reports |
 
 `<agent-dir>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these, and no
-`meerkat-loop` skill** — it installs the board skill only and uses the
+`meerkat-director` or role skills** — it installs the board skill only and uses the
 [openclaw-team](https://github.com/tanyu216/openclaw-team) framework's own
 `poll`/`patrol` instead (see [`scheduling.md`](../scheduling.md#openclaw-no-loop-units)).
 
@@ -327,26 +333,28 @@ anything. Starting the daemon is a separate, **explicit request**, and it is one
 ```bash
 bash install.sh --target all --supervisor=enable        # the FIRST loop kind in --target (claude)
 bash install.sh --target pi,claude --supervisor=enable  # first in target order: pi
-bash install.sh --target all --supervisor=enable --supervisor-actor-kinds claude,codex  # explicit multi-kind
+bash install.sh --target all --supervisor=enable --supervisor-actor-kinds claude,codex  # refused: one supervisor
 bash install.sh --target all --supervisor=status        # every loop kind in --target
 bash install.sh --target all --supervisor=disable       # stop every loop kind in --target
 ```
 
-**One loop supervisor per machine is the rule** (see
-[`scheduling.md §One loop supervisor per machine`](../scheduling.md#one-loop-supervisor-per-machine)).
-`--supervisor=enable` without `--supervisor-actor-kinds` acts on the **first loop kind in
-normalized `--target` order** — `--target all` therefore enables `claude` only. Running more
-than one kind is the explicit `--supervisor-actor-kinds claude,codex,pi` choice, and the
-installer says so when it is used. `--supervisor=disable` and `--supervisor=status` cover
-**every** loop kind in `--target`, so a pre-rule three-supervisor machine is visible in one
-status and stopped by one disable.
+**One supervisor per machine is the rule** (see
+[`scheduling.md §One supervisor per machine`](../scheduling.md#one-supervisor-per-machine)).
+`--supervisor=enable` acts on the **first loop kind in normalized `--target` order** — the
+**primary kind**; `--target all` therefore enables `claude` only. Other platforms join by
+installing a role skill there, not by starting a second supervisor, and
+`--supervisor-actor-kinds` naming several kinds is refused with that hint.
+`--supervisor=disable` and `--supervisor=status` cover **every** loop kind in `--target`, so
+a pre-rule multi-supervisor machine is visible in one status and stopped by one disable.
 
-**Per-agent-kind selection is `--supervisor-actor-kinds claude,codex,pi`** — a
-subset of the loop actor kinds the install covers. A kind outside `--target` is named and
-dropped (its installer never runs). The flag selects *which* kinds an action applies to,
-rather than naming the kind the installer itself runs as, which is why it is not called
-`--actor-kind` here: that name is the per-command identity flag
-(`taskctl loop … --actor-kind claude|codex|pi`). **`openclaw` is rejected** in this list
+**`--supervisor-actor-kinds` names one primary kind for `enable`.** Listing several kinds
+for `enable` is refused (one supervisor process already holds every kind's sessions; a
+second would double the cadences, pools, logs and SLA ledgers). For `disable` and `status`
+an explicit list still narrows the action, and both default to every loop kind in
+`--target`. A kind outside `--target` is named and dropped (its installer never runs). The
+flag selects *which* kinds an action applies to, rather than naming the kind the installer
+itself runs as, which is why it is not called `--actor-kind` here: that name is the
+per-command identity flag (`taskctl loop … --actor-kind claude|codex|pi`). **`openclaw` is rejected** in this list
 (reason on stderr, exit 2) — it has no loop supervisor to enable (see
 [`scheduling.md §OpenClaw: no loop units`](../scheduling.md#openclaw-no-loop-units)).
 
@@ -431,8 +439,8 @@ supervisor:   reload it with: install.sh --supervisor=enable --supervisor-actor-
 ```
 
 Enabling installs the resident pool, the two clocks **and the event daemon**: a long-lived
-`taskctl loop session` manager, a $0 ping, one bounded `Continue` judgment turn per continue cadence
-that the pool runs in its control session, and the `taskctl loop subscribe` daemon on launchd/systemd.
+`taskctl loop session` manager, a $0 ping, one bounded tick per continue cadence that runs
+patrol → workflow → poll in-process, and the `taskctl loop subscribe` daemon on launchd/systemd.
 The daemon is part of that set, not a separate flag: it is the low-latency path, the
 continue cadence remains the fallback, and an event wakes a turn only while the pool is
 live. It is not a closure component — with no pool it skips the turn and the timer still
@@ -465,7 +473,7 @@ the guard closes that gap by restarting the server after any exit.
 
 This is a deliberate, **narrow exception** to the rule that the installer never starts
 a daemon for you (the [Scheduling units](#scheduling-units-claude-codex-pi) above). It
-applies **only to the `taskd` service guard**: the `meerkat-loop` supervisor's units are
+applies **only to the `taskd` service guard**: the `meerkat-director` supervisor's units are
 still written and left for you to load, and OpenClaw still gets none.
 
 **Where it lands** — under the install root, deliberately *not* the loop units'
@@ -730,10 +738,10 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the agent kind with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
 | `--continue=yes\|no` | Enable the continue turn. Persisted to the per-kind config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
 | `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints each agent kind's load state, platform and configured scan set, plus a machine-level view of every loaded loop kind, and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
-| `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}`. Default: `enable` = the first loop kind in `--target` order; `disable`/`status` = every loop kind in `--target`. Naming more than one kind is how the one-supervisor-per-machine rule is waived, explicitly. A kind outside `--target` is named and dropped. Not `--actor-kind`: that is the loop's per-command identity flag, and this flag selects a set. `openclaw` is **rejected** (reason on stderr, exit 2). |
+| `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}`. For `enable` it must name exactly one kind (the primary kind); listing several is refused because one supervisor already holds every kind. `disable`/`status` default to every loop kind in `--target` and accept a narrowing list. A kind outside `--target` is named and dropped. Not `--actor-kind`: that is the loop's per-command identity flag. `openclaw` is **rejected** (reason on stderr, exit 2). |
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](../scheduling.md#enabling-the-supervisor-opt-in). |
 | `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |
-| `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied (it is standalone docs + decisions). For `--target server` it only warns: the runtime tree is always copied, because it must survive the checkout and the npx cache. |
+| `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The director and role skills are always copied (standalone docs + decisions). For `--target server` it only warns: the runtime tree is always copied, because it must survive the checkout and the npx cache. |
 | `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags — but operator data is kept: an installed `roles/` directory, an existing config-root `projects.json`, config keys the template does not carry, and the server `.env` / `.data`. An old skill-beside map is migrated into the config root rather than kept beside the skill. |
 | `--dry-run` | Print every path that would be written/changed and change nothing. It never prompts, even with `--interactive`. |
 | `--skip-node-check` | Skip the Node version check (see below). |
@@ -746,7 +754,7 @@ to answer (see [The taskd guard](#the-taskd-guard-keepalive-always-enabled)). Th
 bypasses are `--no-automation` (or its environment form
 `MEERKAT_TASKPANEL_NO_AUTOMATION=1`), `--dry-run`, and — **for tests only** —
 `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1`. This is the one exception to "write the unit,
-print the load command, never start a daemon"; the `meerkat-loop` units keep that rule.
+print the load command, never start a daemon"; the supervisor's units keep that rule.
 
 Before dispatching, `install.sh` requires **Node >= 22** — the engine stores to SQLite
 through the built-in `node:sqlite` module, which the 22.x line is the first to ship. A
@@ -823,10 +831,10 @@ config is separate: `<program root>/.env.claude` (see
 Uninstall:
 
 ```bash
-claude plugin uninstall meerkat-loop@meerkat-taskpanel-marketplace   # if you installed it
+claude plugin uninstall meerkat-taskpanel@meerkat-taskpanel-marketplace   # if you installed it
 claude plugin uninstall meerkat-taskpanel@meerkat-taskpanel-marketplace
 claude plugin marketplace remove meerkat-taskpanel-marketplace
-rm -rf ~/.claude/skills/meerkat ~/.claude/skills/meerkat-loop \
+rm -rf ~/.claude/skills/meerkat ~/.claude/skills/meerkat-director ~/.claude/skills/{jobs,linus,turing,reviewer,worker} \
        ~/.claude/skills/setup-meerkat \
        ~/.claude/commands/{board,claim,deliver}.md \
        ~/.claude/hooks/meerkat-taskpanel-session-start.sh ~/.claude/bin/taskctl \
@@ -863,7 +871,7 @@ precedence is **codex → cursor → claude**; with no Codex or Cursor marker pr
 is reported as a claude bundle.
 
 > **No supervisor for OpenClaw.** Unlike the other three agent kinds, OpenClaw gets **no**
-> scheduling unit and **no `meerkat-loop` skill**: it already has a scheduler in the
+> scheduling unit and **no `meerkat-director` or role skills**: it already has a scheduler in the
 > [openclaw-team](https://github.com/tanyu216/openclaw-team) framework, whose
 > per-agent poll and `task-patrol` automations *are* the design in
 > [`scheduling.md`](../scheduling.md). `install.sh --target openclaw` writes the board skill
@@ -913,7 +921,7 @@ Uninstall:
 ```bash
 codex plugin remove meerkat-taskpanel
 codex plugin marketplace remove meerkat-taskpanel-marketplace
-rm -rf ~/.codex/skills/meerkat ~/.codex/skills/meerkat-loop \
+rm -rf ~/.codex/skills/meerkat ~/.codex/skills/meerkat-director ~/.codex/skills/{jobs,linus,turing,reviewer,worker} \
        ~/.codex/bin/taskctl \
        ~/.codex/scheduling ~/.codex/meerkat-taskpanel
 ```
@@ -963,7 +971,7 @@ Uninstall:
 
 ```bash
 pi remove "$PWD"
-rm -rf ~/.agents/skills/meerkat ~/.agents/skills/meerkat-loop \
+rm -rf ~/.agents/skills/meerkat ~/.agents/skills/meerkat-director ~/.agents/skills/{jobs,linus,turing,reviewer,worker} \
        ~/.agents/scheduling
 ```
 
@@ -1065,10 +1073,10 @@ Each agent kind's section above lists the plugin/bundle removal command. The ski
 are removed by deleting their destinations:
 
 ```bash
-rm -rf ~/.claude/skills/meerkat ~/.claude/skills/meerkat-loop      # claude
+rm -rf ~/.claude/skills/{meerkat,meerkat-director,jobs,linus,turing,reviewer,worker}  # claude
 rm -rf ~/.openclaw/skills/meerkat                                  # openclaw (no loop)
-rm -rf ~/.codex/skills/meerkat ~/.codex/skills/meerkat-loop        # codex
-rm -rf ~/.agents/skills/meerkat ~/.agents/skills/meerkat-loop      # pi
+rm -rf ~/.codex/skills/{meerkat,meerkat-director,jobs,linus,turing,reviewer,worker}   # codex
+rm -rf ~/.agents/skills/{meerkat,meerkat-director,jobs,linus,turing,reviewer,worker} # pi
 ```
 
 Nothing is written outside those directories, and nothing is sent over the network — see
@@ -1087,9 +1095,9 @@ Nothing is written outside those directories, and nothing is sent over the netwo
   [Idempotence](#idempotence-re-running-and-force).
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves
   `skills/meerkat/` relative to itself); a `dist/` bundle must be unpacked first.
-- **An older install still has `skills/meerkat-loop/scripts/`, `templates/` or
-  `manifest.txt`** — those were the generated payload, retired when the loop moved into
-  `taskctl`. Re-run the install with `--force` to replace the skill directory; a re-run also
-  removes the old copied body under `<agent-dir>/meerkat-taskpanel/scripts/`.
+- **An older install still has `skills/meerkat-loop/`** — that skill is retired; the
+  `meerkat-director` skill and the five role skills replace it. Nothing deletes the old
+  directory for you (it may contain a roles tree someone edited), and detection reports it as
+  legacy. Re-run the install, verify the new skills, then remove the old directory yourself.
 - **OpenClaw does not list the plugin** — install the bundle at the repository root
   (`openclaw plugins install "$PWD" ...`); see the OpenClaw section above.

@@ -34,8 +34,12 @@ const JOBS = {
   summary: "Product planning and design",
   responsibilities: ["Write the product brief first", "Define acceptance criteria"],
   boundaries: ["Do not write production backend code"],
-  workflows: { worker: "/roles/jobs/workflow.md", reviewer: null },
-  selfCheck: "/roles/jobs/self-check.md",
+  shapes: ["product brief"],
+  skillDir: "/roles/jobs",
+  platform: "claude",
+  installedOn: ["claude"],
+  workflow: "/roles/jobs/SKILL.md",
+  selfCheck: "/roles/jobs/references/self-check.md",
   reviewerPrompt: null,
 };
 
@@ -48,8 +52,12 @@ const REVIEWER = {
   summary: "Independent acceptance review",
   responsibilities: ["Verify every acceptance item"],
   boundaries: ["Move nothing"],
-  workflows: { worker: null, reviewer: "/roles/reviewer/workflow.md" },
-  selfCheck: null,
+  shapes: ["independent review"],
+  skillDir: "/roles/reviewer",
+  platform: "claude",
+  installedOn: ["claude"],
+  workflow: "/roles/reviewer/SKILL.md",
+  selfCheck: "/roles/reviewer/references/self-check.md",
   reviewerPrompt: "# Reviewer protocol\nVERDICT first.\n",
 };
 
@@ -85,9 +93,12 @@ describe("handoffs without a role stay byte-identical", () => {
     // layers of one change are not several deliverables (TP-0002's split).
     // Re-pinned when the split question's command line interpolated the real
     // card ref instead of printing a literal `${ref}`.
+    // Re-pinned for the director vocabulary, and again when the old subagent
+    // variant was removed: a worker always runs in its own worker session now,
+    // so this is the one worker-handoff shape.
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "4a730982a99629ea0d1436e386807ada32736dd7bb683ab71ed9eaaffc10cc6b",
+      "9df3c69bd1acc7d35eba6e32c2bfa303fb97e54e39d51aeca7e3871a1b354deb",
     );
   });
 
@@ -97,9 +108,10 @@ describe("handoffs without a role stay byte-identical", () => {
     // promises a process directory or asks it to download attachments.
     // Re-pinned again for the delivered-commit check and the carried findings:
     // a reviewer that judges the live tree can pass code nobody delivered.
+    // Re-pinned for the director vocabulary (no project session exists now).
     assert.equal(
       hash(buildReviewHandoff(REVIEW_INPUT)),
-      "b1068f256a3c23a46a1b4ebde5e7639fb0f3a1eaedcbe34bf4261fbe45624d9d",
+      "887ab86a4b4b377d9326bc62ff969073f335f651cadd3a4aaded9c33d349d894",
     );
   });
 });
@@ -108,25 +120,25 @@ describe("worker handoff with a role", () => {
   const text = buildHandoff({
     ...WORKER_INPUT,
     role: JOBS,
-    roleWorkflowPath: JOBS.workflows.worker,
+    roleWorkflowPath: JOBS.workflow,
     selfCheckPath: JOBS.selfCheck,
     decisionPolicyPath: "/roles/decision-policy.md",
   });
 
-  it("carries layer 1 — the role the loop selected", () => {
+  it("carries layer 1 — the role the supervisor selected", () => {
     assert.match(text, /## Team role/);
     assert.match(text, /Role: Jobs — Product design/);
     assert.match(text, /Write the product brief first/);
     assert.match(text, /Do not write production backend code/);
     assert.match(text, /selected this role from the card's assignee/);
-    assert.match(text, /role workflow below is authoritative/);
+    assert.match(text, /role skill below is authoritative/);
   });
 
-  it("carries layer 2 — the role workflow and self-check paths", () => {
-    assert.match(text, /## Role workflow/);
-    assert.match(text, /\/roles\/jobs\/workflow\.md/);
+  it("carries layer 2 — the role skill and self-check paths", () => {
+    assert.match(text, /## Role skill/);
+    assert.match(text, /\/roles\/jobs\/SKILL\.md/);
     assert.match(text, /## Role self-check/);
-    assert.match(text, /\/roles\/jobs\/self-check\.md/);
+    assert.match(text, /\/roles\/jobs\/references\/self-check\.md/);
   });
 
   it("asks for the evidence row at the moment of observation", () => {
@@ -161,7 +173,7 @@ describe("worker handoff with a role", () => {
   it("no longer tells the worker to split an epic or enter awaiting on its own", () => {
     assert.doesNotMatch(text, /Promote and split FIRST/);
     assert.doesNotMatch(text, /awaiting --awaiting-reason E2 --question/);
-    assert.match(text, /ask the project session/i);
+    assert.match(text, /The director decides/i);
   });
 });
 
@@ -169,7 +181,7 @@ describe("reviewer handoff with a role", () => {
   const text = buildReviewHandoff({
     ...REVIEW_INPUT,
     role: REVIEWER,
-    roleWorkflowPath: REVIEWER.workflows.reviewer,
+    roleWorkflowPath: REVIEWER.workflow,
     reviewerPrompt: REVIEWER.reviewerPrompt,
     reviewerPromptPath: "/roles/reviewer/reviewer-prompt.md",
     decisionPolicyPath: "/roles/decision-policy.md",
@@ -204,9 +216,9 @@ describe("reviewer handoff with a role", () => {
     assert.doesNotMatch(text, /agent question comment/);
   });
 
-  it("carries the role workflow and decision policy", () => {
-    assert.match(text, /## Role workflow/);
-    assert.match(text, /\/roles\/reviewer\/workflow\.md/);
+  it("carries the role skill and decision policy", () => {
+    assert.match(text, /## Role skill/);
+    assert.match(text, /\/roles\/reviewer\/SKILL\.md/);
     assert.match(text, /\/roles\/decision-policy\.md/);
   });
 });
@@ -220,7 +232,7 @@ describe("wakeHandoff selects the card's role", () => {
     ]),
     defaultReviewer: REVIEWER,
     decisionPolicy: { path: "/roles/decision-policy.md" },
-    ownership: { path: "/roles/ownership.md", text: "# Ownership\n" },
+    routing: { source: "skills", text: "| Work shape | Accountable role |\n|---|---|\n| brief | Jobs |" },
     warnings: ["a role warning"],
   };
   const opts = { home: "/tmp", actorKind: "claude", roles: roleSet };
@@ -258,7 +270,7 @@ describe("wakeHandoff selects the card's role", () => {
       assert.equal(result.agentRole, "Reviewer");
       assert.match(result.handoff, /## Reviewer protocol/);
       assert.match(result.handoff, /VERDICT first/);
-      assert.match(result.handoff, /## Role workflow/);
+      assert.match(result.handoff, /## Role skill/);
       assert.doesNotMatch(result.handoff, /Work routing/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -274,5 +286,91 @@ describe("wakeHandoff selects the card's role", () => {
     );
     assert.equal(result.agentRole, null);
     assert.doesNotMatch(result.handoff, /## Team role/);
+  });
+});
+
+describe("wakeHandoff dispatches on the kind that carries the role", () => {
+  // Turing is installed only on codex; Jobs is installed on claude and pi.
+  const CODEX_TURING = {
+    ...JOBS,
+    id: "turing",
+    agent: "Turing",
+    nativeAgent: "turing",
+    skillDir: "/roles/codex/turing",
+    platform: "codex",
+    installedOn: ["codex"],
+    workflow: "/roles/codex/turing/SKILL.md",
+    selfCheck: "/roles/codex/turing/references/self-check.md",
+  };
+  const DUAL_JOBS = {
+    ...JOBS,
+    installedOn: ["claude", "pi"],
+    variants: {
+      claude: { skillDir: "/roles/claude/jobs", workflow: "/roles/claude/jobs/SKILL.md" },
+      pi: { skillDir: "/roles/pi/jobs", workflow: "/roles/pi/jobs/SKILL.md" },
+    },
+  };
+  const roleSet = {
+    roles: [DUAL_JOBS, CODEX_TURING],
+    defaultReviewer: null,
+    decisionPolicy: { path: null },
+    routing: { source: "skills", text: "" },
+    warnings: [],
+  };
+  const opts = { home: "/tmp", actorKind: "claude", roles: roleSet };
+
+  it("carries the role's own kind, not the supervisor's primary kind", () => {
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "T-1", agent: "Turing" },
+      { identifier: "T-1", title: "x", project: "P1" },
+    );
+    assert.equal(result.actorKind, "codex");
+    assert.equal(result.platformFallback, null);
+    assert.match(result.handoff, /\/roles\/codex\/turing\/SKILL\.md/);
+  });
+
+  it("points at the selected kind's copy when a role is installed twice", () => {
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "T-1", agent: "Jobs" },
+      { identifier: "T-1", title: "x", project: "P1" },
+    );
+    assert.equal(result.actorKind, "claude");
+    assert.match(result.handoff, /\/roles\/claude\/jobs\/SKILL\.md/);
+  });
+
+  it("falls back to another kind that carries the role, and reports it", () => {
+    const result = wakeHandoff(
+      { ...opts, kindAvailable: (kind) => kind !== "claude" },
+      {},
+      { identifier: "T-1", agent: "Jobs" },
+      { identifier: "T-1", title: "x", project: "P1" },
+    );
+    assert.equal(result.actorKind, "pi");
+    assert.equal(result.platformFallback, "pi");
+    assert.match(result.handoff, /\/roles\/pi\/jobs\/SKILL\.md/);
+  });
+
+  it("returns no kind when no platform carries the role — the caller must not dispatch", () => {
+    const result = wakeHandoff(
+      { ...opts, kindAvailable: () => false },
+      {},
+      { identifier: "T-1", agent: "Turing" },
+      { identifier: "T-1", title: "x", project: "P1" },
+    );
+    assert.equal(result.actorKind, null);
+  });
+
+  it("keeps the supervisor's kind when there is no role at all", () => {
+    const result = wakeHandoff(
+      { ...opts, roles: { roles: [], defaultReviewer: null, decisionPolicy: { path: null }, warnings: [] } },
+      {},
+      { identifier: "T-1", agent: "alice" },
+      { identifier: "T-1", title: "x", project: "P1" },
+    );
+    assert.equal(result.actorKind, "claude");
   });
 });

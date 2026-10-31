@@ -4,6 +4,8 @@
 
 Accepted — 2026-10-31.
 
+> **Note (2026-10-31):** the reviewer lane's session key now includes the actor kind that carries the reviewer role (ADR 0007); its per-directory, subagent-spawning shape is unchanged. The worker-session decision is unchanged.
+
 ## Context
 
 A worker wake used to be a **subagent** of a project session: poll claimed the card, a project

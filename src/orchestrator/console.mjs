@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * One read-only console cycle for a live `/meerkat-loop` session.
+ * One read-only console cycle for a live `/meerkat-director` session.
  *
- * The live session is the control turn in manual mode. This entry gives it the
- * facts it needs between control turns: who is driving the loop, and which
+ * The live session is a manual operator view. This entry gives it the facts it
+ * needs between ticks: who is driving the loop, and which
  * questions are actually waiting for a human. It never claims, moves, comments
- * or writes — the control turn and the board own every write.
+ * or writes — the supervisor and the board own every write.
  *
- * The question ladder is the same one `buildContinuePrompt` carries:
+ * The question ladder is the same one the director prompt carries:
  *   * `awaiting` cards — a human answer resumes them;
  *   * `in_progress` cards with an agent `question` and no later human comment.
  * `in_review` cards are listed as pending acceptance. The card's own
@@ -88,7 +88,7 @@ export async function consoleCycle(opts, deps = {}) {
     const { comments, error } = await commentsFor(opts, agent, task.identifier);
     if (error !== null) errors.push(`${task.identifier} comments: ${error}`);
     const question = newestQuestion(comments);
-    // The project session's answer is an agent `note`; it settles the middle
+    // The director's answer is an agent `note`; it settles the middle
     // rung's question just as a human comment does.
     if (question === null || isQuestionSettled(comments, question)) continue;
     questions.push({
@@ -122,7 +122,7 @@ function humanReport(result) {
   const lines = [
     `supervisor: ${result.supervisor.verdict}` +
       (result.supervisor.pool?.live
-        ? ` (pool pid ${result.supervisor.pool.poolPid}, control ${result.supervisor.pool.controlMode})`
+        ? ` (pool pid ${result.supervisor.pool.poolPid})`
         : ""),
     `questions: ${result.questions.length}`,
   ];

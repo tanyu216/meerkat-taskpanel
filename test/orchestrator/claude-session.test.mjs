@@ -27,6 +27,7 @@ let sid = resume === -1 ? "sid-fake-1" : args[resume + 1];
 appendFileSync(join(base, "pids"), process.pid + "\\n");
 appendFileSync(join(base, "argv.jsonl"), JSON.stringify(args) + "\\n");
 appendFileSync(join(base, "cwd"), process.cwd() + "\\n");
+appendFileSync(join(base, "env.jsonl"), JSON.stringify({ kind: process.env.TASKCTL_ACTOR_KIND, path: process.env.PATH }) + "\\n");
 
 process.stdout.write(JSON.stringify({ type: "system", subtype: "init", session_id: sid }) + "\\n");
 const rl = createInterface({ input: process.stdin });
@@ -67,9 +68,28 @@ function fixture(t) {
     record: join(dir, "pids"),
     argvFile: join(dir, "argv.jsonl"),
     cwdFile: join(dir, "cwd"),
+    envFile: join(dir, "env.jsonl"),
     log: () => {},
   };
 }
+
+describe("claude session environment", () => {
+  it("spawns with the session's own kind environment, not the supervisor's", async (t) => {
+    const f = fixture(t);
+    const pool = createClaudePool({
+      opts: {},
+      log: f.log,
+      bin: f.bin,
+      env: { ...process.env, TASKCTL_ACTOR_KIND: "codex", PATH: `/role/bin:${process.env.PATH ?? ""}` },
+    });
+    const handle = pool.openSession({ cwd: f.project, role: "worker" });
+    await handle.send("hello");
+    await handle.close();
+    const env = JSON.parse(readFileSync(f.envFile, "utf8").trim());
+    assert.equal(env.kind, "codex", "the session writes as its own kind");
+    assert.match(env.path, /^\/role\/bin:/, "the kind's shim directory leads PATH");
+  });
+});
 
 describe("claude session args", () => {
   it("uses stream-json, never --bare, and resumes by id", () => {
@@ -93,16 +113,16 @@ describe("claude session args", () => {
 
   it("keeps the reviewer read-only and the control session to the passes", () => {
     assert.doesNotMatch(allowedToolsFor("reviewer"), /Edit|Write/);
-    assert.doesNotMatch(allowedToolsFor("control"), /Edit|Write/);
+    assert.doesNotMatch(allowedToolsFor("director"), /Edit|Write/);
     assert.match(allowedToolsFor("worker"), /Edit/);
   });
 
-  it("permits the control lane the command its prompt actually names", () => {
-    // The continue prompt names `node <cli> loop <pass>` and the same command
+  it("permits the director lane the command its prompt actually names", () => {
+    // The decision/tick prompt names `node <cli> loop <pass>` and the same command
     // for its board reads. An allowlist entry that matches neither form leaves
     // the control turn unable to run a single pass (the 127/denied loop).
-    assert.match(allowedToolsFor("control"), /Bash\(node \*\)/);
-    assert.match(allowedToolsFor("control"), /Bash\(taskctl \*\)/);
+    assert.match(allowedToolsFor("director"), /Bash\(node \*\)/);
+    assert.match(allowedToolsFor("director"), /Bash\(taskctl \*\)/);
   });
 
   it("lets the reviewer run the gate it is told to re-run", () => {

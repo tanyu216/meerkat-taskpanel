@@ -219,12 +219,12 @@ describe("log — text format", () => {
   });
 
   it("renders the component as a field, not as a custom prefix", () => {
-    const line = formatLogRecord({ ts: "t", level: "info", message: "/meerkat-loop Continue" }, {
+    const line = formatLogRecord({ ts: "t", level: "info", message: "tick: patrol 0 workflow 0 poll 0" }, {
       component: "supervisor",
     });
     assert.equal(
       line,
-      'time=t level=info component=supervisor msg="/meerkat-loop Continue"',
+      'time=t level=info component=supervisor msg="tick: patrol 0 workflow 0 poll 0"',
     );
   });
 

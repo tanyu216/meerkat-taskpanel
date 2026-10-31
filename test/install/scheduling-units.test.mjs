@@ -173,8 +173,8 @@ describe("install.sh: scheduling units", () => {
     }
     assert.match(
       readFileSync(join(kindConfigDirFor(home), ".env.claude"), "utf8"),
-      /^MEERKAT_TASKPANEL_AGENTS=alice$/m,
-      "the installer seeds the scan set from the agent name",
+      /^MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing,Worker,alice$/m,
+      "the installer seeds the union scan set plus the installing agent",
     );
 
     for (const [name, path] of Object.entries(unitPaths(home, ".claude", "claude"))) {
@@ -278,7 +278,7 @@ describe("install.sh: scheduling units", () => {
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], env).status, 0);
 
     const configPath = join(kindConfigDirFor(home), ".env.claude");
-    assert.match(readFileSync(configPath, "utf8"), /^MEERKAT_TASKPANEL_AGENTS=alice$/m);
+    assert.match(readFileSync(configPath, "utf8"), /^MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing,Worker,alice$/m);
 
     // setup-meerkat's team list is the operator's choice; a reinstall keeps it.
     writeFileSync(
@@ -295,7 +295,7 @@ describe("install.sh: scheduling units", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The loop skill: installed by the three agent kinds that can be woken, never by OpenClaw
+// The director skill: installed by the three agent kinds that can be woken, never by OpenClaw
 //
 // The loop is a skill of its own (T-20261012-163500-loopdecouple-b), distributed to the
 // three non-OpenClaw agent kinds. OpenClaw is excluded **permanently** (ruling O3): the
@@ -306,33 +306,38 @@ describe("install.sh: scheduling units", () => {
 // The skill carries decisions, not an execution body: `taskctl loop …` is the body.
 // ---------------------------------------------------------------------------
 
-/** Agent kinds the installer must place the loop skill in, the dot-directory, and the CLI name. */
+/** Agent kinds the installer must place the director skill in, the dot-directory, and the CLI name. */
 const LOOP_KINDS = [
   ["claude", ".claude", "claude"],
   ["codex", ".codex", "codex"],
   ["pi", ".agents", "pi"],
 ];
 
-describe("install.sh: the loop skill's distribution", () => {
+describe("install.sh: the director and role skills' distribution", () => {
+  const ROLE_SKILLS = ["jobs", "linus", "turing", "reviewer", "worker"];
   for (const [kind, agentDir, cli] of LOOP_KINDS) {
-    it(`installs the meerkat-loop skill for ${kind}`, () => {
+    it(`installs the director and role skills for ${kind}`, () => {
       const home = makeTempDir();
       const bin = makeTempDir();
       makeFakeCli(bin, cli);
       const run = runInstall(["--target", kind], installEnv(home, bin));
       assert.equal(run.status, 0, run.stderr);
 
-      const dest = join(home, agentDir, "skills", "meerkat-loop");
-      assert.ok(existsSync(join(dest, "SKILL.md")), `${kind}: the loop skill's SKILL.md must land`);
+      const dest = join(home, agentDir, "skills", "meerkat-director");
+      assert.ok(existsSync(join(dest, "SKILL.md")), `${kind}: the director's SKILL.md must land`);
       assert.ok(existsSync(join(dest, "references", "operation.md")), `${kind}: its references must land`);
+      for (const role of ROLE_SKILLS) {
+        const roleDir = join(home, agentDir, "skills", role);
+        assert.ok(existsSync(join(roleDir, "SKILL.md")), `${kind}: the ${role} skill must land`);
+        assert.ok(existsSync(join(roleDir, "role.json")), `${kind}: ${role} role.json must land`);
+      }
 
-      // The body moved into the toolkit; neither the skill nor the agent directory
-      // carries a second implementation.
+      // The director is a charter, not an execution body.
       for (const retired of ["manifest.txt", "scripts", "templates", "src", "body"]) {
         assert.equal(
           existsSync(join(dest, retired)),
           false,
-          `${kind}: the loop skill must not carry ${retired}`,
+          `${kind}: the director skill must not carry ${retired}`,
         );
       }
       assert.equal(
@@ -355,26 +360,33 @@ describe("install.sh: the loop skill's distribution", () => {
       );
       if (kind === "claude") {
         assert.ok(existsSync(join(setup, "scripts", "detect.mjs")), "claude: the setup scripts must land");
-        assert.ok(existsSync(join(setup, "assets", "team", "standard", "manifest.json")), "claude: the team template must land");
+        assert.ok(existsSync(join(setup, "evals", "evals.json")), "claude: the setup evals must land");
+        assert.equal(
+          existsSync(join(setup, "assets", "team")),
+          false,
+          "claude: role prose lives in the standalone role skills, not a team template",
+        );
       }
     });
   }
 
-  it("never installs the meerkat-loop skill for openclaw", () => {
+  it("never installs the director or role skills for openclaw", () => {
     const home = makeTempDir();
     const run = runInstall(["--target", "openclaw", "--prefix", home]);
     assert.equal(run.status, 0, run.stderr);
 
-    // The board skill does land — this is an exclusion of the *loop*, not of OpenClaw.
+    // The board skill does land — this is an exclusion of the supervisor, not of OpenClaw.
     assert.ok(
       existsSync(join(home, ".openclaw", "skills", "meerkat", "SKILL.md")),
       "openclaw must still get the board skill",
     );
-    assert.equal(
-      existsSync(join(home, ".openclaw", "skills", "meerkat-loop")),
-      false,
-      "openclaw must not receive the loop skill (O3: the framework is its supervisor)",
-    );
+    for (const skill of ["meerkat-director", "jobs", "linus", "turing", "reviewer", "worker"]) {
+      assert.equal(
+        existsSync(join(home, ".openclaw", "skills", skill)),
+        false,
+        `openclaw must not receive the ${skill} skill (O3: the framework is its supervisor)`,
+      );
+    }
     assert.equal(
       existsSync(join(home, ".openclaw", "skills", "setup-meerkat")),
       false,
@@ -384,7 +396,7 @@ describe("install.sh: the loop skill's distribution", () => {
     assert.equal(existsSync(join(home, ".openclaw", "meerkat-taskpanel")), false);
   });
 
-  it("copies the loop skill even under --link, which names the board skill only", () => {
+  it("copies the director and role skills even under --link, which names the board skill only", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
@@ -392,20 +404,22 @@ describe("install.sh: the loop skill's distribution", () => {
     assert.equal(run.status, 0, run.stderr);
 
     const board = join(home, ".claude", "skills", "meerkat");
-    const loop = join(home, ".claude", "skills", "meerkat-loop");
 
     // The board skill is the one --link names: a symlink, because the docs recommend it
     // for a checkout (the wrapper resolves the CLI relative to itself).
     assert.ok(lstatSync(board).isSymbolicLink(), "--link must symlink the board skill");
 
-    // The loop must be a real directory. A symlinked skill would put the checkout back
-    // into the load path of the very thing the split exists to make independent of it.
-    assert.ok(lstatSync(loop).isDirectory(), "--link must NOT symlink the loop skill");
-    assert.equal(lstatSync(loop).isSymbolicLink(), false);
-    assert.ok(existsSync(join(loop, "SKILL.md")));
+    // The director and roles must be real directories. A symlinked skill would put the
+    // checkout back into the load path of the very thing the split exists to avoid.
+    for (const skill of ["meerkat-director", "jobs", "linus", "turing", "reviewer", "worker"]) {
+      const dir = join(home, ".claude", "skills", skill);
+      assert.ok(lstatSync(dir).isDirectory(), `--link must NOT symlink ${skill}`);
+      assert.equal(lstatSync(dir).isSymbolicLink(), false);
+      assert.ok(existsSync(join(dir, "SKILL.md")));
+    }
   });
 
-  it("--dry-run announces the loop skill and writes nothing", () => {
+  it("--dry-run announces the director and role skills and writes nothing", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
@@ -415,8 +429,12 @@ describe("install.sh: the loop skill's distribution", () => {
     );
     assert.equal(run.status, 0, run.stderr);
     assert.ok(
-      run.stdout.includes(join(home, ".claude", "skills", "meerkat-loop")),
-      "the dry run must preview the loop skill's destination",
+      run.stdout.includes(join(home, ".claude", "skills", "meerkat-director")),
+      "the dry run must preview the director's destination",
+    );
+    assert.ok(
+      run.stdout.includes(join(home, ".claude", "skills", "turing")),
+      "the dry run must preview a role skill's destination",
     );
     assert.equal(existsSync(join(home, ".claude")), false, "a dry run must not write");
   });

@@ -8,8 +8,8 @@
 # copied into this file is a number that drifts. OpenClaw users install that
 # framework instead; see docs/scheduling.md and docs/ops/install.md.
 #
-# That is why this script calls neither `install_loop_skill` nor `install_scheduling`:
-# there is no `~/.openclaw/skills/meerkat-loop` and no `~/.openclaw/scheduling`, on
+# That is why this script calls neither `install_director_skill` nor `install_scheduling`:
+# there is no `~/.openclaw/skills/meerkat-director` and no `~/.openclaw/scheduling`, on
 # purpose, permanently (ruling O3). Two supervisors on one board would only race each
 # other for the same cards — the board's claim is atomic, so the race is bounded, but the
 # second one is pure waste. `test/install/scheduling-units.test.mjs` asserts the absence.

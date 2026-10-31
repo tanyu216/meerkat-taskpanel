@@ -2,7 +2,7 @@
  * The question lane's pure predicates.
  *
  * A worker that cannot decide writes an agent `question` comment and keeps the
- * card `in_progress`. The project session is the middle rung: it answers with a
+ * card `in_progress`. The director is the middle rung: it answers with a
  * `note` and requeues the card, or escalates E1–E5 to the human. These helpers
  * read the **wire** comment shape (`kind`, `author_kind` / `author.kind`) in the
  * order `comment list` returns — **newest first**.

@@ -26,7 +26,7 @@ export { QUEUE_FILES } from "../foundation/loop-state.mjs";
 import { QUEUE_FILES } from "../foundation/loop-state.mjs";
 
 /** A card handoff's terminal failure threshold. */
-export const DEFAULT_CARD_MAX_ATTEMPTS = 3;
+const DEFAULT_CARD_MAX_ATTEMPTS = 3;
 
 /**
  * Rows that are history, not work. A row's id is deterministic (`<card>-<role>`),
@@ -39,13 +39,11 @@ const isTerminalCard = (entry) => TERMINAL_CARD_STATUSES.has(String(entry?.statu
 
 /**
  * @param {string} stateDir
- * @returns {{continuePending: string, continueProcessing: string, cards: string, ledger: string, sessions: string}}
+ * @returns {{cards: string, ledger: string, sessions: string}}
  */
-export function queuePaths(stateDir) {
+function queuePaths(stateDir) {
   const dir = String(stateDir);
   return {
-    continuePending: join(dir, QUEUE_FILES.continuePending),
-    continueProcessing: join(dir, QUEUE_FILES.continueProcessing),
     cards: join(dir, QUEUE_FILES.cards),
     ledger: join(dir, QUEUE_FILES.ledger),
     sessions: join(dir, QUEUE_FILES.sessions),
@@ -105,109 +103,6 @@ export function writeJsonFile(file, value) {
   }
 }
 
-/**
- * Enqueue (or coalesce) one continue turn.
- *
- * @param {string} stateDir
- * @param {{requestedAt?: string, reason?: string, [key: string]: unknown}} request
- * @returns {{ok: boolean, coalesced: boolean, error: string|null}}
- */
-export function enqueueContinue(stateDir, request = {}) {
-  const paths = queuePaths(stateDir);
-  const current = readJsonFile(paths.continuePending, null);
-  if (current.error !== null) return { ok: false, coalesced: false, error: current.error };
-  const next = {
-    version: 1,
-    requestedAt: request.requestedAt ?? new Date().toISOString(),
-    reason: request.reason ?? "timer",
-    ...request,
-  };
-  const written = writeJsonFile(paths.continuePending, next);
-  return { ok: written.ok, coalesced: current.value !== null, error: written.error };
-}
-
-/**
- * Claim the pending continue turn by moving it to the processing slot. A
- * processing file already present means another executor owns the turn; the
- * caller recovers it explicitly when it is stale.
- *
- * @param {string} stateDir
- * @returns {{ok: boolean, request: object|null, error: string|null}}
- */
-export function claimContinue(stateDir) {
-  const paths = queuePaths(stateDir);
-  if (existsSync(paths.continueProcessing)) return { ok: true, request: null, error: null };
-  const pending = readJsonFile(paths.continuePending, null);
-  if (pending.error !== null) return { ok: false, request: null, error: pending.error };
-  if (pending.value === null) return { ok: true, request: null, error: null };
-  try {
-    renameSync(paths.continuePending, paths.continueProcessing);
-    return { ok: true, request: pending.value, error: null };
-  } catch (err) {
-    return { ok: false, request: null, error: `${paths.continuePending}: ${err.message}` };
-  }
-}
-
-/** @param {string} stateDir */
-export function completeContinue(stateDir) {
-  try {
-    rmSync(queuePaths(stateDir).continueProcessing, { force: true });
-    return { ok: true, error: null };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
-}
-
-/**
- * Return a claimed continue turn to pending. A newer pending request wins: the
- * claimed one is dropped rather than stacked, because both rebuild the same
- * prompt from current state.
- *
- * @param {string} stateDir
- * @param {{incrementAttempts?: boolean}} [options]
- * @returns {{ok: boolean, requeued: boolean, superseded: boolean, error: string|null}}
- */
-export function requeueContinue(stateDir, options = {}) {
-  const paths = queuePaths(stateDir);
-  if (!existsSync(paths.continueProcessing)) {
-    return { ok: true, requeued: false, superseded: false, error: null };
-  }
-  if (existsSync(paths.continuePending)) {
-    try {
-      rmSync(paths.continueProcessing, { force: true });
-      return { ok: true, requeued: false, superseded: true, error: null };
-    } catch (err) {
-      return { ok: false, requeued: false, superseded: false, error: err.message };
-    }
-  }
-  const claimed = readJsonFile(paths.continueProcessing, null);
-  if (claimed.error !== null) return { ok: false, requeued: false, superseded: false, error: claimed.error };
-  const next = {
-    ...(claimed.value ?? {}),
-    attempts: options.incrementAttempts === false ? Number(claimed.value?.attempts ?? 0) : Number(claimed.value?.attempts ?? 0) + 1,
-  };
-  const written = writeJsonFile(paths.continuePending, next);
-  if (!written.ok) return { ok: false, requeued: false, superseded: false, error: written.error };
-  try {
-    rmSync(paths.continueProcessing, { force: true });
-  } catch (err) {
-    return { ok: false, requeued: false, superseded: false, error: err.message };
-  }
-  return { ok: true, requeued: true, superseded: false, error: null };
-}
-
-/** @param {string} stateDir */
-export function readContinue(stateDir) {
-  const paths = queuePaths(stateDir);
-  const pending = readJsonFile(paths.continuePending, null);
-  const processing = readJsonFile(paths.continueProcessing, null);
-  return {
-    pending: pending.value,
-    processing: processing.value,
-    errors: [pending.error, processing.error].filter(Boolean),
-  };
-}
-
 /** @param {string} stateDir */
 export function readCards(stateDir) {
   const read = readJsonFile(queuePaths(stateDir).cards, { version: 1, cards: [] });
@@ -223,7 +118,7 @@ function writeCards(stateDir, value) {
 }
 
 /** A card's dedupe key: one handoff per (card, role). */
-export function cardKey(card) {
+function cardKey(card) {
   // The question lane is keyed by the question, not by the card: one card may
   // ask twice, and each question deserves its own answer.
   if (String(card?.queue_kind ?? "") === "question") {
@@ -249,6 +144,10 @@ function normaliseRow(row, id = undefined) {
     // The board identity selected for this handoff (Jobs/Linus/Turing). It is
     // additive metadata: the dedupe key stays (card, role).
     agent_role: row.agent_role ?? null,
+    // The platform carrying the role this row dispatches to. Session keys are
+    // (actor_kind, …): two kinds in one pool must never collide, and a role
+    // migrated to another kind must never resume the old kind's native session.
+    actor_kind: row.actor_kind ?? null,
     // A worker row names its own session; a review row keeps the batch path.
     worker_key: row.worker_key ?? null,
     // The subscriber maps an event's UUID back to this row; keep the shape
@@ -487,7 +386,7 @@ export function completeCards(stateDir, ids, options = {}) {
 }
 
 /** Terminal rows older than this are dropped; history lives on the board. */
-export const CARD_RETENTION_MS = 24 * 60 * 60 * 1000;
+const CARD_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Drop terminal card rows past their retention. The queue is a work list, not a

@@ -168,9 +168,10 @@ kind. The card's `awaiting_reason` stays the category (`E1`–`E5`); the questio
 (`waitingPayload`, the newest `question`). Entry, exits and the resume rule:
 [`status-lifecycle.md` §1](status-lifecycle.md#1-the-vocabulary).
 
-Who answers what the loop cannot: `--opened-by human` means the control turn may ask its own
-operator in that conversation; the default (`supervisor`, for systemd/launchd/cron) leaves the
-card `awaiting` for the human's comment.
+Who answers what no role may decide: `--opened-by human` means the interactive session that
+opened the work may ask its own operator in that conversation; the default (`supervisor`, for
+systemd/launchd/cron) leaves the card `awaiting` for the human's comment or sends it to the
+director lane.
 
 ### The worker's file surface
 

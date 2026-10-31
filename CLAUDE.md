@@ -36,18 +36,17 @@ a recorded decision.
 
 ## How to work here
 
-**Work by the team's workflow.** Before starting work a role owns, read the team's
-`ownership.md` from the loop's roles root — `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR`, else
-`<project>/.meerkat/roles/`, else `<agent-dir>/skills/meerkat-loop/roles/` — and follow the
-workflow it names for that work shape: for the standard team, Jobs takes product design and UI,
-Linus architecture, implementation, refactors and bugs, Turing test design, regression and
-performance, and Reviewer independent review. The installed copy is authoritative; the template
-under `skills/setup-meerkat/assets/team/standard/` is only what `/setup-meerkat` seeds it from.
-The loop injects the guide only for cards it dispatches, so a session taking the work itself
-reads it first. The card is still created and delivered through `/meerkat`. The role workflows
-name the card's branch but not where it lives: isolate before the first edit per **Branch &
-worktree workflow** below — a parallel task works in `.worktrees/<slug>`, never in the primary
-checkout.
+**Work by the role skill the card names.** A role is a standalone skill under `skills/<role>/`
+(`jobs`, `linus`, `turing`, `reviewer`, `worker`), discovered from each installed agent kind's
+skills tree. Before starting work a role owns, read that role's `SKILL.md` and follow its
+workflow: Jobs takes product design and UI, Linus architecture, implementation, refactors,
+bugs and the security toolchain, Turing test design, regression and performance, Reviewer
+independent review, and Worker the fallback work no role owns. The installed copy is
+authoritative. Decisions are the `meerkat-director` skill's: assignment, worker questions and
+E1–E5 escalation; no separate project session handles them. The card is still created and
+delivered through `/meerkat`. Role workflows name the card's branch but not where it lives:
+isolate before the first edit per **Branch & worktree workflow** below — a parallel task
+works in `.worktrees/<slug>`, never in the primary checkout.
 
 **Decompose before executing.** Any request that is more than a couple of tool calls gets a
 todo list first (TodoWrite): one item per independently verifiable step — a test that must go
@@ -195,10 +194,10 @@ the release workflow stages the image's build there before `npm pack`.
   **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/agents/docker.md`
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
 - **The skills are authored source, never generated.** `skills/meerkat/`,
-  `skills/meerkat-loop/` (docs + decisions only) and `skills/setup-meerkat/` (standalone)
-  are edited in place; there is no payload generator and no `manifest.txt`. The loop itself
-  is `src/orchestrator/` (the workflow decisions live in
-  `src/core/domain/workflow.mjs`; the loop gets them from `issue reconcile --workflow`).
+  `skills/meerkat-director/`, the five role skills (`skills/{jobs,linus,turing,reviewer,worker}/`)
+  and `skills/setup-meerkat/` (standalone) are edited in place; there is no payload generator
+  and no `manifest.txt`. The supervisor is `src/orchestrator/` (the workflow decisions live
+  in `src/core/domain/workflow.mjs`; it gets them from `issue reconcile --workflow`).
   There are **no committed copies of a skill** anywhere: `skills/` is the only `skills`
   tree in the repository, and `test/scaffold.test.mjs` asserts it.
 - **Migrations are append-only.** Never edit or delete a committed
@@ -264,15 +263,16 @@ card is claimed, delivered, reviewed or closed, and what `projects.json` means, 
   `src/foundation/review-identity.mjs`. A second reader forks the workflow planners, the SLA
   patrol and the CLI. The card rules themselves (cannot be reopened, a parent, a child or
   reviewed) are the `meerkat` skill's.
-- **The loop speaks only `taskctl`.** `src/orchestrator/**` never calls the board's HTTP API —
-  the live stream is `taskctl events follow` (the local hub), not `fetch` — and the loop carries
-  no board discovery or token code.
+- **The supervisor speaks only `taskctl`.** `src/orchestrator/**` never calls the board's HTTP
+  API — the live stream is `taskctl events follow` (the local hub), not `fetch` — and the
+  supervisor carries no board discovery or token code.
 
 The mechanisms those rules rest on, by home:
 
 - `skills/meerkat/` — every board rule: the claim/heartbeat/deliver cycle, the round-scoped
   delivery gate, review cards (flow B), `projects.json`, the brief.
-- `skills/meerkat-loop/` — when the loop patrols, dispatches and claims; the local event hub.
+- `skills/meerkat-director/` — the decision hub: assignment, worker questions, E1–E5; the
+  decision policy; the local event hub's operator view.
 - `docs/agents/development.md` — one writer per data directory and `DB_BUSY`; auth (`TASKD_ALLOW_CIDRS`
   and the token, loopback trusted); the bounded `SIGTERM` stop.
 - `docs/ops/install.md` — config topology: `.env` layering, the per-kind `.env.<actor-kind>` at the
@@ -289,8 +289,9 @@ The mechanisms those rules rest on, by home:
 Work is tracked as cards on the local Meerkat TaskPanel board; `/meerkat` is the entry for
 every card operation — a card is created, claimed, kept alive with a heartbeat and delivered
 through that skill, never through a side-channel queue. A card stops at `in_review`; the
-card's `acceptance_mode` names who moves it to `done` (`agent`: the loop after a current-round
-`APPROVE`; `human`: a person; `off`: the deliverer). See `docs/agents/issue-tracker.md`.
+card's `acceptance_mode` names who moves it to `done` (`agent`: the supervisor after a
+current-round `APPROVE`; `human`: a person; `off`: the deliverer). See
+`docs/agents/issue-tracker.md`.
 
 A card is the work a role owns: product design, architecture, implementation, bug fixes,
 refactors, test design, regression, performance and independent review. A question, a lookup,

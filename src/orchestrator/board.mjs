@@ -175,6 +175,57 @@ export function readOpenQuestions(opts, log, run = runCli) {
 }
 
 /**
+ * The director's routing input: `todo` cards with no assignee, past the 30-minute
+ * window. An epic is excluded (it is not claimable), and a card without a
+ * readable timestamp is skipped rather than guessed. Bounded by `--board-limit`.
+ *
+ * @param {object} opts
+ * @param {(message: string) => void} log
+ * @param {Function} [run] the `runCli` seam, injectable for tests
+ * @param {() => number} [now]
+ * @returns {{ok: boolean, rows: object[], error: string|null}}
+ */
+export function readUnownedTodos(opts, log, run = runCli, now = Date.now) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, rows: [], error: "no agent configured" };
+  const read = run(opts, agent, [
+    "issue",
+    "list",
+    "--status",
+    "todo",
+    "--limit",
+    String(opts.boardLimit),
+  ]);
+  if (!read.ok) {
+    log(`route lane: issue list failed: ${read.error}`);
+    return { ok: false, rows: [], error: read.error };
+  }
+  const tasks = Array.isArray(read.data?.tasks) ? read.data.tasks : [];
+  const rows = [];
+  for (const task of tasks) {
+    if (textOf(task?.kind) === "epic") continue;
+    const assignee = task?.assignee;
+    const assigned = textOf(assignee?.id) ?? textOf(assignee?.display_name);
+    if (assigned !== null) continue;
+    const ref = textOf(task?.identifier);
+    const project = textOf(task?.project);
+    if (ref === null || project === null) continue;
+    const stamp = Date.parse(String(task?.updated_at ?? task?.created_at ?? ""));
+    if (!Number.isFinite(stamp) || now() - stamp < ROUTE_UNASSIGNED_MS) continue;
+    rows.push({
+      ref,
+      project,
+      title: textOf(task?.title) ?? "",
+      updated_at: textOf(task?.updated_at) ?? textOf(task?.created_at),
+    });
+  }
+  return { ok: true, rows, error: null };
+}
+
+/** A `todo` card with no assignee is the director's after this window. */
+const ROUTE_UNASSIGNED_MS = 30 * 60 * 1000;
+
+/**
  * Read the board — the legacy stale-heartbeat patrol's input. The SLA rows come
  * from `sla list` (the board computes them); this one read is what the older
  * per-card heartbeat alert stream (`{type: "stale" | "heartbeat-unreadable", …}`)
@@ -204,7 +255,7 @@ function slaArgs(opts, periodSeconds) {
 }
 
 /** Every open SLA row the board computes. */
-export function readSlaAlerts(opts, periodSeconds = opts.patrolInterval) {
+function readSlaAlerts(opts, periodSeconds = opts.patrolInterval) {
   return runCli(opts, opts.agents[0], [
     "sla",
     "list",
@@ -217,7 +268,7 @@ export function readSlaAlerts(opts, periodSeconds = opts.patrolInterval) {
 }
 
 /** One card's rows — the pre-emit re-read. */
-export function readSlaCard(opts, ref, periodSeconds = opts.patrolInterval) {
+function readSlaCard(opts, ref, periodSeconds = opts.patrolInterval) {
   return runCli(opts, opts.agents[0], ["sla", "get", ref, ...slaArgs(opts, periodSeconds)]);
 }
 

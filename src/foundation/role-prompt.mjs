@@ -10,13 +10,10 @@
  * roles file must not be able to crowd out the card's own instructions.
  */
 
-export const ROLE_PROMPT_LIMITS = Object.freeze({
+const ROLE_PROMPT_LIMITS = Object.freeze({
   layerOne: 1400,
   decision: 1600,
   reviewer: 2400,
-  policySummary: 700,
-  ownership: 2500,
-  ownershipSummary: 700,
 });
 
 /** @param {string} text @param {number} max */
@@ -35,10 +32,10 @@ function bullets(title, values) {
 
 /**
  * The decision-round principles. Both runtime prompts — the worker handoff and
- * the continue turn — render this same text, so they cannot drift.
+ * the tick — render this same text, so they cannot drift.
  *
  * A round changes *how* a question is asked, never *who* decides: the ladder
- * (subagent → project session → human) still binds, and only a human comment
+ * (worker → director → human) still binds, and only a human comment
  * resumes an `awaiting` card.
  */
 const DECISION_ROUND_PRINCIPLES = Object.freeze([
@@ -54,13 +51,13 @@ const DECISION_ROUND_PRINCIPLES = Object.freeze([
 /**
  * @returns {string[]}
  */
-export function renderDecisionRoundPrinciples() {
+function renderDecisionRoundPrinciples() {
   return [...DECISION_ROUND_PRINCIPLES];
 }
 
 /**
- * Layer 1 — the loop's routing decision: which role, and what it owns. This is
- * deliberately short; the full workflow is layer 2.
+ * Layer 1 — the supervisor's routing decision: which role, and what it owns. This
+ * is deliberately short; the full workflow is layer 2.
  *
  * @param {object} role
  * @returns {string[]}
@@ -72,8 +69,8 @@ export function renderRoleLayerOne(role) {
     ...(role.summary ? [role.summary] : []),
     ...bullets("Responsibilities:", role.responsibilities),
     ...bullets("Boundaries:", role.boundaries),
-    "The loop selected this role from the card's assignee. This is routing guidance; the",
-    "role workflow below is authoritative for how the role works.",
+    "The supervisor selected this role from the card's assignee. This is routing guidance;",
+    "the role skill below is authoritative for how the role works.",
   ];
   return [clamp(lines.join("\n"), ROLE_PROMPT_LIMITS.layerOne)];
 }
@@ -87,8 +84,8 @@ export function renderRoleLayerOne(role) {
  */
 export function renderRoleWorkflow(role, path) {
   return [
-    "## Role workflow",
-    `Read this file before acting — it is the authoritative procedure for the ${role.agent} role:`,
+    "## Role skill",
+    `Read this skill before acting — it is the authoritative procedure for the ${role.agent} role:`,
     `  ${path}`,
     "The handoff above remains authoritative for this card's identifier and taskctl commands.",
   ];
@@ -108,10 +105,10 @@ export function renderRoleSelfCheck(role, path) {
 }
 
 /**
- * The question-first rule. A subagent never decides an unauthorized question
- * itself: it records an agent `question` comment and stops, so the project
- * session can answer or escalate. The board's human-only `awaiting` exit is not
- * the subagent's channel.
+ * The question-first rule. A worker never decides an unauthorized question
+ * itself: it records an agent `question` comment and stops, so the director can
+ * answer or escalate. The board's human-only `awaiting` exit is not the worker's
+ * channel.
  *
  * @param {object} role
  * @param {string|null} policyPath
@@ -120,7 +117,7 @@ export function renderRoleSelfCheck(role, path) {
 export function renderRoleDecision(role, policyPath) {
   const lines = [
     "## Decisions",
-    "Do not decide an unauthorized question yourself. The project session decides what it",
+    "Do not decide an unauthorized question yourself. The director decides what it",
     "can; the human decides E1-E5 (scope, acceptance, design direction, security/data,",
     "architecture). If a choice is not explicitly authorized by the handoff, plan or",
     "acceptance, add an agent question comment on this card, keep the card in_progress,",
@@ -160,73 +157,3 @@ export function renderReviewerProtocol(text, path) {
   return ["## Reviewer protocol", bounded];
 }
 
-/**
- * A bounded decision-policy summary for the continue turn. The loop must know
- * the ladder even when it cannot read the file.
- *
- * @param {{path?: string|null, text?: string|null, isDefault?: boolean}|null} policy
- * @returns {string[]}
- */
-export function renderDecisionPolicySummary(policy) {
-  const path = policy?.path ?? null;
-  const lines = [
-    "## Decision policy",
-    "Subagents do not decide. They ask the project session with an agent question comment.",
-    "The project session decides operational and plan/acceptance-internal choices; it",
-    "escalates E1-E5 (scope, acceptance, design/aesthetic, security/data, architecture)",
-    "and anything it cannot decide to the human. The loop answers with a note (never a",
-    "decision kind) and an explicit move, or leaves an E1-E5 card awaiting for the human.",
-    "Any human comment resumes an awaiting card; the resumed worker judges its content",
-    path ? `Full policy: ${path}` : "Full policy: the installed loop skill's references/decision-policy.md",
-  ];
-  return [clamp(lines.join("\n"), ROLE_PROMPT_LIMITS.policySummary)];
-}
-
-/**
- * The team's routing guide, in full, for the project session's spawn turn.
- * Routing at creation belongs to the card's author — the project session when it
- * creates or splits work, the `/meerkat` session for a human's card — not to a
- * subagent's handoff. The control turn's own routing is only the bounded fallback
- * for a card that still landed unowned (see `buildContinuePrompt`), and it cannot
- * read this guide: its lane has `taskctl`, not `Read`, so it is handed the role
- * names separately.
- *
- * @param {{path?: string|null, text?: string|null}|null} ownership
- * @returns {string[]}
- */
-export function renderOwnershipGuide(ownership) {
-  const path = ownership?.path ?? null;
-  const text = ownership?.text ?? null;
-  if (!path && !text) return [];
-  const lines = [
-    "## Work routing (ownership guide)",
-    ...(text ? [clamp(text.trim(), ROLE_PROMPT_LIMITS.ownership)] : []),
-    path ? `Full guide: ${path}` : "",
-    "Assign one accountable role per work shape; the card's assignee still selects the role.",
-    "A shape the guide does not cover is not forced into a role: it goes to a worker outside",
-    "the roles, which carries its own flow.",
-  ].filter((line) => line !== "");
-  return [lines.join("\n")];
-}
-
-/**
- * A compact routing summary for the control/continue turn. The control turn has
- * no project directory and a bounded prompt, so it gets the rules and the path.
- *
- * @param {{path?: string|null}|null} ownership
- * @returns {string[]}
- */
-export function renderOwnershipSummary(ownership) {
-  const path = ownership?.path ?? null;
-  if (!path) return [];
-  const lines = [
-    "## Work routing",
-    "Route by the team ownership guide: one accountable role per work shape, the reviewer",
-    "independent of the producer. A shape outside the roles goes to an outside worker, not",
-    "force-fit into a row. An unowned or ambiguous shape goes to the project session; split",
-    "it into one card per role shape, not per technical layer. The card's assignee still",
-    "selects the executing role; the guide does not change that.",
-    `Full guide: ${path}`,
-  ];
-  return [clamp(lines.join("\n"), ROLE_PROMPT_LIMITS.ownershipSummary)];
-}

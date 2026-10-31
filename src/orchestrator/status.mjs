@@ -3,20 +3,20 @@
  * The supervisor's runtime status — and the one explicit takeover a live
  * session may perform.
  *
- * The loop has one control turn and one dispatcher (the resident pool). This
- * entry answers "who is driving it right now?" from facts, never from a guess:
+ * The supervisor runs its passes itself; the resident pool is the one dispatcher.
+ * This entry answers "who is driving it right now?" from facts, never from a guess:
  *
  *   * the pool's own state file (`sessions.state.json`: poolPid + heartbeat);
  *   * `session.lock` (the pool is starting);
- *   * the continue files (a turn is pending, processing or one-shot);
+ *   * the tick lock (a one-shot tick is in flight);
  *   * the subscriber state (the event daemon is alive);
  *   * the installed units (launchd / systemd / cron) — "configured but idle"
  *     must not be mistaken for "absent", or a session would race the service
  *     manager for the same pool.
  *
- * `--take-over` starts the pool in **external control** mode: the pool keeps
- * the project sessions and the card queue, while the live session runs the
- * control turn. It refuses whenever anything else could own the loop, and it
+ * `--take-over` starts the pool for this session (external mode: the session
+ * owns it). There is no control turn in either mode — the supervisor's tick runs
+ * the passes. It refuses whenever anything else could own the loop, and it
  * records the pid so `--stop` only ever stops what this command started.
  *
  * Node builtins only.
@@ -30,7 +30,9 @@ import { fileURLToPath } from "node:url";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 import { AGENT_DIRS, parseArgs, resolveLoopConfig, resolveScanSet } from "./options.mjs";
-import { readContinue } from "./queue.mjs";
+import { loadRoles } from "../foundation/roles.mjs";
+import { describeRolePlatforms } from "../foundation/role-platforms.mjs";
+import { availableKinds } from "./platforms.mjs";
 import {
   isProcessAlive,
   loadContinueLock,
@@ -50,7 +52,7 @@ const USAGE = `Usage: taskctl loop status [--json] [--agent <name>] [--actor-kin
 
 Reports whether a supervisor/pool is running and what is driving it, including the
 agent platform (--actor-kind) and the scan set the loop resolves from its config.
-  --take-over  start the pool in external-control mode (explicit; refuses unless absent)
+  --take-over  start the pool for this session (explicit; refuses unless absent)
   --stop       stop the pool this session started
 Nothing here is a scheduler: status only reads, and a takeover is one pool.`;
 
@@ -148,7 +150,6 @@ export function probeSupervisor(opts, deps = {}) {
   const starting =
     pool.live !== true && Number.isInteger(lock?.pid) && isAlive(lock.pid);
 
-  const continueState = readContinue(stateDir);
   const oneShot = loadContinueLock(opts.continueState);
   const subscribeState = loadSubscribeState(subscribeStatePath(stateDir));
   const subscribeLive =
@@ -160,11 +161,11 @@ export function probeSupervisor(opts, deps = {}) {
     record !== null && Number.isInteger(record.poolPid) && isAlive(record.poolPid);
 
   let verdict;
-  if (oneShot !== null || continueState.processing !== null) verdict = "busy";
+  if (oneShot !== null) verdict = "busy";
   else if (pool.live === true) verdict = "running";
   else if (starting) verdict = "starting";
   else if (units.any) verdict = "configured-idle";
-  else if (subscribeLive || continueState.pending !== null) verdict = "partial";
+  else if (subscribeLive) verdict = "partial";
   else verdict = "absent";
 
   // The scan set the loop will use, resolved exactly as the loop resolves it. This is
@@ -183,6 +184,24 @@ export function probeSupervisor(opts, deps = {}) {
     // fall through with the names from the command line
   }
 
+  // Where each role is installed and where it will actually run. Installation
+  // location is the routing, so a role silently stranded on a kind whose CLI is
+  // missing must be visible here — not discovered when a card strands.
+  let roles = [];
+  try {
+    const roleSet = loadRoles({
+      home: typeof opts.home === "string" ? opts.home : null,
+      primaryKind: opts.actorKind,
+      explicitDir: opts.rolesDir ?? null,
+    });
+    roles = describeRolePlatforms(roleSet.roles, {
+      primaryKind: opts.actorKind,
+      available: availableKinds(),
+    });
+  } catch {
+    // A status read never fails on a bad role tree; the absence is the report.
+  }
+
   return {
     verdict,
     // Which agent platform this loop is. `units.kind` carries it too, but a human or a
@@ -190,6 +209,7 @@ export function probeSupervisor(opts, deps = {}) {
     // than one loop kind, and this report answers for one of them.
     platform: opts.actorKind ?? "claude",
     agents,
+    roles,
     pool: {
       ...pool,
       starting,
@@ -197,8 +217,6 @@ export function probeSupervisor(opts, deps = {}) {
       lockPid: Number.isInteger(lock?.pid) ? lock.pid : null,
     },
     continue: {
-      pending: continueState.pending !== null,
-      processing: continueState.processing !== null,
       oneShot: oneShot === null ? null : { pid: oneShot.pid ?? null, startedAt: oneShot.startedAt ?? null },
     },
     subscribe: {
@@ -322,7 +340,7 @@ export async function stopSupervisor(opts, deps = {}) {
 
 function humanReport(report) {
   const pool = report.pool.live
-    ? `running (pid ${report.pool.poolPid}, control ${report.pool.controlMode}, heartbeat ${Math.round((report.pool.heartbeatAgeMs ?? 0) / 1000)}s)`
+    ? `running (pid ${report.pool.poolPid}, heartbeat ${Math.round((report.pool.heartbeatAgeMs ?? 0) / 1000)}s)`
     : report.pool.starting
       ? `starting (lock pid ${report.pool.lockPid ?? "?"})`
       : `not running (${report.pool.reason})`;
@@ -342,9 +360,10 @@ function humanReport(report) {
     `supervisor: ${report.verdict}`,
     `  platform:  ${report.platform} (~/${AGENT_DIRS[report.platform] ?? report.platform})`,
     `  scan set:  ${report.agents.length > 0 ? report.agents.join(",") : "(none)"}`,
+    ...(Array.isArray(report.roles) ? report.roles.map((line) => `  ${line}`) : []),
     `  pool:      ${pool}`,
     ...(workerRecords.length > 0 ? [`  workers:   ${workerLine}`] : []),
-    `  continue:  ${report.continue.processing ? "processing" : report.continue.pending ? "pending" : report.continue.oneShot ? `one-shot pid ${report.continue.oneShot.pid}` : "idle"}`,
+    `  continue:  ${report.continue.oneShot ? `one-shot pid ${report.continue.oneShot.pid}` : "idle"}`,
     `  subscribe: ${report.subscribe.live ? `running (pid ${report.subscribe.pid})` : "not running"}`,
     `  units:     ${units}`,
     ...(report.sessionStarted === null

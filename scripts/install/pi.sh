@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Meerkat TaskPanel for Pi / Agent Skills: ~/.agents/skills/{meerkat,meerkat-loop}
+# Install Meerkat TaskPanel for Pi / Agent Skills: ~/.agents/skills/{meerkat,meerkat-director}
 #
 # Pi has no timer, so it also gets the external supervisor's scheduling
 # units (~/.agents/scheduling) and the per-kind config
@@ -9,7 +9,7 @@ set -eu
 . "$(cd "$(dirname "$0")" && pwd)/_common.sh"
 
 install_skill ".agents" "pi"
-install_loop_skill ".agents" "pi"
+install_director_skill ".agents" "pi"
 
 export_tp_env ".agents" "pi"
 

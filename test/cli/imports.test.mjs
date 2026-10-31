@@ -288,15 +288,20 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
     }
     assert.deepEqual(violations, []);
 
-    // The loop is part of the toolkit now, so its skill carries docs only. A
+    // The director is part of the toolkit now, so its skill carries docs only. A
     // reintroduced `scripts/` or `src/` tree under it would mean a second
     // implementation shipped beside the real one.
     for (const dir of ["scripts", "templates", "src", "manifest.txt"]) {
       assert.equal(
-        existsSync(join(ROOT, "skills/meerkat-loop", dir)),
+        existsSync(join(ROOT, "skills/meerkat-director", dir)),
         false,
-        `the loop skill must not carry ${dir}`,
+        `the director skill must not carry ${dir}`,
       );
     }
+    assert.equal(
+      existsSync(join(ROOT, "skills/meerkat-loop")),
+      false,
+      "the retired meerkat-loop skill has no directory in the tree",
+    );
   });
 });

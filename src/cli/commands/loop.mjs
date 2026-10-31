@@ -41,7 +41,7 @@ const POLICY = [
   num("continue-interval", "continueInterval", "<sec>", "Continue clock cadence."),
   str("continue", "continue", "<yes|no>", "Enable the continue clock."),
   str("opened-by", "openedBy", "<human|supervisor>", "Who opened this loop."),
-  str("control", "control", "<internal|external>", "Who owns the control turn (session mode)."),
+  str("control", "control", "<internal|external>", "Deprecated takeover marker for session mode; there is no control turn."),
   str("resident", "resident", "<auto|no>", "Whether a resident pool is expected."),
   num("session-max-age", "sessionMaxAge", "<sec>", "Resident session lifetime."),
   num("session-turn-timeout", "sessionTurnTimeout", "<sec>", "Turn bound (1200..7199)."),

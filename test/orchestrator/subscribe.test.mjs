@@ -452,7 +452,7 @@ describe("loop/subscribe — runtime state", () => {
 });
 
 describe("loop/subscribe — the process loop", () => {
-  it("turns a dispatch event into one continue turn, then stops on abort", async () => {
+  it("turns a dispatch event into one tick, then stops on abort", async () => {
     const controller = new AbortController();
     let runs = 0;
     const code = await runSubscribe(

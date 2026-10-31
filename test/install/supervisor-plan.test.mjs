@@ -123,9 +123,13 @@ describe("_common.sh: supervisor_actor_kinds_value resolves the action's kinds",
     assert.equal(resolve("", "", " server claude openclaw codex pi ").stdout, "");
   });
 
-  it("an explicit list is the only multi-kind form, and de-duplicates in first-occurrence order", () => {
-    assert.equal(resolve("enable", "claude,pi", " server claude codex pi ").stdout, " claude pi ");
-    assert.equal(resolve("enable", "pi,claude,pi", " server claude codex pi ").stdout, " pi claude ");
+  it("enable names one primary kind; disable may still list kinds and de-duplicates", () => {
+    assert.equal(resolve("enable", "claude", " server claude codex pi ").stdout, " claude ");
+    const many = resolve("enable", "claude,pi", " server claude codex pi ");
+    assert.notEqual(many.status, 0);
+    assert.match(many.stderr, /names ONE primary kind/);
+    assert.match(many.stderr, /role placement/);
+    assert.equal(resolve("disable", "codex,codex", " server claude codex pi ").stdout, " codex ");
     assert.equal(resolve("disable", "codex", " server claude codex pi ").stdout, " codex ");
   });
 
@@ -138,11 +142,11 @@ describe("_common.sh: supervisor_actor_kinds_value resolves the action's kinds",
   it("rejects openclaw, server and an unknown kind — with their own reasons", () => {
     const openclaw = resolve("enable", "openclaw", " claude ");
     assert.notEqual(openclaw.status, 0);
-    assert.match(openclaw.stderr, /OpenClaw has no meerkat-loop supervisor to enable/);
+    assert.match(openclaw.stderr, /OpenClaw has no meerkat-director supervisor to enable/);
 
     const server = resolve("enable", "server", " claude ");
     assert.notEqual(server.status, 0);
-    assert.match(server.stderr, /the server target has no meerkat-loop supervisor/);
+    assert.match(server.stderr, /the server target has no meerkat-director supervisor/);
 
     const unknown = resolve("enable", "emacs", " claude ");
     assert.notEqual(unknown.status, 0);
@@ -152,7 +156,7 @@ describe("_common.sh: supervisor_actor_kinds_value resolves the action's kinds",
   it("validates an explicit list even when no action was requested", () => {
     const run = resolve("", "openclaw", " claude ");
     assert.notEqual(run.status, 0);
-    assert.match(run.stderr, /OpenClaw has no meerkat-loop supervisor to enable/);
+    assert.match(run.stderr, /OpenClaw has no meerkat-director supervisor to enable/);
   });
 
   it("rejects an unknown action", () => {
@@ -512,7 +516,6 @@ describe("supervisor: the docs and the implementation agree", () => {
         ],
       }),
     );
-    writeFileSync(join(dir, "continue.pending.json"), JSON.stringify({ version: 1, reason: "timer" }));
 
     const live = poolReport(dir, { isAlive: () => true, now: () => now });
     assert.equal(live.live, true);
@@ -520,7 +523,6 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.equal(live.heartbeatAgeMs, 3_000);
     assert.equal(live.liveSubagents, 2, "running and reattaching subagents occupy a slot");
     assert.equal(live.cardsQueued, 1);
-    assert.equal(live.continueQueued, true);
 
     assert.equal(poolReport(dir, { isAlive: () => false, now: () => now }).live, false);
   });
@@ -629,12 +631,12 @@ describe("supervisor: the docs and the implementation agree", () => {
 
   it("the docs state the one-supervisor rule and the first-kind default", () => {
     const scheduling = doc("docs/scheduling.md");
-    assert.match(scheduling, /One loop supervisor per machine/);
+    assert.match(scheduling, /One supervisor per machine/);
     assert.match(scheduling, /first loop kind in normalized `--target` order/);
     assert.match(scheduling, /systemd.*unit names are machine-wide/s);
 
     const install = doc("docs/ops/install.md");
-    assert.match(install, /One loop supervisor per machine is the rule/);
+    assert.match(install, /One supervisor per machine is the rule/);
     assert.match(install, /first loop kind in/);
     assert.match(install, /--supervisor=disable` and `--supervisor=status` cover/);
   });
@@ -646,7 +648,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     const install = doc("docs/ops/install.md");
     assert.match(install, /--supervisor=enable/, "docs/ops/install.md must name the opt-in");
     assert.match(install, /disable/, "docs/ops/install.md must name the way back out");
-    for (const relative of ["skills/meerkat-loop/SKILL.md", "skills/meerkat-loop/references/operation.md"]) {
+    for (const relative of ["skills/meerkat-director/SKILL.md", "skills/meerkat-director/references/operation.md"]) {
       const text = doc(relative);
       assert.doesNotMatch(text, /install\.sh/, `${relative} must not carry installation instructions`);
       assert.doesNotMatch(text, /--supervisor=/, `${relative} must not carry supervisor enable/disable/status`);
