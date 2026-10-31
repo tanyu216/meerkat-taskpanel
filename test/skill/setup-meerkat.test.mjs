@@ -507,7 +507,7 @@ describe("skill frontmatter and assets", () => {
     assert.match(check, /reconstructed — <evidence>/, "the self-check knows provenance");
     assert.match(check, /not run — <reason>/, "an unexecuted gate is recorded");
     assert.match(check, /never by a claimed pass/i, "an audit never claims a gate");
-    assert.match(check, /^24\./m, "the reconstruction items append after item 23");
+    assert.match(check, /^[-*] \*\*R1\.\*\*/m, "the reconstruction items start at R1");
     assert.match(linus, /missing or partial|reconstruction/i, "a missing foundation routes here");
     // The runtime caps a role workflow at 64 KiB (src/foundation/roles.mjs); keep 4 KiB
     // of headroom for the next edit rather than letting the file drift to the edge.
@@ -1226,8 +1226,26 @@ describe("skill frontmatter and assets", () => {
       const check = readFileSync(join(team, role, "self-check.md"), "utf8");
       assert.match(check, /pre-delivery audit/, `${role} self-check names the audit`);
       assert.match(check, /not\s+the `## Handoff` block/, `${role} self-check is not the handoff`);
-      assert.match(check, /re-export/i, `${role} self-check re-exports the brief`);
-      assert.match(check, /card\.md/, `${role} self-check names the brief`);
+      if (role === "linus") {
+        assert.match(
+          check,
+          /refresh the card brief/i,
+          "linus self-check refreshes the brief through the skill",
+        );
+        assert.doesNotMatch(
+          check,
+          /re-export/i,
+          "linus self-check leaves board mechanics to the skill",
+        );
+        assert.doesNotMatch(
+          check,
+          /card\.md/,
+          "linus self-check leaves the brief file to the skill",
+        );
+      } else {
+        assert.match(check, /re-export/i, `${role} self-check re-exports the brief`);
+        assert.match(check, /card\.md/, `${role} self-check names the brief`);
+      }
       assert.match(check, /`commit` anchor/i, `${role} self-check requires the commit anchor`);
     }
 
@@ -1386,6 +1404,106 @@ describe("skill frontmatter and assets", () => {
       "ci-security-gap",
     ]) {
       assert.ok(names.has(name), `eval ${name} must exist`);
+    }
+  });
+
+  it("keeps the Linus flows step-navigable, concise and board-delegated", () => {
+    const team = join(SKILL, "assets", "team", "standard");
+    const names = ["workflow", "architecture-workflow", "implementation-workflow", "refactor-workflow"];
+    const texts = Object.fromEntries(
+      names.map((name) => [name, readFileSync(join(team, "linus", `${name}.md`), "utf8")]),
+    );
+    const check = readFileSync(join(team, "linus", "self-check.md"), "utf8");
+    const ownership = readFileSync(join(team, "ownership.md"), "utf8");
+
+    for (const [name, text] of Object.entries(texts)) {
+      assert.ok(text.includes("## Steps at a glance"), `${name} opens with a step list`);
+    }
+    for (const name of ["architecture-workflow", "implementation-workflow", "refactor-workflow"]) {
+      const text = texts[name];
+      const start = text.indexOf("## Steps at a glance");
+      const glance = text.slice(start, text.indexOf("\n## ", start + 1));
+      const listed = [...glance.matchAll(/^(\d+)\. /gm)].map((match) => Number(match[1]));
+      const headings = [...text.matchAll(/^### (\d+)\. /gm)].map((match) => Number(match[1]));
+      assert.deepEqual(listed, headings, `${name} step list matches its headings`);
+    }
+    const sharedMoves = [...texts.workflow.matchAll(/^(\d+)\. /gm)].map((match) => Number(match[1]));
+    assert.deepEqual(sharedMoves, [1, 2, 3, 4, 5, 6], "workflow.md lists six shared moves");
+
+    for (const name of ["architecture-workflow", "implementation-workflow", "refactor-workflow"]) {
+      for (const block of texts[name].split(/^### \d+\. /m).slice(1)) {
+        assert.match(block, /\*\*Purpose\.\*\*/, `${name} step has a purpose`);
+        assert.match(block, /\*\*Watch for\.\*\*/, `${name} step has a watch-for`);
+        assert.match(block, /\*\*Essentials\.\*\*/, `${name} step has essentials`);
+      }
+    }
+
+    const ids = [...check.matchAll(/^- \*\*([SAIRF])(\d+)\.\*\*/gm)].map((match) => [match[1], Number(match[2])]);
+    assert.ok(ids.length >= 40, "self-check uses prefixed IDs");
+    const seen = new Set();
+    for (const [prefix, number] of ids) {
+      const key = `${prefix}${number}`;
+      assert.ok(!seen.has(key), `self-check ID ${key} is unique`);
+      seen.add(key);
+    }
+    for (const prefix of ["S", "A", "R", "I", "F"]) {
+      const numbers = ids.filter(([p]) => p === prefix).map(([, n]) => n).sort((a, b) => a - b);
+      assert.deepEqual(numbers, numbers.map((_, index) => index + 1), `${prefix} IDs are contiguous`);
+    }
+
+    for (const file of ["architecture-workflow.md", "implementation-workflow.md", "refactor-workflow.md"]) {
+      assert.ok(ownership.includes(`linus/${file}`), `ownership routes ${file}`);
+    }
+    assert.doesNotMatch(texts.workflow, /\| Card \| Workflow \|/, "workflow.md has no selection table");
+    assert.match(texts.workflow, /\.\.\/ownership\.md/, "workflow.md points at the ownership guide");
+
+    const arch = texts["architecture-workflow"];
+    const step2 = arch.slice(arch.indexOf("### 2."), arch.indexOf("### 3."));
+    assert.match(step2, /Create[^.]*chooses and records/i, "Create chooses the stack");
+    assert.match(step2, /Extend[^.]*foundation gap/i, "Extend is the missing-table gap");
+    assert.doesNotMatch(step2, /missing[^.]*mode is create/i, "Create is not asked for an inherited table");
+    const step8 = arch.slice(arch.indexOf("### 8."), arch.indexOf("### 9."));
+    assert.match(step8, /ask through the board/i, "the E5 review asks through the board");
+    assert.doesNotMatch(step8, /agent question|in_progress/i, "the E5 review leaves board mechanics to the skill");
+
+    assert.match(check, /committed regression test/i, "the self-check requires the regression test");
+    assert.match(check, /follow-up card/i, "Turing verification is a follow-up");
+    assert.doesNotMatch(check, /Turing's required regression evidence/, "the old delivery claim is gone");
+    assert.match(check, /no-card run/i, "the no-card run is named");
+    assert.match(check, /≥80%/, "the coverage floor is a floor");
+    for (const name of ["architecture-workflow", "implementation-workflow", "refactor-workflow"]) {
+      assert.match(texts[name], /DELIVERY_NEEDS_COMMIT/, `${name} names the delivery gate`);
+      assert.match(texts[name], /`commit` anchor/, `${name} requires the commit anchor`);
+    }
+
+    const ceilings = {
+      workflow: 110,
+      "architecture-workflow": 460,
+      "implementation-workflow": 140,
+      "refactor-workflow": 160,
+    };
+    for (const [name, ceiling] of Object.entries(ceilings)) {
+      const lines = texts[name].split("\n").length;
+      assert.ok(lines <= ceiling, `${name} stays under ${ceiling} lines (${lines})`);
+    }
+    assert.ok(check.split("\n").length <= 180, "self-check stays under 180 lines");
+    for (const [name, text] of Object.entries({ ...texts, selfCheck: check })) {
+      assert.doesNotMatch(text, /\| Must contain \| Done when \|/, `${name} has no manual table`);
+    }
+
+    for (const [name, text] of Object.entries({ ...texts, selfCheck: check })) {
+      if (/card|acceptance|deliver|claim|heartbeat|brief/i.test(text)) {
+        assert.match(
+          text,
+          /`meerkat`[^\n]*(board skill|card operation|card brief)/i,
+          `${name} points at the board skill`,
+        );
+      }
+      assert.doesNotMatch(
+        text,
+        /re-export|card\.md|agent question|in_progress/,
+        `${name} leaves board mechanics to the skill`,
+      );
     }
   });
 

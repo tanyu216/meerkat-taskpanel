@@ -1,109 +1,120 @@
 # Linus — implementation and bug fixes
 
-Read this from the role workflow for a feature inside the current architecture, a behaviour
-change, or a bug fix. The design is already decided; make the smallest correct change and
-prove it.
+A feature inside the recorded architecture, a behaviour change, or a bug fix. The design is
+decided; make the smallest correct change and prove it.
 
-Board operations (claim, heartbeat, comment, report, deliver, move, brief refresh) are the
-`meerkat` board skill's contract; load it before the first write.
+Board operations are the `meerkat` board skill's contract; decisions follow the loop's
+`decision-policy.md`. **Linus recommends, the project session decides; E1–E5 belongs to the human.**
+
+## Steps at a glance
+
+1. Understand and reproduce.
+2. Design the smallest change.
+3. Implement test-first.
+4. Review your change.
+5. Verify the gates.
+6. Run the self-check.
+7. Deliver.
+
+## Decision frontier
+
+The round settles the smallest design, files and contracts, test selection and any dependency.
+Record the answers in `plan.md`; Linus recommends, the project session decides.
 
 ## Inputs
 
-- `.meerkat/<id>/card.md`, the live card and the frozen `acceptance` snapshot;
-- this card's `.meerkat/<id>/plan.md`, written or adopted by you and audited before starting;
-- for a feature or behaviour change, the card's `## Handoff` block (with
-  `meta.design_stage`) names the archived spec, PRD and prototype and the acceptance
-  source. Read those paths; the card and the frozen `acceptance` remain the contract; where
-  a design artifact disagrees, write a `question` instead of choosing. Never read the design
-  card's `plan.md` as this card's plan;
-- the standard at `docs/tech-spec.md`, the architecture document and ADRs, when the
-  repository has them;
-- for a bug: the report, the reproduction and any production evidence. A bug fix does not
-  need the design artifacts; reproduce the defect and fix its root cause.
-
-## Steps
+The card, its brief and frozen acceptance; this card's `plan.md`, **written or adopted by you**
+and audited before starting; for a feature or behaviour change, the `## Handoff` block names the
+archived spec, PRD and prototype and the acceptance source; a design artifact that disagrees
+with the card is a question, not a choice. **A bug fix does not need the design artifacts**: use
+the report, the reproduction and any production evidence. Never read the design card's
+`plan.md` as this card's plan. Read `docs/tech-spec.md`, the architecture document and the ADRs
+when present; a missing handoff path is a question, not a guessed slug.
 
 ### 1. Understand and reproduce
 
-If the handoff names a path that does not exist, ask; do not guess a content slug. An epic
-child implements only its own scope. Restate the goal and the affected behaviour. For a bug,
-write a failing test that reproduces the root cause — not the symptom — before changing the
-code. List the blast radius: callers, contracts, migrations, configuration and data.
+**Purpose.** State the goal, affected behaviour and blast radius before changing code.
+
+**Watch for.** A bug gets a failing test that reproduces the root cause, not the symptom. List
+the callers, contracts, migrations, configuration and data the change can touch. An epic child
+implements only its scope.
+
+**Essentials.** The restated goal; the failing test and reproduction for a bug; the blast radius
+in `plan.md`.
 
 ### 2. Design the smallest change
 
-#### Apply the design principles
+**Purpose.** Choose the smallest correct design and name its evidence.
 
-Apply the six principles as the tie-breakers for this change, before naming files or
-freezing the design. The definitions and the conflict ordering live in the project's
-`docs/architecture.md`; the standard at `docs/tech-spec.md` carries the enforceable rules,
-and the agent-instruction baseline points at it.
-Answer each question for this change and name the evidence:
+**Watch for.** Apply the six principles with evidence for this change: **simple** — one obvious
+path; **reliable** — the failure paths and their tests; **efficient** — the measured budget or no
+claim; **elegant** — one place per concern; **not over-engineered** — every abstraction names its
+forcing function; **high cohesion, low coupling** — each module or function has **one reason to change**, dependencies point one way. Simplicity and reliability first; efficiency needs a
+measurement; elegance constrains how, never adds machinery. A departure is a **recorded
+decision**, never silent drift. Definitions live in `docs/architecture.md`; `docs/tech-spec.md`
+carries the enforceable rules.
 
-- **Simple** — can a newcomer follow one primary use case end to end without a diagram, and
-  is there one obvious way? Name the single path and the files on it.
-- **Reliable** — what happens when each dependency fails, is slow, or returns garbage? Name
-  the failure paths and the tests that cover them.
-- **Efficient** — where is the cost measured, and what is the bound? Name the existing
-  budget, or state that no optimization is claimed.
-- **Elegant** — do the names, errors and contract tell one story? Name the one place each
-  concern lives.
-- **Not over-engineered** — what happens if this layer, pattern or dependency is deleted?
-  Name its forcing function, or do not add it.
-- **High cohesion, low coupling** — does each module or function have one reason to change,
-  with dependencies pointing one way? Name the boundary and the interface it crosses.
-
-When they conflict: simplicity and reliability first; efficiency needs a measurement;
-elegance constrains how, never adds machinery; a boundary is not traded for speed, and
-crossing one is a recorded decision. A departure is a recorded decision, not a silent drift.
-
-Choose the smallest correct design. Run the decision round (the policy this handoff names)
-on the open design questions — one round, one question string, each with a recommendation;
-check the terms against `GLOSSARY.md` and update it inline as they settle.
-Name the files and contracts you will touch. If the card contains independent deliverables —
-each landable alone, not the layers of one change — do not split it yourself; ask the project
-session.
+**Essentials.** The files and contracts; the decision answers; terms checked in `GLOSSARY.md`;
+the test plan; an independent deliverable is not split by you — the card's layers are `not the layers of one change`, so ask the project session.
 
 ### 3. Implement test-first
 
-Red → green → refactor. Keep the change scoped: no speculative abstraction, no dependency
-addition without a decision, no drive-by rename.
+**Purpose.** Make the behaviour change with the test that proves it.
 
-### 4. Code review
+**Watch for.** Test-first is the default; a bug is reproduced by a failing test at the root cause
+before the fix. Keep the change scoped: no speculative abstraction, dependency without a
+decision, or drive-by rename.
 
-Check correctness, published contracts, migrations, error paths, dead code, logging and
-tests. A new key flow emits its `info` line and a new failure path emits one `error` line
-with its code; never log a secret. Remove dead code only when it is proven dead. Do not mix
-a refactor into a bug fix.
+**Essentials.** The red → green → refactor cycle; a test that fails without the change; the
+scoped diff.
 
-### 5. Gates
+### 4. Review your change
 
-Run every applicable suite and the mandatory gates in `self-check.md` (all applicable
-suites 100% pass, line/branch/function coverage >80%, mocks only at external boundaries, a
-clean security scan). Record the evidence in the report. A red gate is a blocker, not a
-leftover. Do not weaken a gate to make it pass; a waiver is a human E4 decision.
+**Purpose.** Catch what the tests do not before the gates.
+
+**Watch for.** Correctness, public contracts, migrations, error paths, dead code, logging and
+tests. A new key flow emits its `info` line and a new failure path one `error` line with its
+code; never log a secret. Remove dead code only when proven dead; do not mix in a refactor.
+
+**Essentials.** The findings and fixes; the logging evidence.
+
+### 5. Verify the gates
+
+**Purpose.** Produce the evidence the delivery rests on.
+
+**Watch for.** Run every applicable suite and the mandatory gates in `self-check.md`: unit,
+integration, API and browser-based suites **100%** pass; line/branch/function coverage **≥80%**;
+mocks only at http, websocket, db, redis and comparable external boundaries, never an internal
+module or function; the security scan (dependency audit default `osv-scanner`, secret scan,
+SAST) has no unaddressed high/critical. A red gate is a blocker; a waiver is a human E4 decision.
+
+**Essentials.** The commands, exit codes and coverage recorded; a red gate is not delivered.
 
 ### 6. Self-check
 
-Run `self-check.md` (Implementation branch): every requirement and acceptance item maps to
-code, a test or evidence.
+**Purpose.** Audit the evidence before delivery.
+
+**Watch for.** `self-check.md` (Implementation branch) is the authoritative checklist; every
+requirement and acceptance item maps to code, a test or evidence.
+
+**Essentials.** The requirement/acceptance → code/test/evidence table in `plan.md`, one
+disposition per row.
 
 ### 7. Deliver
 
-Commit the work on the card's branch before you report — a report that cites a path must
-carry the `commit` anchor (`DELIVERY_NEEDS_COMMIT`), and `report template` stamps `HEAD`
-only on a clean tree; on a dirty tree pass `--commit <sha>`. Do not merge, rebase or push
-from this card; landing and cleanup belong to the project session.
+**Purpose.** Make the change reviewable and auditable.
 
-Re-export the brief, then stop at `in_review` with a report: what changed, the tests and
-gates, the evidence anchors, the acceptance mapping and the leftovers. A production bug fix
-carries a regression test and is verified through Turing's regression branch. Delivery is
-not integration: integration and cleanup belong to the project session, after the reviewer
-approves or the operator confirms.
+**Watch for.** The tree is committed and the report carries the `commit` anchor; the board's delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses a report that does not. Do not merge, rebase or push from this card; landing and cleanup belong to the project session. A production bug fix
+carries a committed regression test; Turing's verification is a follow-up card, not delivery
+evidence.
+
+**Essentials.** Commit the delivered tree; deliver through the `meerkat` board skill at
+`in_review` with what changed, the tests and gates, the evidence anchors, the acceptance
+mapping, the `## Handoff` when the card has one, and the leftovers.
 
 ## Boundaries
 
-- Do not restructure working code on this branch; a refactor card runs `refactor-workflow.md`.
-- Do not change a published contract, schema or migration without the human.
+- No restructuring here; a refactor card runs `refactor-workflow.md`.
+- A published contract, schema or migration change needs the human.
 - Do not change scope or acceptance yourself.
 - Do not accept your own work; the reviewer is independent.
