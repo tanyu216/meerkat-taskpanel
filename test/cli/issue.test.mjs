@@ -52,6 +52,75 @@ const deliverIssue = (run, ref) => {
   );
 };
 
+describe("cli/issue — wait holds for the ladder", () => {
+  it("returns answered when the card is released, without writing the board itself", async () => {
+    await withCli(async ({ run, url, dataDir, token }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const created = dataOf(
+        run([
+          "issue", "create", "--project", "demo", "--title", "Ask",
+          "--assignee", "alice", "--assignee-kind", "agent", "--json",
+        ]),
+      );
+      const ref = created.task.identifier;
+      dataOf(run(["issue", "claim", ref, "--agent", "alice", "--json"], { actorKind: "claude" }));
+      const added = dataOf(
+        run(
+          ["comment", "add", ref, "--kind", "question", "--body", "Which option?", "--agent", "alice", "--json"],
+          { actorKind: "claude" },
+        ),
+      );
+      const questionId = added.comment.id;
+
+      const env = {
+        ...baseEnv(),
+        TASKD_DATA_DIR: dataDir,
+        TASKD_RUNTIME_POINTER: join(dataDir, "runtime.json"),
+        TASKD_TOKEN: token,
+        TASKD_NO_AUTOSTART: "1",
+      };
+      const child = spawn(
+        process.execPath,
+        [
+          CLI, "--actor-kind", "claude", "--agent", "alice",
+          "issue", "wait", ref, "--question", questionId,
+          "--timeout", "5000", "--interval", "10", "--json", "--url", url,
+        ],
+        { env },
+      );
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      const exited = new Promise((resolve) => child.on("exit", (code) => resolve(code)));
+
+      // The director's protocol: a note, then the release.
+      dataOf(
+        run(
+          ["comment", "add", ref, "--kind", "note", "--body", "decision: B", "--agent", "alice", "--json"],
+          { actorKind: "claude" },
+        ),
+      );
+      dataOf(run(["issue", "move", ref, "todo", "--agent", "alice", "--json"], { actorKind: "claude" }));
+
+      const code = await exited;
+      assert.equal(code, 0, stderr);
+      const payload = JSON.parse(stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.data.outcome, "answered");
+      // The note answers before the release: the wait may return on either
+      // state, and both are correct — the release is the lane's settle, while
+      // the worker may continue on the answer it already has.
+      assert.ok(["in_progress", "todo"].includes(payload.data.status), payload.data.status);
+      assert.match(payload.data.answer, /decision: B/);
+    });
+  });
+});
+
 describe("cli/issue — create, list, get", () => {
   it("creates a task with acceptance criteria and a free-text assignee", async () => {
     await board(async ({ run }) => {
