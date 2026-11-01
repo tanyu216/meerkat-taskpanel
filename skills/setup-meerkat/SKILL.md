@@ -1,6 +1,6 @@
 ---
 name: setup-meerkat
-description: Idempotently install and configure Meerkat TaskPanel for this machine — detect the server, taskctl, board/director skills, role skills and supervisor, install what is missing, offer the Matt Pocock issue-tracker integration, move a Jobs/Linus/Turing/Reviewer/Worker role skill between agent platforms, and initialize a project's decision rights. Use when the user runs /setup-meerkat or asks to set up, repair, or add role skills to Meerkat TaskPanel.
+description: Idempotently install and configure Meerkat TaskPanel for this machine — detect the server, taskctl, board/chat/director skills, role skills and supervisor, install what is missing, offer the Matt Pocock issue-tracker integration, move a Jobs/Linus/Turing/Reviewer/Worker role skill between agent platforms, and initialize a project's decision rights. Use when the user runs /setup-meerkat or asks to set up, repair, or add role skills to Meerkat TaskPanel.
 disable-model-invocation: true
 ---
 
@@ -9,7 +9,7 @@ disable-model-invocation: true
 One idempotent pass over the things a working Meerkat TaskPanel deployment needs:
 
 1. **Install/repair** the server, `taskctl`, the `meerkat` board skill, the
-   `meerkat-director` decision hub and the supervisor.
+   `meerkat-chat` human console, the `meerkat-director` decision hub and the supervisor.
 2. **Point the CLI at the right board** — local `taskd` or a remote one — and confirm the
    choice before anything starts.
 3. **Offer the Matt Pocock integration** (`/setup-matt-pocock-skills`) when that skill is
@@ -66,7 +66,7 @@ Report the important rows, not the raw JSON:
 
 - `taskctl` path/version; `server.url`, its source (`flag`/`env`/`env-file`/`pointer`/
   `default`), `loopback` vs `remote`, and `/health`;
-- board/director/setup skills per actor kind, and the installed skill names each platform
+- board/chat/director/setup skills per actor kind, and the installed skill names each platform
   actually has; loop state and live pool; supervisor units;
 - per platform (`platforms`): its current `MEERKAT_TASKPANEL_AGENTS` scan set and
   `MEERKAT_TASKPANEL_REVIEWER`, whether pi has `pi-subagents`, and `available`;
@@ -121,8 +121,8 @@ a remote server the user did not name.
 When detection reports more than one **available** agent kind, add one later-round
 question — **which kinds carry which role skills** — after the install set is settled:
 
-1. Show each kind's facts: director skill, subagent support (pi needs `pi-subagents`),
-   the role skills it carries, and its current scan set. Never guess these.
+1. Show each kind's facts: chat and director skills, subagent support (pi needs
+   `pi-subagents`), the role skills it carries, and its current scan set. Never guess these.
 2. Recommend **one kind for all roles** (one supervisor per machine), chosen as the kind
    whose capabilities best cover the team.
 3. Offer a move as the explicit alternative — a role skill copied to another kind and
@@ -186,8 +186,8 @@ ask for the fixed name and set it explicitly. A token goes in `TASKD_TOKEN` or
 `TASKD_TOKEN_FILE` (mode 0600); never print it.
 
 `install.sh` copies `setup-meerkat` only for **Claude**; other actor kinds get the board
-skill, the `meerkat-director` hub and the five role skills. OpenClaw gets the board only by
-design.
+skill, the `meerkat-chat` console, the `meerkat-director` hub and the five role skills.
+OpenClaw gets the board only by design.
 
 ## 3. Matt Pocock integration
 
@@ -281,7 +281,8 @@ The decision hub is `meerkat-director`, installed beside them; its
 `<home>/<agent-dir>/skills/<role>/` is carried by that kind; the supervisor scans every
 installed kind, prefers its own primary kind, then claude → codex → pi. There is no roles
 root, no manifest and no platform-mapping config key. `install.sh --target claude|codex|pi`
-copies all five role skills and the director; `--target all` installs every kind. Role skills
+copies all five role skills, the chat console and the director; `--target all` installs every
+kind. Role skills
 are always **copied**, never linked.
 
 ### Defaults the installer writes

@@ -905,6 +905,7 @@ describe("install.sh: --dry-run and per-agent-kind selection", () => {
     // Every loop agent kind is still installed — the selection is about the *action*, not the files.
     for (const agentDir of [".claude", ".codex", ".agents"]) {
       assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-director", "SKILL.md")), `${agentDir} director skill`);
+      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-chat", "SKILL.md")), `${agentDir} chat skill`);
     }
   });
 

@@ -326,6 +326,10 @@ describe("install.sh: the director and role skills' distribution", () => {
       const dest = join(home, agentDir, "skills", "meerkat-director");
       assert.ok(existsSync(join(dest, "SKILL.md")), `${kind}: the director's SKILL.md must land`);
       assert.ok(existsSync(join(dest, "references", "operation.md")), `${kind}: its references must land`);
+
+      const chat = join(home, agentDir, "skills", "meerkat-chat");
+      assert.ok(existsSync(join(chat, "SKILL.md")), `${kind}: the human console's SKILL.md must land`);
+      assert.ok(existsSync(join(chat, "references", "console.md")), `${kind}: its references must land`);
       for (const role of ROLE_SKILLS) {
         const roleDir = join(home, agentDir, "skills", role);
         assert.ok(existsSync(join(roleDir, "SKILL.md")), `${kind}: the ${role} skill must land`);
@@ -380,7 +384,15 @@ describe("install.sh: the director and role skills' distribution", () => {
       existsSync(join(home, ".openclaw", "skills", "meerkat", "SKILL.md")),
       "openclaw must still get the board skill",
     );
-    for (const skill of ["meerkat-director", "jobs", "linus", "turing", "reviewer", "worker"]) {
+    for (const skill of [
+      "meerkat-director",
+      "meerkat-chat",
+      "jobs",
+      "linus",
+      "turing",
+      "reviewer",
+      "worker",
+    ]) {
       assert.equal(
         existsSync(join(home, ".openclaw", "skills", skill)),
         false,
@@ -411,7 +423,15 @@ describe("install.sh: the director and role skills' distribution", () => {
 
     // The director and roles must be real directories. A symlinked skill would put the
     // checkout back into the load path of the very thing the split exists to avoid.
-    for (const skill of ["meerkat-director", "jobs", "linus", "turing", "reviewer", "worker"]) {
+    for (const skill of [
+      "meerkat-director",
+      "meerkat-chat",
+      "jobs",
+      "linus",
+      "turing",
+      "reviewer",
+      "worker",
+    ]) {
       const dir = join(home, ".claude", "skills", skill);
       assert.ok(lstatSync(dir).isDirectory(), `--link must NOT symlink ${skill}`);
       assert.equal(lstatSync(dir).isSymbolicLink(), false);
@@ -435,6 +455,10 @@ describe("install.sh: the director and role skills' distribution", () => {
     assert.ok(
       run.stdout.includes(join(home, ".claude", "skills", "turing")),
       "the dry run must preview a role skill's destination",
+    );
+    assert.ok(
+      run.stdout.includes(join(home, ".claude", "skills", "meerkat-chat")),
+      "the dry run must preview the human console's destination",
     );
     assert.equal(existsSync(join(home, ".claude")), false, "a dry run must not write");
   });

@@ -1,6 +1,6 @@
 ---
 name: meerkat
-description: Use this skill when the user asks about a Meerkat TaskPanel task itself — progress, status, what is left, remaining work, who is on it, why it is blocked, history, completion count, acceptance criteria, what to do next, or a card found by a bare id or title. It also runs every card operation through the local `taskctl` kanban — claim, heartbeat, comment, answer on-card questions, read or re-export the brief (`card.md`), create or split cards (uploading a plan, spec or reference file as an attachment), link relations, move status, deliver with a report, review, accept or reopen, and export the board as markdown. Trigger on Meerkat, taskpanel, taskctl, the task board, a task card, `card.md`, card file, `export md`, re-export, brief, deliver, heartbeat, acceptance, review, or an awaiting question; on a supervisor handoff or role workflow that only says read the brief or deliver the card. Works the same on any agent runtime — Claude, Codex, pi and OpenClaw are all covered.
+description: Use this skill when an agent must operate a Meerkat TaskPanel card through the local `taskctl` kanban — claim, heartbeat, comment, answer an on-card question, read or re-export the brief (`card.md`), create or split cards (uploading a plan, spec or reference file as an attachment), link relations, move status, deliver with a report, review, accept or reopen, and export the board as markdown. Trigger on Meerkat, taskpanel, taskctl, the task board, a task card, `card.md`, card file, `export md`, re-export, brief, deliver, heartbeat, acceptance, review, or an awaiting question; on a supervisor handoff or role workflow that only says read the brief or deliver the card. A human asking in a live session about progress, waiting questions, acceptance or board health is the `meerkat-chat` console's, not this mechanics contract. Works the same on any agent runtime — Claude, Codex, pi and OpenClaw are all covered.
 ---
 
 # Meerkat TaskPanel
@@ -46,13 +46,8 @@ One read often answers several questions; the full field list and meanings are
 
 The **activity** trail has no CLI verb: `GET /api/v1/tasks/:ref/activities`.
 
-### When a human asks
-
-- **"What is the progress of X?"** → `issue get <ref> --json --include comments --include reports`; add `--include relations --include sessions` for blockers or who worked it.
-- **"What is still open?"** → `issue list --status todo --status in_progress --status awaiting --status blocked --status in_review --json`; list `backlog` separately.
-- **"How many were completed?"** → `issue list --status done --json` (and `--status canceled` separately); there is **no count or stats command** — count `data.tasks[]` locally.
-- **"Look up card X"** → `issue get <ref> --json` for an identifier or UUID; there is **no server-side search** — filter `issue list --json` by `identifier` / `title`.
-- **"Push / cancel / put back in the backlog"** → `issue move <ref> <status>`; the whitelist decides, and `canceled` is abandonment, not completion.
+A human asking in a live session — progress, what is open, a lookup, a move — is the
+[`meerkat-chat`](../meerkat-chat/SKILL.md) console's; it uses the same reads below.
 
 ## The card's life
 

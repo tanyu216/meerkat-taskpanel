@@ -143,6 +143,7 @@ describe("skill definitions", () => {
       results.map((result) => result.name).sort(),
       [
         "meerkat",
+        "meerkat-chat",
         "meerkat-director",
         "setup-meerkat",
         "jobs",

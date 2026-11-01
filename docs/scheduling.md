@@ -10,8 +10,9 @@ The design stance, in four sentences:
 - The **supervisor** lives **outside** the agent application: `taskctl loop …`
   (`src/orchestrator/`) ships with the toolkit, and the application is only ever the worker
   that gets woken. The collaboration decisions are the
-  **[`meerkat-director`](../skills/meerkat-director/SKILL.md) skill**; this page is the
-  system those decisions run inside.
+  **[`meerkat-director`](../skills/meerkat-director/SKILL.md) skill**; the human's live view
+  of the same board is the [`meerkat-chat`](../skills/meerkat-chat/SKILL.md) console. This
+  page is the system those decisions run inside.
 - It owns **two clocks** — a cheap *ping* for liveness and one *tick* that runs the
   deterministic passes — and performs no board I/O outside those passes.
 - The board work is **deterministic code** — `taskctl loop poll|patrol|workflow` — run by
@@ -1722,11 +1723,12 @@ found — `~/.pi/agent/npm/node_modules/pi-subagents` for a pi 1.x npm install, 
 check and `install.sh --target pi` prints `pi install npm:pi-subagents`. Without the
 extension the reviewer lane cannot spawn its subagent; worker sessions do not depend on it.
 
-Installers also install the **director skill** at `<agent-dir>/skills/meerkat-director/` and
-the five **role skills** beside it (`jobs`, `linus`, `turing`, `reviewer`, `worker`) —
-the operator's documentation, the decision protocol and the role workflows. They are always
-copies: `--link` names the board skill only. The execution body is `taskctl loop …`, not a
-file the skills carry.
+Installers also install the **director skill** at `<agent-dir>/skills/meerkat-director/`, the
+**chat console** at `<agent-dir>/skills/meerkat-chat/` and the five **role skills** beside
+them (`jobs`, `linus`, `turing`, `reviewer`, `worker`) — the operator's documentation, the
+decision protocol, the human's console and the role workflows. They are always copies:
+`--link` names the board skill only. The execution body is `taskctl loop …`, not a file the
+skills carry.
 
 Installers write per-agent kind units under `<agent-dir>/scheduling/{launchd,systemd,cron}`,
 then **print the load command** — they never enable a daemon or run `crontab` for you. (They
@@ -1773,16 +1775,19 @@ daemon, take its unit down with the service manager (`launchctl bootout …` /
 it as not loaded. `--event-continue=no` is the runtime soft-off — the process keeps the
 briefs fresh but no event wakes a turn.
 
-### Decisions in a live session
+### The human's console
 
-There is no control turn to host. A live `/meerkat-director` session is a **human-facing
-decision front-end**, not a second dispatcher: the supervisor keeps its clocks and the pool
-keeps dispatching. The session asks the human about `awaiting` cards **one at a time**,
-records the answer as a `--as-human` board comment after showing the exact body, reports
-`doctor`'s health plus every card in `blocked` status with its reason, and releases
-`backlog → todo` on request — the only forward edge, since `in_progress` belongs to a
-claim. Every board write is shown before it happens; the comment is the record, the
-in-session question is only the front-end.
+There is no control turn to host. A live `/meerkat-chat` session is the **human's console**,
+not a second dispatcher: the supervisor keeps its clocks and the pool keeps dispatching. It
+asks the human about `awaiting` cards **one at a time**, records the answer as a
+`--as-human` board comment after showing the exact body, reports `doctor`'s health plus every
+card in `blocked` status with its reason, and releases `backlog → todo` on request — the only
+forward edge, since `in_progress` belongs to a claim. Every board write is shown before it
+happens; the comment is the record, the in-session question is only the front-end.
+
+The console is its own skill ([`meerkat-chat`](../skills/meerkat-chat/SKILL.md)), not a manual
+mode of the director. The director remains command-only and supervisor-opened; its manual
+agenda moved to the console, and its decision authority did not.
 
 `status.mjs --json` reports `running | busy | starting | configured-idle | partial |
 absent`; `--take-over` starts the pool only when the verdict is `absent` (with no control
@@ -1806,8 +1811,8 @@ here would put two supervisors on one board, racing for the same cards. The boar
 atomic, so the race is bounded — but the second supervisor is pure waste.
 
 `install.sh --target openclaw` therefore installs the **board skill only**: no
-`meerkat-director` or role skills, no scheduler, no per-kind config — permanently, by
-ruling, not as a gap to be filled later. The framework's own automations are the supervisor on that host;
+`meerkat-director`, `meerkat-chat` or role skills, no scheduler, no per-kind config —
+permanently, by ruling, not as a gap to be filled later. The framework's own automations are the supervisor on that host;
 this page stops at the boundary of what they must preserve — the atomic claim and the
 candidate criteria the board hands out.
 
@@ -2068,8 +2073,8 @@ describes.
 
 The new switch does not change the [OpenClaw
 ruling](#openclaw-no-loop-units). `--target openclaw` still installs the
-**board skill only** — no `meerkat-director` or role skills, no units, no glue, so nothing
-to enable.
+**board skill only** — no `meerkat-director`, `meerkat-chat` or role skills, no units, no
+glue, so nothing to enable.
 `--target all --supervisor=enable` **skips** openclaw: the enable action applies only to
 `{claude,codex,pi}` — and, by the one-supervisor-per-machine rule, by default only to the
 first of those in `--target` order. `--supervisor-actor-kinds openclaw` is **rejected**
@@ -2246,6 +2251,8 @@ this boundary: every agent kind gets one — see `docs/ops/install.md`.)
   hub and its protocol;
   [`references/operation.md`](../skills/meerkat-director/references/operation.md) is the
   operator's view.
+- [`../skills/meerkat-chat/SKILL.md`](../skills/meerkat-chat/SKILL.md) — the human's live
+  console: progress, awaiting questions, acceptance, `loop doctor` and abnormal cards.
 - [`../skills/jobs/SKILL.md`](../skills/jobs/SKILL.md) and its four siblings — the role
   workflows, discovered per platform from their `role.json`.
 - [`../skills/meerkat/SKILL.md`](../skills/meerkat/SKILL.md) —

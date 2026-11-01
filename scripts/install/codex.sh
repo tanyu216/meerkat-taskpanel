@@ -3,7 +3,7 @@
 #
 # Deploys the complete Codex bundle, not just the board skill:
 #   1. board skill        → ~/.codex/skills/meerkat
-#   2. director + roles    → ~/.codex/skills/{meerkat-director,jobs,linus,turing,reviewer,worker} (copies)
+#   2. director + chat + roles → ~/.codex/skills/{meerkat-director,meerkat-chat,jobs,linus,turing,reviewer,worker} (copies)
 #   3. claim-first snippet → merged into ~/.codex/AGENTS.md (identity + rules)
 #   4. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron}, the loop state
 #                           directory (~/.codex/meerkat-taskpanel/) and the per-kind config

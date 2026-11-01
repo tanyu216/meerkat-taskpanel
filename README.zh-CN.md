@@ -95,6 +95,7 @@ meerkat-taskpanel/
 │   └── foundation/               #   DTO / 常量 / 纯函数
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
 ├── skills/                       # meerkat（看板）、meerkat-director（决策）、
+│                                 #   meerkat-chat（人的实时对话台）、
 │                                 #   jobs/linus/turing/reviewer/worker（角色）、
 │                                 #   setup-meerkat（安装/修复 + 迁移；仅复制给 Claude）
 ├── .claude-plugin/               # marketplace + board 插件清单（插件根 = 仓根）
@@ -169,9 +170,9 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 仓根就是 board 的插件根，每个 harness 都就地读那一份 `skills/`，不再各拿一份副本。OpenClaw 同样消费这个 Claude 格式的 bundle —— 见 [`docs/ops/install.md`](docs/ops/install.md#openclaw)。
 
-`meerkat-director` 与角色 skill 不走 marketplace 分发。`install.sh --target claude|codex|pi` 会安装它们。`--target openclaw` 目前只装看板 skill；OpenClaw 的 supervisor 支持列在[路线图](#路线图)里。见 [supervisor 与 director](#supervisor-与-director)。
+`meerkat-director`、`meerkat-chat` 与角色 skill 不走 marketplace 分发。`install.sh --target claude|codex|pi` 会安装它们。`--target openclaw` 目前只装看板 skill；OpenClaw 的 supervisor 支持列在[路线图](#路线图)里。见 [supervisor 与 director](#supervisor-与-director)。
 
-第三个 skill **`setup-meerkat`** 就是 `/setup-meerkat` 命令。它会探测已安装的部分、补齐缺失、提供 Matt Pocock issue-tracker 集成、按请求把角色 skill 从一个 agent 平台迁到另一个，并把项目的决策权指针初始化到 director。`install.sh --target claude` 会把它复制到 `~/.claude/skills/setup-meerkat`。其他 agent kind（包括 OpenClaw）可以从共享 bundle 就地读到；为 OpenClaw 提供专门支持列在[路线图](#路线图)里。
+**`setup-meerkat`** 就是 `/setup-meerkat` 命令。它会探测已安装的部分、补齐缺失、提供 Matt Pocock issue-tracker 集成、按请求把角色 skill 从一个 agent 平台迁到另一个，并把项目的决策权指针初始化到 director。`install.sh --target claude` 会把它复制到 `~/.claude/skills/setup-meerkat`。其他 agent kind（包括 OpenClaw）可以从共享 bundle 就地读到；为 OpenClaw 提供专门支持列在[路线图](#路线图)里。
 
 角色 skill 没有 roles root：每个角色从承载它的 agent kind 的 `skills/` 树里被发现，**安装位置就是路由**。`/setup-meerkat` 只在用户要求时把角色复制到另一个 kind，且绝不删除用户没点名的角色。
 
@@ -181,7 +182,7 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 ## supervisor 与 director
 
-`meerkat-taskpanel` 是看板与记录。`taskctl` 是 Agent 和 supervisor 使用的 CLI。`taskd` 是 CLI 自动启动、给看板 UI 用的本地 HTTP/SSE 服务。**supervisor**（`taskctl loop …`）跑在 agent 应用之外，在没人看着时让看板继续转，并自己执行确定性 pass。**director**（`meerkat-director`）是唯一的 LLM 决策通道：派单、回答 worker 提问、把 E1–E5 升级给人。
+`meerkat-taskpanel` 是看板与记录。`taskctl` 是 Agent 和 supervisor 使用的 CLI。`taskd` 是 CLI 自动启动、给看板 UI 用的本地 HTTP/SSE 服务。**supervisor**（`taskctl loop …`）跑在 agent 应用之外，在没人看着时让看板继续转，并自己执行确定性 pass。**director**（`meerkat-director`）是唯一的 LLM 决策通道：派单、回答 worker 提问、把 E1–E5 升级给人。**对话台**（`meerkat-chat`）是人在同一块看板上的实时视图：进展、等你回复的问题、验收与 loop 健康。
 
 看板负责算 workflow 决策，supervisor 负责执行。它只通过 `taskctl` 跟看板打交道，从不调用 HTTP API。
 
@@ -195,15 +196,13 @@ supervisor 有两个时钟和一个常驻会话池：
 
 决策协议在 [`skills/meerkat-director/`](skills/meerkat-director/SKILL.md)；角色工作流是五个独立 skill：`jobs`、`linus`、`turing`、`reviewer`、`worker`。执行体属于工具链（[`src/orchestrator/`](src/orchestrator/)），以 `taskctl loop …` 运行。
 
-### 在活会话里做决策
+### 和看板对话
 
-`meerkat-director` 是命令式 skill（`disable-model-invocation: true`），模型不会自己启动它。人可以把它当作决策前端：
+`meerkat-chat` 是人的对话台，和其他 skill 一样按描述触发。问它某张卡的进展、有什么等你回复、哪些卡待验收、loop 是否健康；它会先跑一次 `taskctl loop doctor --json` 与 `taskctl loop console --json`，给出摘要，再做细节。
 
-```text
-/meerkat-director
-```
+它一次一张卡地走 `awaiting`：把卡读回来，问完这张卡的全部问题，把准备写入的评论原文给你看，你点头后才以你的身份写下去。你在板上 UI 里回答也算数。它也报告健康状态和每张 `blocked` 卡的原因，按请求放行 `backlog → todo`（唯一的前进边；`in_progress` 属于认领），并且只在展示了当前轮报告与验收覆盖后才关闭已交付的卡。每次写板都先给你看，而且每次写入都是 `--as-human`：评论记录的是你的话，不是模型自己的意见。
 
-它一次一张卡地走 `awaiting`：把卡读回来，问完这张卡的全部问题，把准备写入的评论原文给你看，你点头后才以你的身份写下去。你在板上 UI 里回答也算数。它也报告健康状态和每张 `blocked` 卡的原因，并按请求放行 `backlog → todo`（唯一的前进边；`in_progress` 属于认领）。每次写板都先给你看。它不是第二个派发者：supervisor 的时钟照常运行。
+`meerkat-director` 仍是命令式 skill（`disable-model-invocation: true`）、由 supervisor 打开：它是 worker 提问与派单行的决策通道，不是第二个人工前端。它的人工对话议程已并入 `meerkat-chat`；决策协议仍留在 director skill。
 
 ### 一次 tick 做什么
 
@@ -223,7 +222,7 @@ worker 的提问由 director 回答：写 agent `note` 并把卡移回 `todo`，
 
 ### 如何开启（以及成本）
 
-`install.sh --target claude|codex|pi` 会在所选每个 kind 上安装 `meerkat-director` 与角色 skill，并写入该 kind 的 launchd、systemd 或 cron 单元。它们不走 marketplace 分发。
+`install.sh --target claude|codex|pi` 会在所选每个 kind 上安装 `meerkat-director`、`meerkat-chat` 与角色 skill，并写入该 kind 的 launchd、systemd 或 cron 单元。它们不走 marketplace 分发。
 
 普通安装只**写**单元并**打印**加载命令，绝不替你启动守护进程。加载是单独的显式动作：
 
@@ -309,6 +308,7 @@ npm run check
 | **md 导出** | `src/core/storage/md/` —— `taskctl export md` 为每张卡写一份规范 markdown | *已落地* |
 | **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |
 | **supervisor + director** | `skills/meerkat-director/` 与五个角色 skill —— 外部 supervisor：60 秒 ping、600 秒确定性 tick（SLA 巡检 → workflow → poll）、多 kind 会话池与 director 决策通道；只通过 `taskctl` 驱动看板 | *已落地* |
+| **对话台** | `skills/meerkat-chat/` —— 人的实时视图：进展、awaiting 问题、待验收、看板健康与异常卡分诊；以 `--as-human` 原样记录人的话 | *已落地* |
 | **IM 集成** | 把“需要人”的项（awaiting / agent question / 待验收）推到 IM，在 IM 里记录决策与验收，并回答进展查询。引擎只提供插件宿主 + `channel-kit`；每个平台（飞书、Slack、微信、WhatsApp、Teams、Telegram）是独立适配器包，基于第三方 SDK。见 [docs/im-integration.md](docs/im-integration.md)。 | *（规划中 —— 优先于下列项）* |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合 | *（规划中）* |
 | **迭代管理** | 迭代（sprint）周期管理：任务归入迭代、迭代内进度与容量 | *（规划中）* |

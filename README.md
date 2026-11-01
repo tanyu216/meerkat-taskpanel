@@ -95,6 +95,7 @@ meerkat-taskpanel/
 │   └── foundation/               #   DTOs / constants / pure helpers
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
 ├── skills/                       # meerkat (board), meerkat-director (decisions),
+│                                 #   meerkat-chat (the human's live console),
 │                                 #   jobs/linus/turing/reviewer/worker (roles),
 │                                 #   setup-meerkat (install/repair + migration; Claude-only copy)
 ├── .claude-plugin/               # marketplace + the board plugin manifest (plugin root = the repo root)
@@ -169,9 +170,9 @@ The `Bundle` column is the per-agent manifest that the agent's own plugin system
 
 The repository root is the board's plugin root, so every harness reads the one `skills/` tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle too — see [`docs/ops/install.md`](docs/ops/install.md#openclaw).
 
-The `meerkat-director` and role skills are not distributed through the marketplace. `install.sh --target claude|codex|pi` installs them. `--target openclaw` installs the board skill only for now; supervisor support for OpenClaw is on the [roadmap](#roadmap). See [The supervisor and the director](#the-supervisor-and-the-director).
+The `meerkat-director`, `meerkat-chat` and role skills are not distributed through the marketplace. `install.sh --target claude|codex|pi` installs them. `--target openclaw` installs the board skill only for now; supervisor support for OpenClaw is on the [roadmap](#roadmap). See [The supervisor and the director](#the-supervisor-and-the-director).
 
-The third skill, **`setup-meerkat`**, is the `/setup-meerkat` command. It detects what is installed, repairs what is missing, offers the Matt Pocock issue-tracker integration, moves role skills between agent platforms on request, and initializes a project's decision-rights pointer to the director. `install.sh --target claude` copies it to `~/.claude/skills/setup-meerkat`. Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
+The **`setup-meerkat`** skill is the `/setup-meerkat` command. It detects what is installed, repairs what is missing, offers the Matt Pocock issue-tracker integration, moves role skills between agent platforms on request, and initializes a project's decision-rights pointer to the director. `install.sh --target claude` copies it to `~/.claude/skills/setup-meerkat`. Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
 
 Role skills have no roles root to own: each one is discovered from the agent kind whose `skills/` tree carries it, and that installation location is the routing. `/setup-meerkat` copies a role between kinds only on request and never deletes one the user did not name.
 
@@ -181,7 +182,7 @@ Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>
 
 ## The supervisor and the director
 
-`meerkat-taskpanel` is the board and the record. `taskctl` is the CLI that agents and the supervisor use. `taskd` is the local HTTP/SSE service the CLI auto-starts for the board UI. The **supervisor** (`taskctl loop …`) runs outside the agent application, keeps the board moving when no one is looking, and runs the deterministic passes itself. The **director** (`meerkat-director`) is the one LLM decision lane: it assigns unowned cards, answers worker questions, and escalates E1–E5 to the human.
+`meerkat-taskpanel` is the board and the record. `taskctl` is the CLI that agents and the supervisor use. `taskd` is the local HTTP/SSE service the CLI auto-starts for the board UI. The **supervisor** (`taskctl loop …`) runs outside the agent application, keeps the board moving when no one is looking, and runs the deterministic passes itself. The **director** (`meerkat-director`) is the one LLM decision lane: it assigns unowned cards, answers worker questions, and escalates E1–E5 to the human. The **chat console** (`meerkat-chat`) is the human's live view of the same board: progress, the questions waiting on them, acceptance, and the loop's health.
 
 The board makes the workflow decisions. The supervisor executes them. It talks to the board only through `taskctl` — never through the HTTP API.
 
@@ -195,15 +196,13 @@ The supervisor has two clocks and a resident session pool:
 
 The decision protocol lives in [`skills/meerkat-director/`](skills/meerkat-director/SKILL.md); the role workflows are the five skills `jobs`, `linus`, `turing`, `reviewer` and `worker`. The execution body is part of the toolkit — [`src/orchestrator/`](src/orchestrator/) — and runs as `taskctl loop …`.
 
-### Decide in a live session
+### Talk to the board
 
-`meerkat-director` is command-only (`disable-model-invocation: true`), so the model never starts it on its own. A human can run it as a decision front-end:
+`meerkat-chat` is the human's console, invoked by description like any other skill. Ask it about a card's progress, what needs an answer, what is waiting for acceptance, or whether the loop is healthy; it opens `taskctl loop doctor --json` and `taskctl loop console --json` once, gives you the digest, then does the detail work.
 
-```text
-/meerkat-director
-```
+It walks the `awaiting` cards **one at a time**: it reads the card back, asks that card's whole question, shows the exact comment it is about to write, and records it as your comment once you agree. A board-UI answer counts too. It reports health and every `blocked` card with its reason, releases `backlog → todo` on request — the only forward edge, since `in_progress` belongs to a claim — and closes a delivered card only after showing the current-round report and acceptance coverage. Every board write is shown first, and every write is `--as-human`: the comment is your word, never the model's opinion.
 
-It walks the `awaiting` cards **one at a time**: it reads the card back, asks that card's whole question, shows the exact comment it is about to write, and writes it as your comment once you agree. A board-UI answer counts too. It also reports health and every `blocked` card with its reason, and releases `backlog → todo` on request — the only forward edge, since `in_progress` belongs to a claim. Every board write is shown first. It is not a second dispatcher: the supervisor keeps its clocks.
+`meerkat-director` stays command-only (`disable-model-invocation: true`) and supervisor-opened: it is the decision lane for worker questions and routing rows, not a second human front end. Its manual agenda moved to `meerkat-chat`; the decision protocol stays in the director skill.
 
 ### What a tick does
 
@@ -223,7 +222,7 @@ The full design — the clocks, the fire-only cost gate, idempotent wakes, the c
 
 ### Turn it on (and what it costs)
 
-`install.sh --target claude|codex|pi` installs the `meerkat-director` and role skills on each requested kind and writes that kind's launchd, systemd or cron units. They are not distributed through the marketplace.
+`install.sh --target claude|codex|pi` installs the `meerkat-director`, `meerkat-chat` and role skills on each requested kind and writes that kind's launchd, systemd or cron units. They are not distributed through the marketplace.
 
 A plain install only writes the units and prints the load command. It never starts a daemon for you. Loading is a separate, explicit act:
 
@@ -309,6 +308,7 @@ Ordered by priority; IM integration is the next planned item.
 | **Markdown export** | `src/core/storage/md/` — `taskctl export md` writes one canonical card per task | *landed* |
 | **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |
 | **supervisor + director** | `skills/meerkat-director/` and the five role skills — the external supervisor: a 60s ping, a 600s deterministic tick (SLA patrol → workflow → poll), the multi-kind session pool, and the director's decision lane; drives the board through `taskctl` only | *landed* |
+| **human console** | `skills/meerkat-chat/` — the human's live view: progress, awaiting questions, pending acceptance, board health and abnormal-card triage; records the human's own words with `--as-human` | *landed* |
 | **IM integration** | Push “needs a human” items (awaiting / agent questions / pending acceptance) to IM, record decisions and acceptances from IM, and answer progress questions. The engine gets a plugin host + `channel-kit`; each platform (Feishu, Slack, WeChat, WhatsApp, Teams, Telegram) is an independent adapter package built on a third-party SDK. See [docs/im-integration.md](docs/im-integration.md). | *(planned — priority above the items below)* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |
 | **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity | *(planned)* |

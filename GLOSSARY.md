@@ -419,6 +419,13 @@ worker budget, and always runs on the supervisor's primary kind.
 _中文_: 决策通道
 _Avoid_: project session, control lane
 
+**Chat console**:
+The human's live view of the board — the `meerkat-chat` skill. It reports progress, surfaces
+awaiting questions and pending acceptance, records the human's own answer with `--as-human`,
+and reads `loop doctor`; it never makes a decision, claims a card or delivers one.
+_中文_: 对话台
+_Avoid_: director mode, manual mode
+
 **Role skill**:
 One of the five standalone skills — `jobs`, `linus`, `turing`, `reviewer`, `worker` — each a
 complete role (`SKILL.md`, `role.json`, `references/`). **Installation location is the

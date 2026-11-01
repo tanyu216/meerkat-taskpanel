@@ -2,8 +2,8 @@
 
 The director is the supervisor's decision lane. The supervisor runs the deterministic
 passes itself; the director is opened only when a row needs a **content decision**. This
-page is the operator's view: the rows, the prompt the supervisor provides, manual mode and
-the process directory.
+page is the operator's view: the rows, the prompt the supervisor provides, and the process
+directory. A human's live view of the board is the `meerkat-chat` skill's, not this one.
 
 ## The rows
 
@@ -27,35 +27,21 @@ The supervisor builds the prompt; you do not re-derive the board state from scra
 - the exact `taskctl` commands and the identity flags to use;
 - the card, the question text and its age, or the unowned card's shape.
 
-A human can run `/meerkat-director` in a live session. That is **manual mode**; the
-supervisor keeps its clocks and remains the only dispatcher.
+A human reading progress, answering a question, accepting a delivered card or checking the
+loop's health uses the [`meerkat-chat`](../../meerkat-chat/SKILL.md) console, not this skill.
+The director stays command-only and supervisor-opened: the supervisor keeps its clocks and
+remains the only dispatcher. The console keeps the doctor/console agenda, the one-card-at-a-
+time discipline and every `--as-human` write; the director never signs as the human.
 
-## Manual mode: the agenda
+## The human's console
 
-1. **Open the board once.** `taskctl loop doctor --json` is the health read;
-   `taskctl loop console --json` is the work read (`questions`, `pending_acceptance`,
-   `supervisor`). Report one digest before any write.
-2. **Waiting on me — one card at a time.** Read the card back, ask that card's **frontier**
-   as one numbered block (Q1..Qn, each with a recommendation), and record the answer as a
-   human comment (`--as-human`, per the `meerkat` board skill) after showing the exact
-   body. A board-UI answer counts too — do not duplicate it. `awaiting → todo` is the
-   board's own requeue; do not move it again.
-   - An **agent question** is your rung: decide it with an agent `note` and the ladder's
-     move, or escalate E1–E5 to `awaiting` with the question.
-   - Only a human comment resumes `awaiting`, whatever its kind.
-3. **Health and blocks.** From the doctor report: verdict, `attention_reasons`,
-   `stuck_cards`, `looping`, `workers`, `waiting.in_review`, `queue`, `board.truncated`.
-   List the `blocked` cards through the `meerkat` board skill with their
-   `blocked_reason`, age and assignee. Report only; never unblock one behind the human's
-   back.
-4. **Backlog release.** `backlog → todo` is the only forward edge; `in_progress` is a
-   claimed state. Assign an owner only when the human names one. An epic is released but
-   never claimed; its children are.
-5. **Card management.** Every other write is the `meerkat` board skill's command; show it
-   before writing it.
+The console's playbook is [`meerkat-chat`](../../meerkat-chat/SKILL.md) and its
+`references/console.md`. What stays here is the director's side of the same moment:
 
-Every write is shown first, verbatim. A "yes" to a recommendation is recorded as that
-recommendation plus yes, never paraphrased.
+- a worker's **agent question** is the director's rung: answer it with an agent `note` and
+  move the card, or escalate E1–E5 to `awaiting` with the question;
+- only a human comment resumes `awaiting`, whatever its kind;
+- the director never writes `--as-human` and never moves a card to `done`.
 
 ## Card briefs and task process directories
 

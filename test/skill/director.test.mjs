@@ -99,18 +99,17 @@ describe("director skill: references", () => {
     assert.match(policy, /Decision rounds/);
   });
 
-  it("documents manual mode in operation.md", () => {
+  it("defers the human console to meerkat-chat", () => {
+    // The manual agenda (doctor/console, one card at a time, `--as-human`) moved to
+    // the human's console skill. The director keeps the decision rows and points there;
+    // two agendas would drift and one of them would sign as the human.
     const operation = readFileSync(join(DIRECTOR_SKILL, "references", "operation.md"), "utf8");
-    assert.match(operation, /## Manual mode/);
-    assert.match(operation, /taskctl loop doctor/);
-    assert.match(operation, /taskctl loop console/);
-    assert.match(operation, /--as-human/);
-    assert.match(operation, /re-read/);
-    assert.match(operation, /board-UI|UI/);
-    assert.match(operation, /frontier/i);
-    assert.match(operation, /one card at a time/i);
-    assert.match(operation, /backlog/);
-    assert.match(operation, /blocked/);
+    const skill = readFileSync(join(DIRECTOR_SKILL, "SKILL.md"), "utf8");
+    assert.equal(/^## Manual mode/m.test(operation), false, "no second manual agenda");
+    assert.match(operation, /meerkat-chat/);
+    assert.match(skill, /meerkat-chat/);
+    assert.doesNotMatch(operation, /taskctl loop doctor/);
+    assert.doesNotMatch(operation, /taskctl loop console/);
   });
 
   it("keeps installation out of the skill", () => {

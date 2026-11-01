@@ -3,15 +3,20 @@
 # Shared implementation for the per-agent-kind installers
 # (claude / openclaw / codex / pi).
 #
-# Three skills are distributed, and each agent kind takes the ones that fit it:
+# The skills are distributed by kind, and each agent kind takes the ones that fit it:
 #
 #   * `meerkat` — the board. Every agent kind installs it (`install_skill`). It was
 #     `meerkat-taskpanel` before the rename; `install_skill` migrates a legacy directory.
-#   * `meerkat-director` — the external supervisor. The three non-OpenClaw agent kinds install
-#     it (`install_director_skill` + `install_scheduling`); **OpenClaw does not**, because the
-#     openclaw-team framework already ships a per-agent poll and a `task-patrol`, which
-#     is the same design (its cadence is the framework's own AUTOMATIONS.md, not a
-#     number restated here) — see `scripts/install/openclaw.sh` and docs/scheduling.md.
+#   * `meerkat-director` — the external supervisor's decision lane. The three non-OpenClaw
+#     agent kinds install it (`install_director_skill` + `install_scheduling`); **OpenClaw
+#     does not**, because the openclaw-team framework already ships a per-agent poll and a
+#     `task-patrol`, which is the same design (its cadence is the framework's own
+#     AUTOMATIONS.md, not a number restated here) — see `scripts/install/openclaw.sh` and
+#     docs/scheduling.md.
+#   * `meerkat-chat` — the human's live console over the same board. It is installed beside
+#     the director for the same three kinds: it reads `loop doctor`/`loop console` and writes
+#     the human's answers with `--as-human`, which needs the loop and the board together.
+#     OpenClaw has no loop of its own, so it keeps the board skill only.
 #   * `setup-meerkat` — the install/repair and team-setup command. **Only the Claude
 #     bundle copies it** (`claude.sh`); the repository bundle and marketplace still carry
 #     it for the other kinds, but the bash installer does not copy it there.
@@ -206,9 +211,11 @@ resolve_agent_cli_dir() {
   esac
 }
 
-# board_skill_name / director_skill_name / setup_skill_name — the skills this installer
-# distributes. The setup skill is copied only for the Claude bundle (see claude.sh).
+# board_skill_name / chat_skill_name / director_skill_name / setup_skill_name — the skills
+# this installer distributes. The setup skill is copied only for the Claude bundle (see
+# claude.sh).
 board_skill_name() { printf '%s\n' "meerkat"; }
+chat_skill_name() { printf '%s\n' "meerkat-chat"; }
 director_skill_name() { printf '%s\n' "meerkat-director"; }
 setup_skill_name() { printf '%s\n' "setup-meerkat"; }
 
@@ -1255,11 +1262,13 @@ install_skill() {
 }
 
 # install_director_skill <agent_dir> <label>
-#   The director and the five role skills, for the agent kinds that run an external
-#   supervisor. Always copies (O6); OpenClaw never calls this — its framework already ships
-#   an equivalent supervisor, so a second one would only race the first for the same cards.
+#   The decision lane, the human's console and the five role skills, for the agent kinds that
+#   run an external supervisor. Always copies (O6); OpenClaw never calls this — its framework
+#   already ships an equivalent supervisor, so a second one would only race the first for the
+#   same cards.
 install_director_skill() {
   install_skill "$1" "$2" "$(director_skill_name)" copy
+  install_skill "$1" "$2" "$(chat_skill_name)" copy
   for role in $(role_skill_names); do
     install_skill "$1" "$2" "$role" copy
   done
