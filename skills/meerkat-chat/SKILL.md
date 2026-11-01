@@ -1,6 +1,6 @@
 ---
 name: meerkat-chat
-description: Use this skill whenever a human asks about their Meerkat TaskPanel board in a live agent session — the progress or status of a task card, what is left or what happens next, who is on it, why it is stuck, blocked, looping or otherwise abnormal, what is waiting on them, an awaiting question that needs a reply, a card in `in_review` waiting for acceptance (`in_review → done`) or a review verdict, and the loop's health (`loop doctor`, `loop console`). It also writes on the human's behalf — reply to an on-card question, accept a delivered card, release backlog work, and triage abnormal cards — showing the exact comment or move before it is written. Trigger on Chinese phrasings too — 任务卡、看板、进展、待回复/回复问题、验收、异常卡、看板健康 — and on a bare card id or title when the human is asking about it. Board operations themselves are the `meerkat` skill's; decisions are the `meerkat-director` skill's.
+description: Use this skill whenever a human asks about their Meerkat TaskPanel board in a live agent session — the progress or status of a task card, what is left or what happens next, who is on it, why it is stuck, blocked, looping or otherwise abnormal, what is waiting on them, an awaiting question that needs a reply, a card in `in_review` waiting for acceptance (`in_review → done`) or a review verdict, and the loop's health (`loop doctor`, `loop console`). It also writes on the human's behalf — reply to an on-card question, accept a delivered card, release backlog work, and triage abnormal cards — showing the exact comment or move before it is written. It replies in the human's language, whichever language that is. Trigger in any language the human writes in, including Chinese, English or a mix, and on a bare card id or title when the human is asking about it. Board operations themselves are the `meerkat` skill's; decisions are the `meerkat-director` skill's.
 ---
 
 # Meerkat Chat — the human's console
@@ -45,16 +45,20 @@ taskctl loop console --json     # what is waiting on a human: questions, pending
 Lead with one short digest before answering the specific question:
 
 ```text
-待你处理 2 件（1 个问题待回复，1 张卡待验收）；loop 有 3 项需要留意。
+2 items need you (1 question to answer, 1 card to accept); the loop has 3 warnings.
 ```
+
+(The example is English for readability; write the digest in the human's language.)
 
 Then answer what they asked. Re-run the reads when a write changed the board, when the human
 asks for fresh state, or when a while has passed — not between every sentence. If a read
 fails, report the failure as the failure; never substitute a guess.
 
-Reply in the human's language. Identifiers, command lines, status literals, field names and
-error codes stay verbatim — the board skill's language rule applies to every comment you write
-(see [`meerkat`](../meerkat/SKILL.md)).
+Reply in the human's language. Mirror the language of their own messages — do not default to
+English, and do not reproduce the English examples in this skill as if they were the default.
+Identifiers, command lines, status literals, field names and error codes stay verbatim — the
+board skill's language rule applies to every comment you write (see
+[`meerkat`](../meerkat/SKILL.md)).
 
 ## 1. Answer what is happening
 
@@ -126,8 +130,9 @@ taskctl --as-human issue move <ref> todo        # in_progress questions only
 
 Show the exact body and both commands before writing. A "yes" to a recommendation is recorded
 as **that recommendation plus yes**, never paraphrased or enriched; where the human typed their
-own words, keep them. "按你的推荐来" / "you decide" is that same yes — still show the literal
-body, and do not invent options beyond the round you presented. Default `--kind note`;
+own words, keep them. "You decide" or "go with your recommendation" is that same yes — still
+show the literal body, and do not invent options beyond the round you presented. Default
+`--kind note`;
 `decision`/`confirm`/`change` is an explicit record marker, not a requirement — the resume is
 judged by the content.
 

@@ -4,28 +4,28 @@
     {
       "id": 0,
       "name": "waiting-register",
-      "prompt": "看板现在有什么需要我处理的吗？有的话按紧急程度列一下，顺便看看 loop 健不健康。",
+      "prompt": "What needs my attention on the board? List it by urgency, and check whether the loop is healthy.",
       "expected_output": "Opens doctor + console once, leads with a waiting digest (questions, pending acceptance), then health; no board writes.",
       "files": []
     },
     {
       "id": 1,
       "name": "stuck-progress",
-      "prompt": "有张卡在 in_progress 停了好久没动，我想知道卡在哪、现在是谁在处理、下一步该谁动。",
+      "prompt": "A card has been sitting in in_progress for a long time. I want to know where it is stuck, who is handling it, and who moves next.",
       "expected_output": "Reads the card with comments/reports/relations/sessions, reports status, holder, heartbeat age, last activity, what is left and the next actor; never heartbeats/claims/steals.",
       "files": []
     },
     {
       "id": 2,
       "name": "answer-awaiting",
-      "prompt": "帮我把那张 awaiting 的卡的疑问回复掉，就按你觉得最合适的方案来。",
+      "prompt": "Answer the question on that awaiting card for me; go with whatever you think is best.",
       "expected_output": "Finds the open question, reads the whole round, shows the exact comment body and `--as-human comment add` command before writing, and knows awaiting auto-requeues (do not move again).",
       "files": []
     },
     {
       "id": 3,
       "name": "accept-review",
-      "prompt": "有卡进 in_review 了，帮我验收掉吧。",
+      "prompt": "A card just went to in_review; accept it for me.",
       "expected_output": "Reads acceptance_mode, the current-round report and review verdict, shows coverage and the exact close, declines without evidence, and re-reads after the write.",
       "files": []
     }

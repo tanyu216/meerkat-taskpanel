@@ -112,14 +112,15 @@ never present a truncated read as the complete board.
 Keep the digest short enough that the human reads it:
 
 ```text
-待你处理：
-- PROJ-0042（awaiting, E3, 3 小时）— 问题：… ；回复后自动回到 todo。
-- PROJ-0041（in_review, acceptance_mode=human）— 当前轮报告已覆盖 4/4 项，等你验收。
+Waiting on you:
+- PROJ-0042 (awaiting, E3, 3 hours) — question: …; answering it returns the card to todo.
+- PROJ-0041 (in_review, acceptance_mode=human) — current-round report covers 4/4 items; waiting for your acceptance.
 
-需要留意：
-- PROJ-0038 心跳停在 41 分钟前（assignee=linus）；loop 的 stale recovery 负责，我没有动它。
-- PROJ-0035 已 done，但 lane/PROJ-0035 未并入 dev。
+Worth a look:
+- PROJ-0038 heartbeat stopped 41 minutes ago (assignee=linus); the loop's stale recovery owns it, I did not touch it.
+- PROJ-0035 is done, but lane/PROJ-0035 is not merged into dev.
 ```
 
 The order is the human's attention order: questions, acceptance, then health. Each line names
-the card, the state and the next act — never just a status word.
+the card, the state and the next act — never just a status word. The example is English for
+readability; write the report in the human's language.

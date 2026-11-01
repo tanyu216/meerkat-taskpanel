@@ -14,7 +14,7 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
@@ -80,15 +80,45 @@ describe("chat skill: the description reaches the human's questions", () => {
     }
   });
 
-  it("carries the Chinese phrasings a live session actually uses", () => {
-    for (const anchor of [/任务卡/, /进展/, /待回复|回复/, /验收/, /异常/]) {
-      assert.match(description, anchor, `the description must cover ${anchor}`);
-    }
+  it("triggers in any language without carrying language-specific keywords", () => {
+    assert.match(description, /any language|Chinese, English/i);
+    assert.match(description, /bare card id or title/i);
   });
 
   it("hands board mechanics and decisions to their own skills", () => {
     assert.match(description, /`?meerkat`? skill|board operations/i);
     assert.match(description, /director/i);
+  });
+});
+
+describe("chat skill: the shipped files are language-neutral", () => {
+  // The skill is authored in English so it reads the same to every model. Reply
+  // language is decided from the human's own messages, never from a phrase list
+  // baked into the skill; a CJK example or trigger word would make one language
+  // look like the default.
+  const CJK = /[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/;
+
+  function filesUnder(dir) {
+    const out = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...filesUnder(path));
+      else out.push(path);
+    }
+    return out;
+  }
+
+  it("contains no CJK characters in any shipped file", () => {
+    const shipped = filesUnder(CHAT_SKILL);
+    assert.ok(shipped.length >= 5, "the walk must see the skill, its references and the evals");
+    for (const file of shipped) {
+      const content = readFileSync(file, "utf8");
+      assert.equal(
+        CJK.test(content),
+        false,
+        `${file.slice(ROOT.length + 1)} must stay language-neutral`,
+      );
+    }
   });
 });
 
@@ -122,7 +152,15 @@ describe("chat skill: the four things a human asks for", () => {
     assert.match(text, /--as-human/);
     assert.match(text, /show .*before|before .*write|show the exact/i);
     assert.match(text, /never paraphrase/i);
-    assert.match(text, /按你的推荐来|you decide/i, "delegation is a yes, not a licence to invent");
+    assert.match(text, /you decide|go with your recommendation/i, "delegation is a yes, not a licence to invent");
+  });
+
+  it("mirrors the human's language instead of defaulting to English", () => {
+    // The skill is written in English, but English is not the reply default: the
+    // first writer sets the board's language, and that writer is the human.
+    assert.match(text, /human's language/i);
+    assert.match(text, /do not default to English|not .{0,20}default/i);
+    assert.match(text, /mirror the language/i);
   });
 
   it("distinguishes an awaiting answer from an agent question on a live card", () => {
