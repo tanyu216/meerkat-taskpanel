@@ -55,6 +55,11 @@
  */
 
 import { AUTOMATED_ACCEPTORS, LOOP_ACCEPTOR } from "./constants.mjs";
+import {
+  isHumanComment,
+  isQuestionComment,
+  releasedAfterQuestion,
+} from "./question-settle.mjs";
 import { reviewIdentityIndex, reviewIdentityOf } from "./review-identity.mjs";
 import { isContainer } from "./task-kind.mjs";
 import {
@@ -285,6 +290,7 @@ export function trailReadCandidates(cards, input = {}) {
   const blockedLead = warnLeadMinutes("blocked_clarification", periodSeconds, rows);
   const gateLead = warnLeadMinutes("confirmation_gate", periodSeconds, rows);
   const defectLead = warnLeadMinutes("defect_card_creation", periodSeconds, rows);
+  const questionLead = warnLeadMinutes("question_stale", periodSeconds, rows);
   const out = [];
   for (const card of Array.isArray(cards) ? cards : []) {
     const id = String(card?.identifier ?? card?.id ?? "");
@@ -298,11 +304,21 @@ export function trailReadCandidates(cards, input = {}) {
       card?.status === "blocked"
         ? elapsedWorkingMinutes(card?.blocked_at ?? card?.status_changed_at, now)
         : null;
+    // The question wait: an awaiting card always needs its trail (the question
+    // and the human answer both live there); an in_progress card only once the
+    // claim is old enough that a stale question is possible.
+    const questionNeeded =
+      card?.status === "awaiting" ||
+      (card?.status === "in_progress" &&
+        statusElapsed !== null &&
+        questionLead !== null &&
+        statusElapsed >= questionLead);
     const needed =
       statusElapsed === null ||
       (statusElapsed !== null && gateLead !== null && statusElapsed >= gateLead) ||
       (statusElapsed !== null && defectLead !== null && statusElapsed >= defectLead) ||
-      (blockedElapsed !== null && blockedLead !== null && blockedElapsed >= blockedLead);
+      (blockedElapsed !== null && blockedLead !== null && blockedElapsed >= blockedLead) ||
+      questionNeeded;
     if (needed) out.push(id);
   }
   return out;
@@ -1021,6 +1037,97 @@ function heartbeatStaleDetection(card, context) {
 }
 
 /**
+ * The `question_stale` row — a worker's question that nobody has released.
+ *
+ * Two shapes are the same wait: an `in_progress` card whose newest question has
+ * no later status change (the director wrote a note but did not release it), and
+ * an `awaiting` card with no human answer. A director's `note` alone does not
+ * close it — the release does. A human comment after the question closes it:
+ * the board moves an awaiting card to `todo` in that same transaction, so this
+ * branch is a stale-snapshot guard, not the usual path.
+ *
+ * The trail is oldest-first (`repos.comments.list`).
+ */
+function questionStaleDetection(card, trail, context) {
+  const status = card?.status;
+  if (status !== "in_progress" && status !== "awaiting") return null;
+  if (isContainer(card) || reviewIdentityOf(card).isReview) return null;
+  const list = Array.isArray(trail) ? trail : [];
+  let question = null;
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (isQuestionComment(list[i])) {
+      question = list[i];
+      break;
+    }
+  }
+  const spec = context.rows.question_stale;
+  const openPredicate = status === "awaiting" ? "question_awaiting_human" : "question_unreleased";
+
+  if (question === null) {
+    // A human may park an awaiting card silently; that is still a wait.
+    if (status !== "awaiting" || instant(card?.status_changed_at) === null) return null;
+    return {
+      row: "question_stale",
+      origin: {
+        kind: "status_changed_at",
+        at: card.status_changed_at,
+        source: "frontmatter",
+        confidence: "high",
+      },
+      thresholdMin: spec.limitMin,
+      thresholdRef: spec.thresholdRef,
+      visibilityOnly: false,
+      releasable: false,
+      releasableBasis: null,
+      blockedReason: blockedReasonOf(card),
+      openPredicate,
+      action: spec.action,
+      evidence: evidenceOf(card, spec.thresholdRef, openPredicate),
+    };
+  }
+
+  const index = list.indexOf(question);
+  if (list.slice(index + 1).some(isHumanComment)) return null;
+  if (status === "in_progress" && releasedAfterQuestion(card, question)) return null;
+
+  if (instant(question?.created_at) === null) {
+    // No readable origin: report it rather than stay silent (fail-safe).
+    return {
+      row: "question_stale",
+      origin: { kind: "trail_event", at: null, source: "comments", confidence: "low" },
+      thresholdMin: spec.limitMin,
+      thresholdRef: spec.thresholdRef,
+      visibilityOnly: false,
+      releasable: false,
+      releasableBasis: null,
+      blockedReason: blockedReasonOf(card),
+      openPredicate,
+      action: `${spec.action} — the question's timestamp cannot be read; verify its trail`,
+      evidence: evidenceOf(card, spec.thresholdRef, openPredicate),
+    };
+  }
+
+  return {
+    row: "question_stale",
+    origin: {
+      kind: "trail_event",
+      at: question.created_at,
+      source: "comments",
+      confidence: "high",
+    },
+    thresholdMin: spec.limitMin,
+    thresholdRef: spec.thresholdRef,
+    visibilityOnly: false,
+    releasable: false,
+    releasableBasis: null,
+    blockedReason: blockedReasonOf(card),
+    openPredicate,
+    action: spec.action,
+    evidence: evidenceOf(card, spec.thresholdRef, openPredicate),
+  };
+}
+
+/**
  * The `inspector liveness` row — the mutual watchdog (§5.3 / §8.4, "F3").
  *
  * Each mechanism publishes a last-successful-run marker and watches the peer's;
@@ -1404,6 +1511,7 @@ export function planSlaPatrol(input = {}) {
       defectDetection(card, trail, context),
       acceptanceDetection(card, context),
       heartbeatStaleDetection(card, context),
+      questionStaleDetection(card, trail, context),
     ];
     for (const entry of found) {
       if (entry !== null) detections.push({ card, id, ...entry });

@@ -22,7 +22,7 @@ import { loadRoles } from "../foundation/roles.mjs";
 import { buildQuestionPrompt } from "../foundation/scheduling.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
-import { readCardForRedispatch, readRedispatchContext } from "./runtime.mjs";
+import { readCardForRedispatch, readQuestionOutcome, readRedispatchContext } from "./runtime.mjs";
 import {
   appendWorkerTurn,
   buildWorkerDispatchPrompt,
@@ -387,6 +387,10 @@ export function createSessionPool(input = {}) {
   // A retry must re-read the board: a worker can deliver (or a human can move
   // the card) while the turn that was about to be retried is still unwinding.
   const revalidateCard = typeof input.revalidateCard === "function" ? input.revalidateCard : null;
+  // A director turn's exit code is not evidence: the card must be re-read to
+  // prove it was released. Null in tests that do not inject a board.
+  const questionOutcome =
+    typeof input.readQuestionOutcome === "function" ? input.readQuestionOutcome : null;
   const stateDir = dirname(String(opts.state));
   // `internal` is the installed supervisor; `external` marks a pool started by a
   // live session (`loop status --take-over`). There is no control turn in either
@@ -854,8 +858,33 @@ export function createSessionPool(input = {}) {
         entry.lastUsedAt = nowIso(now);
       }
       if (outcome?.ok === true) {
-        completeCards(stateDir, claimed.cards.map((card) => card.id));
-        answered += claimed.cards.length;
+        // The turn exited 0; that is not proof it settled the board. Verify each
+        // question row against the live card. A note-only turn leaves the card
+        // in_progress and must be retried by the next poll (the row-level cap
+        // still bounds it); a failed read is fail-soft — completing the row lets
+        // the next poll re-enqueue it if the question is still open.
+        const settled = [];
+        const unsettled = [];
+        for (const row of claimed.cards) {
+          if (row.route === true || questionOutcome === null) {
+            settled.push(row);
+            continue;
+          }
+          const live = await questionOutcome({ card: row.card, questionId: row.question_id, row });
+          if (live?.ok === true && live.settled !== true) unsettled.push(row);
+          else settled.push(row);
+        }
+        if (settled.length > 0) completeCards(stateDir, settled.map((card) => card.id));
+        if (unsettled.length > 0) {
+          completeCards(stateDir, unsettled.map((card) => card.id), {
+            status: "failed",
+            error: "director turn did not settle the question",
+          });
+          log(
+            `session: director did not settle ${unsettled.map((card) => card.card).join(", ")} — row failed`,
+          );
+        }
+        answered += settled.length;
         continue;
       }
       requeueCards(stateDir, claimed.cards.map((card) => card.id), {
@@ -1011,6 +1040,19 @@ export function createSessionPool(input = {}) {
       ) {
         log(`session: lane session pool is full (${poolMax}) — leaving ${dir} (${lane}) pending`);
         continue;
+      }
+      // A worker that is still in a turn — including a worker holding on
+      // `issue wait` — must not receive a second prompt. The queue row waits;
+      // the director's release may have re-claimed the card in the meantime,
+      // and `revalidateBatch` drops the row if the worker already moved it.
+      if (lane === "worker-session") {
+        const existing = sessions.get(key);
+        // `busy` is the in-process truth; the persisted `worker.status` can lag
+        // a failed turn and must not be used as a lock.
+        if (existing?.busy === true) {
+          log(`session: worker ${cards[0].card} is still running — leaving its handoff pending`);
+          continue;
+        }
       }
       if (lane === "worker-session" && !sessions.has(key)) {
         const openWorkers = [...sessions.values()].filter((session) => isWorkerKey(session.key));
@@ -1277,6 +1319,10 @@ export function createSessionPool(input = {}) {
         if (/closed|exited|spawn error|timed out/.test(error)) {
           await closeEntry(entry, { dropSession: false });
         }
+        // The turn settled; the record must not keep saying `running` (a failed
+        // turn is retried on the next tick, and the guard reads `busy`).
+        entry.worker.status = "idle";
+        entry.worker.lastError = error;
         persistState();
         continue;
       }
@@ -1682,6 +1728,8 @@ export async function runSession(opts, deps = {}) {
     now: deps.now,
     isAlive: deps.isAlive,
     revalidateCard: (input) => readCardForRedispatch(opts, input.card, log),
+    readQuestionOutcome: (input) =>
+      readQuestionOutcome(opts, input.card, input.questionId, log),
   });
   const started = await pool.start();
   if (!started.ok) {

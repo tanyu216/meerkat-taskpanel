@@ -9,7 +9,9 @@
  *
  * The question ladder is the same one the director prompt carries:
  *   * `awaiting` cards — a human answer resumes them;
- *   * `in_progress` cards with an agent `question` and no later human comment.
+ *   * `in_progress` cards with an agent `question` that has not been **released**
+ *     (a director `note` alone leaves the card open; a human answer is shown
+ *     with `answered_pending_release`).
  * `in_review` cards are listed as pending acceptance. The card's own
  * `acceptance_mode` says who closes it — the loop for `off`/`agent`, a person
  * for `human` — so the list is a reading, not a claim about who owes the act.
@@ -20,7 +22,7 @@
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 import { parseArgs } from "./options.mjs";
-import { answeredByHuman, isQuestionSettled, newestQuestion } from "./questions.mjs";
+import { answeredByHuman, newestQuestion, questionOpen } from "./questions.mjs";
 import { runCli } from "./runtime.mjs";
 import { probeSupervisor } from "./status.mjs";
 
@@ -57,9 +59,14 @@ async function tasksWithStatus(opts, agent, status) {
 export async function consoleCycle(opts, deps = {}) {
   const agent =
     Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : "agent";
+  const now = (deps.now ?? Date.now)();
   const supervisor = probeSupervisor(opts, deps);
   const errors = [];
   const questions = [];
+  const ageMs = (askedAt) => {
+    const at = typeof askedAt === "string" ? Date.parse(askedAt) : Number.NaN;
+    return Number.isFinite(at) ? Math.max(0, now - at) : null;
+  };
 
   const awaiting = await tasksWithStatus(opts, agent, "awaiting");
   if (awaiting.error !== null) errors.push(`awaiting: ${awaiting.error}`);
@@ -78,6 +85,8 @@ export async function consoleCycle(opts, deps = {}) {
       awaiting_reason: task.awaiting_reason ?? null,
       question: question?.body ?? null,
       asked_at: question?.created_at ?? null,
+      age_ms: ageMs(question?.created_at),
+      answered_pending_release: false,
       kind: "awaiting",
     });
   }
@@ -88,15 +97,18 @@ export async function consoleCycle(opts, deps = {}) {
     const { comments, error } = await commentsFor(opts, agent, task.identifier);
     if (error !== null) errors.push(`${task.identifier} comments: ${error}`);
     const question = newestQuestion(comments);
-    // The director's answer is an agent `note`; it settles the middle
-    // rung's question just as a human comment does.
-    if (question === null || isQuestionSettled(comments, question)) continue;
+    // The middle rung's question is open until the card is **released** — a
+    // director `note` alone is not a settle. A human answer on an in-progress
+    // card is shown, but flagged: the director still owes the release.
+    if (!questionOpen(task, question)) continue;
     questions.push({
       ref: task.identifier,
       title: task.title ?? null,
       status: "in_progress",
       question: question.body ?? null,
       asked_at: question.created_at ?? null,
+      age_ms: ageMs(question.created_at),
+      answered_pending_release: answeredByHuman(comments, question),
       kind: "agent-question",
     });
   }

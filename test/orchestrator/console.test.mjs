@@ -35,9 +35,9 @@ const TASKS = {
     { identifier: "T-5", title: "Answered in the UI", status: "awaiting" },
   ],
   in_progress: [
-    { identifier: "T-2", title: "Already answered", status: "in_progress" },
-    { identifier: "T-4", title: "Still asking", status: "in_progress" },
-    { identifier: "T-6", title: "Answered by the project session", status: "in_progress" },
+    { identifier: "T-2", title: "Answered, not released", status: "in_progress", status_changed_at: "2025-12-31T23:00:00Z" },
+    { identifier: "T-4", title: "Still asking", status: "in_progress", status_changed_at: "2025-12-31T23:00:00Z" },
+    { identifier: "T-6", title: "Note, not released", status: "in_progress", status_changed_at: "2025-12-31T23:00:00Z" },
   ],
   in_review: [{ identifier: "T-3", title: "Awaiting acceptance", status: "in_review" }],
 };
@@ -131,11 +131,15 @@ describe("the live-session console", () => {
     assert.equal(result.supervisor.verdict, "absent");
     assert.deepEqual(
       result.questions.map((entry) => entry.ref).sort(),
-      ["T-1", "T-4"],
-      "T-2/T-5 have newer human answers and T-6 has the project session's note, so none is asked again",
+      ["T-1", "T-2", "T-4", "T-6"],
+      "T-5 is answered on an awaiting card (the board resumes it); T-2 and T-6 are answered " +
+        "but not released, so the director still owes the release",
     );
     assert.equal(result.questions.find((entry) => entry.ref === "T-1").kind, "awaiting");
     assert.equal(result.questions.find((entry) => entry.ref === "T-4").kind, "agent-question");
+    assert.equal(result.questions.find((entry) => entry.ref === "T-2").answered_pending_release, true);
+    assert.equal(result.questions.find((entry) => entry.ref === "T-6").answered_pending_release, false);
+    assert.equal(typeof result.questions.find((entry) => entry.ref === "T-4").age_ms, "number");
     assert.deepEqual(result.pending_acceptance.map((entry) => entry.ref), ["T-3"]);
     assert.deepEqual(result.errors, []);
 

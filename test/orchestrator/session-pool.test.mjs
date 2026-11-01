@@ -398,6 +398,181 @@ describe("session pool", () => {
     await pool.stop();
   });
 
+  it("leaves a handoff pending while the worker's turn is still in flight", async (t) => {
+    const f = fixture(t);
+    let releaseFirst;
+    const firstTurn = new Promise((resolve) => {
+      releaseFirst = resolve;
+    });
+    let sends = 0;
+    const fake = fakePool({
+      behavior: async () => {
+        sends += 1;
+        if (sends === 1) await firstTurn;
+        return {};
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    const running = pool.tick();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // A second pending row for the same worker key, as a director release +
+    // poll re-claim could leave behind. It must not be sent into the busy turn.
+    const file = join(f.dir, "cards.queue.json");
+    const value = JSON.parse(readFileSync(file, "utf8"));
+    value.cards.push({
+      version: 1,
+      id: "T-1-worker-second",
+      queue_kind: "handoff",
+      role: "worker",
+      card: "T-1",
+      agent: "alice",
+      project: "P",
+      target_dir: f.app,
+      round: 1,
+      worker_key: "worker:T-1:r1",
+      handoff: "work T-1",
+      status: "pending",
+      enqueuedAt: new Date().toISOString(),
+      attempts: 0,
+    });
+    writeFileSync(file, JSON.stringify(value), "utf8");
+
+    await pool.tick();
+    assert.equal(sends, 1, "no second prompt is sent into the running session");
+    assert.equal(
+      readCards(f.dir).value.cards.find((entry) => entry.id === "T-1-worker-second").status,
+      "pending",
+    );
+
+    releaseFirst();
+    await running;
+    await pool.stop();
+  });
+
+  it("fails a question row when the director's note did not release the card", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const seen = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      readQuestionOutcome: async (input) => {
+        seen.push(input);
+        return { ok: true, settled: false, status: "in_progress" };
+      },
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "question:T-1:q-1",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      question_id: "q-1",
+      question: "Which option?",
+      asked_at: "2026-01-01T00:00:00Z",
+    });
+    await pool.tick();
+
+    assert.deepEqual(seen.map((input) => [input.card, input.questionId]), [["T-1", "q-1"]]);
+    const row = readCards(f.dir).value.cards.find((card) => card.id === "question:T-1:q-1");
+    assert.equal(row.status, "failed");
+    assert.match(row.lastError, /did not settle/);
+    await pool.stop();
+  });
+
+  it("completes a question row when the card was released or escalated", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      readQuestionOutcome: async () => ({ ok: true, settled: true, status: "todo" }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "question:T-1:q-2",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      question_id: "q-2",
+      question: "Which option?",
+    });
+    await pool.tick();
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+    await pool.stop();
+  });
+
+  it("does not verify a route row (it assigns, it does not answer)", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const seen = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      readQuestionOutcome: async (input) => {
+        seen.push(input);
+        return { ok: true, settled: false };
+      },
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "route:T-7",
+      queue_kind: "question",
+      role: "question",
+      card: "T-7",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      route: true,
+      title: "Wire the widget",
+    });
+    await pool.tick();
+    assert.deepEqual(seen, []);
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+    await pool.stop();
+  });
+
+  it("completes the row fail-soft when the outcome read is unreadable", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      readQuestionOutcome: async () => ({ ok: false, error: "down" }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "question:T-1:q-3",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      question_id: "q-3",
+      question: "Which option?",
+    });
+    await pool.tick();
+    // The next poll re-enqueues it if the question is still open; a failed read
+    // itself is not proof that the director failed.
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+    await pool.stop();
+  });
+
   it("routes an unowned card in the director lane", async (t) => {
     const f = fixture(t);
     const fake = fakePool();

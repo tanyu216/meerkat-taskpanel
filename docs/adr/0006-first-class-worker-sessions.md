@@ -5,6 +5,8 @@
 Accepted — 2026-10-31.
 
 > **Note (2026-10-31):** the reviewer lane's session key now includes the actor kind that carries the reviewer role (ADR 0007); its per-directory, subagent-spawning shape is unchanged. The worker-session decision is unchanged.
+>
+> **Note (2026-11-01):** ADR 0008 adds the bounded in-turn `issue wait` hold. The same-round resume/replay path here is unchanged and remains the fallback for `escalated`/`timeout`/`moved`/`error`.
 
 ## Context
 

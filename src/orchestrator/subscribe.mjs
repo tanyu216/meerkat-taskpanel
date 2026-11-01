@@ -60,6 +60,7 @@ export const DISPATCH_EVENTS = Object.freeze([
   "task_moved",
   "task_reopened",
   "task_delivered",
+  "task_resumed",
   "report_written",
   "report_waived",
   "relation_added",
@@ -68,31 +69,35 @@ export const DISPATCH_EVENTS = Object.freeze([
 ]);
 
 /**
- * The declared events that deliberately do not wake a turn.
+ * Events whose decision is **field-dependent**, handled before the two lists.
  *
- * `task_updated` is absent: its decision is field-dependent (below).
+ * `task_updated` is field-dependent (below). `comment_added` is the question
+ * lane's wake: an agent `question` must reach the director even though the
+ * worker authored it, and a human comment is always worth a re-scan. A plain
+ * agent `note` stays suppressed.
+ *
  * `test/contract/activity-consumers.test.mjs` asserts that every declared,
- * non-historical event is in exactly one of this list, `DISPATCH_EVENTS`, or
- * the `task_updated` field rule — a new board event cannot be forgotten here.
+ * non-historical event is in exactly one of `DISPATCH_EVENTS`, `IGNORED_EVENTS`
+ * or this set — a new board event cannot be forgotten here.
+ */
+export const CONDITIONAL_EVENTS = Object.freeze(["task_updated", "comment_added"]);
+
+/**
+ * The declared events that deliberately do not wake a turn.
  *
  * `epic_auto_start` is board-authored (`taskd`), which `isOwnWrite` already
  * suppresses; listing it as a dispatch was a contradiction, not a behaviour.
- * `task_resumed` is ignored on purpose for now: the human's `comment_added`
- * already refreshes the brief, and the next continue clock picks the returned
- * card up. Whether it should wake a turn immediately is a product decision.
  */
 export const IGNORED_EVENTS = Object.freeze([
   "project_created",
   "project_updated",
   "task_claimed",
   "task_heartbeat",
-  "task_resumed",
   "task_archived",
   "acceptance_changed",
   "acceptance_pruned",
   "acceptance_override",
   "epic_auto_start",
-  "comment_added",
   "label_gc",
   "session_registered",
   "session_closed",
@@ -163,8 +168,25 @@ export function isOwnWrite(activity, context) {
  * @returns {"dispatch"|"ignore"}
  */
 export function classify(activity, context) {
-  if (isOwnWrite(activity, context)) return "ignore";
   const event = activity?.event;
+  const changes = activity?.changes ?? {};
+  // The question lane's wake. A worker's own `question` must reach the director
+  // even though `isOwnWrite` would suppress it — the loop never writes a
+  // worker's question, so this is a handoff, not an echo. A human comment is
+  // always worth a re-scan; a plain agent `note` stays suppressed.
+  if (event === "comment_added") {
+    if (changes.kind === "question") return "dispatch";
+    if (String(activity?.actor_kind ?? "").toLowerCase() === HUMAN_KIND) return "dispatch";
+    return "ignore";
+  }
+  // A card returned to the queue by the director's own release. Without this,
+  // a note+release turn would only be picked up by the next continue clock.
+  // A `to: "awaiting"` escalation is not a wake: the worker is parked and only
+  // a human comment resumes the card (`task_resumed`).
+  if (event === "task_moved" && changes.from === "in_progress" && changes.to === "todo") {
+    return "dispatch";
+  }
+  if (isOwnWrite(activity, context)) return "ignore";
   if (event === "task_updated") {
     const fields = Array.isArray(activity?.changes?.fields) ? activity.changes.fields : [];
     return fields.some((field) => UPDATED_FIELDS.has(field)) ? "dispatch" : "ignore";

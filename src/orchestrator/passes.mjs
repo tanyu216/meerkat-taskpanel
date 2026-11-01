@@ -579,6 +579,11 @@ export async function runPollOnce(opts, env = process.env) {
     return 0;
   }
 
+  // A card parked on an unanswered question is a **dormant claim**, like
+  // `awaiting`: no stale re-claim may put a second worker on it before the
+  // director answers. The refs are read with the question lane below.
+  const openQuestionRefs = new Set();
+
   // The question lane rides poll: a worker's unanswered question is handed to
   // the director lane before the subagent budget is consulted (a question is
   // not a subagent). The capability guard keeps an older pool from receiving
@@ -586,6 +591,7 @@ export async function runPollOnce(opts, env = process.env) {
   if (!opts.dryRun && (pool.capabilities ?? []).includes("question-lane")) {
     const open = readOpenQuestions(opts, log);
     if (open.ok) {
+      for (const row of open.rows) openQuestionRefs.add(String(row.ref));
       const result = runQuestionTick({
         questions: open.rows,
         resolveDir: (project) => resolveWakeDir({ project, projectsJson: opts.projectsJson }),
@@ -742,7 +748,11 @@ export async function runPollOnce(opts, env = process.env) {
         log(`scan failed for ${agent}: ${read.error}`);
         return [];
       }
-      const found = read.data.candidates ?? [];
+      // A card parked on an unanswered question is not offered for a stale
+      // re-claim: only the director's answer may move it forward.
+      const found = (read.data.candidates ?? []).filter(
+        (candidate) => !openQuestionRefs.has(String(candidate.identifier ?? "")),
+      );
       if (!dedicatedReviewer) return found;
       return found.filter((candidate) => typeof candidate.review_of === "string" && candidate.review_of !== "");
     },
@@ -829,11 +839,26 @@ export async function runPatrolOnce(opts, env = process.env) {
     if (pruned.dropped.length > 0) writeDeferralLedger(stateDir, pruned.ledger);
   }
 
+  // A stale patrol turn must not act on a card that is parked on an unanswered
+  // question: the director is the only middle rung, and the worker will be
+  // resumed by its answer. The read is made only when the LLM patrol is on.
+  const openQuestionRefs = new Set();
+  if (config.patrolLlm === true) {
+    const open = readOpenQuestions(opts, log);
+    if (open.ok) for (const row of open.rows) openQuestionRefs.add(String(row.ref));
+  }
+
   const patrol = await runPatrolTick({
     tasks,
     config,
     spawnPatrol: async (alert) => {
       if (opts.dryRun) return { ok: false };
+      if (openQuestionRefs.has(String(alert.identifier))) {
+        log(
+          `patrol: ${alert.identifier} — parked on an unanswered question; notify-only, no LLM turn`,
+        );
+        return { ok: false };
+      }
       // The LLM lane needs a resident session to run in. Without one the
       // alert stays notify-only — no card is claimed, no process is started.
       const pool = poolStatus({ opts, isAlive: isProcessAlive });

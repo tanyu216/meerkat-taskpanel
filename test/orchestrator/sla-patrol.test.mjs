@@ -198,6 +198,7 @@ describe("SLA_ROWS (the docs/sla.md runtime mapping table, hook H6)", () => {
       defect_card_creation: [1440, 2880],
       acceptance_card_creation: [1440, 2880],
       heartbeat_stale: [30, 360],
+      question_stale: [60, 1440],
       leader_stalled: [60, 360],
     };
     for (const [row, [limit, further]] of Object.entries(published)) {
@@ -671,6 +672,86 @@ describe("heartbeat_stale (the SLA channel beside the legacy alert stream, §6.5
     assert.equal(alert.threshold_min, null);
     assert.equal(alert.severity, "warn");
     assert.equal(alert.confidence, "low");
+  });
+});
+
+describe("question_stale (the ladder's watchdog, §2)", () => {
+  const question = (id, at) => ({ id, kind: "question", author_kind: "agent", body: "Why?", created_at: at });
+  const human = (id, at) => ({ id, kind: "discuss", author_kind: "human", body: "Because.", created_at: at });
+  const note = (id, at) => ({ id, kind: "note", author_kind: "agent", body: "decision: because", created_at: at });
+  const questionAlert = (result) => result.alerts.find((entry) => entry.sla_row === "question_stale");
+
+  it("fires on an in_progress question with no release", () => {
+    const result = plan([card({ status_changed_at: ago(120), heartbeat_at: ago(1) })], {
+      trails: { "T-1": [question("q1", ago(70))] },
+    });
+    const alert = questionAlert(result);
+    assert.ok(alert, "an unanswered question is a wait");
+    assert.equal(alert.measure_start_kind, "trail_event");
+    assert.equal(alert.severity, "overdue");
+    assert.equal(alert.target, "leader");
+  });
+
+  it("a director note alone does not close it — the release does", () => {
+    const result = plan([card({ status_changed_at: ago(120), heartbeat_at: ago(1) })], {
+      trails: { "T-1": [question("q1", ago(70)), note("n1", ago(10))] },
+    });
+    assert.ok(questionAlert(result), "note without a status change is still open");
+  });
+
+  it("is silent once the card changed status after the question", () => {
+    const result = plan([card({ status_changed_at: ago(30), heartbeat_at: ago(1) })], {
+      trails: { "T-1": [question("q1", ago(70))] },
+    });
+    assert.equal(questionAlert(result) ?? null, null);
+  });
+
+  it("fires on an awaiting card with no human answer", () => {
+    const result = plan([
+      card({ status: "awaiting", status_changed_at: ago(70), heartbeat_at: ago(1) }),
+    ], { trails: { "T-1": [question("q1", ago(70))] } });
+    const alert = questionAlert(result);
+    assert.ok(alert);
+    assert.equal(alert.measure_start_kind, "trail_event");
+  });
+
+  it("is silent on an awaiting card a human already answered (stale snapshot)", () => {
+    const result = plan([
+      card({ status: "awaiting", status_changed_at: ago(70), heartbeat_at: ago(1) }),
+    ], { trails: { "T-1": [question("q1", ago(70)), human("h1", ago(10))] } });
+    assert.equal(questionAlert(result) ?? null, null);
+  });
+
+  it("falls back to status_changed_at when a human parked silently", () => {
+    const result = plan([
+      card({ status: "awaiting", status_changed_at: ago(70), heartbeat_at: ago(1) }),
+    ], { trails: { "T-1": [] } });
+    const alert = questionAlert(result);
+    assert.ok(alert);
+    assert.equal(alert.measure_start_kind, "status_changed_at");
+  });
+
+  it("skips an epic container and a review card", () => {
+    for (const shape of [{ kind: "epic" }, { review_of_id: "uuid" }]) {
+      const result = plan([
+        card({ ...shape, status_changed_at: ago(120), heartbeat_at: ago(1) }),
+      ], { trails: { "T-1": [question("q1", ago(70))] } });
+      assert.equal(questionAlert(result) ?? null, null, JSON.stringify(shape));
+    }
+  });
+
+  it("reads the trail for awaiting cards and for old enough in-progress claims", () => {
+    const ids = trailReadCandidates(
+      [
+        card({ identifier: "A", status: "awaiting", status_changed_at: ago(10) }),
+        card({ identifier: "B", status: "in_progress", status_changed_at: ago(70) }),
+        card({ identifier: "C", status: "in_progress", status_changed_at: ago(10) }),
+      ],
+      { now: NOW, periodSeconds: PERIOD_SECONDS, rows: SLA_ROWS },
+    );
+    assert.ok(ids.includes("A"), "an awaiting card's question lives in its trail");
+    assert.ok(ids.includes("B"), "an old claim may hide a stale question");
+    assert.equal(ids.includes("C"), false, "a fresh claim cannot have an old question");
   });
 });
 
@@ -1262,7 +1343,10 @@ describe("an effective rows table", () => {
   });
 
   it("changes which trails are read", () => {
-    const fresh = [card({ status: "in_progress", status_changed_at: ago(56) })];
+    // 50 min: inside the override's gate lead (25), outside the default's
+    // gate/defect/question leads. The offset is below the default question lead
+    // (55), so the new row does not make this fixture read by default.
+    const fresh = [card({ status: "in_progress", status_changed_at: ago(50) })];
     assert.deepEqual(
       trailReadCandidates(fresh, { now: NOW, periodSeconds: 300, rows }),
       ["T-1"],

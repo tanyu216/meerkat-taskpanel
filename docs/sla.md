@@ -48,6 +48,7 @@ The six silences, and the row that watches each:
 | a defect with no fix card | `defect_card_creation` |
 | a delivery with no acceptance review card | `acceptance_card_creation` |
 | a worker that stopped heartbeating on a claimed card | `heartbeat_stale` |
+| a question nobody answered or released, or an `awaiting` card nobody answered | `question_stale` |
 | the leader's own patrol, or the peer inspector, going quiet | `leader_stalled`, `inspector_liveness` |
 
 ### 1.2 Goals and the invariants that follow
@@ -137,6 +138,7 @@ The threshold table — the published defaults:
 | `defect_card_creation` | 1440 | 2880 | `L − P` | `trail_event` | `sla-patrol` |
 | `acceptance_card_creation` | 1440 | 2880 | `L − P` | `status_changed_at` | `sla-patrol` |
 | `heartbeat_stale` | 30 | 360 | `L − P` | `heartbeat_at` | `sla-patrol+legacy-stale-alert` |
+| `question_stale` | 60 | 1440 | `L − P` | `trail_event` | `sla-patrol` |
 | `leader_stalled` | 60 | 360 | `L` (no lead) | `trail_event` | `sla-patrol` |
 | `inspector_liveness` | — | — | `k × P_peer` | peer marker | `sla-patrol` |
 
@@ -193,6 +195,11 @@ TASKD_SLA_LEADER_STALLED_FURTHER_MIN=360
 - **`heartbeat_stale` is alerting only.** Its defaults mirror `CLAIM_STALE_SAME_MS` /
   `CLAIM_STALE_ANY_MS`, but an override changes when the **alert** fires, not when a claim
   becomes re-claimable. Recovery is the claim's own rule and is independent by design.
+- **`question_stale` is the ladder's watchdog.** It fires on an `in_progress` card whose
+  newest `question` has no later **status change** (a director `note` alone is not a
+  release), and on an `awaiting` card with no human answer. A human comment after the
+  question closes it; on an awaiting card the board moves it to `todo` in the same
+  transaction. The row is notify-only: the director answers/releases, or the human answers.
 
 ## 3. The clock: working hours
 

@@ -32,7 +32,12 @@ import {
 } from "../foundation/log.mjs";
 import { pruneRegistry } from "../foundation/scheduling.mjs";
 import { emptySlaLedger } from "../foundation/sla-patrol.mjs";
-import { isHumanComment, isQuestionComment, newestQuestion } from "./questions.mjs";
+import {
+  classifyQuestionOutcome,
+  isHumanComment,
+  isQuestionComment,
+  newestQuestion,
+} from "./questions.mjs";
 
 // ---------------------------------------------------------------------------
 // Registry (crash survival) + process liveness
@@ -248,6 +253,47 @@ export function readRedispatchContext(opts, ref, log = () => {}, run = runCli) {
     .filter((line) => line.trim() !== "[human]" && line.trim() !== "[agent]")
     .join("\n");
   return { ok: true, status, answer: answer.slice(0, 2000), error: null };
+}
+
+/**
+ * Did the director's turn actually settle the question?
+ *
+ * A director turn can exit 0 without releasing the card (it wrote a `note` and
+ * forgot the move, or re-read a stale card). The question lane and the retry
+ * must judge the **board**, not the process exit. The rule is release-only: the
+ * card left `in_progress` (or changed status after the question). A note alone
+ * is not a settle.
+ *
+ * The read is bounded like `readRedispatchContext`; a failed read is returned,
+ * never thrown — the caller decides whether to retry.
+ *
+ * @param {object} opts
+ * @param {string} ref
+ * @param {string|number|null} questionId
+ * @param {(line: string) => void} [log]
+ * @param {Function} [run]
+ * @returns {{ok: boolean, settled?: boolean, answered?: boolean, released?: boolean, escalated?: boolean, status?: string|null, error?: string|null}}
+ */
+export function readQuestionOutcome(opts, ref, questionId, log = () => {}, run = runCli) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, error: "no agent configured" };
+  const read = run(opts, agent, [
+    "issue",
+    "get",
+    String(ref),
+    "--json",
+    "--include",
+    "comments",
+    "--limit",
+    "50",
+  ]);
+  if (!read.ok) {
+    log(`question outcome for ${ref} failed: ${read.error}`);
+    return { ok: false, error: read.error };
+  }
+  const task = read.data?.task ?? {};
+  const comments = Array.isArray(read.data?.comments) ? read.data.comments : [];
+  return { ok: true, ...classifyQuestionOutcome({ task, comments, questionId }) };
 }
 
 /**

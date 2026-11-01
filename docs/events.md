@@ -336,20 +336,29 @@ harmless: the continue turn rescans board state, the claim CAS decides the winne
 queue, the worker-session state and the ledger are the dispatch authorities.
 
 **Dispatch** (`DISPATCH_EVENTS`): `task_created`, `task_moved`, `task_reopened`, `task_delivered`,
-`report_written`, `report_waived`, `relation_added`, `relation_removed`, `import_completed`, plus
-`task_updated` only when `fields` intersects `assigneeId`, `assigneeKind`, `kind`, `labels`,
-`meta`.
+`task_resumed`, `report_written`, `report_waived`, `relation_added`, `relation_removed`,
+`import_completed`, plus `task_updated` only when `fields` intersects `assigneeId`,
+`assigneeKind`, `kind`, `labels`, `meta`.
 
-Everything else is named in `IGNORED_EVENTS`. Two entries are worth their reasons:
+Two narrow field rules sit before the actor suppression (`CONDITIONAL_EVENTS` names
+`task_updated` and `comment_added`):
 
-- `epic_auto_start` is board-authored (`system`), which actor suppression already ignores; listing
-  it as a dispatch was a contradiction, not a behaviour.
-- `task_resumed` is ignored on purpose: the human's `comment_added` already refreshes the brief,
-  and the next continue clock picks the returned card up. Whether it should wake a turn
-  immediately is a product decision. It is also only the **board's** status transition: the
-  loop resuming a card's worker session is a local fact (the stored session id in
-  `sessions.state.json`), and it emits no board event — see
-  [`scheduling.md` §Resume and replay](scheduling.md#the-resident-session-pool).
+- `comment_added` wakes when `changes.kind === "question"` — a worker's own question is a handoff
+  to the director, not an echo — or when the actor is a **human**. A plain agent `note` stays
+  ignored.
+- `task_moved` with `from: "in_progress"` and `to: "todo"` wakes even when this loop authored it:
+  that is the director releasing a card, and the same-round resume should not wait for the next
+  continue clock. A move to `awaiting` is not a wake — the worker is parked and only a human
+  comment resumes the card.
+
+`task_resumed` wakes a turn: a human answer moves an `awaiting` card to `todo` in the same
+transaction, and the worker session resumes with the answer. The loop's own resume remains a
+local fact (the stored session id in `sessions.state.json`) and emits no board event — see
+[`scheduling.md` §Resume and replay](scheduling.md#the-resident-session-pool).
+
+Everything else is named in `IGNORED_EVENTS`. `epic_auto_start` is board-authored (`system`),
+which actor suppression already ignores; listing it as a dispatch was a contradiction, not a
+behaviour.
 
 A name neither list knows is a newer board and is ignored, never an error.
 

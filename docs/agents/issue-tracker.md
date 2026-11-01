@@ -11,7 +11,10 @@ The workflow, in one paragraph: read the claimable set with
 read it with `taskctl issue get <ref> --json` — the frozen `acceptance[]` is the contract, and
 `--include comments --include reports` carries the trail and the deliveries. Record decisions
 as comments (`taskctl comment add <ref> --kind decision|note|question --body …`); a question
-for a person is `taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question …`.
+for the **director** is an agent `question` followed by a bounded hold,
+`taskctl issue wait <ref> --question <id>` (`answered` continues in the same turn; re-claim if
+the card is back in `todo`; any other outcome ends the turn and the loop resumes the session).
+A question for a **person** is `taskctl issue move <ref> awaiting --awaiting-reason E1..E5 --question …`.
 Finish by delivering a report for the current round —
 `taskctl issue deliver <ref> --report-file -` — which moves the card to `in_review`.
 In a team project, **the create is the routing step**: the card carries its accountable role

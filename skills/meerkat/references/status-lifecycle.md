@@ -25,6 +25,12 @@ A card has **eight stored status words**, but only **seven are stages** — the 
 | `done` | Accepted. Terminal, with one audited exit: reopen to `todo`. |
 | `canceled` | Abandoned. Terminal, with the same one exit. |
 
+An agent question the **director** can decide never enters `awaiting`: the card stays
+`in_progress`, the worker **holds** with `issue wait <ref> --question <id>`, and the director's
+**release** (`in_progress → todo`) resumes it — a `note` alone is not a settle. `answered`
+continues the same turn (re-claim if the card is back in `todo`); `escalated` / `timeout` /
+`moved` / `error` park the session, which is resumed by id when the answer lands.
+
 `awaiting` is the **eighth literal but not an eighth column**: an *attention overlay* on an
 in-progress card that has stopped to ask a human a question, displayed under `in_progress`.
 
@@ -33,8 +39,8 @@ The question is a **`question` comment**: an agent enters with
 land in one transaction. The payload the view shows is the newest `question` (falling back to
 the newest human comment for a card that predates the kind). **Any human comment** answers
 it — whatever its kind — and re-queues the card (`awaiting → todo`) in the same transaction,
-because the asking worker has stopped for now; the dispatch resumes that worker's session with
-the answer. The board does not read the text: whether the answer
+because the asking worker is parked; the dispatch resumes that worker's session with the
+answer. The board does not read the text: whether the answer
 is a complete decision is judged from its content by the resumed worker, and an incomplete or
 ambiguous answer sends the card back to `awaiting` for another human comment. A `decision` /
 `confirm` / `change` kind remains the explicit I5 record, not the resume gate. An answer is

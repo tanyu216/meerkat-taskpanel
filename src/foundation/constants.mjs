@@ -131,6 +131,10 @@ export const SLA_ENV_KEYS = Object.freeze({
       limitMin: "TASKD_SLA_HEARTBEAT_STALE_LIMIT_MIN",
       furtherMin: "TASKD_SLA_HEARTBEAT_STALE_FURTHER_MIN",
     }),
+    question_stale: Object.freeze({
+      limitMin: "TASKD_SLA_QUESTION_STALE_LIMIT_MIN",
+      furtherMin: "TASKD_SLA_QUESTION_STALE_FURTHER_MIN",
+    }),
     leader_stalled: Object.freeze({
       limitMin: "TASKD_SLA_LEADER_STALLED_LIMIT_MIN",
       furtherMin: "TASKD_SLA_LEADER_STALLED_FURTHER_MIN",

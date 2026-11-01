@@ -159,6 +159,13 @@ read can claim blocked work.
   judges whether the answer is complete. A `decision`/`confirm`/`change` comment remains the
   explicit record, not the resume gate.
 
+An agent question the **director** can decide is not `awaiting`: the card stays
+`in_progress`, the worker holds the turn with `taskctl issue wait` (bounded), and the
+director's **release** (`in_progress → todo`) resumes it — a `note` alone is not a settle.
+The same session continues in-turn on `answered` (re-claiming the card if the release left
+it `todo`); `escalated`, `moved`, `timeout` and `error` end the turn, and the session is
+resumed by id when the answer lands.
+
 `awaiting → in_progress` is a **resume of the same attempt**, not a rework: the round does not
 move and the round's report, once written, still counts. The forbidden exits are the point:
 `awaiting → in_review | done` is a delivery-gate bypass, and the whitelist and trigger both

@@ -139,7 +139,7 @@ taskctl issue update <ref> --acceptance "…" --acceptance "…" --meta acceptan
 taskctl comment add <ref> --kind note --body "acceptance list derived at claim (pre-authorized): 1) …"
 ```
 
-Without that pre-authorization, write an agent `question` comment with the proposed items and stop — leave the card `in_progress`. Never derive on an **epic** (its acceptance is its children) or a **review card**.
+Without that pre-authorization, write an agent `question` comment with the proposed items and **hold** with `issue wait` — leave the card `in_progress`. Never derive on an **epic** (its acceptance is its children) or a **review card**.
 
 The report must **cover the snapshot**: every item appears by text; `met` or `not_applicable` (with a non-empty note) passes, `partial` / `not_met` block. A report item beyond the baseline blocks too if unfinished. An imported checkbox list freezes as plain items: a tick is the author's intent, not this delivery's evidence.
 
@@ -152,7 +152,7 @@ The mode is resolved once, at creation: `--acceptance-mode off|agent|human`; omi
 
 ## Containers: when the card is an epic
 
-An epic exists only where someone named one. Splitting is a scope decision: it belongs to the `meerkat-director` (an out-of-scope expansion to the human, `E1`), so a worker that finds several deliverables writes an agent `question` comment describing the pieces, keeps the card `in_progress`, and stops. A title and description naming the **sum** of the work is the container; naming **one deliverable** makes it a child.
+An epic exists only where someone named one. Splitting is a scope decision: it belongs to the `meerkat-director` (an out-of-scope expansion to the human, `E1`), so a worker that finds several deliverables writes an agent `question` comment describing the pieces, keeps the card `in_progress`, and **holds** with `issue wait`. A title and description naming the **sum** of the work is the container; naming **one deliverable** makes it a child.
 
 **A child is a deliverable, not a layer.** Ask four questions of every proposed child:
 
@@ -204,8 +204,9 @@ Then deliver a report **on this card** whose first line is exactly `VERDICT: APP
 The review card's `review_round` is the **original's** audited round; its own `delivery_round` is a different number. A re-delivery after a rejection needs a new review card. Full protocol:
 [`references/review-workflow.md`](references/review-workflow.md), [`references/review-workflow.md#2-the-review-cards-identity`](references/review-workflow.md#2-the-review-cards-identity), [`references/review-workflow.md#3-the-reviewers-protocol`](references/review-workflow.md#3-the-reviewers-protocol), [`references/review-workflow.md#6-what-happens-after-a-delivery`](references/review-workflow.md#6-what-happens-after-a-delivery).
 
-## Waiting: a human question, or blocked
+## Waiting: the director, a human, or blocked
 
+- A question for the **director** is an agent `question` comment plus a bounded hold: `issue wait <ref> --question <id>`. `answered` continues in the same turn (re-claim if the card is back in `todo`); `escalated`, `moved`, `timeout` and `error` end the turn, and the loop resumes the session when the answer lands.
 - A question for a person is **`awaiting`**, not `blocked` and not a chat message: `issue move <ref> awaiting --awaiting-reason E3 --question "…"`. The reason is one of `E1`–`E5` (scope · acceptance baseline · design direction · security · architecture). **Any human comment** re-queues the card to `todo`; `awaiting → in_progress` resumes the same attempt without a new delivery round.
 - **`blocked`** is for everything else; `--blocked-reason` is optional. Literals: [`references/card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for`](references/card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for).
 

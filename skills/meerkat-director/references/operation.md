@@ -86,10 +86,12 @@ itself a failure — the reviewer falls back to the description and the frozen a
 ## Questions and decision rights
 
 A worker decides nothing on its own. It writes an agent `question` on the `in_progress`
-card, keeps it `in_progress` and stops; the supervisor enqueues the question row. You answer
-with an agent `note` and move the card to `todo`, or escalate E1–E5 (scope, acceptance,
-design/aesthetic, security/data, architecture) with
-`issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."`.
+card, keeps it `in_progress` and **holds** with `taskctl issue wait`; the supervisor enqueues
+the question row. You answer with an agent `note` and **release the card to `todo`**, or
+escalate E1–E5 (scope, acceptance, design/aesthetic, security/data, architecture) with
+`issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."`. The release is the
+settle: a note without the move is retried, and a card that already has a later answer is
+released without a second answer.
 
 The board's one hard rule is not yours to bend: **only a human comment resumes an
 `awaiting` card.** The resumed worker judges from its content whether the answer is
