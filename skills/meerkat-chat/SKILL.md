@@ -57,8 +57,8 @@ fails, report the failure as the failure; never substitute a guess.
 Reply in the human's language. Mirror the language of their own messages — do not default to
 English, and do not reproduce the English examples in this skill as if they were the default.
 Identifiers, command lines, status literals, field names and error codes stay verbatim — the
-board skill's language rule applies to every comment you write (see
-[`meerkat`](../meerkat/SKILL.md)).
+board skill's language rule applies to every comment you write (see the
+[`meerkat`](../meerkat/SKILL.md) skill).
 
 ## 1. Answer what is happening
 
