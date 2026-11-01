@@ -181,7 +181,8 @@ meerkat-taskpanel/
 │   ├── src/lib/        #   pure browser helpers, incl. board-enums.js (the mirrored vocabularies)
 │   └── .vendor/npm-cache/  # the committed offline cache the image's webbuild stage installs from
 ├── skills/             # authored skills — never generated: meerkat (board), meerkat-director,
-│                       #   jobs/linus/turing/reviewer/worker (role skills), setup-meerkat
+│                       #   meerkat-chat (the human's live console), jobs/linus/turing/reviewer/
+│                       #   worker (role skills), setup-meerkat
 ├── scripts/            # build / install / release / verify / security checkers
 ├── docker/             # Dockerfile, compose files, verify-in-container.sh, profiles/
 ├── monitoring/         # the metrics sidecar (Prometheus / OTLP)

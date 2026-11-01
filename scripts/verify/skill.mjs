@@ -7,10 +7,10 @@
  * and a non-empty `description` of at least 20 characters (per the Agent Skills spec,
  * the description is what the host uses to decide when to load the skill).
  *
- * The board skill goes to every agent kind; the supervisor's director skill and the five role
- * skills (`jobs`, `linus`, `turing`, `reviewer`, `worker`) go to claude/codex/pi;
- * `setup-meerkat` is the Claude-only install/repair command. All live in the one `skills/`
- * tree.
+ * The board skill goes to every agent kind; the supervisor's director skill, the human's chat
+ * console and the five role skills (`jobs`, `linus`, `turing`, `reviewer`, `worker`) go to
+ * claude/codex/pi; `setup-meerkat` is the Claude-only install/repair command. All live in the
+ * one `skills/` tree.
  *
  * Node builtins only.
  */
@@ -25,6 +25,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /** The skills shipped from `skills/`, in the order this checker reports them. */
 export const SKILLS = Object.freeze([
   "meerkat",
+  "meerkat-chat",
   "meerkat-director",
   "setup-meerkat",
   "jobs",

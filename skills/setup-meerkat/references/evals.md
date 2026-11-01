@@ -15,8 +15,8 @@ local taskd, chooses `--target claude --no-automation`, and `--dry-run` writes n
 > Install meerkat here and build the standard team.
 
 Assert: `--dry-run` prints the install plan and writes nothing; the real run installs the
-board skill, `meerkat-director` and the five role skills (`jobs`, `linus`, `turing`,
-`reviewer`, `worker`) for Claude, and the native agent definitions; the second run changes no
+board skill, `meerkat-chat`, `meerkat-director` and the five role skills (`jobs`, `linus`,
+`turing`, `reviewer`, `worker`) for Claude, and the native agent definitions; the second run changes no
 managed content (role skills and agent definitions are `unchanged`; the installer may re-copy
 identical runtime bytes); the project's `CLAUDE.md`/`AGENTS.md` states the task entry once,
 naming `/meerkat` and carrying the card scope, with no marker block, and a re-run leaves it

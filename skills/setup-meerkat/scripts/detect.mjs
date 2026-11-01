@@ -601,7 +601,7 @@ function humanReport(report) {
   );
   lines.push(`  taskctl:   ${report.taskctl.found ? `${report.taskctl.path} ${report.taskctl.version ?? ""}` : "not found"}`);
   lines.push(`  server:    ${report.server.url} (${report.server.urlSource}); ${report.server.class}; ${report.server.probed ? (report.server.reachable ? "reachable" : "unreachable") : "not probed"}`);
-  lines.push(`  skills:    board=${report.skills.board.installed} director=${report.skills.director.installed} setup=${report.skills.setup.installed}`);
+  lines.push(`  skills:    board=${report.skills.board.installed} chat=${report.skills.chat.installed} director=${report.skills.director.installed} setup=${report.skills.setup.installed}`);
   lines.push(`  loop state: ${report.loopState.installed ? report.loopState.path : "not installed"}`);
   lines.push(`  supervisor: ${report.supervisor.running ? "running" : "not running"}${report.supervisor.reason ? ` (${report.supervisor.reason})` : ""}`);
   const roleLines = report.roles.list.map(
@@ -667,6 +667,7 @@ async function main(argv) {
   const taskctl = detectTaskctl(opts, checkout, opts.home, kind, env);
   const skills = {
     board: detectSkill(opts.home, kind, "meerkat"),
+    chat: detectSkill(opts.home, kind, "meerkat-chat"),
     director: detectSkill(opts.home, kind, "meerkat-director"),
     setup: detectSkill(opts.home, kind, "setup-meerkat"),
   };
@@ -674,6 +675,7 @@ async function main(argv) {
   for (const candidate of Object.keys(AGENT_KINDS)) {
     skillsByKind[candidate] = {
       board: detectSkill(opts.home, candidate, "meerkat").installed,
+      chat: detectSkill(opts.home, candidate, "meerkat-chat").installed,
       director: detectSkill(opts.home, candidate, "meerkat-director").installed,
       setup: detectSkill(opts.home, candidate, "setup-meerkat").installed,
     };
@@ -755,6 +757,7 @@ async function main(argv) {
   if (!taskctl.found) missing.push("taskctl");
   if (opts.network && !health.reachable) missing.push("server");
   if (!skills.board.installed) missing.push("board-skill");
+  if (!skills.chat.installed) missing.push("chat-skill");
   if (!skills.director.installed) missing.push("director-skill");
   if (!skills.setup.installed) missing.push("setup-skill");
   if (!loopState.installed) missing.push("loop-state");

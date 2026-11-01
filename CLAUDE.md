@@ -43,8 +43,9 @@ workflow: Jobs takes product design and UI, Linus architecture, implementation, 
 bugs and the security toolchain, Turing test design, regression and performance, Reviewer
 independent review, and Worker the fallback work no role owns. The installed copy is
 authoritative. Decisions are the `meerkat-director` skill's: assignment, worker questions and
-E1–E5 escalation; no separate project session handles them. The card is still created and
-delivered through `/meerkat`. Role workflows name the card's branch but not where it lives:
+E1–E5 escalation; no separate project session handles them. A human's live conversation about
+the board — progress, awaiting questions, acceptance, `loop doctor` — is the `meerkat-chat`
+skill's. The card is still created and delivered through `/meerkat`. Role workflows name the card's branch but not where it lives:
 isolate before the first edit per **Branch & worktree workflow** below — a parallel task
 works in `.worktrees/<slug>`, never in the primary checkout.
 
@@ -194,7 +195,8 @@ the release workflow stages the image's build there before `npm pack`.
   **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/agents/docker.md`
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
 - **The skills are authored source, never generated.** `skills/meerkat/`,
-  `skills/meerkat-director/`, the five role skills (`skills/{jobs,linus,turing,reviewer,worker}/`)
+  `skills/meerkat-director/`, `skills/meerkat-chat/`, the five role skills
+  (`skills/{jobs,linus,turing,reviewer,worker}/`)
   and `skills/setup-meerkat/` (standalone) are edited in place; there is no payload generator
   and no `manifest.txt`. The supervisor is `src/orchestrator/` (the workflow decisions live
   in `src/core/domain/workflow.mjs`; it gets them from `issue reconcile --workflow`).
@@ -273,6 +275,8 @@ The mechanisms those rules rest on, by home:
   delivery gate, review cards (flow B), `projects.json`, the brief.
 - `skills/meerkat-director/` — the decision hub: assignment, worker questions, E1–E5; the
   decision policy; the local event hub's operator view.
+- `skills/meerkat-chat/` — the human's console: progress, awaiting questions, acceptance,
+  `loop doctor` and abnormal-card triage; it records the human's words with `--as-human`.
 - `docs/agents/development.md` — one writer per data directory and `DB_BUSY`; auth (`TASKD_ALLOW_CIDRS`
   and the token, loopback trusted); the bounded `SIGTERM` stop.
 - `docs/ops/install.md` — config topology: `.env` layering, the per-kind `.env.<actor-kind>` at the

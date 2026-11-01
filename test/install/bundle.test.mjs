@@ -187,7 +187,7 @@ describe("bundle: parseMarketplace", () => {
 
     // `source: "./"` — the board's plugin root IS the repository root, which is what lets
     // claude / codex / pi / openclaw share the one `skills/` tree. It is the
-    // shared tree, so it exposes all three skills; that is not a second marketplace plugin.
+    // shared tree, so it exposes every skill in `skills/`; that is not a second marketplace plugin.
     //
     // The entry is the plugin's name, not a skill's: the board skill has been renamed
     // (`meerkat-taskpanel` → `meerkat`) while the published plugin keeps its identity, so
@@ -201,7 +201,7 @@ describe("bundle: parseMarketplace", () => {
     assert.deepEqual(
       [...names].sort(),
       [...SKILLS].sort(),
-      "the root bundle is the shared tree and carries all three skills",
+      "the root bundle is the shared tree and carries every skill",
     );
 
     // No entry may be sourced at a bundle directory: with `plugins/` gone, a second entry

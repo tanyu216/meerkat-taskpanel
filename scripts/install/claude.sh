@@ -3,7 +3,7 @@
 #
 # Deploys the complete Claude bundle, not just the board skill:
 #   1. board skill      → ~/.claude/skills/meerkat
-#   2. director + roles  → ~/.claude/skills/{meerkat-director,jobs,linus,turing,reviewer,worker} (copies)
+#   2. director + chat + roles → ~/.claude/skills/{meerkat-director,meerkat-chat,jobs,linus,turing,reviewer,worker} (copies)
 #   3. setup skill      → ~/.claude/skills/setup-meerkat (Claude-only; /setup-meerkat)
 #   4. settings.json    → merged: env.TASKCTL_AGENT + a SessionStart hook, preserving
 #                         every other key and hook

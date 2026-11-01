@@ -577,6 +577,11 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "SKILL.md"), "# director\n");
     };
+    const chat = (kind) => {
+      const dir = join(home, `.${kind}`, "skills", "meerkat-chat");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), "# chat\n");
+    };
     const role = (kind, id, agent, lanes = ["worker"]) => {
       const dir = join(home, `.${kind}`, "skills", id);
       mkdirSync(dir, { recursive: true });
@@ -585,6 +590,8 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     };
     director("claude");
     director("codex");
+    chat("claude");
+    chat("codex");
     role("claude", "jobs", "Jobs");
     role("claude", "linus", "Linus");
     role("claude", "reviewer", "Reviewer", ["reviewer"]);
@@ -613,6 +620,7 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
 
     const claude = result.body.platforms.claude;
     assert.equal(claude.skills.director, true);
+    assert.equal(claude.skills.chat, true, "the human console is part of the bundle");
     assert.ok(claude.skills.names.includes("tdd"), "the installed skill names are reported");
     assert.ok(claude.skills.names.includes("jobs"), "the installed role skill is named");
     assert.equal(claude.loopState.installed, true);

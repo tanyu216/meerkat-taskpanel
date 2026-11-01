@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Meerkat TaskPanel for Pi / Agent Skills: ~/.agents/skills/{meerkat,meerkat-director}
+# Install Meerkat TaskPanel for Pi / Agent Skills: ~/.agents/skills/{meerkat,meerkat-director,meerkat-chat}
 #
 # Pi has no timer, so it also gets the external supervisor's scheduling
 # units (~/.agents/scheduling) and the per-kind config

@@ -34,7 +34,7 @@ actor kind's shim (`<home>/<agent-dir>/bin/taskctl`), the checkout's
 
 ## Skills and supervisor
 
-- Board/loop/setup skills: `<home>/<agent-dir>/skills/<name>/SKILL.md`.
+- Board/chat/director/setup skills: `<home>/<agent-dir>/skills/<name>/SKILL.md`.
 - Loop state: `<home>/<agent-dir>/meerkat-taskpanel/` (`sessions.state.json`, the queue and ledger).
   The loop itself runs as `taskctl loop …`, so there is no copied body to probe.
 - Supervisor units: `<agent-dir>/scheduling/{launchd,systemd,cron}`.

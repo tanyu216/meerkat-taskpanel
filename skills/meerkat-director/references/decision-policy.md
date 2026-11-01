@@ -78,9 +78,9 @@ A decision round settles the choices a piece of work would otherwise assume sile
 changes *how* a question is asked, never *who* decides: the ladder above still binds, and
 only a human comment resumes an `awaiting` card.
 
-**In manual mode a round is scoped to one card.** The live session walks the waiting cards
-one at a time, so the frontier is that card's unsettled decisions — never several cards at
-once. The next card opens only after this one's answer is recorded.
+**In a human-fronted session a round is scoped to one card.** The `meerkat-chat` console
+walks the waiting cards one at a time, so the frontier is that card's unsettled decisions —
+never several cards at once. The next card opens only after this one's answer is recorded.
 
 1. **Draw the tree.** Each decision is a branch; a decision hangs off the answers it
    depends on.
@@ -123,10 +123,11 @@ worker judges whether the round is complete and, if not, asks the next round as 
 string. Never spread one round across several question comments, and never open a second
 `awaiting` question for the same round.
 
-**In manual mode** the live session is the middle rung: it selects the card, asks its frontier
-in the conversation, and records the answer on that card. The next card starts only after the
-answer is written. An operational `agent-question` is the session's to decide; only E1–E5 is
-carried to the human.
+**In the human's console** (`meerkat-chat`) the human is the top rung: the session selects the
+card, asks its frontier in the conversation, and records the answer on that card with
+`--as-human`. The next card starts only after the answer is written. The console records the
+human's words; it does not decide for them. An operational `agent-question` the human leaves
+alone is still the director's rung.
 
 A single item (or each Qn inside a round) uses this shape:
 
@@ -158,6 +159,6 @@ E-code.
 The comment and move commands themselves are the `meerkat` board skill's contract.
 
 `--as-human` signs the fixed local human name (`TASKCTL_HUMAN`). It is the one way to record
-what the human said; it is never the supervisor's own voice. In a human-opened director session
-(`--opened-by human`), the director session may ask its operator in the conversation and record
-the answer with `--as-human`; a supervisor-opened director session leaves the card on the board.
+what the human said; it is never the supervisor's own voice. The recorded answer is the
+`meerkat-chat` console's write, made in a conversation with the human; the director itself
+never signs as the human and leaves a supervisor-opened card on the board.

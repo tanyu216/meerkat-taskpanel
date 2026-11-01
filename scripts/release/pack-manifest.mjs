@@ -44,6 +44,7 @@ export const REQUIRED = Object.freeze([
   "scripts/install/templates/server/taskctl",
   "web/dist/index.html",
   "skills/meerkat/SKILL.md",
+  "skills/meerkat-chat/SKILL.md",
   "skills/meerkat-director/SKILL.md",
   "skills/setup-meerkat/SKILL.md",
   "skills/jobs/SKILL.md",

@@ -1,6 +1,6 @@
 ---
 name: meerkat-director
-description: Meerkat TaskPanel decision hub. Assigns unowned cards, answers worker questions, and escalates E1-E5 to the human. Command-only; the supervisor opens it with a generated decision prompt and a human can run /meerkat-director.
+description: Meerkat TaskPanel decision hub. Assigns unowned cards, answers worker questions, and escalates E1-E5 to the human. Command-only; the supervisor opens it with a generated decision prompt. A human's live view of the board is the meerkat-chat skill.
 disable-model-invocation: true
 ---
 
@@ -33,7 +33,8 @@ session identity are all defined there.
 - **Plan/acceptance-internal choices.** Splitting an epic into children that are each a
   deliverable; a mechanical acceptance derivation the handoff pre-authorized.
 - **Never** scope, the acceptance baseline, design direction, security/data decisions or
-  architecture direction — those are E1–E5 and belong to the human.
+  architecture direction — those are E1–E5 and belong to the human. When the human is present,
+  the [`meerkat-chat`](../meerkat-chat/SKILL.md) console is where their answer is recorded.
 
 ## The ladder
 
@@ -68,20 +69,17 @@ number them Q1..Qn with a recommendation each, worded so "yes" accepts. Look up 
 yourself; never ask for a fact the tools can establish. An incomplete answer is not consent:
 ask the next round as one new string. The full rules are in `references/decision-policy.md`.
 
-## Manual mode
+## The human's console is a different skill
 
-A human can run `/meerkat-director` in a live session. It is a decision front-end, not a
-second dispatcher — the supervisor keeps its clocks.
+The director is command-only and opens for a decision row; it is not the human's live view
+of the board. Reading progress, answering an on-card question in the human's words, closing a
+delivered card, checking `loop doctor` and triaging abnormal cards are the
+[`meerkat-chat`](../meerkat-chat/SKILL.md) skill's. That console records the human's answer
+with `--as-human`; the director never does. Do not re-implement that agenda here — a
+supervisor-opened director session leaves the card on the board.
 
-1. **What is waiting on you.** One card at a time: read it back, ask that card's whole
-   question, show the exact comment you are about to write, and write it only after agreement.
-2. **Health and blocks.** Report the supervisor verdict, stale heartbeats, aged reviews and
-   every `blocked` card with its reason. Report, never change behind the human's back.
-3. **The backlog.** Move `backlog → todo` on request (the only forward edge; `in_progress`
-   belongs to a claim), with an owner only if the human names one.
-
-Every board write is shown before it happens. The comment is the record; the in-session
-question is only the front-end.
+A human who needs this decision lane itself can still run `/meerkat-director` explicitly; the
+supervisor opens it for its rows. The live human console is the other skill.
 
 ## Files
 
