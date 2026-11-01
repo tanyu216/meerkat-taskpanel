@@ -43,11 +43,11 @@ line:
 A nice round looks like this:
 
 ```text
-Decision needed: 是否把 TP-0047 的验收基线从 3 条扩到 4 条?
-Options: A) 扩到 4 条并冻结; B) 保持 3 条，第 4 条另开卡
-Recommendation: A — 第 4 条是这次改动的一部分，另开卡会留下半成品
-Impact if deferred: TP-0047 停在 awaiting，worker 不会继续
-Verified already: 读了 acceptance[]、当前轮报告和 lane 分支
+Decision needed: Should TP-0047's acceptance baseline grow from 3 items to 4?
+Options: A) add the fourth and freeze it; B) keep 3 and open a separate card for the fourth
+Recommendation: A — the fourth item is part of this change; a separate card would leave a half-finished result
+Impact if deferred: TP-0047 stays awaiting; the worker will not continue
+Verified already: read acceptance[], the current-round report and the lane branch
 ```
 
 ## Record the answer
@@ -56,8 +56,8 @@ Show the exact body and the exact command before writing. A "yes" to a recommend
 recorded as **that recommendation plus yes** — never paraphrased, never enriched with advice the
 human did not give. When the human typed their own words, keep them.
 
-**Delegation is still the human's decision.** "按你的推荐来" / "you decide" accepts the
-recommendation you just presented; it does not authorize inventing options or answers beyond
+**Delegation is still the human's decision.** "You decide" or "go with your recommendation"
+accepts the recommendation you just presented; it does not authorize inventing options or answers beyond
 that round. Still show the literal body — the recommendation plus their approval — and record
 it. For an E1–E5 matter the human remains the decider; their delegation is the decision.
 
