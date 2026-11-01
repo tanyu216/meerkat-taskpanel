@@ -238,10 +238,20 @@ describe("SLA_ROWS (the docs/sla.md runtime mapping table, hook H6)", () => {
     // The document is the human contract; this is the machine check that it
     // still carries every row and every published number.
     const doc = readFileSync(new URL("../../docs/sla.md", import.meta.url), "utf8");
+    // A `## N.` section, so "the row is somewhere in the document" is not enough:
+    // the detectors (§6) and the override keys (§2.1) must carry it too.
+    const section = (prefix) => doc.split(/^## /m).find((part) => part.startsWith(prefix)) ?? "";
+    const detectors = section("6. The row detectors");
+    const model = section("2. The model");
     for (const [row, spec] of Object.entries(SLA_ROWS)) {
       assert.ok(doc.includes(row), `docs/sla.md names ${row}`);
+      assert.ok(detectors.includes(`\`${row}\``), `${row} has a §6 detector row`);
       if (spec.limitMin !== null) {
         assert.match(doc, new RegExp(`\\b${spec.limitMin}\\b`), `${row} normal limit ${spec.limitMin}`);
+        assert.ok(
+          model.includes(`TASKD_SLA_${row.toUpperCase()}_LIMIT_MIN`),
+          `${row} has its §2.1 override key`,
+        );
       }
       if (spec.furtherMin !== null) {
         assert.match(doc, new RegExp(`\\b${spec.furtherMin}\\b`), `${row} further bound ${spec.furtherMin}`);
@@ -722,6 +732,63 @@ describe("question_stale (the ladder's watchdog, §2)", () => {
     assert.equal(questionAlert(result) ?? null, null);
   });
 
+  it("stays open on an in_progress question after a human comment (the release is the settle)", () => {
+    const result = plan([card({ status_changed_at: ago(120), heartbeat_at: ago(1) })], {
+      trails: { "T-1": [question("q1", ago(70)), human("h1", ago(10))] },
+    });
+    assert.ok(questionAlert(result), "a human comment alone does not release the card");
+  });
+
+  it("alerts at warn when the question's timestamp cannot be read", () => {
+    const result = plan([card({ status_changed_at: ago(120), heartbeat_at: ago(1) })], {
+      trails: { "T-1": [question("q1", "not-a-timestamp")] },
+    });
+    const alert = questionAlert(result);
+    assert.ok(alert, "an unreadable origin must not go green");
+    assert.equal(alert.measure_start_kind, "unverifiable");
+    assert.equal(alert.threshold_min, null);
+    assert.equal(alert.severity, "warn");
+    assert.equal(alert.confidence, "low");
+  });
+
+  it("alerts at warn when an awaiting park timestamp cannot be read and no question is visible", () => {
+    const result = plan([
+      card({ status: "awaiting", status_changed_at: "not-a-timestamp", heartbeat_at: ago(1) }),
+    ], { trails: { "T-1": [] } });
+    const alert = questionAlert(result);
+    assert.ok(alert, "an unreadable origin must not go green");
+    assert.equal(alert.measure_start_kind, "unverifiable");
+    assert.equal(alert.threshold_min, null);
+    assert.equal(alert.severity, "warn");
+  });
+
+  it("does not use a human counter-question as the measured origin", () => {
+    const humanQuestion = { ...question("hq", ago(70)), author_kind: "human" };
+    const result = plan([
+      card({ status: "awaiting", status_changed_at: ago(5), heartbeat_at: ago(1) }),
+    ], { trails: { "T-1": [humanQuestion] } });
+    assert.equal(questionAlert(result) ?? null, null, "the human question is answer-side, not the wait");
+  });
+
+  it("falls back to the default rows when the caller passes a partial table", () => {
+    const result = plan([card({ status_changed_at: ago(120), heartbeat_at: ago(1) })], {
+      trails: { "T-1": [question("q1", ago(70))] },
+      rows: { blocked_clarification: SLA_ROWS.blocked_clarification },
+    });
+    assert.ok(questionAlert(result), "a partial table must not make the detector throw or go silent");
+  });
+
+  it("alerts at warn when a candidate's trail was capped away", () => {
+    const result = plan([card({ status_changed_at: ago(120), heartbeat_at: ago(1) })], {
+      trails: {},
+      trailsTruncated: true,
+    });
+    const alert = questionAlert(result);
+    assert.ok(alert, "a missing trail is not proof the question is absent");
+    assert.equal(alert.measure_start_kind, "unverifiable");
+    assert.equal(alert.severity, "warn");
+  });
+
   it("falls back to status_changed_at when a human parked silently", () => {
     const result = plan([
       card({ status: "awaiting", status_changed_at: ago(70), heartbeat_at: ago(1) }),
@@ -752,6 +819,25 @@ describe("question_stale (the ladder's watchdog, §2)", () => {
     assert.ok(ids.includes("A"), "an awaiting card's question lives in its trail");
     assert.ok(ids.includes("B"), "an old claim may hide a stale question");
     assert.equal(ids.includes("C"), false, "a fresh claim cannot have an old question");
+  });
+
+  it("does not read a canceled card's trail", () => {
+    const ids = trailReadCandidates(
+      [card({ identifier: "A", status: "canceled", status_changed_at: ago(5000) })],
+      { now: NOW, periodSeconds: PERIOD_SECONDS, rows: SLA_ROWS },
+    );
+    assert.deepEqual(ids, []);
+  });
+
+  it("reads a parked card before an age-eligible in-progress card", () => {
+    const ids = trailReadCandidates(
+      [
+        card({ identifier: "A", status: "in_progress", status_changed_at: ago(120) }),
+        card({ identifier: "B", status: "awaiting", status_changed_at: ago(5) }),
+      ],
+      { now: NOW, periodSeconds: PERIOD_SECONDS, rows: SLA_ROWS },
+    );
+    assert.deepEqual(ids, ["B", "A"]);
   });
 });
 

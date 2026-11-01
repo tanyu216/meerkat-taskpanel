@@ -118,7 +118,8 @@ unowned card shape is a finding only when a defined role owns that shape.
 
 One round is one question string per card. A worker records the whole round in one agent
 `question` comment (Q1..Qn, each item in the shape below with its `Verified already`
-evidence), keeps the card `in_progress`, and stops. The director answers every
+evidence), keeps the card `in_progress`, and holds with a bounded `taskctl issue wait`.
+An escalation to `awaiting` or a timeout parks the turn. The director answers every
 decidable item in one `note` and moves the card once; it escalates only the E1-E5 items in
 one `awaiting` question string that names each E-code, recommendation and evidence. The
 human answers in one comment. Only a human comment resumes an `awaiting` card; the resumed

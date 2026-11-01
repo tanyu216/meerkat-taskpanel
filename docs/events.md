@@ -345,7 +345,9 @@ Two narrow field rules sit before the actor suppression (`CONDITIONAL_EVENTS` na
 
 - `comment_added` wakes when `changes.kind === "question"` — a worker's own question is a handoff
   to the director, not an echo — or when the actor is a **human**. A plain agent `note` stays
-  ignored.
+  ignored. The director's own escalation question matches the same rule and wakes one extra
+  turn on a card already `awaiting`; the event payload carries no card status and a status
+  fetch per event would cost more than the wake, so one coalesced continue turn is accepted.
 - `task_moved` with `from: "in_progress"` and `to: "todo"` wakes even when this loop authored it:
   that is the director releasing a card, and the same-round resume should not wait for the next
   continue clock. A move to `awaiting` is not a wake — the worker is parked and only a human

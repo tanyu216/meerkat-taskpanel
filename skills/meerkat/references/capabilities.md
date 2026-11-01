@@ -70,15 +70,21 @@ refuses with `BLOCKED_BY_PREDECESSOR` (409) when a `blocks` predecessor is not
 |---|---|---|
 | `issue wait <ref> [--question <id>] [--timeout <ms>] [--interval <ms>] [--heartbeat <sec>]` | `data.outcome`, `status`, `claimed_by`, `question_id`, `answer`, `waited_ms` | a worker that asked the director |
 
-The command reads the card and its newest comments; it never claims, moves or
-comments. It returns `answered` (exit 0) when the card was released or anything
-newer answered the question — a human comment of any kind, or an agent
-non-question comment. `escalated` (the card is `awaiting`), `moved` (left the
-work states, or another actor owns the claim), `timeout` and `error` are exit 1/3
-results, not failures: the worker stops and the loop resumes the session. While
-waiting it pulses the caller's own heartbeat (`--heartbeat`, default 240 s), so a
-hold does not trip `heartbeat_stale`. `answered` with `status: "todo"` means the
-director released the claim — the worker re-claims before writing.
+The command reads the card and the trail after the question; it never claims,
+moves or comments. It returns `answered` (exit 0) only when the card was
+**released** (`todo`, or a status change after the question). A `note` — the
+director's or the worker's own — does not end the hold: the director and the
+worker share one board identity, so the release is the only trustworthy answer.
+`escalated` (the card is `awaiting`), `moved` (left the work states, or another
+actor owns the claim), `timeout` and `error` are exit 1/3 results, not failures:
+the worker re-invokes the bounded wait once if it can, then parks and the loop
+resumes the session. The default is 110 s (under a common 120 s tool timeout;
+`--timeout 240` is fine when the tool allows it), max 540 s. While waiting it
+pulses the caller's own heartbeat (`--heartbeat`, default 240 s), so a
+**bounded** hold does not trip `heartbeat_stale`; a card parked after the hold
+does pulse stale, and that is the real liveness signal.
+`answered` with `status: "todo"` means the director released the claim — the
+worker re-claims before writing.
 
 ## 4. Board read — `issue list`
 
@@ -173,7 +179,9 @@ The acceptance baseline is a column, immune to `--meta`, and a **changed** `meta
 
 ## Questions — the `awaiting` protocol
 
-A worker that cannot proceed asks and stops:
+A worker that cannot decide asks the ladder and **holds** with `issue wait`; only
+when the ladder escalates to a human does the card go `awaiting` and the worker
+park:
 
 ```bash
 taskctl issue move <ref> awaiting --awaiting-reason E2 --question "what you need to know" <attribution>

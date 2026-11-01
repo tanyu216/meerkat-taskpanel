@@ -15,10 +15,11 @@
  */
 
 import { CLI_EXIT } from "../../foundation/constants.mjs";
+import { norm } from "../../foundation/norm.mjs";
 import {
   isHumanComment,
-  isQuestionAnswered,
   isQuestionComment,
+  newestAgentQuestion,
   releasedAfterQuestion,
 } from "../../foundation/question-settle.mjs";
 import { reportWarnings } from "../../foundation/report-warning.mjs";
@@ -55,38 +56,27 @@ const DEFAULT_INCLUDED_COMMENT_LIMIT = 50;
 // `issue wait` — the worker's bounded in-turn hold
 // ---------------------------------------------------------------------------
 
-/** The default hold; a worker under a 10-minute heartbeat window stays fresh. */
-const WAIT_DEFAULT_TIMEOUT_MS = 240_000;
+/**
+ * The default hold. Kept under a 120s tool default (the common bound for an
+ * agent's shell call) so the worker receives the outcome instead of a killed
+ * process; a hold that needs longer is re-entered, not stretched.
+ */
+const WAIT_DEFAULT_TIMEOUT_MS = 110_000;
 /** Hard ceiling: a tool call must not outlive the turn/agent bounds. */
 const WAIT_MAX_TIMEOUT_MS = 540_000;
 const WAIT_DEFAULT_INTERVAL_MS = 2_000;
 const WAIT_DEFAULT_HEARTBEAT_SEC = 240;
+/** How many questions to scan for the worker's own cursor. */
+const WAIT_QUESTION_SCAN = 20;
+/** The answer trail is read with an `after` cursor, bounded for the terminal. */
 const WAIT_SNAPSHOT_COMMENTS = 50;
 const WAIT_MAX_READ_FAILURES = 3;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
-/**
- * The newest **agent** question — the one the worker asked. A human's
- * counter-question is newer, but it is an answer-side event for this wait, not
- * the cursor: waiting on it would ignore the answer that preceded it.
- */
-const newestAgentQuestion = (comments) =>
-  (Array.isArray(comments) ? comments : []).find(
-    (comment) => isQuestionComment(comment) && !isHumanComment(comment),
-  ) ?? null;
-
-/** The comments newer than the question, in the board's newest-first order. */
-function newerThanQuestion(comments, question) {
-  const list = Array.isArray(comments) ? comments : [];
-  if (question === null || question === undefined || question.id === undefined) return [];
-  const index = list.findIndex((comment) => String(comment?.id) === String(question.id));
-  return index === -1 ? [] : list.slice(0, index);
-}
-
 /** Render the answer trail bounded, like `readRedispatchContext`. */
-function waitAnswerText(comments, question) {
-  return newerThanQuestion(comments, question)
+function waitAnswerText(comments) {
+  return (Array.isArray(comments) ? comments : [])
     .filter((comment) => isHumanComment(comment) || !isQuestionComment(comment))
     .slice()
     .reverse()
@@ -100,20 +90,39 @@ function waitAnswerText(comments, question) {
 }
 
 /**
- * Read the card and its trail once. The caller counts failures; a throw here is
- * a transport problem, never an answer.
+ * Read the card and the newest questions once. The caller counts failures; a
+ * throw here is a transport problem, never an answer.
+ *
+ * The question is read by `kind`, not sliced out of the newest N comments: on a
+ * long-lived card the question can fall out of a fixed comment window while the
+ * wait is still open. The answer trail is then read with
+ * `after=<question.created_at>`, so growth in either direction cannot hide it.
  */
 async function waitSnapshot(client, ref) {
-  const [taskRead, commentsRead] = await Promise.all([
+  const [taskRead, questionsRead] = await Promise.all([
     client.get(`/api/v1/tasks/${encodeURIComponent(ref)}`),
     client.get(`/api/v1/tasks/${encodeURIComponent(ref)}/comments`, {
-      query: { limit: WAIT_SNAPSHOT_COMMENTS, order: "desc" },
+      query: { kind: "question", limit: WAIT_QUESTION_SCAN, order: "desc" },
     }),
   ]);
   return {
     task: taskRead?.task ?? {},
-    comments: Array.isArray(commentsRead?.comments) ? commentsRead.comments : [],
+    questions: Array.isArray(questionsRead?.comments) ? questionsRead.comments : [],
   };
+}
+
+/** The comments written after the question, newest first.
+ *
+ * `after` is the repository's **created_at** cursor, not a comment id (see
+ * `repositories/comments.mjs`): the server filters `created_at > ?`.
+ */
+async function waitAnswerTrail(client, ref, question) {
+  const askedAt = question?.created_at ?? question?.createdAt ?? null;
+  if (askedAt === null || askedAt === undefined || askedAt === "") return [];
+  const read = await client.get(`/api/v1/tasks/${encodeURIComponent(ref)}/comments`, {
+    query: { after: String(askedAt), limit: WAIT_SNAPSHOT_COMMENTS, order: "desc" },
+  });
+  return Array.isArray(read?.comments) ? read.comments : [];
 }
 
 /** The task payload the service returns is `{task, report_waivers}`. */
@@ -666,6 +675,9 @@ export const COMMANDS = [
       const started = Date.now();
       const deadline = started + timeoutMs;
       const mine = String(ctx.identity?.id ?? "");
+      // The wire carries the holder's display name, not the caller's actor id;
+      // `norm` is the repository's one identity rule for names (case/whitespace).
+      const mineNorm = mine === "" ? null : norm(mine);
       let lastHeartbeat = started;
       let failures = 0;
       let question = null;
@@ -679,12 +691,13 @@ export const COMMANDS = [
           status: typeof lastTask.status === "string" ? lastTask.status : null,
           claimed_by: lastTask.claimed_by_actor?.display_name ?? null,
           question_id: question?.id ?? null,
-          answer: waitAnswerText(comments, question),
+          answer: waitAnswerText(comments),
           waited_ms: Date.now() - started,
         },
         human:
           `wait ${ref}: no answer within ${Math.round((Date.now() - started) / 1000)}s — ` +
-          "stop; the loop resumes this session when the answer lands",
+          "re-invoke once when the runtime allows it, then stop; the loop resumes this session " +
+          "when the answer lands",
         exit: CLI_EXIT.DIFFERENCES,
       });
 
@@ -694,9 +707,24 @@ export const COMMANDS = [
           const snapshot = await waitSnapshot(ctx.client, ref);
           task = snapshot.task;
           lastTask = task;
-          comments = snapshot.comments;
+          if (question === null) {
+            question = pinned === null
+              ? newestAgentQuestion(snapshot.questions)
+              : snapshot.questions.find((comment) => String(comment?.id) === pinned) ?? null;
+            if (question === null) {
+              throw usageError(
+                pinned === null
+                  ? `issue wait: ${ref} has no question to wait on`
+                  : `issue wait: question ${pinned} is not on ${ref}'s trail`,
+                { hint: { fix: "add the question comment first, or pass the id from `comment add --json`" } },
+              );
+            }
+          }
+          comments = await waitAnswerTrail(ctx.client, ref, question);
           failures = 0;
-        } catch {
+        } catch (err) {
+          if (err?.code === "CLI_USAGE") throw err;
+
           failures += 1;
           if (failures >= WAIT_MAX_READ_FAILURES) {
             return {
@@ -718,23 +746,10 @@ export const COMMANDS = [
           continue;
         }
 
-        if (question === null) {
-          question = pinned === null
-            ? newestAgentQuestion(comments)
-            : comments.find((comment) => String(comment?.id) === pinned) ?? null;
-          if (question === null) {
-            throw usageError(
-              pinned === null
-                ? `issue wait: ${ref} has no question to wait on`
-                : `issue wait: question ${pinned} is not on ${ref}'s trail`,
-              { hint: { fix: "add the question comment first, or pass the id from `comment add --json`" } },
-            );
-          }
-        }
-
         const status = typeof task.status === "string" ? task.status : null;
         const owner = task.claimed_by_actor?.display_name ?? null;
-        const ownedByMe = owner === null || owner === mine;
+        const ownerNorm = owner === null ? null : norm(owner);
+        const ownedByMe = ownerNorm === null || (mineNorm !== null && ownerNorm === mineNorm);
         const show = (outcome) => ({
           data: {
             ref,
@@ -742,7 +757,7 @@ export const COMMANDS = [
             status,
             claimed_by: owner,
             question_id: question.id ?? null,
-            answer: waitAnswerText(comments, question),
+            answer: waitAnswerText(comments),
             waited_ms: Date.now() - started,
           },
           human:
@@ -756,12 +771,12 @@ export const COMMANDS = [
         if (status !== null && status !== "in_progress" && status !== "todo") return show("moved");
         if (status === "in_progress" && !ownedByMe) return show("moved");
 
-        // Released (`todo`, or a status change after the question) or answered
-        // by anything newer (a human comment of any kind, or a director note).
+        // The release is the answer. A note — the director's or the worker's own
+        // — does not end the hold: the two share one board identity, so a comment
+        // can never prove the ladder answered, and the retry turn owns the release.
         const released = status === "todo" || releasedAfterQuestion(task, question);
-        const answered = isQuestionAnswered(comments, question);
-        if (released || answered) {
-          const answer = waitAnswerText(comments, question);
+        if (released) {
+          const answer = waitAnswerText(comments);
           return {
             data: {
               ref,
@@ -780,7 +795,8 @@ export const COMMANDS = [
           };
         }
 
-        if (Date.now() >= deadline) return timedOut();
+        // A long hold must keep its own claim fresh; check it before the deadline
+        // so the final iteration does not skip a due pulse and return timeout.
         if (heartbeatMs > 0 && Date.now() - lastHeartbeat >= heartbeatMs) {
           try {
             await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ref)}/heartbeat`, {});
@@ -790,6 +806,7 @@ export const COMMANDS = [
           }
           lastHeartbeat = Date.now();
         }
+        if (Date.now() >= deadline) return timedOut();
         await sleep(Math.max(1, Math.min(intervalMs, Math.max(0, deadline - Date.now()))));
       }
     },

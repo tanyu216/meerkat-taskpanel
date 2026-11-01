@@ -14,10 +14,11 @@ Board operations (claim, heartbeat, comments, attachments, brief, report, delive
 are the `meerkat` board skill's contract; load it before the first write. Decisions are not
 yours: an unauthorized question becomes an agent `question` comment and the card **holds** —
 `taskctl issue wait <ref> --question <id>` keeps the turn alive for the ladder's answer.
-`answered` continues in the same turn (re-claim if the card is back in `todo`); `escalated`,
-`moved`, `timeout` and `error` end the turn, and the loop resumes this session when the answer
-lands. The `meerkat-director` skill's `references/decision-policy.md` is the single
-decision-authority source.
+`answered` continues in the same turn (re-claim if the card is back in `todo`); on `timeout`
+re-invoke the bounded wait once when the runtime allows it, then end the turn; `escalated`,
+`moved` and `error` end the turn, and the loop resumes this session when the answer lands. The
+`meerkat-director` skill's `references/decision-policy.md` is the single decision-authority
+source.
 
 ## Steps at a glance
 

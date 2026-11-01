@@ -2,11 +2,12 @@
  * The SLA patrol — the wait rows of `docs/sla.md` §2 as a *pure* decision.
  *
  * The loop's patrol used to watch exactly one row of the SLA table: an
- * `in_progress` card whose heartbeat went stale. That is one of six rows, and
+ * `in_progress` card whose heartbeat went stale. That is one of seven rows, and
  * the two mechanisms that drive the same board (this loop and the openclaw-side
- * cron) were both blind to the other five — a card parked on the leader, a
+ * cron) were both blind to the other six — a card parked on the leader, a
  * delivery nobody ever accepted, an unanswered confirmation gate, a defect
- * whose fix card was never created. This module is the loop's half of the fix,
+ * whose fix card was never created, a worker's unreleased question, and the
+ * inspectors' own liveness. This module is the loop's half of the fix,
  * written against this repository's own SLA contract (`docs/sla.md`): the **same alert tuple**,
  * the **same tier ladder**, the **same de-duplication key** and the **same
  * working-hours basis** as the peer mechanism, so the two can never label one
@@ -57,7 +58,7 @@
 import { AUTOMATED_ACCEPTORS, LOOP_ACCEPTOR } from "./constants.mjs";
 import {
   isHumanComment,
-  isQuestionComment,
+  newestAgentQuestion,
   releasedAfterQuestion,
 } from "./question-settle.mjs";
 import { reviewIdentityIndex, reviewIdentityOf } from "./review-identity.mjs";
@@ -298,7 +299,7 @@ export function trailReadCandidates(cards, input = {}) {
     // A finished card owes no defect fix card on this board (`§6.3` step 1 parks
     // the origin card in `blocked` / `canceled`), so it is not read at all —
     // otherwise every archived card would be fetched on every pass forever.
-    if (card?.status === "done") continue;
+    if (TERMINAL_STATUSES.includes(String(card?.status ?? ""))) continue;
     const statusElapsed = elapsedWorkingMinutes(card?.status_changed_at, now);
     const blockedElapsed =
       card?.status === "blocked"
@@ -321,7 +322,21 @@ export function trailReadCandidates(cards, input = {}) {
       questionNeeded;
     if (needed) out.push(id);
   }
-  return out;
+  // The trail read is budgeted. A parked card is the one whose row goes silent
+  // without its trail, so it is read before a merely age-eligible one.
+  const priority = (id) => {
+    const card = (Array.isArray(cards) ? cards : []).find(
+      (entry) => String(entry?.identifier ?? entry?.id ?? "") === id,
+    );
+    const status = String(card?.status ?? "");
+    if (status === "awaiting") return 0;
+    if (status === "in_progress") return 1;
+    return 2;
+  };
+  return out
+    .map((id, index) => ({ id, index, rank: priority(id) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((entry) => entry.id);
 }
 
 // ---------------------------------------------------------------------------
@@ -1039,33 +1054,55 @@ function heartbeatStaleDetection(card, context) {
 /**
  * The `question_stale` row — a worker's question that nobody has released.
  *
- * Two shapes are the same wait: an `in_progress` card whose newest question has
- * no later status change (the director wrote a note but did not release it), and
- * an `awaiting` card with no human answer. A director's `note` alone does not
- * close it — the release does. A human comment after the question closes it:
- * the board moves an awaiting card to `todo` in that same transaction, so this
- * branch is a stale-snapshot guard, not the usual path.
+ * Two shapes are the same wait: an `in_progress` card whose newest agent
+ * question has no later release (the director wrote a note but did not release
+ * it), and an `awaiting` card with no human answer. On `in_progress` the release
+ * is the **only** settle — a later human comment does not close it, because the
+ * director still owes the move and the row exists to catch exactly that stall.
+ * On `awaiting` a human comment is the board's own resume (it moves the card to
+ * `todo` in the same transaction), so this branch is a stale-snapshot guard.
  *
- * The trail is oldest-first (`repos.comments.list`).
+ * The trail is oldest-first (`repos.comments.list`); the shared helper reads
+ * newest-first.
  */
 function questionStaleDetection(card, trail, context) {
   const status = card?.status;
   if (status !== "in_progress" && status !== "awaiting") return null;
   if (isContainer(card) || reviewIdentityOf(card).isReview) return null;
   const list = Array.isArray(trail) ? trail : [];
-  let question = null;
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    if (isQuestionComment(list[i])) {
-      question = list[i];
-      break;
-    }
-  }
-  const spec = context.rows.question_stale;
+  const question = newestAgentQuestion([...list].reverse());
+  const spec = context.rows?.question_stale ?? DEFAULT_SLA_ROWS.question_stale;
   const openPredicate = status === "awaiting" ? "question_awaiting_human" : "question_unreleased";
 
+  // An unreadable origin is never green (§6.5 pattern): warn, no threshold.
+  const unverifiable = (action) => ({
+    row: "question_stale",
+    origin: { kind: "unverifiable", at: null, source: "comments", confidence: "low" },
+    thresholdMin: null,
+    thresholdRef: null,
+    visibilityOnly: false,
+    releasable: false,
+    releasableBasis: null,
+    blockedReason: blockedReasonOf(card),
+    openPredicate: "unverifiable",
+    action: `${spec.action} — ${action}`,
+    evidence: evidenceOf(card, null, "unverifiable"),
+  });
+
   if (question === null) {
-    // A human may park an awaiting card silently; that is still a wait.
-    if (status !== "awaiting" || instant(card?.status_changed_at) === null) return null;
+    // A human may park an awaiting card silently; that is still a wait. An
+    // in_progress card with no visible question has nothing to age — unless its
+    // trail was capped away, in which case the absence proves nothing.
+    if (status !== "awaiting") {
+      const id = String(card?.identifier ?? card?.id ?? "");
+      if (context.trailsTruncated === true && context.trailUnread.has(id)) {
+        return unverifiable("the trail read was capped; a question cannot be ruled out");
+      }
+      return null;
+    }
+    if (instant(card?.status_changed_at) === null) {
+      return unverifiable("the park timestamp cannot be read; verify its trail");
+    }
     return {
       row: "question_stale",
       origin: {
@@ -1086,25 +1123,14 @@ function questionStaleDetection(card, trail, context) {
     };
   }
 
-  const index = list.indexOf(question);
-  if (list.slice(index + 1).some(isHumanComment)) return null;
   if (status === "in_progress" && releasedAfterQuestion(card, question)) return null;
+  if (status === "awaiting") {
+    const index = list.indexOf(question);
+    if (index !== -1 && list.slice(index + 1).some(isHumanComment)) return null;
+  }
 
   if (instant(question?.created_at) === null) {
-    // No readable origin: report it rather than stay silent (fail-safe).
-    return {
-      row: "question_stale",
-      origin: { kind: "trail_event", at: null, source: "comments", confidence: "low" },
-      thresholdMin: spec.limitMin,
-      thresholdRef: spec.thresholdRef,
-      visibilityOnly: false,
-      releasable: false,
-      releasableBasis: null,
-      blockedReason: blockedReasonOf(card),
-      openPredicate,
-      action: `${spec.action} — the question's timestamp cannot be read; verify its trail`,
-      evidence: evidenceOf(card, spec.thresholdRef, openPredicate),
-    };
+    return unverifiable("the question's timestamp cannot be read; verify its trail");
   }
 
   return {
@@ -1273,6 +1299,9 @@ function boardContext(cards, trails, options = {}) {
   const terminalRefs = new Set();
   const leaderId = options.leaderId ?? null;
   const truncated = options.boardTruncated === true;
+  const trailsTruncated = options.trailsTruncated === true;
+  const trailUnread = options.trailUnread ?? new Set();
+  const questionCandidates = options.questionCandidates ?? new Set();
   const lookbackMs = (Number.isFinite(options.lookbackDays) && options.lookbackDays >= 0
     ? options.lookbackDays
     : LEADER_LOOKBACK_DAYS) * 24 * 60 * MS_PER_MINUTE;
@@ -1373,6 +1402,9 @@ function boardContext(cards, trails, options = {}) {
     leaderEvent,
     leaderId,
     boardTruncated: truncated,
+    trailsTruncated,
+    trailUnread,
+    questionCandidates,
     rows: options.rows ?? SLA_ROWS,
   };
 }
@@ -1380,7 +1412,7 @@ function boardContext(cards, trails, options = {}) {
 /**
  * Assemble one §4 alert tuple from a detection.
  *
- * Extracted so the mechanism that computes the six card/board rows (the board)
+ * Extracted so the mechanism that computes the seven card/board rows (the board)
  * and the mechanism that computes the peer-liveness row (the loop) build the
  * same 26-field object. Returns `null` when the wait is still inside its lead —
  * a quiet card is not a candidate at all (§9.4).
@@ -1491,11 +1523,25 @@ export function planSlaPatrol(input = {}) {
   const mechanism = input.mechanism ?? MECHANISM;
   const mechanismActor = input.mechanismActor ?? null;
   const periodMin = Number.isFinite(input.periodSeconds) ? input.periodSeconds / 60 : 0;
-  const rows = input.rows ?? SLA_ROWS;
+  // A caller may override only some rows; the detectors always need the whole
+  // table, and a partial table used to throw a bare TypeError in a detector.
+  const rows = { ...SLA_ROWS, ...(input.rows ?? {}) };
+  // Which cards' trails *would* have been read, and which actually were. A
+  // missing trail on a candidate is only silent when the read was complete;
+  // when the caller capped its trail reads it must stay open (low confidence).
+  const questionCandidates = new Set(
+    trailReadCandidates(cards, { now, periodSeconds: input.periodSeconds, rows }),
+  );
+  const trailUnread = new Set(
+    [...questionCandidates].filter((id) => trails[id] === undefined),
+  );
   const context = boardContext(cards, trails, {
     leaderId: input.leaderId ?? null,
     lookbackDays: input.lookbackDays,
     boardTruncated: input.boardTruncated,
+    trailsTruncated: input.trailsTruncated,
+    trailUnread,
+    questionCandidates,
     now,
     rows,
   });

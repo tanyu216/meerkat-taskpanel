@@ -108,9 +108,9 @@ export function renderRoleSelfCheck(role, path) {
 
 /**
  * The question-first rule. A worker never decides an unauthorized question
- * itself: it records an agent `question` comment and stops, so the director can
- * answer or escalate. The board's human-only `awaiting` exit is not the worker's
- * channel.
+ * itself: it records an agent `question` comment and holds with `issue wait`, so
+ * the director can answer or escalate; the release, not a note, ends the hold.
+ * The board's human-only `awaiting` exit is not the worker's channel.
  *
  * @param {object} role
  * @param {string|null} policyPath

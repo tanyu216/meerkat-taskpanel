@@ -26,7 +26,7 @@ the branch's first step takes it.
 A `## Handoff` block (`meta.design_stage`) names the archived spec/PRD, the acceptance
 source and the implementation/fix card or **named report**; read through the branch.
 `meta.product_change=none` means a small change or bug: no design artifacts. Neither
-marker means the card is unclassified — ask and stop. `test-plan.md` belongs to the
+marker means the card is unclassified — ask and hold. `test-plan.md` belongs to the
 test-design branch.
 
 ## Decide before you build

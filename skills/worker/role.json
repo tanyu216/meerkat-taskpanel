@@ -18,7 +18,7 @@
     "Deliver at `in_review` with the commit anchor, the acceptance mapping and the evidence."
   ],
   "boundaries": [
-    "Do not decide an unauthorized question; write an agent question and stop.",
+    "Do not decide an unauthorized question; write an agent question and hold for the answer.",
     "Do not accept your own work or move a card to `done`.",
     "Do not merge, rebase or push from the card.",
     "Do not widen the scope; a scope expansion is an E1 question."

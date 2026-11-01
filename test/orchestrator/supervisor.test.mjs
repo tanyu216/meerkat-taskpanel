@@ -541,6 +541,22 @@ describe("buildQuestionPrompt (pure)", () => {
     assert.match(text, /do NOT answer again — release the card/);
     assert.match(text, /the release is what the worker waits for/);
   });
+
+  it("bounds a huge question body", () => {
+    const huge = buildQuestionPrompt(
+      [{
+        card: "T-2",
+        project: "P",
+        target_dir: "/work/app",
+        agent: "alice",
+        question_id: "q-2",
+        question: `${"Q".repeat(2000)}TAILMARKER`,
+      }],
+      { actorKind: "claude" },
+    );
+    assert.match(huge, /\[truncated\]/);
+    assert.equal(huge.includes("TAILMARKER"), false, "the over-limit body does not reach the prompt");
+  });
 });
 
 describe("buildHandoff (pure)", () => {

@@ -28,8 +28,9 @@ A card has **eight stored status words**, but only **seven are stages** — the 
 An agent question the **director** can decide never enters `awaiting`: the card stays
 `in_progress`, the worker **holds** with `issue wait <ref> --question <id>`, and the director's
 **release** (`in_progress → todo`) resumes it — a `note` alone is not a settle. `answered`
-continues the same turn (re-claim if the card is back in `todo`); `escalated` / `timeout` /
-`moved` / `error` park the session, which is resumed by id when the answer lands.
+continues the same turn (re-claim if the card is back in `todo`); `escalated` / `moved` /
+`error` park the session, as does `timeout` after one re-invoke, and it is resumed by id when
+the answer lands.
 
 `awaiting` is the **eighth literal but not an eighth column**: an *attention overlay* on an
 in-progress card that has stopped to ask a human a question, displayed under `in_progress`.

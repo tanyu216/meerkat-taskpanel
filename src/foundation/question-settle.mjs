@@ -3,10 +3,11 @@
  * middle rung.
  *
  * A worker that cannot decide writes an agent `question` comment on an
- * `in_progress` card and stops. The director answers with an agent `note` and
- * **releases the card to `todo`**, or escalates it to `awaiting`. A note alone
- * is not a settle: the card must leave `in_progress` (or change status after the
- * question, which also covers a released-then-reclaimed card).
+ * `in_progress` card and **holds** with `taskctl issue wait`. The director
+ * answers with an agent `note` and **releases the card to `todo`**, or escalates
+ * it to `awaiting`. The release is the settle and the only answer signal — a
+ * note alone is not: the director and the worker share one board identity, so no
+ * comment-author rule can tell the worker's own note from the director's.
  *
  * These predicates are shared by the orchestrator's native lane, the CLI's
  * `issue wait`, and the SLA patrol. They live in `foundation` because the
@@ -51,6 +52,23 @@ export function newestQuestion(comments) {
   return null;
 }
 
+/**
+ * The newest **agent** question in a **newest-first** list, or `null`.
+ *
+ * A human's counter-question ("which do you mean?") is an answer-side event, not
+ * the wait's cursor: waiting on it would ignore the answer that preceded it and
+ * would reset the SLA's age to the human's timestamp.
+ *
+ * @param {object[]} comments
+ * @returns {object|null}
+ */
+export function newestAgentQuestion(comments) {
+  for (const comment of comments ?? []) {
+    if (isQuestionComment(comment) && !isHumanComment(comment)) return comment;
+  }
+  return null;
+}
+
 /** The index of a comment in a list, by id first and by identity second. */
 function indexOfComment(list, comment) {
   if (comment?.id !== undefined) {
@@ -73,27 +91,6 @@ export function answeredByHuman(comments, question) {
   const index = indexOfComment(list, question);
   if (index <= 0) return false;
   return list.slice(0, index).some(isHumanComment);
-}
-
-/**
- * Has **anything** newer than the question answered it? A human comment (any
- * kind) and an agent non-question comment both count. This is the worker's
- * `issue wait` rule — deliberately broader than {@link answeredByHuman} and
- * broader than the release-only settle rule: a director that wrote a note but
- * forgot the release must not leave the worker blocked for the whole timeout.
- *
- * The orchestrator's lane does **not** use this: the card still has to be
- * released (`questionOpen`), or the queue would never get it back.
- *
- * @param {object[]} comments newest first
- * @param {object|null} question
- */
-export function isQuestionAnswered(comments, question) {
-  const list = Array.isArray(comments) ? comments : [];
-  if (question === null || question === undefined) return false;
-  const index = indexOfComment(list, question);
-  if (index <= 0) return false;
-  return list.slice(0, index).some((comment) => isHumanComment(comment) || !isQuestionComment(comment));
 }
 
 /**
@@ -162,7 +159,11 @@ export function classifyQuestionOutcome(input = {}) {
       : newestQuestion(comments));
   const status = typeof task.status === "string" ? task.status : null;
   const escalated = status === "awaiting";
-  const released = status !== null && status !== "in_progress";
+  // Leaving `in_progress` is a release; a status change **after** the question
+  // is also one, because the poll may already have re-claimed the card into
+  // `in_progress` by the time the director's verification reads it.
+  const released =
+    status !== null && (status !== "in_progress" || releasedAfterQuestion(task, question));
   return {
     settled: released,
     answered: answeredByHuman(comments, question),

@@ -15,8 +15,8 @@ import test, { describe, it } from "node:test";
 import {
   answeredByHuman,
   classifyQuestionOutcome,
-  isQuestionAnswered,
   isQuestionComment,
+  newestAgentQuestion,
   newestQuestion,
   questionOpen,
   releasedAfterQuestion,
@@ -142,15 +142,22 @@ describe("foundation/question-settle — classify the outcome", () => {
     assert.equal(isQuestionComment(comments[0]), false);
   });
 
-  it("treats any newer non-question comment as an answer (the wait's rule)", () => {
+  it("picks the newest agent question, not a human counter-question", () => {
+    const humanQuestion = { ...question("2026-01-01T00:09:00Z"), id: "hq", author_kind: "human" };
+    const agentQuestion = { ...question("2026-01-01T00:05:00Z"), id: "aq", author_kind: "agent" };
+    assert.equal(newestAgentQuestion([humanQuestion, agentQuestion]).id, "aq");
+    assert.equal(newestAgentQuestion([humanQuestion]), null);
+    assert.equal(newestAgentQuestion([]), null);
+  });
+
+  it("settles a released-then-reclaimed card (status changed after the question)", () => {
     const q = question("2026-01-01T00:05:00Z");
-    assert.equal(isQuestionAnswered([agent("n1"), q], q), true, "a director note answers");
-    assert.equal(isQuestionAnswered([human("h1"), q], q), true, "a human comment answers");
-    assert.equal(isQuestionAnswered([{ ...question("2026-01-01T00:10:00Z"), id: "q2" }, q], q), false, "a second question is not an answer");
-    assert.equal(isQuestionAnswered([q], q), false);
-    assert.equal(isQuestionAnswered([], q), false);
-    // A comment *older* than the question (after it in the newest-first list)
-    // must not count.
-    assert.equal(isQuestionAnswered([q, agent("old")], q), false);
+    const reclaimed = classifyQuestionOutcome({
+      task: task("in_progress", "2026-01-01T00:10:00Z"),
+      comments: [agent("n1"), q],
+    });
+    assert.equal(reclaimed.released, true);
+    assert.equal(reclaimed.settled, true, "the release was followed by a re-claim");
+    assert.equal(reclaimed.status, "in_progress");
   });
 });

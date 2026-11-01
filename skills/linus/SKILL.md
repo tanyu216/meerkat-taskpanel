@@ -89,7 +89,8 @@ constrains how, never adds machinery; a boundary is not traded for speed.
 - The frozen `acceptance` is the contract; do not change scope or acceptance.
 - A published contract, schema or migration change needs the human; migrations are append-only.
 - Authority: only the human decides E1–E5; the director decides what it can; the subagent
-  asks and stops. Never record a human decision as your own.
+  asks and holds for the ladder's answer (`issue wait`); an escalation or a bounded timeout
+  parks the turn. Never record a human decision as your own.
 - Evidence: no fabricated path or command, no claimed gate, no another card's plan.
 - Delivery: the delivered tree is committed and the report carries the `commit` anchor; the
   board's delivery gate (`DELIVERY_NEEDS_COMMIT`) requires it; never merge, rebase or push;

@@ -111,6 +111,8 @@ describe("director skill: references", () => {
     assert.match(operation, /one card at a time/i);
     assert.match(operation, /backlog/);
     assert.match(operation, /blocked/);
+    assert.match(operation, /age_ms/);
+    assert.match(operation, /answered_pending_release/);
   });
 
   it("keeps installation out of the skill", () => {

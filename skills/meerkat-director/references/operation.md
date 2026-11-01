@@ -11,7 +11,7 @@ The supervisor enqueues one row per decision:
 
 | `queue_kind` | Source | Your move |
 |---|---|---|
-| `question` | a worker wrote an agent `question` and stopped | a `note` + move to `todo`, or escalate |
+| `question` | a worker wrote an agent `question` and holds (`issue wait`) | a `note` + move to `todo`, or escalate |
 | `route` | an unassigned/ambiguous `todo` card past 30 minutes | `issue assign` the role the table names |
 
 A question row is capped at two attempts; a route row is enqueued once per window. Neither

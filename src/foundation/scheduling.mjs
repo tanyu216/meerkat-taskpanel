@@ -422,6 +422,9 @@ export function candidateArgs(agent, claimUnassigned, recoverStale = false) {
 /** A `todo` card older than this with no one to claim it is a finding. */
 const STRANDED_TODO_AGING_MS = 30 * 60 * 1000;
 
+/** How much of a worker's question the director prompt quotes. */
+const QUESTION_PROMPT_BODY_MAX = 2000;
+
 /**
  * The stranded-`todo` findings the workflow pass reports.
  *
@@ -771,10 +774,11 @@ export function buildReviewHandoff(input) {
 /**
  * The prompt the director lane gets for the **question lane**.
  *
- * A worker that cannot decide writes an agent `question` comment and stops, and
- * the loop hands the question here. The director answers with a `note` and
- * releases the card to the queue, or escalates E1–E5 to the human. It never
- * spawns a subagent for this row and never moves a card to `done`.
+ * A worker that cannot decide writes an agent `question` comment and holds with
+ * `taskctl issue wait`, and the loop hands the question here. The director
+ * answers with a `note` and releases the card to the queue, or escalates E1–E5
+ * to the human. The release is what the worker waits for. It never spawns a
+ * subagent for this row and never moves a card to `done`.
  *
  * `rows` carry the queue row's fields: `card` (the ref), `project`,
  * `target_dir`, `agent`, `question_id`, `question`, `asked_at`.
@@ -811,7 +815,13 @@ export function buildQuestionPrompt(rows, input = {}) {
     }
     const asked = row.asked_at ? ` (asked ${row.asked_at})` : "";
     lines.push(`${index + 1}) ${row.card} — question ${row.question_id}${asked}:`);
-    for (const line of String(row.question ?? "").split("\n")) lines.push(`   ${line}`);
+    // A comment body can be up to 1 MiB; an unbounded question would make the
+    // director's turn impossible to finish. Bound it like every other prompt.
+    const question = String(row.question ?? "");
+    const bounded = question.length > QUESTION_PROMPT_BODY_MAX
+      ? `${question.slice(0, QUESTION_PROMPT_BODY_MAX)}\n[truncated]`
+      : question;
+    for (const line of bounded.split("\n")) lines.push(`   ${line}`);
     lines.push(
       `   Re-read the card first: taskctl issue get ${row.card} --json ${flags}`,
       "   If its status is not `in_progress` (delivered, moved, canceled, or already",

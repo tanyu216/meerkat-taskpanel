@@ -27,20 +27,31 @@ human answers. Nothing may silently park.
   `src/foundation/question-settle.mjs` (the orchestrator may import only foundation) and are
   shared by the question lane, the director verification, the console, the SLA and the CLI.
   A human answer alone does not settle an unreleased card; the director still owes the release.
-- **The director turn is verified.** After a turn exits 0, the pool re-reads the card through
-  `readQuestionOutcome`; an unsettled row is failed and re-enqueued by the next poll (the
-  two-row cap still bounds it). The retry prompt says: an existing answer means *release the
-  card*, never answer again.
+- **The director turn is verified, and retried in place.** After a turn exits 0, the pool
+  re-reads the card through `readQuestionOutcome`; an unsettled row is requeued with a 30 s
+  backoff (two director turns per question), so a note-only first turn is corrected inside
+  the worker's bounded wait instead of waiting for the next poll. The retry prompt says: an
+  existing answer means *release the card*, never answer again.
+- **The question lane has its own clock.** The dispatch tick is single-flight and awaits
+  every worker turn, so routing questions from it serialized the answer behind the very
+  worker turn it was meant to unblock. `runSession` runs a second, independent interval that
+  calls `routeQuestionsNow`; the dispatch tick never awaits a director turn. The queue's
+  read-modify-write mutators are synchronous, so the two intervals do not interleave.
 - **The loop hears the ladder.** `task_resumed` is a dispatch event; `comment_added` wakes on
   `kind: "question"` (even from an own worker) or a human actor; an own
   `in_progress → todo` move wakes as the director's release. A move to `awaiting` does not
   wake — the worker is parked for a human.
-- **The worker holds in-turn.** `taskctl issue wait <ref> --question <id>` is a bounded,
-  read-only wait (default 240 s, max 540 s, 2 s poll) that pulses the caller's own heartbeat.
-  `answered` continues the same turn; if the release left the card `todo`, the worker re-claims
-  it first. `escalated` (the card is `awaiting`), `moved`, `timeout` and `error` end the turn;
-  the same worker session is resumed by id when the answer lands. A non-zero exit is a result,
-  not a failure.
+- **The worker holds in-turn, and only a release answers.** `taskctl issue wait <ref>
+  --question <id>` is a bounded, read-only wait (default 110 s — under a common 120 s tool
+  timeout — max 540 s, 2 s poll) that pulses the caller's own heartbeat. `answered` means
+  the card **left `in_progress`** (including a released-then-reclaimed card); a newer note or
+  human comment is shown to the worker but does not end the wait, because the director and
+  the worker share one board identity and no author rule can distinguish them. `escalated`
+  (the card is `awaiting`), `moved`, `timeout` and `error` end the call; the worker may
+  re-invoke one more bounded wait when the runtime allows it, then parks and the same worker
+  session is resumed by id when the release lands. A non-zero exit is a result, not a failure.
+  The question cursor is read with the comments API's `kind=question` and `after=<created_at>`
+  filters, so a long card cannot push the question or its answer out of a fixed window.
 - **Escalation has no worker-side timeout.** The human may take hours; the worker is not
   running and holds no process. The analogue of a timeout is a **question age alert**:
   `question_stale` covers an unreleased `in_progress` question and an `awaiting` card. The
@@ -80,8 +91,12 @@ human answers. Nothing may silently park.
 - A held worker occupies a worker-session slot (`busy`, not evictable); `--max-concurrency`
   must exceed the expected number of concurrent holds. The director lane draws no worker slot,
   so a board full of holds cannot deadlock the ladder.
-- A parked-question `in_progress` card is a dormant claim: `issue candidates --stale` no longer
-  offers it, and a `patrolLlm` patrol turn is not started for it.
+- A parked-question `in_progress` card is a dormant claim **for the supervisor's poll**:
+  the poll filters it out of `issue candidates --stale` (and fails closed for any
+  `in_progress` candidate when the question read fails), and a `patrolLlm` patrol turn is not
+  started for it. The core command itself remains question-agnostic; a human or another
+  skill that runs the raw command can still claim the card, and closing that hole is a
+  separate core change.
 - The CLI gains `issue wait`; the frozen snapshot, `skills/meerkat/references/cli.md` and the
   worker handoff/skills change together.
 - The SLA table gains `question_stale` (60/1440, `trail_event`); `.env.example` and the install

@@ -85,9 +85,29 @@ describe("cli/issue wait — the worker's bounded hold", () => {
     assert.equal(exitOf(result), 0);
   });
 
-  it("answers on a director note even before the release", async () => {
+  it("keeps holding on a director note until the card is released", async () => {
     const client = scripted({
       tasks: { status: "in_progress", status_changed_at: "2025-12-31T23:00:00Z", claimed_by_actor: { display_name: "alice" } },
+      comments: [agentNote(), question()],
+    });
+    const result = await waitCommand.run(ctxFor(client, { timeout: 20 }));
+    assert.equal(result.data.outcome, "timeout", "a note is not a release");
+    assert.match(result.data.answer, /decision: use B/, "the note is still shown to the worker");
+  });
+
+  it("keeps holding on a human comment that did not release the card", async () => {
+    const client = scripted({
+      tasks: { status: "in_progress", status_changed_at: "2025-12-31T23:00:00Z", claimed_by_actor: { display_name: "alice" } },
+      comments: [humanNote("h1", { kind: "question" }), question()],
+    });
+    const result = await waitCommand.run(ctxFor(client, { timeout: 20 }));
+    assert.equal(result.data.outcome, "timeout", "the director must still release");
+    assert.match(result.data.answer, /\[human\] Use B\./);
+  });
+
+  it("answers on a released-then-reclaimed card", async () => {
+    const client = scripted({
+      tasks: { status: "in_progress", status_changed_at: "2026-01-01T00:06:00Z", claimed_by_actor: { display_name: "alice" } },
       comments: [agentNote(), question()],
     });
     const result = await waitCommand.run(ctxFor(client));
@@ -95,14 +115,13 @@ describe("cli/issue wait — the worker's bounded hold", () => {
     assert.equal(result.data.status, "in_progress");
   });
 
-  it("answers on a newer human comment of any kind", async () => {
+  it("matches the owner through the repository's name normalisation", async () => {
     const client = scripted({
-      tasks: { status: "in_progress", status_changed_at: "2025-12-31T23:00:00Z", claimed_by_actor: { display_name: "alice" } },
-      comments: [humanNote("h1", { kind: "question" }), question()],
+      tasks: { status: "in_progress", status_changed_at: "2025-12-31T23:00:00Z", claimed_by_actor: { display_name: " Alice " } },
+      comments: [question()],
     });
-    const result = await waitCommand.run(ctxFor(client));
-    assert.equal(result.data.outcome, "answered");
-    assert.match(result.data.answer, /\[human\] Use B\./);
+    const result = await waitCommand.run(ctxFor(client, { timeout: 20 }));
+    assert.equal(result.data.outcome, "timeout", "Alice is the caller, not another actor");
   });
 
   it("does not treat an older human comment as the answer", async () => {
@@ -144,6 +163,16 @@ describe("cli/issue wait — the worker's bounded hold", () => {
     const result = await waitCommand.run(ctxFor(client));
     assert.equal(result.data.outcome, "moved");
     assert.match(result.human, /bob/);
+  });
+
+  it("waits safely when the question carries no timestamp", async () => {
+    const client = scripted({
+      tasks: { status: "in_progress", claimed_by_actor: { display_name: "alice" } },
+      comments: [{ id: "q1", kind: "question", author_kind: "agent", body: "Why?" }],
+    });
+    const result = await waitCommand.run(ctxFor(client, { timeout: 20 }));
+    assert.equal(result.data.outcome, "timeout", "an unreadable origin fails closed");
+    assert.equal(result.data.answer, "");
   });
 
   it("times out with the card still in progress", async () => {

@@ -56,6 +56,8 @@ describe("SLA defaults", () => {
     assert.equal(DEFAULT_SLA_ROWS.acceptance_card_creation.furtherMin, 2880);
     assert.equal(DEFAULT_SLA_ROWS.heartbeat_stale.limitMin, 30);
     assert.equal(DEFAULT_SLA_ROWS.heartbeat_stale.furtherMin, 360);
+    assert.equal(DEFAULT_SLA_ROWS.question_stale.limitMin, 60);
+    assert.equal(DEFAULT_SLA_ROWS.question_stale.furtherMin, 1440);
     assert.equal(DEFAULT_SLA_ROWS.leader_stalled.limitMin, 60);
     assert.equal(DEFAULT_SLA_ROWS.leader_stalled.furtherMin, 360);
     assert.equal(DEFAULT_SLA_ROWS.inspector_liveness.limitMin, null);

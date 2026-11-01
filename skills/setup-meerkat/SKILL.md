@@ -237,8 +237,8 @@ write the requirements yourself.
   The supervisor injects the handoff only for cards it dispatches; the installed copy is
   authoritative. The card is still created and delivered through `/meerkat`.
 - **Decision rights**, initialized here and owned by `meerkat-director`: the ladder is
-  worker → director → human; a worker asks with an agent `question` and stops; the director
-  answers with an agent `note` and returns the card to `todo`, or escalates E1–E5 to
+  worker → director → human; a worker asks with an agent `question` and holds (`issue
+  wait`); the director answers with an agent `note` and returns the card to `todo`, or escalates E1–E5 to
   `awaiting` (scope, acceptance, design direction, security/data, architecture); only a human
   comment resumes `awaiting`. Point at the installed director skill's
   `references/decision-policy.md` — never copy the policy into the project file.
@@ -375,8 +375,9 @@ signs the fixed `TASKCTL_HUMAN`; never use it for a role's own view.
 
 The ladder is **worker → director → human** and lives in the `meerkat-director` skill's
 `references/decision-policy.md` — this skill points the project at it and copies nothing. A
-worker asks with an agent `question` comment and stops; the director decides what it can with
-an agent `note` and the ladder's move, or escalates E1-E5 to `awaiting` with the question.
+worker asks with an agent `question` comment and holds (`issue wait`); the director decides
+what it can with an agent `note` and the ladder's move, or escalates E1-E5 to `awaiting` with
+the question.
 Only a human comment resumes an awaiting card, whatever its kind; the resumed worker judges
 from its content whether it is a complete decision. The reviewer never enters awaiting;
 insufficient evidence is a `VERDICT: REJECT`.

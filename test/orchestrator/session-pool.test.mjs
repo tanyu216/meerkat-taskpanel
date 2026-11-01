@@ -379,7 +379,7 @@ describe("session pool", () => {
       question: "Which option?",
       asked_at: "2026-01-01T00:00:00Z",
     });
-    await pool.tick();
+    await pool.routeQuestionsNow();
 
     const director = fake.opened.find((handle) => handle.role === "director" && handle.cwd === f.app);
     assert.ok(director, "a question wakes the director lane, not the reviewer lane");
@@ -453,7 +453,56 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("fails a question row when the director's note did not release the card", async (t) => {
+  it("routes a question while another worker's turn is still in flight", async (t) => {
+    const f = fixture(t);
+    let releaseWorker;
+    const workerTurn = new Promise((resolve) => {
+      releaseWorker = resolve;
+    });
+    const fake = fakePool({
+      behavior: async ({ handle }) => {
+        if (handle.role === "worker") await workerTurn;
+        return {};
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    enqueueCard(join(f.dir), {
+      id: "question:T-2:q-1",
+      queue_kind: "question",
+      role: "question",
+      card: "T-2",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      question_id: "q-1",
+      question: "Which option?",
+    });
+
+    const running = pool.tick();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    // The dispatch tick is blocked on T-1's worker turn. The official question
+    // clock must still reach the director, or the worker's in-turn wait can only
+    // time out.
+    await pool.routeQuestionsNow();
+
+    assert.ok(
+      fake.opened.some((handle) => handle.role === "director"),
+      "the director is routed while the worker holds",
+    );
+    assert.equal(
+      readCards(f.dir).value.cards.find((entry) => entry.id === "question:T-2:q-1").status,
+      "done",
+    );
+
+    releaseWorker();
+    await running;
+    await pool.stop();
+  });
+
+  it("requeues a question row when the director's note did not release the card", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
     const seen = [];
@@ -479,12 +528,75 @@ describe("session pool", () => {
       question: "Which option?",
       asked_at: "2026-01-01T00:00:00Z",
     });
-    await pool.tick();
+    await pool.routeQuestionsNow();
 
     assert.deepEqual(seen.map((input) => [input.card, input.questionId]), [["T-1", "q-1"]]);
     const row = readCards(f.dir).value.cards.find((card) => card.id === "question:T-1:q-1");
-    assert.equal(row.status, "failed");
+    assert.equal(row.status, "pending", "the row is retried, not abandoned");
+    assert.equal(row.attempts, 1);
     assert.match(row.lastError, /did not settle/);
+    assert.ok(Date.parse(row.retry_at) > Date.now(), "the retry waits out the backoff");
+    await pool.stop();
+  });
+
+  it("backs off a failed question turn instead of spinning", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool({ behavior: async () => ({ ok: false, error: "spawn error" }) });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "question:T-1:q-8",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      question_id: "q-8",
+      question: "Which option?",
+    });
+    await pool.routeQuestionsNow();
+
+    const row = readCards(f.dir).value.cards.find((card) => card.id === "question:T-1:q-8");
+    assert.equal(row.status, "pending");
+    assert.equal(row.attempts, 1);
+    assert.ok(Date.parse(row.retry_at) > Date.now(), "the one-second interval must not retry at once");
+    await pool.stop();
+  });
+
+  it("fails a question row after two unsettled turns", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      readQuestionOutcome: async () => ({ ok: true, settled: false, status: "in_progress" }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "question:T-1:q-9",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      question_id: "q-9",
+      question: "Which option?",
+    });
+    await pool.routeQuestionsNow();
+    // The retry is due after the backoff; drive it directly instead of sleeping.
+    const file = join(f.dir, "cards.queue.json");
+    const value = JSON.parse(readFileSync(file, "utf8"));
+    value.cards.find((card) => card.id === "question:T-1:q-9").retry_at = null;
+    writeFileSync(file, JSON.stringify(value), "utf8");
+    await pool.routeQuestionsNow();
+
+    const row = readCards(f.dir).value.cards.find((card) => card.id === "question:T-1:q-9");
+    assert.equal(row.status, "failed");
+    assert.equal(row.attempts, 2);
     await pool.stop();
   });
 
@@ -509,7 +621,7 @@ describe("session pool", () => {
       question_id: "q-2",
       question: "Which option?",
     });
-    await pool.tick();
+    await pool.routeQuestionsNow();
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
     await pool.stop();
   });
@@ -539,7 +651,7 @@ describe("session pool", () => {
       route: true,
       title: "Wire the widget",
     });
-    await pool.tick();
+    await pool.routeQuestionsNow();
     assert.deepEqual(seen, []);
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
     await pool.stop();
@@ -566,7 +678,7 @@ describe("session pool", () => {
       question_id: "q-3",
       question: "Which option?",
     });
-    await pool.tick();
+    await pool.routeQuestionsNow();
     // The next poll re-enqueues it if the question is still open; a failed read
     // itself is not proof that the director failed.
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
@@ -591,7 +703,7 @@ describe("session pool", () => {
       title: "Wire the widget",
       updated_at: "2026-01-01T00:00:00Z",
     });
-    await pool.tick();
+    await pool.routeQuestionsNow();
     const director = fake.opened.find((handle) => handle.role === "director" && handle.cwd === f.app);
     assert.ok(director, "a route row wakes the director");
     assert.match(director.prompts[0], /unowned todo/);
@@ -1527,6 +1639,7 @@ describe("worker session resume", () => {
     );
     const workerRow = readCards(f.dir).value.cards.find((entry) => entry.id === "T-1-worker");
     assert.equal(workerRow.status, "pending");
+    await pool.routeQuestionsNow();
     await pool.tick();
     assert.equal(
       fake.opened.filter((handle) => handle.role === "worker").length,
