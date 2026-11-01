@@ -41,6 +41,84 @@ The design stance, in four sentences:
 The model in one line: **the board is the source of truth, the claim is the only dispatch
 source, and every clock is a bounded, idempotent pass over state the board already holds.**
 
+## The architecture in one picture
+
+The supervisor is a pipeline, not a dispatcher with a queue beside it. Read top to bottom:
+the OS units start it, a pass writes a row, the pool opens the lane, and every lane writes
+the board back through `taskctl`.
+
+```text
+        OS UNITS  (launchd / systemd / cron) — one supervisor per machine
+        ping · continue · session · subscribe
+                                  │ starts
+┌─────────────────────────────────▼────────────────────────────────────────┐
+│ BOARD  (taskd) — node:sqlite, the source of truth                        │
+│ cards · atomic claim (CAS) · workflow plan · SLA rows · events (SSE)     │
+│ taskd guard keeps this process alive — it does not tick the loop         │
+└──────────────▲──────────────────────────────────┬────────────────────────┘
+               │ taskctl (writes/reads)           │ taskctl events follow
+               │                                  │
+┌──────────────▼───────────┐                  ┌───▼────────────────────────┐
+│ SCHEDULER                │                  │ SUBSCRIBER                 │
+│ `loop run`               │◀─────────────────│ `loop subscribe`           │
+│ ping 60 s                │ early tick       │ debounce                   │
+│ continue 600 s           │                  │ (local hub)                │
+│ patrol/workflow/         │                  └────────────────────────────┘
+│ poll (one lock)          │
+└──────────────┬───────────┘
+               │ enqueue row (handoff | question; route is a question row)
+┌──────────────▼───────────────────────────────────────────────────────────┐
+│ CARD QUEUE + STATE (durable files beside --state)                        │
+│ cards.queue.json · sessions.state.json · subagents.state.json            │
+│ workspaces.json · deferrals.json · SLA/workflow ledgers · locks          │
+└──────────────┬───────────────────────────────────────────────────────────┘
+               │ drain — only the pool opens, resumes or closes a lane
+┌──────────────▼───────────────────────────────────────────────────────────┐
+│ POOL  `loop session` — one process; sessions keyed by (lane, actor kind) │
+│ worker:<card>:r<n>   <dir>#reviewer[@<kind>]   <dir> (director)          │
+│ cwd = card worktree  cwd = target dir          cwd = project dir         │
+└─────────┬───────────────────────────┬───────────────────────────┬────────┘
+          │ kind=claude               │ kind=codex                │ kind=pi
+  ┌───────▼───────┐           ┌───────▼───────┐           ┌───────▼───────┐
+  │ Claude        │           │ Codex         │           │ Pi            │
+  │ adapter       │           │ adapter       │           │ adapter       │
+  └───────┬───────┘           └───────┬───────┘           └───────┬───────┘
+          │                           │                           │
+┌─────────▼───────────────────────────▼───────────────────────────▼────────┐
+│ ROLE SKILLS (installed per kind, discovered from role.json)              │
+│ jobs · linus · turing · reviewer · worker                                │
+│ the director lane loads `meerkat-director`                               │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+The 600-second clock is the installed `continue` unit — the *tick* this page names.
+A lane's claim, heartbeat, progress, deliver and comment all go back to the board through
+`taskctl`; the board's activity event then reaches the subscriber through the local hub and
+comes back as an early continue. That is the whole loop.
+
+What the shape makes visible:
+
+- **The clocks are the only triggers.** One supervisor per machine; the `taskd` guard keeps
+  the board process alive but never ticks the loop. A lane is woken by a queue row, and a
+  queue row exists only because a pass wrote it.
+- **The passes decide, the lanes run.** The scheduler and subscriber are plain code — no
+  model turn is spent deciding what to dispatch. The only LLM turns are the worker, reviewer
+  and director lanes.
+- **The queue is the only handoff.** A row is `queue_kind: handoff | question`; an unowned
+  card's route row is a question row (`route: true`), not a third kind. Only the pool opens,
+  resumes or closes a lane.
+- **No arrow skips a layer.** The board is the source of truth, `taskctl` is the only way to
+  it, and the subscriber is a latency path: the 600-second continue is the fallback that
+  keeps working when it is not installed.
+- **The supervisor holds no card state.** Everything it knows durably is in the queue and
+  state files; everything authoritative is on the board. That is why a restart resumes
+  rather than re-decides.
+- **The one-shot deployment stops at the pool.** Without a resident pool the continue clock
+  still runs patrol and workflow, but poll claims nothing, so no row ever reaches a lane.
+
+The read-only verbs — `loop status`, `loop doctor`, `loop console` — read the state files and
+the board; they are not slots in the pipeline.
+
 Two execution shapes serve the same model:
 
 - **resident** (default on launchd/systemd): `taskctl loop session` runs a long-lived *session
@@ -57,8 +135,10 @@ acceptance authority. Those belong to the board, the
 [`meerkat`](../skills/meerkat/SKILL.md) skill and [acceptance.md](acceptance.md). This page
 stops at the boundary of the supervisor.
 
-**How to read the rest** — the model ([two clocks](#the-two-clocks),
-[time contract](#the-time-contract)); dispatch
+**How to read the rest** — the whole picture
+([the architecture](#the-architecture-in-one-picture)); the model ([two clocks](#the-two-clocks),
+[time contract](#the-time-contract)); the question timeline
+([the question lane](#the-question-lane-end-to-end)); dispatch
 ([atomic claim](#atomic-claim--the-single-dispatch-source),
 [the cost gate](#the-cost-gate-a-worker-turn-starts-only-on-fire),
 [the session pool](#the-resident-session-pool)); the decision lane
@@ -863,6 +943,7 @@ to `todo`, or escalates to the human with
 `issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."`. The pool routes
 question rows on their **own interval**, not inside the dispatch tick: the tick awaits every
 worker turn, and routing from it would serialize the answer behind the very hold it unblocks.
+The full timeline is [the question lane, end to end](#the-question-lane-end-to-end).
 
 The wait's `answered` returns only when the card is **released**; a `note` (the director's or
 the worker's own) is shown but does not end the hold. The worker continues **in the same
@@ -915,6 +996,101 @@ The director skill is a start-up requirement of the pool; when it is missing the
 refuses to start rather than silently dropping decision rows. A missing
 `references/decision-policy.md` is different: the supervisor logs one warning and the
 generated prompt falls back to the built-in summary, so decisions still run.
+
+### The question lane, end to end
+
+A question is the one board interaction that is **not** a dispatch: the card stays claimed,
+the worker holds its turn, and a second lane answers it without starting a second worker.
+The sequence below is the implemented one — `src/orchestrator/runners.mjs` (enqueue),
+`session.mjs` (the lane), `src/foundation/question-settle.mjs` (the settle rule) and
+`src/cli/commands/issue.mjs` (`issue wait`).
+
+```text
+    WORKER SESSION            BOARD (taskd)             SUPERVISOR (poll·pool)    DIRECTOR LANE
+    card in_progress          tasks · comments          src/orchestrator          LLM · project dir
+    │                         │                         │                         │
+    │ (1) ask a question      │                         │                         │
+    ├─comment kind=question──▶│                         │                         │
+    │ (2) hold the turn       │                         │                         │
+    ├─issue wait─────────────▶│                         │                         │
+    │ poll 2 s · pulse 240 s  │                         │                         │
+    │ ≤110 s default, 540 max │                         │                         │
+    │ (timeout: re-invoke 1×) │                         │                         │
+    │                         ├─comment_added──────────▶│                         │
+    │                         │                         │ (3) early tick          │
+    │                         │                         │ else the 600 s tick     │
+    │                         ├─issue list─────────────▶│                         │
+    │                         ├─comment list───────────▶│                         │
+    │                         │                         │ (4) newest question     │
+    │                         │                         │ skip epic · skip review │
+    │                         │                         │ cap 2 · resolve dir     │
+    │                         │                         ├─question row───────────▶│
+    │                         │                         │ (5) own interval        │
+    │                         │                         │ not the dispatch tick   │
+    │                         │◀────────────────────────┼───get · comment list────┤
+    │                         │                         │ (6) re-read first       │
+    │                         │◀────────────────────────┼─────note + move todo────┤
+    │                         │◀────────────────────────┼ or move awaiting E1-E5──┤
+    │                         ├─get · comments─────────▶│                         │
+    │                         │                         │ (7) verify the board    │
+    │                         │                         │ not the turn exit code  │
+    │                         │                         │ note-only: retry 30 s   │
+    │                         │                         │ (max 2 turns)           │
+    │ (8a) released: todo     │                         │                         │
+    │◀───────wait: answered───┤                         │                         │
+    │ re-claims, same turn    │                         │                         │
+    │ (8b) escalated: awaiting│                         │                         │
+    │◀──────wait: escalated───┤                         │                         │
+    │ worker parks; id kept   │                         │                         │
+  (8c) human comment ─────────▶│ awaiting → todo        │                         │
+    │                         │                         │ (9) ticks on the event  │
+    │◀────────────────────────┼─resume worker session───┤                         │
+```
+
+**What each step pins** (the numbers are the diagram's):
+
+1. **Ask.** The worker writes an agent `question` comment and leaves the card
+   `in_progress`. Only the newest **agent** question counts — a human counter-question is
+   an answer-side event, never the wait's cursor.
+2. **Hold.** `issue wait <ref> --question <id>` reads the card every 2 s, pulses its own
+   heartbeat every 240 s, and is bounded at **110 s** (max **540 s**). It writes nothing.
+   `answered` is the release and only the release; a `note` — the director's or the worker's
+   own — does not end the hold, because the two share one board identity.
+3. **Wake.** `comment_added` with `kind: "question"` is a dispatch event, so the subscriber
+   asks for an early tick; without a subscriber the next 600-second tick finds it.
+4. **Enqueue.** Poll reads `issue list --status in_progress` and then `comment list` per
+   card; an epic and a review card are skipped. A question is *open* while the card is
+   `in_progress` and no status change followed it. This runs **before** the concurrency
+   budget — a question is a project-session turn, not a subagent, and its row does not
+   count against the cap. The attempt cap is two dispatches per question id.
+5. **Route.** Question rows have their **own interval**, not the dispatch tick: the tick
+   awaits worker turns, and the worker is holding in exactly that turn. One lane per project
+   directory, at most 8 questions per turn, and the question body is bounded in the prompt.
+6. **Answer.** The director re-reads the card first. Not `in_progress` any more → do
+   nothing. A later comment already answers it → release only. Otherwise: a `note` and
+   `issue move <ref> todo`, or `issue move <ref> awaiting --awaiting-reason E1..E5
+   --question "..."`.
+7. **Verify.** The supervisor judges the **board**, not the turn's exit code:
+   `classifyQuestionOutcome` says settled when the card left `in_progress` (a release or an
+   escalation). A note-only turn is requeued after 30 s, at most two turns; past that the
+   row fails and the question is left for the human.
+8. **The two endings.**
+   - **Released (`todo`).** `issue wait` returns `answered` with the bounded answer trail
+     (≤ 2 000 characters); the worker re-claims and continues **in the same turn**. Poll
+     skips a card whose worker session is running, so no duplicate prompt is queued; a
+     handoff already queued waits and is dropped if the worker moved the card first.
+   - **Escalated (`awaiting`).** `issue wait` returns `escalated`; the worker parks and its
+     session id is kept. A human comment is the board's own resume (`awaiting → todo`,
+     migration 0034), and the answer then takes the ordinary dispatch path.
+9. **Resume rides the event.** The release that follows a human answer reaches the worker
+   the same way a new card does: `comment_added` wakes the subscriber, a dispatch tick
+   claims the card, and the pool resumes the **same** worker session with the answer in the
+   resume prompt. The 600-second tick is the fallback when no subscriber is installed.
+
+Outside the diagram, `question_stale` in [`sla.md`](sla.md) watches the same wait on either
+status — a 60-minute normal limit, a 1440-minute escalation — and is notify-only: it never
+releases the card and never starts a turn. Without a resident pool no question row is
+enqueued at all, so that row is the only thing that will speak.
 
 ## Continuity: the same worker, resumed by id
 
