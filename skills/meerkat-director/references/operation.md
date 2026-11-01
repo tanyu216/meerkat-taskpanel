@@ -34,7 +34,9 @@ supervisor keeps its clocks and remains the only dispatcher.
 
 1. **Open the board once.** `taskctl loop doctor --json` is the health read;
    `taskctl loop console --json` is the work read (`questions`, `pending_acceptance`,
-   `supervisor`). Report one digest before any write.
+   `supervisor`). Each `questions[]` entry carries `age_ms` and
+   `answered_pending_release`: an answered-but-unreleased question is yours to release,
+   not a human's to answer again. Report one digest before any write.
 2. **Waiting on me — one card at a time.** Read the card back, ask that card's **frontier**
    as one numbered block (Q1..Qn, each with a recommendation), and record the answer as a
    human comment (`--as-human`, per the `meerkat` board skill) after showing the exact
