@@ -74,7 +74,8 @@ decision; a proposed change is a new card or ADR, with status
 
 A card that mixes foundation and feature runs this flow first and proposes the implementation
 cards in its `## Handoff`. If the classification is genuinely unclear, ask through the board
-and stop.
+and hold for the ladder's answer (`issue wait`); an escalation to `awaiting` or a bounded
+timeout parks the turn.
 
 ## Inputs
 
@@ -92,7 +93,7 @@ constraints (time, team, compliance, hosting), the quality attributes that matte
 decision drivers.
 
 **Watch for.** Do not invent the positioning: take it from the card, the `## Handoff` or the
-existing README; if a card run has none, ask and stop. A reconstruction reads the README, the
+existing README; if a card run has none, ask and hold. A reconstruction reads the README, the
 manifest, the CLI help and the tests, and records `not recorded — review question` for what no
 evidence settles. Name whether the project is a community open-source project or private; when
 no source says, ask rather than assume either. Name the system boundary and its external

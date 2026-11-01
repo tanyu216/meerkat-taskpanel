@@ -39,7 +39,7 @@ The design question is therefore narrow: **can elapsed time in a state be turned
 deterministic, shared, notify-only signal that costs nothing when the board is healthy, and
 that cannot go quietly green when it cannot see?**
 
-The six silences, and the row that watches each:
+The seven silences, and the row that watches each:
 
 | The silence | The row |
 |---|---|
@@ -48,6 +48,7 @@ The six silences, and the row that watches each:
 | a defect with no fix card | `defect_card_creation` |
 | a delivery with no acceptance review card | `acceptance_card_creation` |
 | a worker that stopped heartbeating on a claimed card | `heartbeat_stale` |
+| a worker's question the director never released, or an unanswered `awaiting` park | `question_stale` |
 | the leader's own patrol, or the peer inspector, going quiet | `leader_stalled`, `inspector_liveness` |
 
 ### 1.2 Goals and the invariants that follow
@@ -137,6 +138,7 @@ The threshold table — the published defaults:
 | `defect_card_creation` | 1440 | 2880 | `L − P` | `trail_event` | `sla-patrol` |
 | `acceptance_card_creation` | 1440 | 2880 | `L − P` | `status_changed_at` | `sla-patrol` |
 | `heartbeat_stale` | 30 | 360 | `L − P` | `heartbeat_at` | `sla-patrol+legacy-stale-alert` |
+| `question_stale` | 60 | 1440 | `L − P` | `trail_event` | `sla-patrol` |
 | `leader_stalled` | 60 | 360 | `L` (no lead) | `trail_event` | `sla-patrol` |
 | `inspector_liveness` | — | — | `k × P_peer` | peer marker | `sla-patrol` |
 
@@ -152,7 +154,7 @@ before the limit. `leader_stalled` is exempt — its published bound is already 
 
 ### 2.1 Install-level overrides
 
-The published numbers are the **defaults**. A deployment may override the six limited rows'
+The published numbers are the **defaults**. A deployment may override the seven limited rows'
 `L` and `F` plus the four mechanism parameters in the install-root `.env`:
 
 ```text
@@ -170,6 +172,8 @@ TASKD_SLA_ACCEPTANCE_CARD_CREATION_LIMIT_MIN=1440
 TASKD_SLA_ACCEPTANCE_CARD_CREATION_FURTHER_MIN=2880
 TASKD_SLA_HEARTBEAT_STALE_LIMIT_MIN=30
 TASKD_SLA_HEARTBEAT_STALE_FURTHER_MIN=360
+TASKD_SLA_QUESTION_STALE_LIMIT_MIN=60
+TASKD_SLA_QUESTION_STALE_FURTHER_MIN=1440
 TASKD_SLA_LEADER_STALLED_LIMIT_MIN=60
 TASKD_SLA_LEADER_STALLED_FURTHER_MIN=360
 ```
@@ -193,6 +197,13 @@ TASKD_SLA_LEADER_STALLED_FURTHER_MIN=360
 - **`heartbeat_stale` is alerting only.** Its defaults mirror `CLAIM_STALE_SAME_MS` /
   `CLAIM_STALE_ANY_MS`, but an override changes when the **alert** fires, not when a claim
   becomes re-claimable. Recovery is the claim's own rule and is independent by design.
+- **`question_stale` is the ladder's watchdog.** It fires on an `in_progress` card whose
+  newest **agent** question has no later **status change** (a director `note` alone, or a
+  human comment, is not a release), and on an `awaiting` card with no human answer. On an
+  awaiting card a human comment after the question closes it: the board moves the card to
+  `todo` in the same transaction, so that branch is a stale-snapshot guard. A human
+  counter-question is never the measured origin. The row is notify-only: the director
+  answers/releases, or the human answers.
 
 ## 3. The clock: working hours
 
@@ -332,6 +343,7 @@ shape of every row:
 | `defect_card_creation` | a `kind=defect` trail entry | the earlier of that entry and the card's entry into `blocked`/`canceled` | no bug-labelled card references this one | `high`; `low` when the board read was capped |
 | `acceptance_card_creation` | `status == in_review` on a non-review card | `status_changed_at` | no open review card for this delivery round | `high`; `low` when capped or unreadable |
 | `heartbeat_stale` | `status == in_progress` and `kind != epic` | `heartbeat_at` | the card is still `in_progress` | `high`; `low` when unreadable |
+| `question_stale` | `status` is `in_progress` or `awaiting`, not a container or review card | the newest agent `question`, else `status_changed_at` on `awaiting` | no release (`in_progress`) or no human answer (`awaiting`) | `high`; `low` when unreadable or the trail was capped |
 | `leader_stalled` | at least one leader-owed row is open | the latest leader-attributed event | the leader acts | `high` inside the lookback; `low` outside it |
 | `inspector_liveness` | peer age > `k × P_peer` | the peer's `last_ok` | the peer completes a pass | `high` |
 
@@ -459,6 +471,30 @@ leader-owed card with the earliest `status_changed_at` — while its open predic
 the board's. Re-reading that card cannot answer "is the leader stalled", which is why neither
 board-level row is re-read before sending (§9.2).
 
+### 6.7 `question_stale`
+
+The ladder's watchdog. Applies to `in_progress` **work** cards and to `awaiting` cards; a
+container and a review card are excluded, exactly as for `heartbeat_stale`. Origin: the
+newest **agent** `question` in the trail; on an `awaiting` card with no visible question, the
+park instant (`status_changed_at`).
+
+On `in_progress` the **release is the only settle**: a later status change closes the row,
+and that includes a released-then-reclaimed card. A director `note` alone does not close it,
+and neither does a human comment — the director still owes the move, and a card in that state
+has no worker resume **and** no other alert, which is the silent stall this row exists to
+catch. On `awaiting`, a human comment after the question is the board's own resume (the card
+moves to `todo` in that transaction), so that branch closes the row as a stale-snapshot guard.
+
+A question timestamp that cannot be read is not green: the row alerts at `warn` with no
+threshold and `confidence: low`, like an unreadable heartbeat. The same applies to an
+`awaiting` card with no visible question and an unreadable park timestamp, and to an
+`in_progress` candidate whose trail was capped away (§9.2): a missing trail is not proof that
+no question exists.
+
+`heartbeat_stale` and `question_stale` coexist on a card parked after its bounded hold: the
+heartbeat stops because the worker really has stopped, and the question is still open because
+the director has not released. Both are true; neither substitutes for the other.
+
 ## 7. Releasability hints
 
 A blocked card can carry `releasable: true` with a basis. This is a **hint**, never an
@@ -567,12 +603,16 @@ on the board:
 - **one board snapshot** (`?limit`, default 500, hard cap 5,000), which is the same
   projection `issue list` returns;
 - **the comment trails only for cards that could fire a trail-derived row** (`?trail_limit`,
-  default 200 cards, hard cap 2,000; 200 comments per card). A trail is read only once the
-  card is old enough for `confirmation_gate`, `defect_card_creation` or the
-  `blocked_clarification` hint to be able to fire — below the warn lead no trail-derived
-  value is ever needed. `done` cards are skipped entirely, so an archive does not grow the
-  read; a card whose `status_changed_at` cannot be read is fetched anyway, because an
-  unreadable origin must not be able to suppress a row;
+  default 200 cards, hard cap 2,000; 200 comments per card, read newest-first and reversed
+  for the detectors). A trail is read once the card is old enough for
+  `confirmation_gate`, `defect_card_creation`, the `blocked_clarification` hint or
+  `question_stale` to fire — below the warn lead no trail-derived value is ever needed. An
+  `awaiting` card's trail is always read (the question and the human answer both live
+  there), and it is read before a merely age-eligible `in_progress` card so a trail-capped
+  pass does not starve the parked card. Terminal cards (`done` **and** `canceled`) are
+  skipped entirely, so an archive does not grow the read; a card whose
+  `status_changed_at` cannot be read is fetched anyway, because an unreadable origin must
+  not be able to suppress a row;
 - **one card read per surviving alert** (`sla get <ref>`), which always includes that
   card's trail.
 
@@ -583,7 +623,8 @@ outside the trail read is not observable to `leader_stalled`.
 
 A capped snapshot or capped trail reads are always reported (`board_truncated` /
 `trails_truncated`), never smoothed into a quiet board. Rows whose negative predicate then
-cannot be decided (`no_fix_card`, `no_review_card`) stay open at `low` and say so.
+cannot be decided (`no_fix_card`, `no_review_card`, a `question_stale` whose trail was
+capped away) stay open at `low` and say so.
 
 ### 9.3 Fail-safe directions
 

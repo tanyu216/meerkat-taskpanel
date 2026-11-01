@@ -415,6 +415,8 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
         "let data = { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } };",
         "if (args[0] === 'issue' && status === 'in_progress') {",
         "  data = { tasks: [{ identifier: 'T-1', project: 'P', kind: 'task', status: 'in_progress', assignee: { display_name: 'alice' } }] };",
+        "} else if (args[0] === 'issue' && args.includes('candidates')) {",
+        "  data = { candidates: [{ identifier: 'T-1', project: 'P', agent: 'alice', reason: 'stale_same' }] };",
         "} else if (args[0] === 'comment') {",
         "  data = { comments: [{ id: 'c-1', kind: 'question', author_kind: 'agent', body: 'Which option?', created_at: '2026-01-01T00:00:00Z' }] };",
         "}",
@@ -445,6 +447,104 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       argv.some((call) => call.includes("claim")),
       false,
       "the question lane never claims a card",
+    );
+  });
+
+  it("caps the director's route lane at two dispatches per unowned card", () => {
+    const dir = tempDir("tp-route-cap-");
+    const app = join(dir, "app");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(dir, "projects.json"), JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
+    writeLivePool(dir, { version: 2, capabilities: ["question-lane"] });
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "route-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "const status = argv.includes('--status') ? argv[argv.indexOf('--status') + 1] : null;",
+        "let data = { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } };",
+        "if (argv.includes('list') && status === 'todo') {",
+        "  data = { tasks: [{ identifier: 'T-9', project: 'P', kind: 'task', status: 'todo', assignee: null, updated_at: '2020-01-01T00:00:00Z' }] };",
+        "}",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
+      ].join("\n"),
+    );
+    const args = [
+      "--actor-kind", "claude", "--agent", "alice",
+      "--cli", script, "--repo", dir,
+      "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+    ];
+    const env = { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir };
+    const poll = () => {
+      const run = runEntry("passes.mjs", args, env, "poll");
+      assert.equal(run.status, 0, run.stderr);
+    };
+    const routeRows = () => readCards(dir).value.cards.filter((row) => row.id === "route:T-9");
+    const finishRows = () => {
+      const file = join(dir, "cards.queue.json");
+      const value = JSON.parse(readFileSync(file, "utf8"));
+      for (const row of value.cards) {
+        if (row.id !== "route:T-9" || row.status === "done") continue;
+        row.status = "done";
+        row.completedAt = new Date().toISOString();
+      }
+      writeFileSync(file, JSON.stringify(value), "utf8");
+    };
+
+    poll();
+    assert.equal(routeRows().length, 1, "the first window routes the card");
+    finishRows();
+    poll();
+    assert.equal(routeRows().length, 2, "the second window dispatches once more");
+    finishRows();
+    poll();
+    assert.equal(routeRows().length, 2, "the third window is capped");
+    assert.equal(routeRows().some((row) => row.status === "pending"), false);
+  });
+
+  it("does not offer a card whose worker session is still running", () => {
+    const dir = tempDir("tp-poll-running-worker-");
+    const app = join(dir, "app");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(dir, "projects.json"), JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
+    writeLivePool(dir, {
+      version: 2,
+      capabilities: ["question-lane"],
+      projects: { "worker:T-1:r1": { status: "running", sessionId: "sid-1" } },
+    });
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "running-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "let data = { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } };",
+        "if (argv.includes('candidates')) {",
+        "  data = { candidates: [{ identifier: 'T-1', project: 'P', agent: 'alice', status: 'in_progress', reason: 'stale_same' }] };",
+        "}",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
+      ].join("\n"),
+    );
+    const run = runEntry(
+      "passes.mjs",
+      [
+        "--actor-kind", "claude", "--agent", "alice",
+        "--cli", script, "--repo", dir,
+        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      ],
+      { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
+      "poll",
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(
+      calls(record).some((call) => call.includes("claim")),
+      false,
+      "a running worker's card is not re-claimed under it",
     );
   });
 
@@ -479,7 +579,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     );
   });
 
-  it("does not use the question lane when the pool predates the capability", () => {
+  it("reads open questions for the stale filter but enqueues nothing when the pool predates the capability", () => {
     const dir = tempDir("tp-question-lane-old-");
     writeLivePool(dir); // version 1, no capabilities
     const { script, record } = sentinelCli(dir);
@@ -495,10 +595,9 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     );
     assert.equal(run.status, 0, run.stderr);
     assert.equal(existsSync(join(dir, "cards.queue.json")), false, "no question row for an old pool");
-    assert.equal(
+    assert.ok(
       calls(record).some((call) => call.includes("--status") && call.includes("in_progress")),
-      false,
-      "the question read is not made at all",
+      "the read still guards a parked card from a stale re-claim",
     );
   });
 
@@ -512,6 +611,50 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       "the SLA rows come from the board's `sla list`",
     );
     assert.equal(existsSync(join(dir, "state.json")), false);
+  });
+
+  it("does not start a stale patrol turn for a card parked on a question", () => {
+    const dir = tempDir("tp-entry-patrol-parked-");
+    writeLivePool(dir);
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "patrol-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "const at = argv.findIndex((a) => a === 'issue' || a === 'comment' || a === 'sla');",
+        "const args = at === -1 ? [] : argv.slice(at);",
+        "let data = { tasks: [], candidates: [], comments: [], alerts: [], config: {} };",
+        "if (args[0] === 'issue' && args.includes('list')) {",
+        "  data = { tasks: [{ identifier: 'T-1', project: 'P', kind: 'task', status: 'in_progress', heartbeat_at: '2020-01-01T00:00:00Z', assignee: { display_name: 'alice' } }] };",
+        "} else if (args[0] === 'comment') {",
+        "  data = { comments: [{ id: 'q1', kind: 'question', author_kind: 'agent', body: 'Why?', created_at: '2026-01-01T00:00:00Z' }] };",
+        "} else if (args[0] === 'sla') {",
+        "  data = { alerts: [], config: {} };",
+        "}",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
+      ].join("\n"),
+      "utf8",
+    );
+    const run = runEntry(
+      "passes.mjs",
+      [
+        "--actor-kind", "claude", "--agent", "alice", "--patrol-llm",
+        "--cli", script, "--repo", dir,
+        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      ],
+      { TP_SENTINEL: record },
+      "patrol",
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stderr, /parked on an unanswered question/);
+    assert.equal(
+      calls(record).some((call) => call.includes("claim")),
+      false,
+      "a parked question is not re-claimed by the patrol",
+    );
   });
 
   it("workflow asks the board for the plan, and writes nothing in dry-run", () => {
@@ -544,26 +687,49 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
 // ---------------------------------------------------------------------------
 
 describe("readOpenQuestions", () => {
+  const claimedAt = "2025-12-31T23:00:00Z";
+  const task = (identifier, extra = {}) => ({
+    identifier,
+    project: "P",
+    kind: "task",
+    status: "in_progress",
+    status_changed_at: claimedAt,
+    assignee: { display_name: "alice" },
+    ...extra,
+  });
   const tasks = [
-    { identifier: "T-1", project: "P", kind: "task", assignee: { display_name: "alice" } },
-    { identifier: "T-2", project: "P", kind: "task", review_of_id: "uuid", assignee: { display_name: "jobs" } },
-    { identifier: "T-3", project: "P", kind: "epic" },
-    { identifier: "T-4", project: "P", kind: "task", assignee: { display_name: "alice" } },
-    { identifier: "T-5", project: "P", kind: "task", assignee: { display_name: "alice" } },
+    task("T-1"),
+    task("T-2", { review_of_id: "uuid", assignee: { display_name: "jobs" } }),
+    task("T-3", { kind: "epic" }),
+    task("T-4"),
+    task("T-5"),
+    // The director released these and a poll re-claimed them: the status
+    // changed after the question, so they are settled even though in_progress.
+    task("T-6", { status_changed_at: "2026-01-01T00:10:00Z" }),
+    task("T-7", { status_changed_at: "2026-01-01T00:10:00Z" }),
   ];
   const comments = {
     "T-1": [{ id: "q1", kind: "question", body: "Why?", created_at: "2026-01-01T00:00:00Z" }],
     "T-2": [{ id: "q2", kind: "question", body: "Why?" }],
     "T-3": [{ id: "q3", kind: "question", body: "Why?" }],
-    // Newer project-session note: settled by the middle rung.
+    // A director note is an answer but **not** a release: still open.
     "T-4": [
       { id: "n1", kind: "note", author_kind: "agent", body: "decision: because" },
       { id: "q4", kind: "question", body: "Why?" },
     ],
-    // Newer human comment: settled by the person.
+    // A human answer on an in-progress card still owes a release: open (the
+    // console shows it with `answered_pending_release`).
     "T-5": [
       { id: "n2", kind: "note", author_kind: "human", body: "Because." },
       { id: "q5", kind: "question", body: "Why?" },
+    ],
+    "T-6": [
+      { id: "n3", kind: "note", author_kind: "agent", body: "decision: because" },
+      { id: "q6", kind: "question", body: "Why?", created_at: "2026-01-01T00:05:00Z" },
+    ],
+    "T-7": [
+      { id: "n4", kind: "note", author_kind: "human", body: "Because." },
+      { id: "q7", kind: "question", body: "Why?", created_at: "2026-01-01T00:05:00Z" },
     ],
   };
   const run = (_opts, _agent, args) => {
@@ -572,9 +738,9 @@ describe("readOpenQuestions", () => {
   };
   const opts = { agents: ["alice"], boardLimit: 500 };
 
-  it("returns only an in_progress task card whose newest question is unsettled", () => {
+  it("returns an in_progress task card whose question has not been released", () => {
     const result = readOpenQuestions(opts, () => {}, run);
-    assert.deepEqual(result.rows.map((row) => row.ref), ["T-1"]);
+    assert.deepEqual(result.rows.map((row) => row.ref), ["T-1", "T-4", "T-5"]);
     assert.equal(result.rows[0].project, "P");
     assert.equal(result.rows[0].agent, "alice");
     assert.equal(result.rows[0].question_id, "q1");

@@ -10,7 +10,8 @@ acceptance and hand it to the review card. You are a worker, not the reviewer �
 no verdict and do not accept your own work. Board operations (claim, heartbeat, comments,
 attachments, brief, report, delivery, status) are the `meerkat` board skill's contract; load
 it before the first write. This file records only the role's decisions. Decisions are not
-yours: an unauthorized question becomes an agent `question` comment and the card stops; the
+yours: an unauthorized question becomes an agent `question` comment and the card **holds**
+for the ladder's answer (`issue wait` in the `meerkat` skill); the
 `meerkat-director` skill's `references/decision-policy.md` is the single decision-authority
 source.
 
@@ -25,7 +26,7 @@ the branch's first step takes it.
 A `## Handoff` block (`meta.design_stage`) names the archived spec/PRD, the acceptance
 source and the implementation/fix card or **named report**; read through the branch.
 `meta.product_change=none` means a small change or bug: no design artifacts. Neither
-marker means the card is unclassified — ask and stop. `test-plan.md` belongs to the
+marker means the card is unclassified — ask and hold. `test-plan.md` belongs to the
 test-design branch.
 
 ## Decide before you build

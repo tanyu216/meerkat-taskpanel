@@ -18,7 +18,12 @@ import test, { describe, it } from "node:test";
 
 import { ACTIVITY_EVENTS, HISTORICAL_ACTIVITY_EVENTS } from "../../src/core/domain/enums.mjs";
 import { SSE_NOISE_EVENTS } from "../../src/foundation/constants.mjs";
-import { classify, DISPATCH_EVENTS, IGNORED_EVENTS } from "../../src/orchestrator/subscribe.mjs";
+import {
+  CONDITIONAL_EVENTS,
+  classify,
+  DISPATCH_EVENTS,
+  IGNORED_EVENTS,
+} from "../../src/orchestrator/subscribe.mjs";
 import { ADMITTED_EVENTS, FEED_EXCLUDED_EVENTS } from "../../web/src/lib/activity-feed.js";
 import { isKnownEvent } from "../../web/src/lib/events.js";
 
@@ -66,8 +71,13 @@ describe("contract/activity-consumers — every reader names every event", () =>
       assert.equal(classification.has(event), false, `${event} is in both loop lists`);
       classification.set(event, "ignore");
     }
+    const conditional = new Set(CONDITIONAL_EVENTS);
+    for (const event of CONDITIONAL_EVENTS) {
+      assert.ok(ACTIVITY_EVENTS.includes(event), `${event} is conditional but not declared`);
+      assert.equal(classification.has(event), false, `${event} is conditional and also in a list`);
+    }
     const unclassified = CURRENT.filter(
-      (event) => event !== "task_updated" && !classification.has(event),
+      (event) => !conditional.has(event) && !classification.has(event),
     );
     assert.deepEqual(unclassified, [], `the loop never decided about: ${unclassified.join(", ")}`);
     for (const [event, decision] of classification) {

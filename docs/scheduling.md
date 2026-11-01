@@ -192,9 +192,16 @@ The contract:
 - the ledger's live-row reap is age-based, so a stopped worker's concurrency slot is
   reclaimed by the 2-hour bound at the latest regardless of which state the card is in.
 
-After a human answers, the card is `todo`; dispatch happens on the next tick/poll (the
-default 10-minute cadence, or sooner when the event subscriber fires). That delay is the
-tick interval, not a new clock.
+The `question_stale` SLA row is the one reader that deliberately looks at an awaiting card:
+it ages the human wait and notifies the leader. It never moves the card (the SLA is
+notify-only).
+
+After a human answers, the card is `todo`; `task_resumed` is a dispatch event, so the
+subscriber wakes a continue turn within its one-minute floor (the plain 10-minute continue
+clock remains the fallback when the subscriber is not installed). That delay is the event
+floor, not a new clock. The same holds for a worker's own `question`: `comment_added` with
+`kind: "question"` wakes the question lane immediately, and the director's release
+(`in_progress → todo`) wakes the worker's same-round resume.
 
 ## Atomic claim = the single dispatch source
 
@@ -466,12 +473,13 @@ stale, so the supervisor surfaces it instead of guessing. Patrol does not start
 an LLM turn by default — escalation is a notification, not a model call
 (`--patrol-llm=yes` opts in).
 
-## The rest of the SLA table: the same pass, five more rows
+## The rest of the SLA table: the same pass, the other rows
 
 A stale heartbeat is **one** row of the SLA contract's threshold table. The others —
 a card parked on the leader's clarification, an unanswered confirmation gate, a
 delivery nobody queued an acceptance review for, a defect whose fix card was
-never created, and the leader's own patrol going quiet — used to be invisible to
+never created, a worker's question nobody released, and the leader's own patrol
+going quiet — used to be invisible to
 the same pass that watched the heartbeat. They are now covered by the **same
 patrol entry**, through the repository's own inspection contract
 (`docs/sla.md`), which also gives the stale-heartbeat row a channel the two
@@ -847,16 +855,30 @@ director assigns it. With `claim_unassigned: no` the workflow pass reports such 
 `unowned_todo` instead.
 
 **Decisions.** A worker does not decide an unauthorized question: it writes an agent
-`question` comment on the `in_progress` card and stops. Poll's question lane enqueues a
-**director row**; the director answers operationally with a `note` (and moves the card to
-`todo`), or escalates to the human with
-`issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."`. Any human comment
-resumes an awaiting card, whatever its kind, and the **same worker session** judges from its
-content whether it is a complete decision. A director row is not a card handoff: it is never
-claimed, never opens a reviewer lane, and does not consume a worker slot. The read is
-bounded by `--board-limit` and costs one `comment list` per `in_progress` card per poll. The
-ladder is the director skill's `references/decision-policy.md` — the single
-decision-authority source; a role skill or `--roles-dir` cannot override it.
+`question` comment on the `in_progress` card and **holds** the turn with
+`taskctl issue wait <ref> --question <id>` (bounded, default 110 s, max 540 s). Poll's
+question lane wakes on the question (`comment_added`, `kind: "question"`) and enqueues a
+**director row**; the director answers operationally with a `note` and **releases** the card
+to `todo`, or escalates to the human with
+`issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."`. The pool routes
+question rows on their **own interval**, not inside the dispatch tick: the tick awaits every
+worker turn, and routing from it would serialize the answer behind the very hold it unblocks.
+
+The wait's `answered` returns only when the card is **released**; a `note` (the director's or
+the worker's own) is shown but does not end the hold. The worker continues **in the same
+turn** and re-claims the card if the release left it `todo`. `escalated`, `moved`, `timeout`
+and `error` end the call; the worker may re-invoke one bounded wait, then parks and the
+**same worker session** is resumed with the answer when it lands. The director turn is
+verified against the board: a `note` without a release is requeued after a 30 s backoff and
+retried once, never a silent completion. Any human comment resumes an awaiting card, whatever
+its kind, and the
+resumed worker judges from its content whether it is a complete decision.
+
+A director row is not a card handoff: it is never claimed, never opens a reviewer lane, and
+does not consume a worker slot. The read is bounded by `--board-limit` and costs one
+`comment list` per `in_progress` card per poll. The ladder is the director skill's
+`references/decision-policy.md` — the single decision-authority source; a role skill or
+`--roles-dir` cannot override it.
 
 Questions are asked as one **decision round**: the frontier of decisions whose prerequisites
 are settled, numbered Q1..Qn with a recommendation each, one question string per card, with
@@ -880,7 +902,7 @@ role: it receives no card, has no assignee, and never appears in the scan set.
 
 | Row | Source | The director's move |
 |---|---|---|
-| `question` | a worker wrote an agent `question` and stopped | answer with an agent `note` and move the card to `todo`; or escalate |
+| `question` | a worker wrote an agent `question` and is waiting | answer with an agent `note` and **release** the card to `todo`; or escalate. A note without the release is retried |
 | `route` | an unassigned or ambiguous `todo` card past 30 minutes | assign the one role the generated routing table names |
 | escalation | the director cannot decide | `issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."` |
 

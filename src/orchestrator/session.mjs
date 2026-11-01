@@ -22,7 +22,7 @@ import { loadRoles } from "../foundation/roles.mjs";
 import { buildQuestionPrompt } from "../foundation/scheduling.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
-import { readCardForRedispatch, readRedispatchContext } from "./runtime.mjs";
+import { readCardForRedispatch, readQuestionOutcome, readRedispatchContext } from "./runtime.mjs";
 import {
   appendWorkerTurn,
   buildWorkerDispatchPrompt,
@@ -95,6 +95,15 @@ const ROLE_ALLOWLIST_KINDS = new Set(["claude", "pi"]);
 
 /** Questions answered in one project-session turn. */
 const QUESTION_BATCH_MAX = 8;
+
+/**
+ * How long an unsettled question row waits before the director's retry turn.
+ *
+ * A turn that wrote a note but did not release the card must not be retried in
+ * the same second (a tight LLM loop), and it must not wait for the next poll
+ * (ten minutes, past the worker's hold). 30s fits inside the default 110s wait.
+ */
+const QUESTION_RETRY_BACKOFF_MS = 30_000;
 
 /** A queue row on the question lane (everything else is a card handoff). */
 const isQuestionRow = (row) => String(row?.queue_kind ?? "handoff") === "question";
@@ -387,6 +396,10 @@ export function createSessionPool(input = {}) {
   // A retry must re-read the board: a worker can deliver (or a human can move
   // the card) while the turn that was about to be retried is still unwinding.
   const revalidateCard = typeof input.revalidateCard === "function" ? input.revalidateCard : null;
+  // A director turn's exit code is not evidence: the card must be re-read to
+  // prove it was released. Null in tests that do not inject a board.
+  const questionOutcome =
+    typeof input.readQuestionOutcome === "function" ? input.readQuestionOutcome : null;
   const stateDir = dirname(String(opts.state));
   // `internal` is the installed supervisor; `external` marks a pool started by a
   // live session (`loop status --take-over`). There is no control turn in either
@@ -816,6 +829,13 @@ export function createSessionPool(input = {}) {
         log(`session: ${project} is at its project cap — leaving ${cards.length} decision row(s) pending`);
         continue;
       }
+      // The director lane draws no worker slot, but it is still a session: the
+      // pool's global bound applies before a new project lane is opened. A lane
+      // that already exists is counted there and stays reachable.
+      if (!sessions.has(dir) && poolMax > 0 && sessions.size >= poolMax) {
+        log(`session: lane session pool is full (${poolMax}) — leaving ${cards.length} decision row(s) pending`);
+        continue;
+      }
       const entry = await ensureSession(dir, { cwd: dir, role: "director" });
       if (entry.busy === true) {
         log(`session: ${dir} is busy — leaving ${cards.length} decision row(s) pending`);
@@ -854,19 +874,78 @@ export function createSessionPool(input = {}) {
         entry.lastUsedAt = nowIso(now);
       }
       if (outcome?.ok === true) {
-        completeCards(stateDir, claimed.cards.map((card) => card.id));
-        answered += claimed.cards.length;
+        // The turn exited 0; that is not proof it settled the board. Verify each
+        // question row against the live card. A note-only turn leaves the card
+        // in_progress and is requeued for one backoff retry (the row-level cap
+        // still bounds it); a failed read is fail-soft — completing the row lets
+        // the next poll re-enqueue it if the question is still open.
+        const settled = [];
+        const unsettled = [];
+        for (const row of claimed.cards) {
+          if (row.route === true || questionOutcome === null) {
+            settled.push(row);
+            continue;
+          }
+          const live = await questionOutcome({ card: row.card, questionId: row.question_id, row });
+          if (live?.ok === true && live.settled !== true) unsettled.push(row);
+          else settled.push(row);
+        }
+        if (settled.length > 0) completeCards(stateDir, settled.map((card) => card.id));
+        if (unsettled.length > 0) {
+          // Retry the same row after a short backoff instead of failing it and
+          // waiting for the next poll: the director's first turn may have written
+          // the answer and only missed the release, and the worker is holding for
+          // one bounded wait. The attempt budget is two turns per question.
+          const retried = requeueCards(stateDir, unsettled.map((card) => card.id), {
+            maxAttempts: 2,
+            error: "director turn did not settle the question",
+            retryAt: new Date(now() + QUESTION_RETRY_BACKOFF_MS).toISOString(),
+          });
+          log(
+            `session: director did not settle ${unsettled.map((card) => card.card).join(", ")} — ` +
+              (retried.failed > 0 ? "row failed after 2 attempts" : "retry scheduled"),
+          );
+        }
+        answered += settled.length;
         continue;
       }
+      // A persistent spawn/turn failure must not spin: the question interval
+      // runs every second, so the row waits out the same backoff as an unsettled
+      // turn, with the same two-turn budget.
       requeueCards(stateDir, claimed.cards.map((card) => card.id), {
+        maxAttempts: 2,
         error: outcome?.error ?? "question turn failed",
+        retryAt: new Date(now() + QUESTION_RETRY_BACKOFF_MS).toISOString(),
       });
-      log(`session: question turn for ${dir} failed: ${outcome?.error ?? "unknown error"} — requeued`);
+      log(`session: question turn for ${dir} failed: ${outcome?.error ?? "unknown error"} — retry scheduled`);
       if (/closed|exited|spawn error|timed out/.test(String(outcome?.error ?? ""))) {
         await closeEntry(entry, { dropSession: false });
       }
     }
     return answered;
+  }
+
+  /**
+   * Route pending question rows only.
+   *
+   * This runs on its own interval, not inside the dispatch tick: the tick awaits
+   * every worker turn, and a worker holding in `issue wait` must not keep the
+   * director lane from being routed until that turn ends. It reads the queue and
+   * drives the director lane; it never claims a card and never moves one.
+   */
+  async function routeQuestionsNow() {
+    const read = readCards(stateDir);
+    if (read.error !== null) {
+      log(`session: card queue unreadable: ${read.error}`);
+      return 0;
+    }
+    const due = read.value.cards.filter((row) => {
+      if (row.status !== "pending" || !isQuestionRow(row)) return false;
+      const retryAt = Date.parse(String(row.retry_at ?? ""));
+      return Number.isNaN(retryAt) || retryAt <= now();
+    });
+    if (due.length === 0) return 0;
+    return routeQuestions(due);
   }
 
   /**
@@ -909,15 +988,15 @@ export function createSessionPool(input = {}) {
     }
     const pending = read.value.cards.filter((card) => card.status === "pending");
     if (pending.length === 0) {
-      return { ok: true, dispatched: 0, answered: 0 };
+      return { ok: true, dispatched: 0 };
     }
-    // Questions first: they are cheap, they unblock a stopped worker, and they
-    // do not draw from the subagent budget.
+    // Question rows are routed by their own interval (routeQuestionsNow). Here
+    // they only gate handoffs for the same card: a worker whose question is
+    // still unsettled must not be re-prompted by a second handoff.
     const questionRows = pending.filter(isQuestionRow);
     const handoffRows = pending.filter((row) => !isQuestionRow(row));
-    const answered = questionRows.length > 0 ? await routeQuestions(questionRows) : 0;
     if (handoffRows.length === 0) {
-      return { ok: true, dispatched: 0, answered };
+      return { ok: true, dispatched: 0 };
     }
     const questionCards = new Set(questionRows.map((row) => String(row.card ?? "")));
     const groups = new Map();
@@ -1011,6 +1090,19 @@ export function createSessionPool(input = {}) {
       ) {
         log(`session: lane session pool is full (${poolMax}) — leaving ${dir} (${lane}) pending`);
         continue;
+      }
+      // A worker that is still in a turn — including a worker holding on
+      // `issue wait` — must not receive a second prompt. The queue row waits;
+      // the director's release may have re-claimed the card in the meantime,
+      // and `revalidateBatch` drops the row if the worker already moved it.
+      if (lane === "worker-session") {
+        const existing = sessions.get(key);
+        // `busy` is the in-process truth; the persisted `worker.status` can lag
+        // a failed turn and must not be used as a lock.
+        if (existing?.busy === true) {
+          log(`session: worker ${cards[0].card} is still running — leaving its handoff pending`);
+          continue;
+        }
       }
       if (lane === "worker-session" && !sessions.has(key)) {
         const openWorkers = [...sessions.values()].filter((session) => isWorkerKey(session.key));
@@ -1277,6 +1369,10 @@ export function createSessionPool(input = {}) {
         if (/closed|exited|spawn error|timed out/.test(error)) {
           await closeEntry(entry, { dropSession: false });
         }
+        // The turn settled; the record must not keep saying `running` (a failed
+        // turn is retried on the next tick, and the guard reads `busy`).
+        entry.worker.status = "idle";
+        entry.worker.lastError = error;
         persistState();
         continue;
       }
@@ -1386,7 +1482,7 @@ export function createSessionPool(input = {}) {
     }
     ledger = prune(ledger, { now: now() });
     writeLedgerState();
-    return { ok: true, dispatched, answered };
+    return { ok: true, dispatched };
   }
 
   async function evictIdle() {
@@ -1612,6 +1708,9 @@ export function createSessionPool(input = {}) {
     async routeCards(options = {}) {
       return routeCards(options);
     },
+    async routeQuestionsNow() {
+      return routeQuestionsNow();
+    },
     async evictIdle() {
       return evictIdle();
     },
@@ -1682,6 +1781,8 @@ export async function runSession(opts, deps = {}) {
     now: deps.now,
     isAlive: deps.isAlive,
     revalidateCard: (input) => readCardForRedispatch(opts, input.card, log),
+    readQuestionOutcome: (input) =>
+      readQuestionOutcome(opts, input.card, input.questionId, log),
   });
   const started = await pool.start();
   if (!started.ok) {
@@ -1702,6 +1803,21 @@ export async function runSession(opts, deps = {}) {
         ticking = false;
       });
   }, Math.max(50, Number(opts.sessionPollMs ?? SESSION_DEFAULTS.pollMs)));
+  // Questions have their own clock. The dispatch tick awaits worker turns, and a
+  // worker holding for an answer is exactly when the director lane must still be
+  // routed; sharing the tick would serialize the answer behind the very turn it
+  // is meant to unblock.
+  let routingQuestions = false;
+  const questionInterval = setInterval(() => {
+    if (routingQuestions) return;
+    routingQuestions = true;
+    pool
+      .routeQuestionsNow()
+      .catch((err) => log(`session: question tick failed: ${err.message}`, { level: "error" }))
+      .finally(() => {
+        routingQuestions = false;
+      });
+  }, Math.max(50, Number(opts.sessionPollMs ?? SESSION_DEFAULTS.pollMs)));
   // The heartbeat is independent of the tick: while a turn is in flight the
   // state file must still say "the pool is here".
   const heartbeat = setInterval(() => pool.persistState(), POOL_HEARTBEAT_MS);
@@ -1712,10 +1828,12 @@ export async function runSession(opts, deps = {}) {
   // supervisor exit once that child closes.
   if (opts.control !== "external") {
     interval.unref?.();
+    questionInterval.unref?.();
     heartbeat.unref?.();
   }
   const stop = async () => {
     clearInterval(interval);
+    clearInterval(questionInterval);
     clearInterval(heartbeat);
     await pool.stop();
     log("session: pool stopped");

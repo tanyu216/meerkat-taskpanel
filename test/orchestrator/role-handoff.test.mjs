@@ -96,9 +96,12 @@ describe("handoffs without a role stay byte-identical", () => {
     // Re-pinned for the director vocabulary, and again when the old subagent
     // variant was removed: a worker always runs in its own worker session now,
     // so this is the one worker-handoff shape.
+    // Re-pinned for the bounded `issue wait` hold: a worker that asks now waits
+    // for the answer in the same turn (and re-claims if the director released
+    // the card) instead of ending the turn immediately.
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "9df3c69bd1acc7d35eba6e32c2bfa303fb97e54e39d51aeca7e3871a1b354deb",
+      "371f25aa2945da79856f4b8c970a0ce7c7db76b1d045a34d2725e0a69ed31d61",
     );
   });
 
@@ -152,6 +155,9 @@ describe("worker handoff with a role", () => {
     assert.match(text, /Decision needed:/);
     assert.match(text, /agent question comment on this card/);
     assert.match(text, /keep the card in_progress/);
+    assert.match(text, /taskctl issue wait/);
+    assert.match(text, /hold for the answer/);
+    assert.match(text, /re-claim if the card is `todo`/);
     assert.match(text, /Do not enter awaiting yourself/);
     assert.match(text, /\/roles\/decision-policy\.md/);
   });

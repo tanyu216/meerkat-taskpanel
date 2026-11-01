@@ -1326,6 +1326,49 @@
               "short": null
             }
           ]
+        },
+        {
+          "name": "wait",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "heartbeat",
+              "as": "number",
+              "value": "<sec>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "interval",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "question",
+              "as": "string",
+              "value": "<comment-id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "timeout",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
         }
       ]
     },

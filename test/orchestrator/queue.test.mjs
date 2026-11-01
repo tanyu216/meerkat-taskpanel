@@ -158,6 +158,34 @@ describe("card queue", () => {
     assert.equal(questionDispatches(dir, "q-1"), 1, "a completed dispatch still counts against the bound");
   });
 
+  it("counts a requeued question row by its attempts and records the retry time", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, {
+      id: "question:T-1:q-1",
+      card: "T-1",
+      queue_kind: "question",
+      role: "question",
+      question_id: "q-1",
+    });
+    const claim = () =>
+      claimCards(dir, { claimedBy: "/work/app", queueKind: "question", limit: 1 }).cards[0];
+    requeueCards(dir, [claim().id], {
+      maxAttempts: 2,
+      error: "no release",
+      retryAt: "2026-01-01T00:00:30.000Z",
+    });
+    const [pending] = readCards(dir).value.cards;
+    assert.equal(pending.status, "pending");
+    assert.equal(pending.attempts, 1);
+    assert.equal(pending.retry_at, "2026-01-01T00:00:30.000Z");
+    assert.equal(questionDispatches(dir, "q-1"), 1, "one turn used");
+
+    requeueCards(dir, [claim().id], { maxAttempts: 2, error: "still no release" });
+    const [failed] = readCards(dir).value.cards;
+    assert.equal(failed.status, "failed");
+    assert.equal(questionDispatches(dir, "q-1"), 2, "two turns used");
+  });
+
   it("keeps a worker key and supersedes a pending row on a round change", (t) => {
     const dir = dirFor(t);
     enqueueCard(dir, { ...card("T-1"), round: 1, target_dir: "/w/a", worker_key: "worker:T-1:r1" });

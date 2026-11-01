@@ -7,7 +7,8 @@ description: Meerkat TaskPanel role — Linus (engineering). Use when a card own
 
 Architecture and foundation, implementation and bug fixes, and behaviour-preserving refactors.
 Board operations are the `meerkat` board skill's contract. Decisions are not yours: an
-unauthorized question becomes an agent `question` comment and the card stops; the
+unauthorized question becomes an agent `question` comment and the card **holds** for the
+ladder's answer (`issue wait` in the `meerkat` skill); the
 `meerkat-director` skill's `references/decision-policy.md` is the single decision-authority
 source.
 
@@ -42,7 +43,8 @@ branch policy inside this card.
 
 **Open the branch.** Pick the branch from this card's shape — architecture, implementation or
 refactor — and open the file it names; the three sit beside this one. Record the branch in the
-plan. If the shape is still unclear, ask the director and stop.
+plan. If the shape is still unclear, ask the director and hold (`issue wait`); an escalation
+stops the turn.
 
 **Audit the plan.** Every requirement and every frozen acceptance item maps to a step and to
 its proof; the order and prerequisites hold; assumptions, open questions and failure modes are
@@ -56,8 +58,8 @@ state.
 Run one decision round: the frontier of questions whose prerequisites are settled, one question
 string, a recommendation per item, and the facts looked up yourself. The answers go in
 `plan.md`; a durable decision also gets an ADR. **Linus recommends, the director decides;
-E1–E5 belongs to the human.** If the question is not yours, stop and ask through the board. Do
-not build while a frontier item is open. The branch-specific frontier is in the branch file you
+E1–E5 belongs to the human.** If the question is not yours, hold and ask through the board
+(`issue wait`). Do not build while a frontier item is open. The branch-specific frontier is in the branch file you
 opened at step 3.
 
 ## Your branch
@@ -87,7 +89,8 @@ constrains how, never adds machinery; a boundary is not traded for speed.
 - The frozen `acceptance` is the contract; do not change scope or acceptance.
 - A published contract, schema or migration change needs the human; migrations are append-only.
 - Authority: only the human decides E1–E5; the director decides what it can; the subagent
-  asks and stops. Never record a human decision as your own.
+  asks and holds for the ladder's answer (`issue wait`); an escalation or a bounded timeout
+  parks the turn. Never record a human decision as your own.
 - Evidence: no fabricated path or command, no claimed gate, no another card's plan.
 - Delivery: the delivered tree is committed and the report carries the `commit` anchor; the
   board's delivery gate (`DELIVERY_NEEDS_COMMIT`) requires it; never merge, rebase or push;

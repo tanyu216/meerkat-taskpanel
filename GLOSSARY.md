@@ -352,15 +352,26 @@ The `question` comment a worker writes — on entering `awaiting` for an E1–E5
 staying `in_progress` for a question the director may answer (the question lane). It
 is the payload `awaiting` promises; **any human comment** answers it and the board re-queues
 the card. The board does not read the text — the resumed worker judges from its content
-whether the answer is a complete decision, and asks again if it is not.
+whether the answer is a complete decision, and asks again if it is not. A worker asking the
+director **holds** the turn with `issue wait` rather than ending it.
 _中文_: 提问
 _Avoid_: awaiting reason (that is the category, not the question), issue
 
+**Hold**:
+A worker's bounded wait inside its own turn for the ladder's answer to its `question`:
+`taskctl issue wait` returns `answered` (continue in the same turn, re-claiming the card if
+the director released it), or `escalated`/`moved`/`timeout`/`error` (end the turn; the same
+session is resumed by id when the answer lands). It is not a claim, a card state or a second
+queue.
+_中文_: 等待
+_Avoid_: poll, sleep, idle, lock
+
 **Question lane**:
 The supervisor's path for an unanswered agent `question` on an `in_progress` card: poll
-enqueues a question row and the **director** lane answers with a `note` (then moves the card
-to `todo`) or escalates E1–E5 to `awaiting`. It is not a card state and it never claims a
-card.
+enqueues a question row and the **director** lane answers with a `note` **and releases the
+card to `todo`** (or escalates E1–E5 to `awaiting`). The release, not the note, is what
+settles the question; a note-only turn is retried. It is not a card state and it never
+claims a card.
 _中文_: 提问通道
 _Avoid_: awaiting (that is the human-only overlay), question queue (the queue is generic)
 
@@ -644,9 +655,9 @@ exposed for inspection on request.
 _Avoid_: sort order (a different, stored value), ranking
 
 **SLA row**:
-One named rule the patrol checks — a stale heartbeat, a stalled leader, an overdue
-confirmation — each with its own threshold and its own repair. The board computes
-the row; the patrol delivers it.
+One named rule the patrol checks — a stale heartbeat, an unanswered question
+(`question_stale`), a stalled leader, an overdue confirmation — each with its own threshold
+and its own repair. The board computes the row; the patrol delivers it.
 _Avoid_: rule, check, metric
 
 **Alert tuple**:

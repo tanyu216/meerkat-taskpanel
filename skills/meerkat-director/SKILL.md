@@ -13,7 +13,7 @@ need a **content decision**:
 
 | Row | What happened | Your move |
 |---|---|---|
-| `question` | a worker wrote an agent `question` comment and stopped | answer with an agent `note` and move the card to `todo`, or escalate |
+| `question` | a worker wrote an agent `question` comment and is waiting | answer with an agent `note` and **release** the card to `todo`, or escalate; a note without the release is retried |
 | `route` | an unassigned or ambiguous `todo` card is past the 30-minute window | assign the one role the routing table names |
 | escalation | you cannot decide | move the card to `awaiting` with a reason and the question |
 
@@ -42,11 +42,15 @@ session identity are all defined there.
 worker  →  director  →  human
 ```
 
-A worker decides nothing on its own: it writes an agent `question` and stops. You decide
-what you are authorized to decide and record it as an agent `note` with the decision and the
-why, then move the card to `todo` so the **same worker session** resumes with the answer in
-the trail. Only you may move a card to `awaiting`, and only for an E1–E5 decision you cannot
-make; the question comment is required. Only a human comment resumes an `awaiting` card.
+A worker decides nothing on its own: it writes an agent `question` and **holds** with
+`taskctl issue wait`. You decide what you are authorized to decide and record it as an agent
+`note` with the decision and the why, then **release the card to `todo`** so the same worker
+session continues with the answer in the trail. The release is the settle: a `note` without
+the move leaves the question open, the supervisor fails and retries the row, and the worker
+stays parked. If a later comment already answers it (your own note, or a human comment) but the card
+is still `in_progress`, do not answer again — just release it. Only you may move a card to
+`awaiting`, and only for an E1–E5 decision you cannot make; the question comment is required.
+Only a human comment resumes an `awaiting` card.
 
 You never write `decision`/`confirm`/`change` kinds and never use `--as-human` for your own
 decision. The complete protocol — decision rounds, the frontier, the E1–E5 table, the

@@ -422,6 +422,9 @@ export function candidateArgs(agent, claimUnassigned, recoverStale = false) {
 /** A `todo` card older than this with no one to claim it is a finding. */
 const STRANDED_TODO_AGING_MS = 30 * 60 * 1000;
 
+/** How much of a worker's question the director prompt quotes. */
+const QUESTION_PROMPT_BODY_MAX = 2000;
+
 /**
  * The stranded-`todo` findings the workflow pass reports.
  *
@@ -618,8 +621,8 @@ export function buildHandoff(input) {
     `  ${brief}    # description, acceptance, comments, sessions, attachments, report`,
     `  taskctl issue get ${ref} --json <flags>    # live status, version, acceptance snapshot, meta`,
     "  Several deliverables, or layers of one change? Do not promote or split yourself.",
-    "  Add an agent question naming the pieces, keep the card in_progress, and stop. The",
-    "  director decides; a scope expansion is E1 and goes to the human.",
+    "  Add an agent question naming the pieces, keep the card in_progress, and hold.",
+    "  The director decides; a scope expansion is E1 and goes to the human.",
     `    taskctl comment add ${ref} --kind question --body "..." <flags>`,
     "    meta.epic_triage=off: do not promote; record the split question in a comment.",
     "",
@@ -628,19 +631,19 @@ export function buildHandoff(input) {
     "  the seed it was copied from. Work to the snapshot; append, never replace or remove.",
     "  Snapshot and meta both empty (not an epic): a mechanical derivation may be",
     "  pre-authorized in this handoff. If it was not, add an agent question",
-    "  comment and stop. Changing an existing acceptance item is E2 and goes to the",
+    "  comment and hold. Changing an existing acceptance item is E2 and goes to the",
     "  director/human.",
     `    taskctl issue update <card> --acceptance "..." --acceptance "..." --meta acceptance_derived=yes <flags>`,
     `    taskctl comment add <card> --kind note --body "acceptance list derived at claim (pre-authorized): 1) ..." <flags>`,
     `  Comments: taskctl comment list <card> --limit 200 --json <flags>`,
     "  Too thin to yield checkable items, or blocked on a decision? Do not enter awaiting",
-    "  yourself: add an agent question comment on the card, keep it in_progress, and stop.",
-    "  The supervisor hands it to the director, which answers or escalates E1-E5.",
+    "  yourself: add an agent question comment on the card, keep it in_progress, and hold.",
+    "  The director answers or escalates E1-E5.",
     `    taskctl comment add <card> --kind question --body "Decision needed: ..." <flags>`,
-    "  Then stop. On re-claim read every comment after your last question — a human",
-    "  comment, or the director's `note`. Any human comment auto-resumes",
-    "  awaiting; approve/reject is its content, not its kind. An incomplete answer is not",
-    "  consent — ask again. A rejection means revise or stop; never re-submit it.",
+    `    taskctl issue wait <card> --question <id> <flags>   # hold for the answer`,
+    "  On `answered` read the comments after your question — a human comment, or the",
+    "  director's `note`; if the card is back in `todo`, claim it again first. An incomplete",
+    "  answer is not consent — ask again. A rejection means revise or stop; never re-submit it.",
     "  Review asks for more: append, never replace. Ask the director, do not migrate.",
     "",
     `Keep the claim alive (<=10 minutes): taskctl issue heartbeat <card> <flags>`,
@@ -771,10 +774,11 @@ export function buildReviewHandoff(input) {
 /**
  * The prompt the director lane gets for the **question lane**.
  *
- * A worker that cannot decide writes an agent `question` comment and stops, and
- * the loop hands the question here. The director answers with a `note` and
- * releases the card to the queue, or escalates E1–E5 to the human. It never
- * spawns a subagent for this row and never moves a card to `done`.
+ * A worker that cannot decide writes an agent `question` comment and holds with
+ * `taskctl issue wait`, and the loop hands the question here. The director
+ * answers with a `note` and releases the card to the queue, or escalates E1–E5
+ * to the human. The release is what the worker waits for. It never spawns a
+ * subagent for this row and never moves a card to `done`.
  *
  * `rows` carry the queue row's fields: `card` (the ref), `project`,
  * `target_dir`, `agent`, `question_id`, `question`, `asked_at`.
@@ -811,13 +815,22 @@ export function buildQuestionPrompt(rows, input = {}) {
     }
     const asked = row.asked_at ? ` (asked ${row.asked_at})` : "";
     lines.push(`${index + 1}) ${row.card} — question ${row.question_id}${asked}:`);
-    for (const line of String(row.question ?? "").split("\n")) lines.push(`   ${line}`);
+    // A comment body can be up to 1 MiB; an unbounded question would make the
+    // director's turn impossible to finish. Bound it like every other prompt.
+    const question = String(row.question ?? "");
+    const bounded = question.length > QUESTION_PROMPT_BODY_MAX
+      ? `${question.slice(0, QUESTION_PROMPT_BODY_MAX)}\n[truncated]`
+      : question;
+    for (const line of bounded.split("\n")) lines.push(`   ${line}`);
     lines.push(
       `   Re-read the card first: taskctl issue get ${row.card} --json ${flags}`,
       "   If its status is not `in_progress` (delivered, moved, canceled, or already",
       "   waiting on a human), do nothing — the question is no longer this lane's.",
       `   Then re-read the trail: taskctl comment list ${row.card} --limit 20 --json ${flags}`,
-      "   If a later comment already answers it, do nothing.",
+      "   If a later comment already answers it and the card is still `in_progress`,",
+      `   do NOT answer again — release the card: taskctl issue move ${row.card} todo ${flags}`,
+      "   (A director that writes a note without releasing leaves the question open and this",
+      "   row is retried; the release is what the worker waits for.)",
       `   Answer you can decide: taskctl comment add ${row.card} --kind note --body "decision: ..." ${flags}`,
       `   then release the card to the queue: taskctl issue move ${row.card} todo ${flags}`,
       `   Cannot decide (E1-E5, or a reserved matter): taskctl issue move ${row.card} awaiting --awaiting-reason <E1..E5> --question "..." ${flags}`,

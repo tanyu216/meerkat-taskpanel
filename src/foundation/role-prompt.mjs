@@ -12,7 +12,9 @@
 
 const ROLE_PROMPT_LIMITS = Object.freeze({
   layerOne: 1400,
-  decision: 1600,
+  // The decision layer now carries the bounded `issue wait` hold; the extra
+  // headroom keeps the whole frontier + the policy pointer from truncating.
+  decision: 1700,
   reviewer: 2400,
 });
 
@@ -106,9 +108,9 @@ export function renderRoleSelfCheck(role, path) {
 
 /**
  * The question-first rule. A worker never decides an unauthorized question
- * itself: it records an agent `question` comment and stops, so the director can
- * answer or escalate. The board's human-only `awaiting` exit is not the worker's
- * channel.
+ * itself: it records an agent `question` comment and holds with `issue wait`, so
+ * the director can answer or escalate; the release, not a note, ends the hold.
+ * The board's human-only `awaiting` exit is not the worker's channel.
  *
  * @param {object} role
  * @param {string|null} policyPath
@@ -121,7 +123,9 @@ export function renderRoleDecision(role, policyPath) {
     "can; the human decides E1-E5 (scope, acceptance, design direction, security/data,",
     "architecture). If a choice is not explicitly authorized by the handoff, plan or",
     "acceptance, add an agent question comment on this card, keep the card in_progress,",
-    "and stop.",
+    "and hold: taskctl issue wait <ref> --question <comment-id>.",
+    "`answered`: continue (re-claim if the card is `todo`); any other outcome:",
+    "stop — the loop resumes this session. A non-zero exit is a result: read `outcome`.",
     "Settle the whole frontier, not one item at a time:",
     ...renderDecisionRoundPrinciples(),
     "One round is ONE question comment: Q1..Qn in one string; do not drip one comment per question.",

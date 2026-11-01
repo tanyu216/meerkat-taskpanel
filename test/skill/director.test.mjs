@@ -110,6 +110,10 @@ describe("director skill: references", () => {
     assert.match(skill, /meerkat-chat/);
     assert.doesNotMatch(operation, /taskctl loop doctor/);
     assert.doesNotMatch(operation, /taskctl loop console/);
+    // The console fields the director acts on moved with the agenda.
+    const consoleDoc = readFileSync(join(ROOT, "skills", "meerkat-chat", "references", "console.md"), "utf8");
+    assert.match(consoleDoc, /age_ms/);
+    assert.match(consoleDoc, /answered_pending_release/);
   });
 
   it("keeps installation out of the skill", () => {

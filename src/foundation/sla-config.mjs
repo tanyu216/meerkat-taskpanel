@@ -104,6 +104,17 @@ export const DEFAULT_SLA_ROWS = Object.freeze({
     coveredBy: "sla-patrol+legacy-stale-alert",
     action: "the same assignee may re-claim; past the further bound any agent may claim and report",
   }),
+  question_stale: Object.freeze({
+    ref: "docs/sla.md §2 · question_stale · An unanswered question is aging",
+    thresholdRef: "docs/sla.md §2 · question_stale · Normal limit (L)",
+    limitMin: 60,
+    furtherMin: 1440,
+    warnLead: true,
+    origin: "trail_event",
+    coveredBy: "sla-patrol",
+    action:
+      "the director must answer or release the card; a human must answer an awaiting card",
+  }),
   leader_stalled: Object.freeze({
     ref: "docs/sla.md §2 · leader_stalled · Leader patrol stalled",
     thresholdRef: "docs/sla.md §2 · leader_stalled · Normal limit (L)",

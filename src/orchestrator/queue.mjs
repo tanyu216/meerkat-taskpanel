@@ -315,10 +315,12 @@ export function claimCards(stateDir, options = {}) {
 }
 
 /**
- * How many question rows a question id has produced, in any status.
+ * How many director turns a question id has used, in any status.
  *
- * The retry bound counts dispatches, not open rows: a completed row whose answer
- * did not settle the question must not be retried forever.
+ * The retry bound counts **attempts**, not open rows: one row can be requeued
+ * for a retry turn, and a completed-then-re-enqueued row is a second dispatch.
+ * A row that never went through `requeueCards` is still one dispatch, hence
+ * `max(1, attempts)`.
  *
  * @param {string} stateDir
  * @param {string} questionId
@@ -327,11 +329,13 @@ export function claimCards(stateDir, options = {}) {
 export function questionDispatches(stateDir, questionId) {
   const read = readCards(stateDir);
   if (read.error !== null) return 0;
-  return read.value.cards.filter(
-    (card) =>
-      String(card.queue_kind ?? "") === "question" &&
-      String(card.question_id ?? "") === String(questionId ?? ""),
-  ).length;
+  let used = 0;
+  for (const card of read.value.cards) {
+    if (String(card.queue_kind ?? "") !== "question") continue;
+    if (String(card.question_id ?? "") !== String(questionId ?? "")) continue;
+    used += Math.max(1, Number(card.attempts ?? 0));
+  }
+  return used;
 }
 
 /**
@@ -427,7 +431,7 @@ export function pruneCards(stateDir, options = {}) {
  *
  * @param {string} stateDir
  * @param {string[]} ids
- * @param {{maxAttempts?: number, error?: string|null}} [options]
+ * @param {{maxAttempts?: number, error?: string|null, retryAt?: string|null}} [options]
  * @returns {{ok: boolean, requeued: number, failed: number, error: string|null}}
  */
 export function requeueCards(stateDir, ids, options = {}) {
@@ -446,6 +450,7 @@ export function requeueCards(stateDir, ids, options = {}) {
     entry.claimedAt = null;
     entry.claimedBy = null;
     entry.lastError = options.error ?? null;
+    entry.retry_at = options.retryAt ?? null;
     if (attempts >= maxAttempts) {
       entry.status = "failed";
       failed += 1;

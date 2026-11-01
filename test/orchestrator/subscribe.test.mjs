@@ -107,6 +107,70 @@ describe("loop/subscribe — event rules", () => {
     assert.equal(classify(update(["priority"]), { agents: [] }), "ignore");
   });
 
+  it("wakes the question lane for an own worker's question, but not its note", () => {
+    const ctx = { agents: ["linus"] };
+    assert.equal(
+      classify(
+        activity("comment_added", { changes: { kind: "question" }, actor_kind: "claude", actor_id: "linus" }),
+        ctx,
+      ),
+      "dispatch",
+      "the worker's own question is a handoff to the director, not an echo",
+    );
+    assert.equal(
+      classify(
+        activity("comment_added", { changes: { kind: "note" }, actor_kind: "claude", actor_id: "linus" }),
+        ctx,
+      ),
+      "ignore",
+    );
+    assert.equal(
+      classify(
+        activity("comment_added", { changes: { kind: "note" }, actor_kind: "human", actor_id: "terry" }),
+        ctx,
+      ),
+      "dispatch",
+      "a human comment is always worth a re-scan",
+    );
+  });
+
+  it("wakes when the director releases a card to the queue, even as an own write", () => {
+    const ctx = { agents: ["linus"] };
+    assert.equal(
+      classify(
+        activity("task_moved", { changes: { from: "in_progress", to: "todo" }, actor_kind: "claude", actor_id: "linus" }),
+        ctx,
+      ),
+      "dispatch",
+    );
+    assert.equal(
+      classify(
+        activity("task_moved", { changes: { from: "todo", to: "in_progress" }, actor_kind: "claude", actor_id: "linus" }),
+        ctx,
+      ),
+      "ignore",
+      "a claim is not a release",
+    );
+    assert.equal(
+      classify(
+        activity("task_moved", { changes: { from: "in_progress", to: "awaiting" }, actor_kind: "claude", actor_id: "linus" }),
+        ctx,
+      ),
+      "ignore",
+      "an escalation parks; only a human comment resumes it",
+    );
+  });
+
+  it("wakes when a human answer resumes an awaiting card", () => {
+    assert.equal(
+      classify(
+        activity("task_resumed", { changes: { from: "awaiting", to: "todo" }, actor_kind: "human", actor_id: "terry" }),
+        { agents: ["linus"] },
+      ),
+      "dispatch",
+    );
+  });
+
   it("suppresses the board's own housekeeping and this loop's agents", () => {
     const ctx = { agents: ["linus"] };
     assert.equal(classify(activity("task_created", { actor_kind: "system", actor_id: "system" }), ctx), "ignore");

@@ -533,6 +533,30 @@ describe("buildQuestionPrompt (pure)", () => {
     assert.match(text, /Never move a card to done/);
     assert.match(text, /Decision policy: \/roles\/decision-policy\.md/);
   });
+
+  it("releases an already-answered card instead of re-answering it", () => {
+    // A retry after a note-only turn must converge: the note is the answer, the
+    // release is what the worker waits for.
+    assert.match(text, /If a later comment already answers it and the card is still `in_progress`/);
+    assert.match(text, /do NOT answer again — release the card/);
+    assert.match(text, /the release is what the worker waits for/);
+  });
+
+  it("bounds a huge question body", () => {
+    const huge = buildQuestionPrompt(
+      [{
+        card: "T-2",
+        project: "P",
+        target_dir: "/work/app",
+        agent: "alice",
+        question_id: "q-2",
+        question: `${"Q".repeat(2000)}TAILMARKER`,
+      }],
+      { actorKind: "claude" },
+    );
+    assert.match(huge, /\[truncated\]/);
+    assert.equal(huge.includes("TAILMARKER"), false, "the over-limit body does not reach the prompt");
+  });
 });
 
 describe("buildHandoff (pure)", () => {

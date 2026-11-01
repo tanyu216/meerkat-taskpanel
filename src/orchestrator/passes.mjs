@@ -42,6 +42,7 @@ import { liveSubagents, readLedger } from "./ledger.mjs";
 import { mergeReviewerSets, parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
 import { loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
+import { parseWorkerKey, readWorkerSessions } from "./worker-session.mjs";
 import {
   createWorkspace,
   findWorkspace,
@@ -579,23 +580,38 @@ export async function runPollOnce(opts, env = process.env) {
     return 0;
   }
 
+  // A card parked on an unanswered question is a **dormant claim**, like
+  // `awaiting`: no stale re-claim may put a second worker on it before the
+  // director answers. The refs are read regardless of whether this pool can
+  // enqueue question rows: an older pool still must not re-claim a parked card.
+  const openQuestionRefs = new Set();
+  // A dry run makes no claims, so it needs no filter and must not turn a read
+  // failure into a different candidate list.
+  let questionsKnown = opts.dryRun === true;
+
   // The question lane rides poll: a worker's unanswered question is handed to
   // the director lane before the subagent budget is consulted (a question is
   // not a subagent). The capability guard keeps an older pool from receiving
   // rows it would treat as handoffs.
-  if (!opts.dryRun && (pool.capabilities ?? []).includes("question-lane")) {
+  if (!opts.dryRun) {
     const open = readOpenQuestions(opts, log);
     if (open.ok) {
-      const result = runQuestionTick({
-        questions: open.rows,
-        resolveDir: (project) => resolveWakeDir({ project, projectsJson: opts.projectsJson }),
-        enqueue: (row) => enqueueCard(stateDir, row),
-        dispatches: (questionId) => questionDispatches(stateDir, questionId),
-        log,
-      });
-      if (result.enqueued > 0) {
-        log(`questions: ${result.enqueued} open question(s) enqueued for the director`);
+      questionsKnown = true;
+      for (const row of open.rows) openQuestionRefs.add(String(row.ref));
+      if ((pool.capabilities ?? []).includes("question-lane")) {
+        const result = runQuestionTick({
+          questions: open.rows,
+          resolveDir: (project) => resolveWakeDir({ project, projectsJson: opts.projectsJson }),
+          enqueue: (row) => enqueueCard(stateDir, row),
+          dispatches: (questionId) => questionDispatches(stateDir, questionId),
+          log,
+        });
+        if (result.enqueued > 0) {
+          log(`questions: ${result.enqueued} open question(s) enqueued for the director`);
+        }
       }
+    } else {
+      log(`questions: the open-question read failed (${open.error}) — stale in-progress claims are not offered this pass`);
     }
   }
 
@@ -623,6 +639,10 @@ export async function runPollOnce(opts, env = process.env) {
           agent: agents[0] ?? "agent",
           target_dir: resolved.dir,
           route: true,
+          // The attempt cap reads `question_id`; a route row has no question,
+          // so its stable row id is the counter's key. Without this the cap is
+          // dead and every poll re-dispatches the same unowned card.
+          question_id: rowId,
           title: row.title,
           updated_at: row.updated_at,
         });
@@ -722,6 +742,18 @@ export async function runPollOnce(opts, env = process.env) {
   // happens to be scanned first.
   const defaultAgent = selectWorkerRole(roleSet)?.agent ?? null;
 
+  // A worker holding for an answer still owns its card. If the director releases
+  // during that turn, the poll would see a `todo` card and queue a second
+  // resume; the pool's busy guard only defers it until the turn ends, when it
+  // becomes a duplicate prompt. Skip the card while its worker session runs.
+  const { workers } = readWorkerSessions(stateDir);
+  const runningCards = new Set();
+  for (const [key, record] of Object.entries(workers)) {
+    if (String(record?.status ?? "") !== "running") continue;
+    const parsed = parseWorkerKey(key);
+    if (parsed !== null) runningCards.add(String(parsed.card));
+  }
+
   const deps = {
     agents,
     registry,
@@ -742,7 +774,16 @@ export async function runPollOnce(opts, env = process.env) {
         log(`scan failed for ${agent}: ${read.error}`);
         return [];
       }
-      const found = read.data.candidates ?? [];
+      // A card parked on an unanswered question is not offered for a stale
+      // re-claim: only the director's answer may move it forward. When the
+      // question read failed, the state is unknown — fail closed for the risky
+      // class (an `in_progress` stale claim) and keep `todo` cards claimable.
+      const found = (read.data.candidates ?? []).filter((candidate) => {
+        const ref = String(candidate.identifier ?? "");
+        if (runningCards.has(ref)) return false;
+        if (questionsKnown) return !openQuestionRefs.has(ref);
+        return String(candidate.status ?? "") !== "in_progress";
+      });
       if (!dedicatedReviewer) return found;
       return found.filter((candidate) => typeof candidate.review_of === "string" && candidate.review_of !== "");
     },
@@ -829,11 +870,26 @@ export async function runPatrolOnce(opts, env = process.env) {
     if (pruned.dropped.length > 0) writeDeferralLedger(stateDir, pruned.ledger);
   }
 
+  // A stale patrol turn must not act on a card that is parked on an unanswered
+  // question: the director is the only middle rung, and the worker will be
+  // resumed by its answer. The read is made only when the LLM patrol is on.
+  const openQuestionRefs = new Set();
+  if (config.patrolLlm === true) {
+    const open = readOpenQuestions(opts, log);
+    if (open.ok) for (const row of open.rows) openQuestionRefs.add(String(row.ref));
+  }
+
   const patrol = await runPatrolTick({
     tasks,
     config,
     spawnPatrol: async (alert) => {
       if (opts.dryRun) return { ok: false };
+      if (openQuestionRefs.has(String(alert.identifier))) {
+        log(
+          `patrol: ${alert.identifier} — parked on an unanswered question; notify-only, no LLM turn`,
+        );
+        return { ok: false };
+      }
       // The LLM lane needs a resident session to run in. Without one the
       // alert stays notify-only — no card is claimed, no process is started.
       const pool = poolStatus({ opts, isAlive: isProcessAlive });

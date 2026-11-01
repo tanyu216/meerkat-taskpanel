@@ -20,7 +20,7 @@ import {
   pruneSlaLedger,
 } from "../foundation/sla-patrol.mjs";
 
-import { isQuestionSettled, newestQuestion } from "./questions.mjs";
+import { newestQuestion, questionOpen } from "./questions.mjs";
 import { findWorkspace, mergeWorkspace, runGit } from "./workspace.mjs";
 import { notifySlaAlerts, runWorkflowTick, notifyReal } from "./runners.mjs";
 import {
@@ -160,7 +160,10 @@ export function readOpenQuestions(opts, log, run = runCli) {
     }
     const list = Array.isArray(comments.data?.comments) ? comments.data.comments : [];
     const question = newestQuestion(list);
-    if (question === null || isQuestionSettled(list, question)) continue;
+    // A director `note` alone does not settle: the card must be released
+    // (`questionOpen` reads the status change, not the prose). A human answer
+    // on an `in_progress` card also stays open — the card still owes a release.
+    if (!questionOpen(task, question)) continue;
 
     rows.push({
       ref,

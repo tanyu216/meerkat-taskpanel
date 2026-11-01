@@ -93,8 +93,11 @@ export function slaSnapshot(ctx, input = {}) {
   for (const id of selected) {
     const task = taskByIdentifier.get(id);
     if (task === undefined) continue;
+    // The detectors walk oldest-first, but the budget must hold the **newest**
+    // comments: a long card's current question can be beyond the first 200.
     trails[id] = ctx.repos.comments
-      .list({ taskId: task.id, limit: COMMENTS_PER_CARD })
+      .list({ taskId: task.id, limit: COMMENTS_PER_CARD, order: "desc" })
+      .reverse()
       .map((comment) => commentToWire(comment, { lookup }));
   }
 
@@ -109,6 +112,7 @@ export function slaSnapshot(ctx, input = {}) {
     leaderId: input.leaderId ?? null,
     lookbackDays: config.leaderLookbackDays,
     boardTruncated,
+    trailsTruncated: wanted.length > selected.length,
     // The peer watchdog is the loop's local fact; the board never alarms on it.
     peerLastOkAt: null,
     peerRequired: false,

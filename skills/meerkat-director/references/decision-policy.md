@@ -15,11 +15,13 @@ worker  →  director  →  human
 ```
 
 A worker does **not** decide an unauthorized question. It writes an agent
-`question` comment on the card, keeps the card `in_progress`, and stops. Poll's
-**question lane** sees the unanswered question and wakes the director with it (no
-claim, no worker slot); the session answers with an agent `note` and moves the card to
-`todo`, or escalates. Only the director may move a card to `awaiting`, and only for
-an E1-E5 decision it cannot make.
+`question` comment on the card, keeps the card `in_progress`, and **holds** with
+`taskctl issue wait`. Poll's **question lane** sees the unanswered question and wakes the
+director with it (no claim, no worker slot); the session answers with an agent `note` and
+**releases the card to `todo`**, or escalates. The release is the settle: a note without the
+move leaves the question open and is retried; an already-answered card is released without a
+second answer. Only the director may move a card to `awaiting`, and only for an E1-E5
+decision it cannot make.
 
 ## Who decides what
 
@@ -45,9 +47,10 @@ Operational and plan/acceptance-internal choices:
   acceptance item is E2).
 
 The director records its answer as an agent `note` with the decision and the why,
-then moves the card to `todo`; dispatch resumes the card's **worker session** with the
-answer in its trail, so the worker that asked continues. It never writes `decision` /
-`confirm` / `change`, and never uses `--as-human` for its own decision.
+then **releases the card to `todo`**; the worker's same-turn wait returns `answered` and it
+continues (re-claiming the card if the release left it `todo`), or a parked session resumes by
+id. It never writes `decision` / `confirm` / `change`, and never uses `--as-human` for its own
+decision.
 
 ### The human decides — E1-E5
 
@@ -115,7 +118,8 @@ unowned card shape is a finding only when a defined role owns that shape.
 
 One round is one question string per card. A worker records the whole round in one agent
 `question` comment (Q1..Qn, each item in the shape below with its `Verified already`
-evidence), keeps the card `in_progress`, and stops. The director answers every
+evidence), keeps the card `in_progress`, and holds with a bounded `taskctl issue wait`.
+An escalation to `awaiting` or a timeout parks the turn. The director answers every
 decidable item in one `note` and moves the card once; it escalates only the E1-E5 items in
 one `awaiting` question string that names each E-code, recommendation and evidence. The
 human answers in one comment. Only a human comment resumes an `awaiting` card; the resumed
@@ -144,10 +148,10 @@ E-code.
 
 ## Recording
 
-- Worker question: an agent `question` comment while the card stays `in_progress`; poll's
-  question lane hands it to the director.
-- Director decision: a `note` comment recording the decision, then answer the worker or
-  move the card back to `todo`.
+- Worker question: an agent `question` comment while the card stays `in_progress`, followed by
+  a bounded `taskctl issue wait`; poll's question lane hands it to the director.
+- Director decision: a `note` comment recording the decision, then **release** the card back to
+  `todo` — the release is the settle and the worker's wait returns on it.
 - Human escalation: move the card to `awaiting` with the E1–E5 reason and the question.
 - Human answer: a human comment (`--as-human`) of any kind; the board requeues the card to
   `todo` in the same transaction, so do not move it again. On the board the human types in the

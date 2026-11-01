@@ -25,7 +25,9 @@ The human-owned queue, already filtered to what is actually unanswered.
       "awaiting_reason": "E3",
       "question": "…",
       "asked_at": "2026-11-01T09:12:00.000Z",
-      "kind": "awaiting"
+      "kind": "awaiting",
+      "age_ms": 3720000,
+      "answered_pending_release": false
     }
   ],
   "pending_acceptance": [{ "ref": "PROJ-0041", "title": "…", "priority": "medium" }],
@@ -37,6 +39,10 @@ The human-owned queue, already filtered to what is actually unanswered.
 - `kind: "agent-question"` — an `in_progress` card carries a worker question the director has
   not settled. The card needs a requeue after the answer (see
   [`answering.md`](answering.md#answer-an-in_progress-agent-question)).
+- `age_ms` is how long the question has waited (working time in the SLA sense is the
+  board's, not this field). `answered_pending_release: true` means a later human comment
+  exists but the card is still `in_progress` — the **director owes the release**; do not
+  answer the human's reply again.
 - `pending_acceptance` is a reading, not a claim about who owes the act. Cross-check each card's
   `acceptance_mode`: `human` is the human's; `agent` and `off` are normally the loop's or the
   deliverer's.

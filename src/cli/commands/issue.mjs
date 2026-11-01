@@ -14,6 +14,14 @@
  * in the CLI, so the refusal a user sees is the one the service raised.
  */
 
+import { CLI_EXIT } from "../../foundation/constants.mjs";
+import { norm } from "../../foundation/norm.mjs";
+import {
+  isHumanComment,
+  isQuestionComment,
+  newestAgentQuestion,
+  releasedAfterQuestion,
+} from "../../foundation/question-settle.mjs";
 import { reportWarnings } from "../../foundation/report-warning.mjs";
 import { usageError } from "../../foundation/transport/errors.mjs";
 import { TASK_OPS } from "../../core/commands/tasks-input.mjs";
@@ -43,6 +51,79 @@ export const GET_INCLUDE_SECTIONS = Object.freeze(["comments", "reports", "relat
  * restores the unbounded read.
  */
 const DEFAULT_INCLUDED_COMMENT_LIMIT = 50;
+
+// ---------------------------------------------------------------------------
+// `issue wait` — the worker's bounded in-turn hold
+// ---------------------------------------------------------------------------
+
+/**
+ * The default hold. Kept under a 120s tool default (the common bound for an
+ * agent's shell call) so the worker receives the outcome instead of a killed
+ * process; a hold that needs longer is re-entered, not stretched.
+ */
+const WAIT_DEFAULT_TIMEOUT_MS = 110_000;
+/** Hard ceiling: a tool call must not outlive the turn/agent bounds. */
+const WAIT_MAX_TIMEOUT_MS = 540_000;
+const WAIT_DEFAULT_INTERVAL_MS = 2_000;
+const WAIT_DEFAULT_HEARTBEAT_SEC = 240;
+/** How many questions to scan for the worker's own cursor. */
+const WAIT_QUESTION_SCAN = 20;
+/** The answer trail is read with an `after` cursor, bounded for the terminal. */
+const WAIT_SNAPSHOT_COMMENTS = 50;
+const WAIT_MAX_READ_FAILURES = 3;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+
+/** Render the answer trail bounded, like `readRedispatchContext`. */
+function waitAnswerText(comments) {
+  return (Array.isArray(comments) ? comments : [])
+    .filter((comment) => isHumanComment(comment) || !isQuestionComment(comment))
+    .slice()
+    .reverse()
+    .map((comment) => {
+      const text = String(comment?.body ?? "").trim();
+      return `${isHumanComment(comment) ? "[human]" : "[agent]"} ${text}`;
+    })
+    .filter((line) => line.trim() !== "[human]" && line.trim() !== "[agent]")
+    .join("\n")
+    .slice(0, 2000);
+}
+
+/**
+ * Read the card and the newest questions once. The caller counts failures; a
+ * throw here is a transport problem, never an answer.
+ *
+ * The question is read by `kind`, not sliced out of the newest N comments: on a
+ * long-lived card the question can fall out of a fixed comment window while the
+ * wait is still open. The answer trail is then read with
+ * `after=<question.created_at>`, so growth in either direction cannot hide it.
+ */
+async function waitSnapshot(client, ref) {
+  const [taskRead, questionsRead] = await Promise.all([
+    client.get(`/api/v1/tasks/${encodeURIComponent(ref)}`),
+    client.get(`/api/v1/tasks/${encodeURIComponent(ref)}/comments`, {
+      query: { kind: "question", limit: WAIT_QUESTION_SCAN, order: "desc" },
+    }),
+  ]);
+  return {
+    task: taskRead?.task ?? {},
+    questions: Array.isArray(questionsRead?.comments) ? questionsRead.comments : [],
+  };
+}
+
+/** The comments written after the question, newest first.
+ *
+ * `after` is the repository's **created_at** cursor, not a comment id (see
+ * `repositories/comments.mjs`): the server filters `created_at > ?`.
+ */
+async function waitAnswerTrail(client, ref, question) {
+  const askedAt = question?.created_at ?? question?.createdAt ?? null;
+  if (askedAt === null || askedAt === undefined || askedAt === "") return [];
+  const read = await client.get(`/api/v1/tasks/${encodeURIComponent(ref)}/comments`, {
+    query: { after: String(askedAt), limit: WAIT_SNAPSHOT_COMMENTS, order: "desc" },
+  });
+  return Array.isArray(read?.comments) ? read.comments : [];
+}
 
 /** The task payload the service returns is `{task, report_waivers}`. */
 function taskHuman(task, extra) {
@@ -540,6 +621,194 @@ export const COMMANDS = [
         data: payload,
         human: `pulsed ${task.identifier}  ${task.status}  heartbeat ${task.heartbeat_at}`,
       };
+    },
+  },
+
+  {
+    name: "wait",
+    summary: "Hold this turn until the question is answered or escalated; never writes (except its own heartbeat).",
+    usage:
+      "issue wait <id|identifier> [--question <comment-id>] [--timeout <ms>] " +
+      "[--interval <ms>] [--heartbeat <sec>]",
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    flags: [
+      {
+        flag: "question",
+        key: "question",
+        as: "string",
+        value: "<comment-id>",
+        summary: "The question comment to wait on (default: the newest one).",
+      },
+      {
+        flag: "timeout",
+        key: "timeout",
+        as: "number",
+        value: "<ms>",
+        summary: `Bounded hold (default ${WAIT_DEFAULT_TIMEOUT_MS}; max ${WAIT_MAX_TIMEOUT_MS}).`,
+      },
+      {
+        flag: "interval",
+        key: "interval",
+        as: "number",
+        value: "<ms>",
+        summary: `Board poll interval (default ${WAIT_DEFAULT_INTERVAL_MS}).`,
+      },
+      {
+        flag: "heartbeat",
+        key: "heartbeat",
+        as: "number",
+        value: "<sec>",
+        summary: `Pulse the caller's heartbeat every N seconds while waiting (default ${WAIT_DEFAULT_HEARTBEAT_SEC}; 0 disables).`,
+      },
+    ],
+    async run(ctx) {
+      const ref = String(ctx.args.ref);
+      const rawTimeout = Number(ctx.flags.timeout ?? WAIT_DEFAULT_TIMEOUT_MS);
+      const timeoutMs = Number.isFinite(rawTimeout)
+        ? Math.min(Math.max(0, rawTimeout), WAIT_MAX_TIMEOUT_MS)
+        : WAIT_DEFAULT_TIMEOUT_MS;
+      const intervalMs = Math.max(1, Number(ctx.flags.interval ?? WAIT_DEFAULT_INTERVAL_MS));
+      const heartbeatMs = Math.max(0, Number(ctx.flags.heartbeat ?? WAIT_DEFAULT_HEARTBEAT_SEC)) * 1000;
+      const pinned = typeof ctx.flags.question === "string" && ctx.flags.question !== ""
+        ? String(ctx.flags.question)
+        : null;
+      const started = Date.now();
+      const deadline = started + timeoutMs;
+      const mine = String(ctx.identity?.id ?? "");
+      // The wire carries the holder's display name, not the caller's actor id;
+      // `norm` is the repository's one identity rule for names (case/whitespace).
+      const mineNorm = mine === "" ? null : norm(mine);
+      let lastHeartbeat = started;
+      let failures = 0;
+      let question = null;
+      let comments = [];
+      let lastTask = {};
+
+      const timedOut = () => ({
+        data: {
+          ref,
+          outcome: "timeout",
+          status: typeof lastTask.status === "string" ? lastTask.status : null,
+          claimed_by: lastTask.claimed_by_actor?.display_name ?? null,
+          question_id: question?.id ?? null,
+          answer: waitAnswerText(comments),
+          waited_ms: Date.now() - started,
+        },
+        human:
+          `wait ${ref}: no answer within ${Math.round((Date.now() - started) / 1000)}s — ` +
+          "re-invoke once when the runtime allows it, then stop; the loop resumes this session " +
+          "when the answer lands",
+        exit: CLI_EXIT.DIFFERENCES,
+      });
+
+      for (;;) {
+        let task;
+        try {
+          const snapshot = await waitSnapshot(ctx.client, ref);
+          task = snapshot.task;
+          lastTask = task;
+          if (question === null) {
+            question = pinned === null
+              ? newestAgentQuestion(snapshot.questions)
+              : snapshot.questions.find((comment) => String(comment?.id) === pinned) ?? null;
+            if (question === null) {
+              throw usageError(
+                pinned === null
+                  ? `issue wait: ${ref} has no question to wait on`
+                  : `issue wait: question ${pinned} is not on ${ref}'s trail`,
+                { hint: { fix: "add the question comment first, or pass the id from `comment add --json`" } },
+              );
+            }
+          }
+          comments = await waitAnswerTrail(ctx.client, ref, question);
+          failures = 0;
+        } catch (err) {
+          if (err?.code === "CLI_USAGE") throw err;
+
+          failures += 1;
+          if (failures >= WAIT_MAX_READ_FAILURES) {
+            return {
+              data: {
+                ref,
+                outcome: "error",
+                status: null,
+                claimed_by: null,
+                question_id: question?.id ?? null,
+                answer: null,
+                waited_ms: Date.now() - started,
+              },
+              human: `wait ${ref}: the board was unreadable ${WAIT_MAX_READ_FAILURES} times — stop`,
+              exit: CLI_EXIT.ERROR,
+            };
+          }
+          if (Date.now() >= deadline) return timedOut();
+          await sleep(Math.max(1, Math.min(intervalMs, deadline - Date.now())));
+          continue;
+        }
+
+        const status = typeof task.status === "string" ? task.status : null;
+        const owner = task.claimed_by_actor?.display_name ?? null;
+        const ownerNorm = owner === null ? null : norm(owner);
+        const ownedByMe = ownerNorm === null || (mineNorm !== null && ownerNorm === mineNorm);
+        const show = (outcome) => ({
+          data: {
+            ref,
+            outcome,
+            status,
+            claimed_by: owner,
+            question_id: question.id ?? null,
+            answer: waitAnswerText(comments),
+            waited_ms: Date.now() - started,
+          },
+          human:
+            outcome === "escalated"
+              ? `wait ${ref}: escalated for a human (awaiting) — stop this turn; a human answer resumes the session`
+              : `wait ${ref}: card is ${status ?? "unknown"}${owner === null ? "" : ` (claimed by ${owner})`} — stop`,
+          exit: CLI_EXIT.DIFFERENCES,
+        });
+
+        if (status === "awaiting") return show("escalated");
+        if (status !== null && status !== "in_progress" && status !== "todo") return show("moved");
+        if (status === "in_progress" && !ownedByMe) return show("moved");
+
+        // The release is the answer. A note — the director's or the worker's own
+        // — does not end the hold: the two share one board identity, so a comment
+        // can never prove the ladder answered, and the retry turn owns the release.
+        const released = status === "todo" || releasedAfterQuestion(task, question);
+        if (released) {
+          const answer = waitAnswerText(comments);
+          return {
+            data: {
+              ref,
+              outcome: "answered",
+              status,
+              claimed_by: owner,
+              question_id: question.id ?? null,
+              answer,
+              waited_ms: Date.now() - started,
+            },
+            human:
+              `wait ${ref}: answered (${status ?? "unknown"}) after ` +
+              `${Math.round((Date.now() - started) / 1000)}s` +
+              (answer === "" ? "" : `\n${answer}`),
+            exit: CLI_EXIT.OK,
+          };
+        }
+
+        // A long hold must keep its own claim fresh; check it before the deadline
+        // so the final iteration does not skip a due pulse and return timeout.
+        if (heartbeatMs > 0 && Date.now() - lastHeartbeat >= heartbeatMs) {
+          try {
+            await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ref)}/heartbeat`, {});
+          } catch {
+            // The card may have moved; the next read decides, and the wait must
+            // not turn a heartbeat refusal into a false answer.
+          }
+          lastHeartbeat = Date.now();
+        }
+        if (Date.now() >= deadline) return timedOut();
+        await sleep(Math.max(1, Math.min(intervalMs, Math.max(0, deadline - Date.now()))));
+      }
     },
   },
 

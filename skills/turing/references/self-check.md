@@ -12,7 +12,7 @@ Refresh the brief through the `meerkat` board skill before you start.
    recollection, not evidence.
 3. Each row ends in one disposition: **met** (a falsifiable `command exit 0` that fails when
    the test stops covering the item), **not_applicable** (`n/a — <reason>`; a bare `n/a` is an
-   omission), or **partial/not_met** (a blocker: close it, or ask and stop).
+   omission), or **partial/not_met** (a blocker: close it, or ask and hold).
 4. A leftover lies outside the frozen acceptance and names the item, its owner and the
    follow-up card, or why none is needed. A failure is never a leftover — nor is a red gate, a
    security finding, a missing acceptance item, a handoff gap, or a contract/schema/migration
