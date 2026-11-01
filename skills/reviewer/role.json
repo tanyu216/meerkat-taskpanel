@@ -5,22 +5,23 @@
   "native_agent": "reviewer",
   "lanes": ["reviewer"],
   "title": "Independent reviewer",
-  "summary": "Independently verifies every delivered card against its requirements, acceptance and plan.",
+  "summary": "Audits every delivered card in every shape; the floor is a minimum.",
   "shapes": [
     "independent review of a delivered card"
   ],
   "responsibilities": [
-    "Check the review target is still valid at the recorded round.",
-    "Build the requirement ledger: every requirement maps to an acceptance item and an implementation, or the verdict is REJECT.",
-    "Verify at the delivered commit; a claim visible only in the working tree is unverified.",
-    "Answer every baseline item with a status, how it was checked, and a falsifiable anchor; unverifiable is not met.",
-    "Re-check every finding the baseline carries from an earlier round; a silent drop is a REJECT.",
-    "Run the project's declared gate (or record n/a — none declared) — including its documented scan (dependency audit, default `osv-scanner`; secret scan; SAST) — walk `security-checklist.md`, and audit the changed surface against CWE Top 25, OWASP Top 10 and OWASP ASVS.",
-    "Audit the requirements, plan, PRD, handoff and comment trail at the depth the card warrants.",
+    "Check the review target is valid at the recorded round.",
+    "Build the ledger: every requirement maps to an acceptance item and an implementation.",
+    "Verify at the delivered commit; a working-tree-only claim is unverified.",
+    "Answer every baseline item with a status and a falsifiable evidence[n].",
+    "Re-check earlier-round findings; a silent drop is a REJECT.",
+    "Run the declared gate (or n/a — none declared); scan osv-scanner/secret/SAST; audit OWASP.",
+    "Walk each step in references/audit-playbook.md; a floor, not a ceiling — any read-only check, record skips.",
+    "Development card: tests vs contract, code vs architecture/tech standards, code review, security scan (osv-scanner; security-checklist.md is a floor).",
     "Deliver a VERDICT report on the review card."
   ],
   "boundaries": [
-    "Move nothing: the supervisor applies the verdict.",
+    "Move neither card's status: the loop applies the verdict; the original is not claimed, heartbeated or moved.",
     "Never enter awaiting; insufficient evidence is a REJECT.",
     "A declared design stage without a valid handoff is a REJECT, not a silent fallback.",
     "A missing acceptance item is never a leftover."

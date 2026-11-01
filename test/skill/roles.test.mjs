@@ -1186,6 +1186,98 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(check, /security-checklist\.md/, "the audit walks the checklist");
   });
 
+  it("ships the shape audit floor every reviewer walks", () => {
+    const playbook = read("reviewer", "references/audit-playbook.md");
+
+    for (const [name, text] of [
+      ["SKILL.md", read("reviewer")],
+      ["references/reviewer-prompt.md", read("reviewer", "references/reviewer-prompt.md")],
+      ["references/self-check.md", read("reviewer", "references/self-check.md")],
+      ["role.json", read("reviewer", "role.json")],
+    ]) assert.match(text, /audit-playbook\.md/, `${name} points at the audit playbook`);
+
+    assert.match(playbook, /floor, not a ceiling/i);
+    assert.match(playbook, /not limited to these/i);
+    assert.match(playbook, /not exempt/i);
+    assert.match(playbook, /n\/a — <reason>/i);
+    assert.match(playbook, /any read-only method|any method/i);
+    assert.match(playbook, /beyond the floor|outside the list/i);
+    assert.match(playbook, /record[^.]*extra check/i);
+    assert.match(playbook, /extra finding[^.]*block/i);
+    assert.match(playbook, /do not suppress/i);
+
+    for (const [shape, pattern] of [
+      ["product planning", /product planning/i],
+      ["prototype / UI", /prototype\s*\/\s*UI/i],
+      ["architecture", /architecture/i],
+      ["development / implementation", /development\s*\/\s*implementation|implementation\s*\/\s*development/i],
+      ["refactor", /refactor/i],
+      ["test design", /test design/i],
+      ["docs / operations / release", /docs\s*\/\s*operations\s*\/\s*release/i],
+      ["epic / rollup", /epic\s*\/\s*rollup/i],
+    ]) assert.match(playbook, pattern, `the playbook floors ${shape}`);
+
+    for (const [subject, pattern] of [
+      ["unit tests", /unit test/i],
+      ["integration tests", /integration test/i],
+      ["the contract", /contract/i],
+      ["architecture standards", /architecture[^.]*standard/i],
+      ["technical standards", /technical standard/i],
+      ["code review", /code review/i],
+      ["the security scan", /security scan/i],
+    ]) assert.match(playbook, pattern, `the development floor names ${subject}`);
+
+    for (const command of [
+      "scripts/verify/contract.mjs",
+      "route-request.mjs",
+      "cli-contract.mjs",
+      "scan-gate.mjs",
+    ]) assert.ok(playbook.includes(command), `the playbook names the repo check ${command}`);
+
+    assert.match(playbook, /git -C/);
+    assert.match(playbook, /git diff <sha>\^ <sha>|git show <sha> --/);
+    assert.match(playbook, /target[^.]*worktree|original[^.]*worktree/i);
+    assert.match(playbook, /parallel|concurren/i);
+    assert.match(playbook, /primary checkout/i);
+    assert.match(playbook, /shared tree/i);
+    assert.doesNotMatch(playbook, /\.worktrees\//);
+    assert.doesNotMatch(read("reviewer"), /\.worktrees\//);
+    assert.doesNotMatch(read("reviewer", "references/reviewer-prompt.md"), /\.worktrees\//);
+    assert.match(read("reviewer"), /git -C/);
+    assert.match(read("reviewer", "references/reviewer-prompt.md"), /git -C/);
+
+    assert.match(playbook, /verdict rule/i);
+    assert.match(playbook, /APPROVE only when/i);
+    assert.match(playbook, /otherwise REJECT/i);
+    assert.match(playbook, /precedence/i);
+    assert.match(playbook, /blocking/i);
+    assert.match(playbook, /observation/i);
+    assert.match(playbook, /leftover/i);
+    assert.match(playbook, /no APPROVE with an open check/i);
+    assert.match(playbook, /missing acceptance item is never a leftover/i);
+    assert.match(playbook, /subjective preference is not a must-fix/i);
+    assert.match(playbook, /reviewer never waives/i);
+    assert.match(playbook, /one pass/i);
+    assert.match(playbook, /falsify/i);
+
+    for (const status of ["met", "partial", "not_met", "not_applicable"]) {
+      assert.match(playbook, new RegExp(`\\b${status}\\b`), `the playbook names ${status}`);
+    }
+    for (let step = 1; step <= 9; step += 1) {
+      assert.match(playbook, new RegExp(`Step ${step}\\b`, "i"), `the playbook covers Step ${step}`);
+    }
+
+    assert.match(playbook, /security-checklist\.md/);
+    assert.match(playbook, /floor/i);
+    assert.match(playbook, /surface (security )?check/i);
+    assert.match(read("reviewer"), /floor, not a ceiling/i);
+    assert.match(read("reviewer"), /surface (security )?check/i);
+    assert.match(read("reviewer", "references/reviewer-prompt.md"), /a floor/i);
+    assert.match(read("reviewer", "references/reviewer-prompt.md"), /surface (security )?check/i);
+    assert.match(read("reviewer", "role.json"), /floor/i);
+    assert.ok(playbook.split("\n").length <= 180, "the audit playbook stays compact");
+  });
+
   it("keeps project mechanics out of the specialist role files", () => {
     // Worker is the fallback: its SKILL names the read command that fetches the card.
     // Its board delegation and landing limits are asserted separately below.
@@ -1202,6 +1294,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
         "references/performance-workflow.md",
         "references/reviewer-prompt.md",
         "references/security-checklist.md",
+        "references/audit-playbook.md",
       ]
         .filter((rel) => existsSync(join(roleDir(role), rel)))
         .map((rel) => [role, rel]),
@@ -1232,6 +1325,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
         "references/regression-workflow.md",
         "references/performance-workflow.md",
         "references/reviewer-prompt.md",
+        "references/audit-playbook.md",
       ]
         .filter((rel) => existsSync(join(roleDir(role), rel)))
         .map((rel) => [role, rel]),
@@ -1250,7 +1344,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
   it("keeps every command the reviewer is told to run inside its lane allowlist", () => {
     // A rule the lane cannot execute is a rule the reviewer learns to skip.
     const allow = allowedToolsFor("reviewer");
-    for (const rel of ["SKILL.md", "references/reviewer-prompt.md"]) {
+    for (const rel of ["SKILL.md", "references/reviewer-prompt.md", "references/audit-playbook.md"]) {
       const text = read("reviewer", rel);
       for (const [kind, pattern] of [
         ["Bash(npm run *)", /\bnpm run\b/],
@@ -1291,9 +1385,19 @@ describe("security: Linus owns the toolchain, the reviewer owns the checklist", 
     const checklist = read("reviewer", "references/security-checklist.md");
     const lines = checklist.split("\n").length;
     assert.ok(lines >= 50 && lines <= 90, `the checklist stays compact (got ${lines} lines)`);
-    for (const needle of ["OWASP Top 10", "OWASP ASVS", "CWE Top 25", "not_met", "n/a —"]) {
+    for (const needle of [
+      "OWASP Top 10",
+      "OWASP ASVS",
+      "CWE Top 25",
+      "not_met",
+      "n/a —",
+      "floor, not a ceiling",
+      "any available read-only method",
+      "can block APPROVE",
+    ]) {
       assert.ok(checklist.includes(needle), `the checklist names ${needle}`);
     }
+    assert.match(checklist, /surface[^.]*security check|security check[^.]*surface/i);
     for (let i = 1; i <= 10; i += 1) assert.match(checklist, new RegExp(`A0?${i}\\b`));
     for (let i = 1; i <= 14; i += 1) assert.match(checklist, new RegExp(`\\bV${i}\\b`));
   });

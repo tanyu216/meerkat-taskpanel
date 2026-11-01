@@ -1,13 +1,14 @@
 # Security checklist — the reviewer's manual audit
 
-Read this beside `workflow.md`. Every row gets one disposition and an anchor:
+Read this beside `SKILL.md`. Every row gets one disposition and an anchor:
 `met` (and how you checked), `not_met`, or `n/a — <reason>`. A blank row is an omission.
 Tier 1 is answered on every code-changing card; Tiers 2 and 3 are answered for the surface
 the card changes. A documentation-only card records one `n/a — <reason>` per tier.
 An automated scanner never answers a row for you: its finding is evidence you classify.
 
 The list is a floor, not a ceiling. A security check this card's surface calls for and no
-row above names is still yours: run it, and record it the same way.
+row above names is still yours: run it with any available read-only method, and record it the
+same way. An extra security finding can block APPROVE.
 
 ## Tier 1 — core (always)
 
