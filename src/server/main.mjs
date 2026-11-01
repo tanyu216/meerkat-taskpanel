@@ -93,7 +93,7 @@ export function portFromEnv(env) {
 }
 
 export async function main(env = process.env, options = {}) {
-  const { register = true } = options;
+  const { register = true, exit } = options;
 
   // `.env` is a *server* input too: host/port/data dir/allow-list/acceptance.
   // The process environment wins key by key, so an operator's override is
@@ -155,36 +155,75 @@ export async function main(env = process.env, options = {}) {
   // daemon remove *its own* pointer on exit and nobody else's (R1). `written.path`
   // is the file it actually owns: the machine-wide one, or the data directory's
   // own when a live board with another data directory held that slot.
-  const written = writeRuntimePointer(
-    {
+  //
+  // It is the first thing after `listen` that can fail while the process holds
+  // real resources. A throw here used to exit 1 with the port still bound, the
+  // write lock still held and the board never closed; the catch closes it all
+  // before the failure reaches the entry's `startup_failed` record.
+  let written;
+  let pointerOptions;
+  try {
+    written = writeRuntimePointer(
+      {
+        url: taskd.url,
+        host: taskd.host,
+        port: taskd.port,
+        dataDir: taskd.board.dataDir,
+        tokenFile: taskd.board.token?.file ?? null,
+        pid: process.pid,
+      },
+      { env: effectiveEnv, pid: process.pid },
+    );
+    pointerOptions = { path: written.path, pid: process.pid, dataDir: taskd.board.dataDir };
+
+    // One record per fact: the address a human needs, where the pointer went, and
+    // which lock this process owns. `url` is a bare field so it stays parseable.
+    logger({
+      event: "startup",
       url: taskd.url,
       host: taskd.host,
       port: taskd.port,
-      dataDir: taskd.board.dataDir,
-      tokenFile: taskd.board.token?.file ?? null,
-      pid: process.pid,
-    },
-    { env: effectiveEnv, pid: process.pid },
-  );
-  const pointerOptions = { path: written.path, pid: process.pid, dataDir: taskd.board.dataDir };
+      message: `listening on ${taskd.url}`,
+    });
+    logger({
+      event: "runtime_pointer",
+      path: written.path,
+      ...(written.heldBy === undefined ? {} : { held_by: written.heldBy }),
+    });
+    logger({ event: "write_lock", path: lock.path });
+  } catch (err) {
+    // Closing is best-effort: the pointer failure is the one worth reporting.
+    try {
+      await taskd.close();
+    } catch {
+      /* the lock still releases in the close wrapper's own finally */
+    }
+    throw err;
+  }
 
-  // One record per fact: the address a human needs, where the pointer went, and
-  // which lock this process owns. `url` is a bare field so it stays parseable.
-  logger({
-    event: "startup",
-    url: taskd.url,
-    host: taskd.host,
-    port: taskd.port,
-    message: `listening on ${taskd.url}`,
+  const shutdown = createShutdown({
+    taskd,
+    pointerOptions,
+    logger,
+    ...(exit === undefined ? {} : { exit }),
   });
-  logger({
-    event: "runtime_pointer",
-    path: written.path,
-    ...(written.heldBy === undefined ? {} : { held_by: written.heldBy }),
-  });
-  logger({ event: "write_lock", path: lock.path });
 
-  const shutdown = createShutdown({ taskd, pointerOptions, logger });
+  // `createTaskd` removes its one-shot `error` listener on a successful listen,
+  // which left a post-listen socket error with no listener at all — the process
+  // died as an uncaught event with the pointer and lock still in place. This
+  // listener is permanent: one record, then the same graceful close a signal
+  // gets, with a non-zero code so a service manager restarts a daemon that
+  // cannot serve.
+  taskd.server.on("error", (err) => {
+    logger({
+      event: "server_error",
+      level: "error",
+      code: err?.code ?? null,
+      message: err?.message ?? String(err),
+    });
+    void shutdown("server_error", 1);
+  });
+
   if (register) {
     // One handler for both signals: the signal name is a label, not behaviour.
     const onSignal = (signal) => {
@@ -205,13 +244,23 @@ export async function main(env = process.env, options = {}) {
  * promise reachable only by signalling a live process is a promise nobody tests.
  * The injected `exit`/`write` make it a plain function.
  *
+ * Two rules the abort path depends on:
+ *
+ *   * the exit code is derived from the close — 0 when the board closed, 1 when
+ *     it threw; a caller may pass its own code for a fatal reason (a post-listen
+ *     server error), but a failed close always wins with 1;
+ *   * it **never rejects**. The signal handler calls it as `void shutdown(…)`;
+ *     when this function threw, that turned a failed close into an unhandled
+ *     rejection on top of the failure. Every path now ends in exactly one
+ *     `exit`.
+ *
  * `pointerOptions` carries the daemon's `pid`, its `dataDir` and — via `path` —
  * the file it wrote (R1), so the removal is ownership-checked on all three: this
  * process removes the pointer while it still names this process *and this
  * board*, and leaves a stranger's pointer alone.
  *
  * @param {{taskd: {close: Function}, pointerOptions: object, exit?: Function, logger?: Function}} input
- * @returns {(signal: string) => Promise<void>}
+ * @returns {(signal: string, code?: number) => Promise<void>}
  */
 export function createShutdown(input) {
   const {
@@ -223,7 +272,21 @@ export function createShutdown(input) {
     logger = () => {},
   } = input;
   let closing = false;
-  return async function shutdown(signal) {
+  let exited = false;
+  let failure = null;
+
+  const fail = (err) => {
+    if (failure !== null) return;
+    failure = err;
+    logger({
+      event: "shutdown_failed",
+      level: "error",
+      code: err?.code ?? null,
+      message: err?.message ?? String(err),
+    });
+  };
+
+  return async function shutdown(signal, code = 0) {
     // A second signal while the first is still closing must not close twice —
     // closed twice, the pointer would be removed after a fresh board had
     // rewritten it.
@@ -234,18 +297,19 @@ export function createShutdown(input) {
     try {
       await taskd.close();
     } catch (err) {
-      logger({
-        event: "shutdown_failed",
-        level: "error",
-        code: err?.code ?? null,
-        message: err?.message ?? String(err),
-      });
-      throw err;
-    } finally {
-      removeRuntimePointer(pointerOptions);
-      logger({ event: "shutdown_complete", duration_ms: Date.now() - started });
-      exit(0);
+      fail(err);
     }
+    try {
+      removeRuntimePointer(pointerOptions);
+    } catch (err) {
+      // A pointer that cannot be removed is a fossil for the next start, not a
+      // reason to skip the exit.
+      fail(err);
+    }
+    logger({ event: "shutdown_complete", duration_ms: Date.now() - started });
+    if (exited) return;
+    exited = true;
+    exit(failure === null ? code : 1);
   };
 }
 

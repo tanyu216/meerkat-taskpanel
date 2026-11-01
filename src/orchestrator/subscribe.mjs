@@ -22,6 +22,7 @@
 
 import { dirname } from "node:path";
 
+import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import {
   EVENT_CONTINUE_MIN_MS,
@@ -563,5 +564,6 @@ export async function main(argv, env = process.env, io = {}) {
 }
 
 if (isEntryPoint(import.meta.url)) {
+  installEntryCrashGuard("subscribe");
   main(process.argv.slice(2)).then((code) => process.exit(code));
 }

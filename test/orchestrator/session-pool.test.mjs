@@ -1260,6 +1260,38 @@ describe("session pool", () => {
     assert.match(lines.join("\n"), /meerkat/);
   });
 
+  it("returns 2 with a pool_start_failed record when start() throws", async (t) => {
+    const f = fixture(t);
+    const home = join(f.dir, "home");
+    for (const name of ["meerkat", "meerkat-loop"]) {
+      const dir = join(home, ".claude", "skills", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`);
+    }
+    const lines = [];
+    const code = await runSession(
+      { ...optsFor(f), home, actorKind: "claude" },
+      {
+        // The control session cannot be opened: `pool.start()` throws instead of
+        // returning `{ok:false}`. That used to be an unhandled rejection.
+        kindPool: {
+          openSession() {
+            throw new Error("spawn refused");
+          },
+          async close() {},
+        },
+        log: (line, meta) => lines.push({ line, meta }),
+      },
+    );
+
+    assert.equal(code, 2, "a thrown start is the cannot-run code, not an escaped rejection");
+    const record = lines.find((entry) => entry.meta?.event === "pool_start_failed");
+    assert.ok(record, `no pool_start_failed record:\n${JSON.stringify(lines, null, 2)}`);
+    assert.equal(record.meta.level, "error");
+    assert.match(record.line, /spawn refused/);
+    assert.equal(existsSync(join(f.dir, "session.lock")), false, "the failed start left no lock behind");
+  });
+
   it("starts and stops cleanly once both skills are present", async (t) => {
     const f = fixture(t);
     const home = join(f.dir, "home");

@@ -22,7 +22,7 @@ import {
   startLabelGc,
 } from "../../src/server/index.mjs";
 import { createShutdown, main, portFromEnv } from "../../src/server/main.mjs";
-import { readRuntimePointer } from "../../src/core/index.mjs";
+import { acquireWriterLock, readRuntimePointer } from "../../src/core/index.mjs";
 import {
   DEFAULT_PORT,
   LABEL_GC_INTERVAL_MS,
@@ -100,22 +100,46 @@ describe("server/main — shutdown", () => {
     assert.deepEqual(exits, [0]);
   });
 
-  it("still removes the pointer when closing the board throws", async () => {
+  it("exits 1 when closing the board throws, and still removes the pointer", async () => {
     const dir = tempDir();
     const pointerPath = join(dir, "runtime.json");
     writeFileSync(pointerPath, JSON.stringify({ url: "http://127.0.0.1:1" }));
 
     const exits = [];
+    const written = [];
     const shutdown = createShutdown({
       taskd: { close: async () => { throw new Error("already gone"); } },
+      pointerOptions: { path: pointerPath },
+      exit: (code) => exits.push(code),
+      logger: (event) => written.push(event),
+    });
+
+    // It never rejects: the signal handler calls it as `void`, and a rejection
+    // there was a second, unhandled failure on top of the first.
+    await shutdown("SIGTERM");
+    assert.equal(readRuntimePointer({ path: pointerPath }), null, "the pointer is still removed");
+    assert.deepEqual(exits, [1], "a close that threw is a non-zero exit, not 0");
+    assert.equal(written.filter((event) => event.event === "shutdown_failed").length, 1);
+    assert.equal(written.at(-1).event, "shutdown_complete");
+  });
+
+  it("calls exit exactly once when signals race a failing close", async () => {
+    const dir = tempDir();
+    const pointerPath = join(dir, "runtime.json");
+    writeFileSync(pointerPath, JSON.stringify({ url: "http://127.0.0.1:1" }));
+
+    let closes = 0;
+    const exits = [];
+    const shutdown = createShutdown({
+      taskd: { close: async () => { closes += 1; throw new Error("gone"); } },
       pointerOptions: { path: pointerPath },
       exit: (code) => exits.push(code),
       logger: () => {},
     });
 
-    await assert.rejects(() => shutdown("SIGTERM"));
-    assert.equal(readRuntimePointer({ path: pointerPath }), null, "the finally still ran");
-    assert.deepEqual(exits, [0]);
+    await Promise.all([shutdown("SIGTERM"), shutdown("SIGINT"), shutdown("SIGTERM")]);
+    assert.equal(closes, 1, "the board is closed once");
+    assert.deepEqual(exits, [1], "exactly one exit, with the failure code");
   });
 });
 
@@ -143,6 +167,67 @@ describe("server/main — the daemon, started in-process", () => {
       assert.equal((await response.json()).data.status, "ok");
     } finally {
       await taskd.close();
+    }
+  });
+
+  it("releases writer.lock when the runtime pointer cannot be written", async () => {
+    const dir = tempDir();
+    // A file where the pointer's directory should be: `mkdirSync` fails, which
+    // is the failure class the defect described (a writable board that cannot
+    // publish itself).
+    writeFileSync(join(dir, "blocked"), "not a directory");
+    const env = {
+      TASKD_DATA_DIR: dir,
+      TASKD_RUNTIME_POINTER: join(dir, "blocked", "runtime.json"),
+      TASKD_PORT: "0",
+      TASKD_HOST: "127.0.0.1",
+    };
+
+    await assert.rejects(
+      () => main(env, { register: false }),
+      (err) => err?.code === "VALIDATION_FAILED",
+      "the pointer failure reaches the caller",
+    );
+
+    // The lock is free again: the board was closed on the way out instead of
+    // exiting while still holding it.
+    const lock = acquireWriterLock(dir);
+    assert.equal(typeof lock.release, "function");
+    lock.release();
+
+    // And a second start gets past the lock to the same pointer failure rather
+    // than being refused with BOARD_ALREADY_RUNNING.
+    await assert.rejects(
+      () => main(env, { register: false }),
+      (err) => err?.code === "VALIDATION_FAILED",
+    );
+  });
+
+  it("shuts down gracefully when the listening server emits an error", async () => {
+    const dir = tempDir();
+    const env = {
+      TASKD_DATA_DIR: dir,
+      TASKD_RUNTIME_POINTER: join(dir, "runtime.json"),
+      TASKD_PORT: "0",
+      TASKD_HOST: "127.0.0.1",
+    };
+    const exits = [];
+    const taskd = await main(env, { register: false, exit: (code) => exits.push(code) });
+    try {
+      assert.equal(taskd.server.listening, true);
+      // The one-shot `error` listener is gone after a successful listen; without
+      // the permanent one this event has no listener at all.
+      taskd.server.emit("error", Object.assign(new Error("socket failed"), { code: "ECONNRESET" }));
+
+      const deadline = Date.now() + 3_000;
+      while (exits.length === 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.deepEqual(exits, [1], "a daemon that cannot serve exits non-zero");
+      assert.equal(readRuntimePointer({ path: env.TASKD_RUNTIME_POINTER }), null, "the pointer was removed");
+      assert.equal(taskd.server.listening, false, "the board was closed");
+    } finally {
+      if (taskd.server.listening) await taskd.close();
     }
   });
 

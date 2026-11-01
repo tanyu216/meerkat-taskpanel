@@ -1445,6 +1445,35 @@ describe("the tick runs the passes in-process", () => {
 });
 
 // ---------------------------------------------------------------------------
+// The crash boundary every entry installs
+// ---------------------------------------------------------------------------
+
+describe("the loop entries install the crash boundary", () => {
+  const ENTRIES = ["supervisor.mjs", "passes.mjs", "subscribe.mjs", "status.mjs", "console.mjs"];
+
+  it("installs it inside the entry-point block, before main() can run", () => {
+    for (const entry of ENTRIES) {
+      const source = readFileSync(join(ROOT, "src", "orchestrator", entry), "utf8");
+      assert.match(
+        source,
+        /import \{ installEntryCrashGuard \} from "\.\.\/foundation\/crash-guard\.mjs";/,
+        `${entry} does not import the crash guard`,
+      );
+      const blockAt = source.indexOf("if (isEntryPoint(import.meta.url))");
+      const guardAt = source.indexOf("installEntryCrashGuard(");
+      const mainAt = source.indexOf("main(process.argv.slice(2)).then");
+      assert.ok(blockAt !== -1, `${entry} has no entry-point block`);
+      assert.ok(guardAt !== -1, `${entry} never installs the crash guard`);
+      assert.ok(
+        blockAt < guardAt,
+        `${entry} installs the guard on import; importing an entry must change nothing`,
+      );
+      assert.ok(mainAt > guardAt, `${entry} runs main() before the guard is installed`);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Per-card worktree admission
 // ---------------------------------------------------------------------------
 

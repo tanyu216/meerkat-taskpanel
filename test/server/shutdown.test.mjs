@@ -194,6 +194,67 @@ describe("server/shutdown — a subscribed client does not hold the board open",
 });
 
 describe("server/shutdown — the real daemon, signalled for real", () => {
+  /** Spawn `src/server/main.mjs` on a private data dir; resolve its stderr and exit. */
+  function startDaemon(dir) {
+    const child = spawn(process.execPath, [join(REPO_ROOT, "src", "server", "main.mjs")], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        TASKD_DATA_DIR: dir,
+        TASKD_RUNTIME_POINTER: join(dir, "runtime.json"),
+        TASKD_HOST: "127.0.0.1",
+        TASKD_PORT: "0",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    const exited = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
+    return { child, exited, output: () => ({ stdout, stderr }) };
+  }
+
+  /** Wait for a line to appear on the daemon's stderr. */
+  async function waitForLine(daemon, pattern, timeoutMs = 10_000) {
+    const deadline = Date.now() + timeoutMs;
+    while (!pattern.test(daemon.output().stderr) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return daemon.output().stderr.match(pattern)?.[1] ?? null;
+  }
+
+  it("exits 0 exactly once when two SIGTERMs arrive together", async () => {
+    const dir = tempDir();
+    const daemon = startDaemon(dir);
+    try {
+      const url = await waitForLine(daemon, /url=(http:\/\/\S+)/);
+      assert.ok(url, `the daemon never reported a URL\n${daemon.output().stderr}`);
+
+      // Held open so the close has real work; the shutdown ends it deliberately.
+      const controller = new AbortController();
+      const response = await fetch(`${url}/api/v1/events`, {
+        signal: controller.signal,
+        headers: { accept: "text/event-stream" },
+      });
+      assert.equal(response.status, 200);
+      response.body.getReader();
+
+      daemon.child.kill("SIGTERM");
+      daemon.child.kill("SIGTERM");
+
+      const outcome = await withTimeout(daemon.exited, 5_000);
+      controller.abort();
+      assert.notEqual(outcome, "timeout", "two signals hung the close");
+      assert.equal(outcome.code, 0, `exit code ${outcome.code}, signal ${outcome.signal}`);
+      const completes = daemon.output().stderr.match(/event=shutdown_complete/g) ?? [];
+      assert.equal(completes.length, 1, "the board is closed and the exit is reported once");
+      assert.equal(existsSync(join(dir, "runtime.json")), false, "the pointer was removed");
+    } finally {
+      if (daemon.child.exitCode === null && daemon.child.signalCode === null) daemon.child.kill("SIGKILL");
+    }
+  });
+
   it("exits 0 on SIGTERM inside the 5 s budget and leaves no -wal behind", async () => {
     const dir = tempDir();
     const child = spawn(process.execPath, [join(REPO_ROOT, "src", "server", "main.mjs")], {

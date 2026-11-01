@@ -27,6 +27,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 import { AGENT_DIRS, parseArgs, resolveLoopConfig, resolveScanSet } from "./options.mjs";
@@ -433,5 +434,6 @@ export async function main(argv, env = process.env, deps = {}, io = {}) {
 }
 
 if (isEntryPoint(import.meta.url)) {
+  installEntryCrashGuard("status");
   main(process.argv.slice(2)).then((code) => process.exit(code));
 }

@@ -1784,7 +1784,26 @@ export async function runSession(opts, deps = {}) {
     readQuestionOutcome: (input) =>
       readQuestionOutcome(opts, input.card, input.questionId, log),
   });
-  const started = await pool.start();
+  let started;
+  try {
+    started = await pool.start();
+  } catch (err) {
+    // A throw used to escape as an unhandled rejection and kill the pool with
+    // no record. 2 is the "cannot run as invoked" code the missing-skill path
+    // above already returns; the record names the failed phase.
+    log(`session: pool start failed: ${err?.message ?? String(err)}`, {
+      level: "error",
+      event: "pool_start_failed",
+    });
+    // `start()` may have taken the lock (and opened a session) before it threw;
+    // a failed start must not leave either behind.
+    try {
+      await pool.stop();
+    } catch {
+      /* the start failure is the one to report */
+    }
+    return 2;
+  }
   if (!started.ok) {
     log(`session: ${started.error}`, { level: "error" });
     return 1;

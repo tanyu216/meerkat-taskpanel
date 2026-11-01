@@ -54,13 +54,16 @@ stdout is the data plane and its stderr is the product's error surface.
 | `command` | debug | a command succeeded |
 | `command_failed` | warn (4xx) / error (5xx or unmapped) | a command was refused or failed |
 | `schema_stale`, `writer_lock_stale`, `writer_lock_release_failed`, `label_gc_mismatch`, `allow_list_invalid`, `sla_config_invalid`, `log_level_invalid` | warn | recovered or suspicious, but the process carries on |
-| `request_failed`, `startup_failed`, `shutdown_failed`, `board_open_failed`, `migration_failed`, `sse_stream_failed`, `label_gc_failed`, `container_sweep_failed` | error | an exception boundary |
+| `request_failed`, `startup_failed`, `shutdown_failed`, `board_open_failed`, `migration_failed`, `sse_stream_failed`, `label_gc_failed`, `container_sweep_failed`, `server_error` | error | an exception boundary |
+| `process_crash` | error | the process-level boundary caught an escaped exception or rejection; one record, then exit 1 |
 | `cli_command`, `cli_failure` | debug | CLI diagnostics (off unless `TASKD_LOG_LEVEL=debug`) |
 
 The loop writes free-form lines rather than event objects (`time=… level=info
 component=supervisor msg="…"`), and marks a failure with the same levels: `session: tick
 failed`, `continue error`, `workflow: … failed`, `subscribe: dispatch failed` are `error`;
-a recoverable one (`notify failed`, a refused question enqueue) is `warn`.
+a recoverable one (`notify failed`, a refused question enqueue) is `warn`. A resident pool
+whose `start()` throws is the exception that names its event: `event=pool_start_failed`,
+one `error` line, exit 2.
 
 ### The line
 
