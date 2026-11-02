@@ -259,14 +259,25 @@ describe("chat skill: references resolve where the skill is installed", () => {
   });
 });
 
-describe("director skill: the manual front end has one home", () => {
-  it("no longer carries a manual-mode section of its own", () => {
+describe("chat skill: the manual front end has one home", () => {
+  it("the director carries no manual-mode or console content", () => {
     const skill = readFileSync(join(DIRECTOR_SKILL, "SKILL.md"), "utf8");
-    const operation = readFileSync(join(DIRECTOR_SKILL, "references", "operation.md"), "utf8");
-    assert.equal(/^## Manual mode/m.test(skill), false, "SKILL.md defers the human console");
-    assert.equal(/^## Manual mode/m.test(operation), false, "operation.md defers the human console");
-    assert.match(skill, /meerkat-chat/);
-    assert.match(operation, /meerkat-chat/);
+    assert.equal(/^## Manual mode/m.test(skill), false, "the director keeps no manual agenda");
+    assert.doesNotMatch(skill, /meerkat-chat|human console|--as-human|TASKCTL_HUMAN/i);
+    assert.equal(
+      existsSync(join(DIRECTOR_SKILL, "references", "operation.md")),
+      false,
+      "the operator mechanics are not the director's",
+    );
+  });
+
+  it("the console fields live with the console", () => {
+    const consoleDoc = readFileSync(
+      join(ROOT, "skills", "meerkat-chat", "references", "console.md"),
+      "utf8",
+    );
+    assert.match(consoleDoc, /age_ms/);
+    assert.match(consoleDoc, /answered_pending_release/);
   });
 
   it("keeps the decision policy's decision-round protocol", () => {

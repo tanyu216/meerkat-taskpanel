@@ -10,10 +10,10 @@
 6. Security
 7. Regression
 
-Builds or refreshes the test inventory for a feature or change. The implementation has
-already landed; this card verifies it, and the red-green cycle belongs to the implementation
-card. Board operations are the `meerkat` board skill's contract; the shared contract in
-`workflow.md` applies.
+Builds or refreshes the test inventory for a feature or change. The implementation is
+delivered for review; the supervisor lands it on acceptance, and the red-green cycle belongs
+to the implementation card. Board operations are the `meerkat` board skill's contract; the shared contract in
+`SKILL.md` (Delivery and Hard boundaries) applies.
 
 Inputs: `.meerkat/<id>/card.md`, the live card, the frozen acceptance, this card's `plan.md`
 and `test-plan.md`; for a feature or behaviour change, the `## Handoff` block names the
@@ -75,4 +75,4 @@ The manual checklist is the reviewer's; deliver findings, never a security verdi
 Purpose: keep the surrounding behaviour intact; leave behind the existing-suite run and the
 regression tests the change needs. Confirm no published contract, schema or migration broke.
 
-Then run the shared `self-check.md` and deliver per `workflow.md`.
+Then run the shared `self-check.md` and deliver per `SKILL.md` §Delivery.

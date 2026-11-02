@@ -78,7 +78,8 @@ What the loop does next depends on why the target moved:
 
 - **The original was canceled** — the loop cancels the review card (`cancel_review`).
 - **The original is on a later round** — the verdict is history; the loop closes the review
-  card (`round_mismatch`) without touching the original.
+  card (`round_mismatch`) without touching the original. A review card that is not `in_review`
+  is canceled rather than closed, because `done` is reachable only from `in_review`.
 - **The original is `done` at the same round** — the loop raises `verdict_unreadable` and
   leaves the review card open. A human must cancel it with the two-hop
   `in_review → in_progress → canceled`.
@@ -242,7 +243,7 @@ The board enforces the mode; `ACCEPTANCE_FORBIDDEN` carries `mode` and `reviewCa
 ```text
 worker delivers            original in_review (round N)
 board dispatches           review card created, review_round = N
-reviewer wakes             claims the review card, reads, delivers VERDICT
+reviewer wakes             the loop already claimed it; reads, delivers VERDICT
 loop applies               APPROVE → accept (agent) / record (human); REJECT → rework round N+1
 loop closes last           review card → done (or canceled if the original was canceled)
 ```

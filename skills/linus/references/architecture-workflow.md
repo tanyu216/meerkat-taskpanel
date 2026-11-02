@@ -40,7 +40,7 @@ delivers `E5 pending`; the commit and delivery rules do not apply without a card
 ## Design stance
 
 Six principles are the tie-breakers in the decision round; the architecture package carries
-the evidence for each. Their canonical definitions live in `workflow.md`.
+the evidence for each. Their canonical definitions live in `SKILL.md` §Six principles.
 
 | Principle | Evidence in the architecture |
 |---|---|
@@ -325,7 +325,9 @@ invariant guarded only by prose is review-only.
 it runs and is idempotent; CI runs on every push and pull request: install from the lockfile →
 lint, format check and typecheck → tests with the coverage floor → contract and canonical
 contract checks → configuration-key and enumeration drift checks → build → security scan. Each
-security arm records its exact command in the standard or `n/a — <reason>`.
+security arm records its exact command in the standard or `n/a — <reason>`. Record the one
+command the independent reviewer re-runs as the project's `meta.review_gate`; the `meerkat`
+board skill has the command, and the review card copies that gate.
 
 #### Security toolchain
 
@@ -396,9 +398,9 @@ decision is recorded. A no-card audit records the open decision as `E5 pending`,
 **Essentials.** Present the architecture package: the design-stance evidence, the options, the
 style ADR, the recorded standard, the boundaries, the external contract, the configuration
 surface, the directory tree, the document set, the gate path, the release and deploy paths and
-the agent-instruction baseline. The director or the human records the E5 decision through
-the board; the `meerkat` board skill and `decision-policy.md` carry the mechanics. Record the
-decision on the card before implementation starts.
+the agent-instruction baseline. The human records the E5 decision; the director routes the
+escalation and the `meerkat` board skill and `decision-policy.md` carry the mechanics. Record
+the decision on the card before implementation starts.
 
 ### 9. Deliver
 
@@ -406,8 +408,8 @@ decision on the card before implementation starts.
 
 **Watch for.** A report that cites a path must carry the `commit` anchor; the board's delivery
 gate (`DELIVERY_NEEDS_COMMIT`) refuses one that does not. Do not merge, rebase or push from this
-card; landing and cleanup belong to the director. Do not create the implementation card;
-the director triages it.
+card; the supervisor's acceptance pass lands it and cleans up. Do not create the implementation
+card; the director's triage creates it.
 
 **Essentials.** Commit the delivered tree on the card's branch. Deliver through the `meerkat`
 board skill at `in_review`. In the delivery report's `conclusion`, write the architecture

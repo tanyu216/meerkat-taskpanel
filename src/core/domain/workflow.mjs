@@ -1698,8 +1698,9 @@ export function planWorkflowTick(input = {}) {
       reconciled: reconcile.changes.length,
       approved: count("approve"),
       // A held action is a crash recovery: the marker is already on the card,
-      // so only land/move/close remain. Kept on the wire for older consumers.
-      held: actions.filter((action) => action.held === true).length,
+      // so only land/move/close remain. It is a different count from a new
+      // hold, and both stay on the wire.
+      held_recovered: actions.filter((action) => action.held === true).length,
       rejected: count("reject_task") + count("reject_task_finish") + count("reject_epic"),
       dispatched: count("create_review"),
       held: count("hold_card"),

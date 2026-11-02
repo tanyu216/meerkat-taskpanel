@@ -42,8 +42,9 @@ skills tree. Before starting work a role owns, read that role's `SKILL.md` and f
 workflow: Jobs takes product design and UI, Linus architecture, implementation, refactors,
 bugs and the security toolchain, Turing test design, regression and performance, Reviewer
 independent review, and Worker the fallback work no role owns. The installed copy is
-authoritative. Decisions are the `meerkat-director` skill's: assignment, worker questions and
-E1–E5 escalation; no separate project session handles them. A human's live conversation about
+authoritative. Decisions are the `meerkat-director` skill's: assignment, worker questions,
+handoff triage, downstream/fix card creation and E1–E5 escalation; no separate project session
+handles them. A human's live conversation about
 the board — progress, awaiting questions, acceptance, `loop doctor` — is the `meerkat-chat`
 skill's. The card is still created and delivered through `/meerkat`. Role workflows name the card's branch but not where it lives:
 isolate before the first edit per **Branch & worktree workflow** below — a parallel task
@@ -273,8 +274,8 @@ The mechanisms those rules rest on, by home:
 
 - `skills/meerkat/` — every board rule: the claim/heartbeat/deliver cycle, the round-scoped
   delivery gate, review cards (flow B), `projects.json`, the brief.
-- `skills/meerkat-director/` — the decision hub: assignment, worker questions, E1–E5; the
-  decision policy; the local event hub's operator view.
+- `skills/meerkat-director/` — the decision hub: assignment, worker questions, handoff triage,
+  downstream/fix card creation, E1–E5; the single decision policy.
 - `skills/meerkat-chat/` — the human's console: progress, awaiting questions, acceptance,
   `loop doctor` and abnormal-card triage; it records the human's words with `--as-human`.
 - `docs/agents/development.md` — one writer per data directory and `DB_BUSY`; auth (`TASKD_ALLOW_CIDRS`
@@ -321,5 +322,7 @@ Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/age
 - `docs/agents/development.md` — the two build layers and the server operations (one writer, bounded stop, lock contention).
 - `docs/agents/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
 - `docs/agents/contract.md` — the API and CLI contract snapshots + route-request lint.
+- `docs/agents/team-roles.md` — the ownership matrix: one accountable role per work shape, the
+  decision authority, the handoff markers and the lifecycle seams.
 - `docs/agents/migration.md`, `docs/scheduling.md`, `docs/ops/observability.md` — the named subsystems.
 - `src/core/README.md` — what the core engine owns and the rules it enforces.

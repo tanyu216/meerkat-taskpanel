@@ -541,6 +541,9 @@ not one directory. Acceptance **lands** the work: the lane branch is merged into
 project's current branch before the card reaches `done`; a dirty project checkout or a
 merge conflict keeps the card in `in_review` and leaves the worktree and branch for a human.
 Cleanup (worktree first, then the merged branch) happens only when the card is terminal.
+A card a human closes directly is merged by the patrol before cleanup, under the same
+`merge_ref` check; a project on another branch, or with no registered target, keeps the
+worktree and is logged for a human rather than merged on a guess.
 
 Landing covers the lanes **admission created and registered** in `workspaces.json`. A worktree
 a session makes for itself (`using-git-worktrees`, any `.worktrees/<slug>`) is never in that
@@ -819,10 +822,10 @@ authenticating agents, not adding a rule to the same layer.
 
 ### Known limits
 
-- **One agent kind per supervisor.** The reviewer is woken by the same supervisor and the same
-  agent CLI as the workers; a reviewer on a different agent kind (there is no cross-kind reviewer flag) is not implemented.
-  If review needs a different runtime, run a second supervisor with its own `--reviewer`
-  on that machine.
+- **The reviewer runs on the kind that carries its role.** The pool holds sessions of several
+  kinds and falls back to another kind that carries the same role; if no installed kind does,
+  the card is not dispatched. A reviewer on a non-resident kind (for example OpenClaw) still
+  needs a separate supervisor with its own `--reviewer`.
 - **The reviewer's tool surface is enforced only where the adapter can enforce it.**
   A review card runs in its own `role=reviewer` conversation, so Claude and Pi apply
   the reviewer allowlist (no `Edit`/`Write`) to the subagent it spawns. Codex,
@@ -912,7 +915,7 @@ the container; with it, the container stays `in_progress` and names the child bl
 | Setting | Flag | Env / per-kind config | Default |
 |---|---|---|---|
 | workflow channel | `--workflow=yes\|no` | `MEERKAT_TASKPANEL_WORKFLOW` | `yes` |
-| reviewer (deployment default) | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | `Reviewer` (empty disables dispatch) |
+| reviewer (deployment default) | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | empty — no dispatch until a reviewer is configured |
 | project reviewer override | `project create/update --reviewer <agent>` | — | `null` (use the deployment reviewer) |
 | writes per pass | `--workflow-max-actions <n>` | `MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS` | `20` |
 | silent-review threshold | `--review-aging-minutes <n>` | `MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES` | `60` |
@@ -946,7 +949,9 @@ A deployment may give its agents named roles — the standard set is **Jobs** (p
 design), **Linus** (architecture, implementation and refactoring), **Turing** (verification),
 a separate **Reviewer**, and the fallback **Worker**. The board never sees a "role":
 Jobs/Linus/Turing/Worker are ordinary board **agent names**, so the creator, the assignee
-and the report author are recorded as those names.
+and the report author are recorded as those names. The ownership matrix — one accountable
+role per work shape, the decision authority and the handoff markers — is
+[`agents/team-roles.md`](agents/team-roles.md).
 
 Each role is a standalone **skill**, installed by `install.sh` on claude, codex and pi:
 
@@ -979,9 +984,10 @@ acting (layer 2). The reviewer's prompt is inlined at the start of the review ha
 bounded at 2,400 characters. Every role is told to write and maintain
 `.meerkat/<identifier>/plan.md`, which the reviewer reads.
 
-**Routing.** The routing table is generated from each role's `shapes`; there is no separate
-`ownership.md`. Routing happens when the card is created — its assignee is the role — and a
-worker session does not re-route. A card that still lands unowned past 30 minutes is the
+**Routing.** The routing table is generated from each **worker-capable** role's `shapes`; there
+is no separate `ownership.md`. The Reviewer is never routed: review cards are created and
+assigned by the supervisor. Routing happens when the card is created — its assignee is the
+role — and a worker session does not re-route. A card that still lands unowned past 30 minutes is the
 **director's** fallback: poll enqueues a route row carrying the generated table, and the
 director assigns it. With `claim_unassigned: no` the workflow pass reports such a card as
 `unowned_todo` instead.
@@ -1036,7 +1042,8 @@ role: it receives no card, has no assignee, and never appears in the scan set.
 | Row | Source | The director's move |
 |---|---|---|
 | `question` | a worker wrote an agent `question` and is waiting | answer with an agent `note` and **release** the card to `todo`; or escalate. A note without the release is retried |
-| `route` | an unassigned or ambiguous `todo` card past 30 minutes | assign the one role the generated routing table names |
+| `route` | an unassigned `todo` card past 30 minutes | assign the one role the generated routing table names. A card assigned to an agent no worker lane can claim is the workflow's `assignee_not_scanned` finding, not a route decision |
+| `triage` | an accepted producer carries `meta.stage_handoff=required` and has no decision for its delivery round | read the current report's `## Handoff`; create/seed/link the proposed cards, or record `handoff_declined_round`; record `handoff_consumed_round` on the producer |
 | escalation | the director cannot decide | `issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."` |
 
 The prompt is generated by the supervisor: the routing table built from each role's
@@ -1044,6 +1051,13 @@ The prompt is generated by the supervisor: the routing table built from each rol
 `taskctl` commands. The director never claims a card, never implements, never writes
 `decision`/`confirm`/`change` kinds, never uses `--as-human`, and never moves a card to
 `done`. A question row is capped at two attempts; a route row is enqueued once per window.
+A triage row is enqueued **after** the question and route rows: it is post-acceptance work
+and never displaces a held worker. Its completion is the marker on the producer, not a linked
+child; a producer that moved off `done` makes the row stale. A triage that exhausts its two
+attempts records a note on the `done` producer and becomes a `loop doctor`
+`handoff_unconsumed` finding; it is never parked. Both the triage read and that finding
+look back over the archive window (seven days): an older accepted handoff is not re-offered,
+though its marker stays on the producer's archived row.
 The director skill is a start-up requirement of the pool; when it is missing the pool
 refuses to start rather than silently dropping decision rows. A missing
 `references/decision-policy.md` is different: the supervisor logs one warning and the
@@ -2503,9 +2517,8 @@ this boundary: every agent kind gets one — see `docs/ops/install.md`.)
 - [`install.md`](ops/install.md) — the installer flags, including `--claim-unassigned` and the
   opt-in `--supervisor=enable|disable|status`.
 - [`../skills/meerkat-director/SKILL.md`](../skills/meerkat-director/SKILL.md) — the decision
-  hub and its protocol;
-  [`references/operation.md`](../skills/meerkat-director/references/operation.md) is the
-  operator's view.
+  hub and its protocol; its `references/decision-policy.md` is the single decision-authority
+  source.
 - [`../skills/meerkat-chat/SKILL.md`](../skills/meerkat-chat/SKILL.md) — the human's live
   console: progress, awaiting questions, acceptance, `loop doctor` and abnormal cards.
 - [`../skills/jobs/SKILL.md`](../skills/jobs/SKILL.md) and its four siblings — the role

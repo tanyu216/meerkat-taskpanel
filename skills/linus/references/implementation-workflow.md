@@ -104,7 +104,7 @@ disposition per row.
 
 **Purpose.** Make the change reviewable and auditable.
 
-**Watch for.** The tree is committed and the report carries the `commit` anchor; the board's delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses a report that does not. Do not merge, rebase or push from this card; landing and cleanup belong to the director. A production bug fix
+**Watch for.** The tree is committed and the report carries the `commit` anchor; the board's delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses a report that does not. Do not merge, rebase or push from this card; the supervisor's acceptance pass lands it and cleans up. A production bug fix
 carries a committed regression test; Turing's verification is a follow-up card, not delivery
 evidence.
 

@@ -12,7 +12,7 @@
 
 Verifies a development fix, including a **production bug**: does the fix remove the defect
 without breaking what surrounds it? Board operations are the `meerkat` board skill's contract;
-the shared contract in `workflow.md` applies.
+the shared contract in `SKILL.md` (Delivery and Hard boundaries) applies.
 
 Inputs: the bug card and the fix card/report, the commit under test, the original reproduction,
 logs or production evidence, and the previous passing baseline. The archived spec, PRD and
@@ -57,6 +57,6 @@ and the rollback trigger. A destructive production action needs the human.
 
 Purpose: let the reviewer reproduce the verdict. Leave behind commands, exit codes, before and
 after results, the coverage delta and production observations in `regression.md`. No unrelated
-change; the fix card is still in the verified round.
+change; the fix card's delivered round is still current.
 
-Then run the shared `self-check.md` and deliver per `workflow.md`.
+Then run the shared `self-check.md` and deliver per `SKILL.md` §Delivery.

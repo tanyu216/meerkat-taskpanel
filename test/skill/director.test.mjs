@@ -1,10 +1,11 @@
 /**
  * The `meerkat-director` skill — the decision hub.
  *
- * The supervisor runs the deterministic passes itself; the director is opened only
- * for a row that needs a content decision: a worker question, a 30-minute unowned
- * card, or an E1–E5 escalation. Its charter is decisions only: `SKILL.md` plus
- * `references/decision-policy.md` and `references/operation.md`.
+ * The director is opened only for a content decision: a worker question, an unowned
+ * card, an accepted card's required handoff, or an E1–E5 escalation. Its charter is
+ * decisions only: `SKILL.md` plus `references/decision-policy.md`. The taskctl
+ * mechanics, the board's scheduling, and the human console are other surfaces and
+ * must not be restated here.
  *
  * The second half of this file holds the board skill's own invariants (they used to
  * live beside the loop tests); a distributed skill's links must resolve where the
@@ -32,11 +33,17 @@ const DIRECTOR_SKILL = join(ROOT, "skills", "meerkat-director");
 const DIRECTOR_SKILL_NAME = "meerkat-director";
 
 describe("director skill: docs only", () => {
-  it("carries SKILL.md and its references, and no execution body", () => {
+  it("carries only its decision charter and policy, and no execution body", () => {
     assert.ok(existsSync(join(DIRECTOR_SKILL, "SKILL.md")), "the skill must keep its charter");
-    for (const rel of ["references/decision-policy.md", "references/operation.md"]) {
-      assert.ok(existsSync(join(DIRECTOR_SKILL, rel)), `${rel} must land`);
-    }
+    assert.ok(
+      existsSync(join(DIRECTOR_SKILL, "references/decision-policy.md")),
+      "references/decision-policy.md must land",
+    );
+    assert.equal(
+      existsSync(join(DIRECTOR_SKILL, "references/operation.md")),
+      false,
+      "the operator mechanics are not the director's charter",
+    );
     for (const retired of ["manifest.txt", "scripts", "templates", "src", "body"]) {
       assert.equal(
         existsSync(join(DIRECTOR_SKILL, retired)),
@@ -65,22 +72,26 @@ describe("director skill: SKILL.md", () => {
     assert.equal(text.includes("$ARGUMENTS"), false);
   });
 
-  it("names the three decision rows and their moves", () => {
+  it("names the four decisions and their moves", () => {
     assert.match(text, /`question`/);
     assert.match(text, /`route`/);
+    assert.match(text, /`triage`/);
     assert.match(text, /escalation/i);
-    assert.match(text, /agent `note`/);
-    assert.match(text, /`issue assign`/);
+    assert.match(text, /note/i);
+    assert.match(text, /assign/i);
     assert.match(text, /`awaiting`/);
     assert.match(text, /E1[–-]E5/);
   });
 
-  it("makes the director a decision lane, not a dispatcher", () => {
-    assert.match(text, /deterministic passes/i);
-    assert.match(text, /does not drive the scheduler/i);
+  it("states the decision boundary without restating the scheduler", () => {
+    assert.match(text, /do not do the work/i);
     assert.match(text, /never claim a card/i);
-    assert.match(text, /never move a card to `done`|never moves? a card to `done`/i);
-    assert.doesNotMatch(text, /taskctl loop tick/);
+    assert.match(text, /move a card to `done`/i);
+    assert.doesNotMatch(
+      text,
+      /deterministic passes|patrol|workflow|poll|queue|row|attempt|retry|session|prompt/i,
+    );
+    assert.doesNotMatch(text, /taskctl/i);
   });
 
   it("names the ladder and the single decision-authority source", () => {
@@ -97,23 +108,27 @@ describe("director skill: references", () => {
     assert.match(policy, /E1/);
     assert.match(policy, /awaiting/);
     assert.match(policy, /Decision rounds/);
+    assert.match(policy, /handoff_consumed_round/, "the triage marker has one home");
   });
 
-  it("defers the human console to meerkat-chat", () => {
-    // The manual agenda (doctor/console, one card at a time, `--as-human`) moved to
-    // the human's console skill. The director keeps the decision rows and points there;
-    // two agendas would drift and one of them would sign as the human.
-    const operation = readFileSync(join(DIRECTOR_SKILL, "references", "operation.md"), "utf8");
+  it("carries no human-console or taskctl/scheduler mechanics", () => {
+    // The human console is `meerkat-chat`'s, the commands are the board skill's,
+    // and the scheduler is the supervisor's. The director's charter must not
+    // restate any of them — not even as a pointer.
     const skill = readFileSync(join(DIRECTOR_SKILL, "SKILL.md"), "utf8");
-    assert.equal(/^## Manual mode/m.test(operation), false, "no second manual agenda");
-    assert.match(operation, /meerkat-chat/);
-    assert.match(skill, /meerkat-chat/);
-    assert.doesNotMatch(operation, /taskctl loop doctor/);
-    assert.doesNotMatch(operation, /taskctl loop console/);
-    // The console fields the director acts on moved with the agenda.
-    const consoleDoc = readFileSync(join(ROOT, "skills", "meerkat-chat", "references", "console.md"), "utf8");
-    assert.match(consoleDoc, /age_ms/);
-    assert.match(consoleDoc, /answered_pending_release/);
+    const policy = readFileSync(join(DIRECTOR_SKILL, "references", "decision-policy.md"), "utf8");
+    for (const [name, body] of [["SKILL.md", skill], ["decision-policy.md", policy]]) {
+      assert.doesNotMatch(
+        body,
+        /meerkat-chat|human console|TASKCTL_HUMAN|--as-human|loop doctor|loop console/i,
+        `${name}: the human console is not the director's`,
+      );
+      assert.doesNotMatch(
+        body,
+        /taskctl|issue (assign|move|wait|meta|create)|comment add|--agent|--actor-kind|--if-version|queue|poll|attempt|retry|settle|session|prompt|process directory|\.meerkat/i,
+        `${name}: commands and scheduling are other surfaces`,
+      );
+    }
   });
 
   it("keeps installation out of the skill", () => {
@@ -331,6 +346,7 @@ describe("board skill: the acceptance matrix has one home", () => {
   const copies = [
     ["status-lifecycle.md", join(ROOT, "skills/meerkat/references/status-lifecycle.md")],
     ["review-workflow.md", join(ROOT, "skills/meerkat/references/review-workflow.md")],
+    ["docs/acceptance.md", join(ROOT, "docs/acceptance.md")],
   ];
 
   /** The raw block between the markers, asserting the markers appear exactly once. */
@@ -346,7 +362,7 @@ describe("board skill: the acceptance matrix has one home", () => {
   const cells = (line) =>
     line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
 
-  it("keeps both copies byte-identical after whitespace normalisation", () => {
+  it("keeps every copy byte-identical after whitespace normalisation", () => {
     const blocks = copies.map(([, path]) => marked(path));
     for (let i = 1; i < blocks.length; i += 1) {
       assert.equal(

@@ -27,7 +27,8 @@ what a change must comply with.
 | [0006](0006-first-class-worker-sessions.md) | A worker is its own pooled session, resumed by id in the same round; replay when the native session is gone | Accepted |
 | [0007](0007-roles-are-skills-and-the-director-decides.md) | Roles are standalone skills; installation location routes the platform; `meerkat-director` decides and the control turn is gone | Accepted |
 | [0008](0008-a-worker-holds-for-the-ladder.md) | A worker holds with a bounded `issue wait`; the director settles by releasing the card; escalation parks and resumes by id | Accepted |
-| [0009](0009-a-cycle-stops-at-a-human-decision.md) | A card that keeps coming back is parked as `blocked(decision)`, never auto-cancelled; the board decides, the loop executes | Proposed |
+| [0009](0009-a-cycle-stops-at-a-human-decision.md) | A card that keeps coming back is parked as `blocked(decision)`, never auto-cancelled; the board decides, the loop executes | Accepted |
+| [0010](0010-director-consumes-the-required-handoff.md) | An accepted card's required handoff is a director triage decision: create/seed/link the downstream cards or record that none is needed | Accepted |
 
 ## Writing one
 

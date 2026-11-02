@@ -10,7 +10,8 @@
 
 Optional: only when the card, the acceptance or the director asks, and only with a
 threshold. Board operations are the `meerkat` board skill's contract; the shared contract in
-`workflow.md` applies; performance is a decision aid, not a correctness gate.
+`SKILL.md` (Delivery and Hard boundaries) applies; performance is a decision aid, not a
+correctness gate.
 
 ### 1. Plan (adopt and audit)
 
@@ -40,4 +41,4 @@ behaviour. Leave behind the conclusion.
 Compare against the threshold/SLO; a regression beyond it blocks delivery. Leave behind the
 result, environment and evidence in `performance.md`.
 
-Then run the shared `self-check.md` and deliver per `workflow.md`.
+Then run the shared `self-check.md` and deliver per `SKILL.md` §Delivery.

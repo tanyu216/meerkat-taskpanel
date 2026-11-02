@@ -47,7 +47,9 @@ open. After writing the question, hold with `taskctl issue wait`; the complete p
 - Do not decide an unauthorized question, write a `decision`/`confirm`/`change` kind, or use
   `--as-human` for your own decision.
 - Do not accept your own work: stop at `in_review`; the card's `acceptance_mode` names who
-  closes it.
+  closes it. An `off` card is auto-accepted by the loop; you do not self-close it.
+- An out-of-scope defect is a `kind=defect` comment plus a question to the director; the
+  director creates the fix card. Do not widen this card to fix it.
 - Do not merge, rebase or push from the card; landing and cleanup belong to the supervisor.
 - Do not widen the scope; a scope expansion is a question (E1).
 

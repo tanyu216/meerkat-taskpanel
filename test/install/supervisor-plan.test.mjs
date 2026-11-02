@@ -5,8 +5,8 @@
  * `supervisor-enable.test.mjs` next door drives the whole thing through `install.sh`
  * with a faked service manager. This file holds the parts that are pure — the scheduler
  * resolver, the launchd labels, the cron marker block and its stripper, the linger probe —
- * plus the pins that keep the implementation and the contract (`docs/`, and the loop
- * skill's own `SKILL.md` / `references/operation.md`) telling the same story.
+ * plus the pins that keep the implementation and the contract (`docs/`, and the
+ * director skill's own `SKILL.md`) telling the same story.
  *
  * Run with: node --test
  */
@@ -648,7 +648,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     const install = doc("docs/ops/install.md");
     assert.match(install, /--supervisor=enable/, "docs/ops/install.md must name the opt-in");
     assert.match(install, /disable/, "docs/ops/install.md must name the way back out");
-    for (const relative of ["skills/meerkat-director/SKILL.md", "skills/meerkat-director/references/operation.md"]) {
+    for (const relative of ["skills/meerkat-director/SKILL.md"]) {
       const text = doc(relative);
       assert.doesNotMatch(text, /install\.sh/, `${relative} must not carry installation instructions`);
       assert.doesNotMatch(text, /--supervisor=/, `${relative} must not carry supervisor enable/disable/status`);

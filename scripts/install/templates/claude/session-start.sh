@@ -29,12 +29,12 @@ fi
 echo
 echo "-- the eight rules --"
 cat <<'RULES'
-1. claim-first — read `issue candidates --assignee <me>`, then take exactly one with `issue move <ref> in_progress`
+1. claim-first — read `issue candidates --assignee <me>`, then take exactly one with `issue move <ref> in_progress`. A supervisor handoff already holds the claim: obey the handoff and heartbeat; do not re-claim
 2. claim only what is yours — never someone else's card, a `backlog` card, an `epic`, or one with an unfinished `depends_on` blocker
 3. one card at a time — hold at most one claimed card
 4. keep the heartbeat fresh — pulse it with `issue heartbeat <ref>` every ≤10 minutes; never leave a card idle in `in_progress`
 5. deliver with a report — the delivery gate refuses `in_review` without a report for the current round
-6. self-review is not acceptance — stop at `in_review`; a human accepts to `done`
+6. self-review is not acceptance — stop at `in_review`; the card's `acceptance_mode` names the closer (the loop after an APPROVE, a person, or the deliverer for `off`)
 7. never preempt on conflict — on `VERSION_CONFLICT` or staleness re-read once, never blind-retry
 8. stay traceable — carry the session id on every write
 RULES

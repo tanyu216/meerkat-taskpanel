@@ -87,6 +87,16 @@ Anything else keeps its own name, and a non-text plan keeps its extension (`plan
 **Say the outcome in one line, then stop**: the identifier, that it is queued, and the file when you attached one — `已建卡 PROJ-0007，已排队处理（附 spec.pdf）`. Do not ask whether to start. Commands and flags:
 [`references/cli.md#issue-create`](references/cli.md#issue-create), [`references/cli.md#attachment`](references/cli.md#attachment).
 
+## Stage markers
+
+A producer card that hands work on sets `meta.stage_handoff=required` and puts a `## Handoff`
+block in its **current-round report**. The director's triage copies that block into a downstream
+card's description and sets `meta.design_stage=yes` there. A small change or bug with no design
+input sets `meta.product_change=none`. The foundation records the one gate command the reviewer
+re-runs as the project's `meta.review_gate`. These keys are read by the role skills and the
+reviewer; write them with `issue meta` (its `--if-version` CAS form), not with a second local
+convention.
+
 ## The language of a card
 
 Write in the language the work is actually being done in. English is not the default: the board stores text verbatim, so the first writer sets the language of the title, description, acceptance items, comment, question and report.
@@ -192,7 +202,10 @@ Claim exactly **one** leaf child; the container holds no work of its own. Full r
 
 A card is a review card when `issue get <ref> --json` carries `review_of_id` / `review_round` (or `issue candidates --json` carries `review_of` / `review_round`). The `review` label is a discovery aid, never the predicate. `meta.flow` absent means flow A; a flow-B card is never reviewed again.
 
-Claim it like any `todo` card, but the work is a review, not a change to the original. Ledger the requirements first — every requirement in the description, comments and plan needs an acceptance item *and* an implementation, or the verdict is `REJECT` — then verify at the report's `commit` anchor rather than the live tree, and answer every baseline item with a status, how you checked it, and an `evidence[n]` anchor. A `met` the board cannot trace is refused, and so is an `APPROVE` whose report records no command the reviewer ran.
+A review card the supervisor dispatched is already claimed by the loop: the handoff says so —
+heartbeat it, do not re-claim. A review card you picked up interactively from `issue candidates`
+is claimed like any `todo` card. The work is a review, not a change to the original. Ledger the
+requirements first — every requirement in the description, comments and plan needs an acceptance item *and* an implementation, or the verdict is `REJECT` — then verify at the report's `commit` anchor rather than the live tree, and answer every baseline item with a status, how you checked it, and an `evidence[n]` anchor. A `met` the board cannot trace is refused, and so is an `APPROVE` whose report records no command the reviewer ran.
 
 Then deliver a report **on this card** whose first line is exactly `VERDICT: APPROVE` or `VERDICT: REJECT`; put findings after that line and in `leftovers`, as a numbered must-fix list on a `REJECT` — the loop appends those items to the original's acceptance. Move neither card — the loop applies the verdict and closes the review card. A delivery whose first line is not a verdict is still accepted by the board; the loop records `verdict_unreadable`, so the review is wasted.
 

@@ -425,8 +425,8 @@ _Avoid_: worker pool, daemon, agent team
 
 **Director lane**:
 The pool's decision conversation for one project directory — the `meerkat-director` skill
-answering question, route and escalation rows. It is not a role, receives no card, draws no
-worker budget, and always runs on the supervisor's primary kind.
+answering question, route, triage and escalation decisions. It is not a role, receives no
+card, draws no worker budget, and always runs on the supervisor's primary kind.
 _中文_: 决策通道
 _Avoid_: project session, control lane
 
@@ -461,14 +461,6 @@ card's last turns, so the work continues instead of restarting. The record is ma
 operator.
 _中文_: 回放
 _Avoid_: restore, rehydrate, resync
-
-**Project session**:
-The per-project conversation inside the pool, launched with the project's target directory
-as its cwd. It is the **question lane**: when a worker asks a question it is woken, answers
-operationally with a note, or escalates to the human and moves the card to `awaiting`. It
-does not work cards itself.
-_中文_: 项目会话
-_Avoid_: worker, project agent, runner
 
 **Reviewer session**:
 The resident conversation for review cards in a project's directory, opened with the

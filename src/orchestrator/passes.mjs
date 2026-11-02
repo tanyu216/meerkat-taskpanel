@@ -26,6 +26,7 @@ import { candidateArgs, pruneRegistry } from "../foundation/scheduling.mjs";
 
 import {
   readBoard,
+  readHandoffTriage,
   readOpenQuestions,
   readProjectReviewers,
   readUnownedTodos,
@@ -659,6 +660,46 @@ export async function runPollOnce(opts, env = process.env) {
     }
   }
 
+  // The director's handoff triage: an accepted producer card whose required
+  // handoff has no decision for the current delivery round. It is enqueued
+  // after the worker questions and routes: a held worker must never wait behind
+  // post-acceptance work.
+  if (!opts.dryRun && (pool.capabilities ?? []).includes("question-lane")) {
+    const triage = readHandoffTriage(opts, log);
+    if (triage.ok && triage.rows.length > 0) {
+      let enqueued = 0;
+      for (const row of triage.rows) {
+        const rowId = `triage:${row.ref}:r${row.round}`;
+        if (questionDispatches(stateDir, rowId) >= 2) continue;
+        const resolved = resolveWakeDir({
+          project: row.project_id,
+          projectsJson: opts.projectsJson,
+        });
+        if (resolved?.ok !== true) {
+          log(`triage ${row.ref}: ${resolved?.code ?? "no project directory"}`);
+          continue;
+        }
+        const queued = enqueueCard(stateDir, {
+          id: rowId,
+          queue_kind: "question",
+          role: "triage",
+          card: row.ref,
+          project: row.project_id,
+          agent: agents[0] ?? "agent",
+          target_dir: resolved.dir,
+          triage: true,
+          question_id: rowId,
+          dispatch_key: rowId,
+          round: row.round,
+          title: row.title,
+          updated_at: row.updated_at,
+        });
+        if (queued.ok && queued.coalesced !== true) enqueued += 1;
+      }
+      if (enqueued > 0) log(`triage: ${enqueued} accepted handoff(s) enqueued for the director`);
+    }
+  }
+
   const registry = opts.dryRun
     ? { version: 1, running: {} }
     : pruneRegistry(loadRegistry(opts.state), isProcessAlive);
@@ -906,7 +947,16 @@ export async function runPatrolOnce(opts, env = process.env) {
     ...liveSubagents(readLedger(stateDir).value).map((row) => row.sessionKey),
   ]);
   if (opts.dryRun !== true) {
-    sweepWorkspaces({ stateDir, tasks, isBusy: (path) => busyPaths.has(path), log });
+    sweepWorkspaces({
+      stateDir,
+      tasks,
+      isBusy: (path) => busyPaths.has(path),
+      entryFor: (project) => {
+        const target = resolveWakeTarget({ project, projectsJson: opts.projectsJson });
+        return target.ok === true ? (target.entry ?? null) : null;
+      },
+      log,
+    });
     // A deferral entry is evidence, not a queue row: terminal cards and streaks
     // past retention are the only ones dropped. An unknown card is kept.
     const ledger = readDeferralLedger(stateDir);
@@ -945,7 +995,9 @@ export async function runPatrolOnce(opts, env = process.env) {
         return { ok: false };
       }
       const task = tasks.find((entry) => entry.identifier === alert.identifier) ?? null;
-      const project = typeof task?.project === "string" ? task.project.trim() : "";
+      const project = typeof (task?.project_id ?? task?.project) === "string"
+        ? String(task.project_id ?? task.project).trim()
+        : "";
       if (project === "") {
         log(`patrol: ${alert.identifier} — the card names no project; notify-only, no LLM turn`);
         return { ok: false };
@@ -1035,7 +1087,7 @@ export async function runPatrolOnce(opts, env = process.env) {
       // Admission is proven: the card is no longer deferred.
       deferrals.clear(alert.identifier);
       const round = task?.delivery_round ?? 1;
-      const { role, handoff, worker_key, actorKind } = buildHandoffRow({
+      const { role, agentRole, handoff, worker_key, actorKind } = buildHandoffRow({
         opts,
         config,
         action,
@@ -1052,6 +1104,7 @@ export async function runPatrolOnce(opts, env = process.env) {
         card: alert.identifier,
         role,
         agent: action.agent,
+        agent_role: agentRole,
         actor_kind: actorKind,
         project,
         project_dir: projectDir,
@@ -1135,9 +1188,12 @@ export async function runWorkflowOnce(opts, env = process.env) {
       log(
         `error: ${missing.map((project) => project.id).join(", ")} require review but have no effective ` +
           "reviewer. Configure a deployment reviewer (--reviewer / MEERKAT_TASKPANEL_REVIEWER / " +
-          "install.sh --reviewer), set the project's --reviewer, or change --acceptance-mode per card.",
+          "install.sh --reviewer), set the project's --reviewer, or change --acceptance-mode per card. " +
+          "Dispatch is skipped for these projects; outcomes and auto-accept still run.",
       );
-      return 2;
+      // The decision is the board's: it plans no dispatch for a project with no
+      // effective reviewer (`dispatch_skipped`). A deployment that removed its
+      // reviewer must still be able to finish the reviews already in flight.
     }
   }
 

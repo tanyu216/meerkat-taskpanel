@@ -54,7 +54,7 @@ Each step has **Must do** and **Beyond**. Beyond means any read-only method, not
 Each shape has **Floor** and **Beyond**. Beyond is not exhaustive.
 
 ### Product planning / brief / PRD (Jobs)
-**Floor.** Problem, evidence, users, goals/non-goals/metrics, scope. Every PRD Must maps to a testable acceptance item. The handoff block is complete and its archived paths resolve; the handoff's acceptance source matches the frozen acceptance; glossary/ADR terms. Audit conformance and evidence, not design taste.
+**Floor.** Problem, evidence, users, goals/non-goals/metrics, scope. Every PRD Must maps to a testable acceptance item. The card sets `stage_handoff=required`; the current report's `## Handoff` is complete and its archived paths resolve; the handoff's acceptance source matches the frozen acceptance; any follow-up named in `leftovers` is in the handoff; glossary/ADR terms. Audit conformance and evidence, not design taste.
 **Beyond.** Comparable options, rollout/measurement plan, open-question disposition.
 
 ### Prototype / UI / UX (Jobs)
@@ -62,7 +62,7 @@ Each shape has **Floor** and **Beyond**. Beyond is not exhaustive.
 **Beyond.** Breakpoints, overflow, keyboard paths, reduced motion. Subjective design direction is not a verdict reason.
 
 ### Architecture (Linus)
-**Floor.** Layering and dependency direction; one home per constant/enum (including cross-runtime mirrors); an ADR for a boundary or cross-cutting decision; ADR status vocabulary; failure modes; migration and contract impact; directory-tree changes recorded; project technical-standard conformance; DB-first invariants when the project declares them.
+**Floor.** Layering and dependency direction; one home per constant/enum (including cross-runtime mirrors); an ADR for a boundary or cross-cutting decision; ADR status vocabulary; failure modes; migration and contract impact; directory-tree changes recorded; project technical-standard conformance; DB-first invariants when the project declares them. The card sets `stage_handoff=required`; the current report's `## Handoff` is complete and its paths resolve; the project's `meta.review_gate` is recorded when the foundation declares a gate.
 **Beyond.** Threat model, upgrade path, blast radius.
 
 ### Development / implementation (Linus)
@@ -73,6 +73,7 @@ Each shape has **Floor** and **Beyond**. Beyond is not exhaustive.
 - **Code review:** correctness and edge cases, error handling, concurrency/resources, compatibility, dead code, readability, test quality, unrelated changes. Every finding names a rule, a reproducible failure or a missing case; a preference without a declared standard is not a must-fix.
 - **Security scan:** the declared arms plus every `security-checklist.md` row; the checklist is a floor, not a ceiling, so add surface security checks and record them.
 - **Coverage and performance:** a reproducible coverage source; a performance claim names the number, method and bound.
+- **Follow-up:** a report or leftover that names a follow-up card must set `stage_handoff=required` and name it in the `## Handoff`; a missing marker is a `REJECT`.
 **Beyond.** Failure injection, upgrade/compatibility matrix, concurrency/backpressure.
 
 ### Refactor (Linus)

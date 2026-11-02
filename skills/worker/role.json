@@ -7,7 +7,7 @@
   "title": "Default assignee",
   "summary": "The fallback role: takes an unassigned card or work outside Jobs, Linus, Turing and Reviewer, and follows the board's plan, execute, self-check and deliver cycle.",
   "shapes": [
-    "work outside the four specialist roles: operations on a running system, an external account, a manual task",
+    "work outside the four specialist roles: release/deploy execution after a human decision, operations on a running system, an external account, a manual task",
     "the fallback for a card with no assignee or an assignee that names no role"
   ],
   "responsibilities": [
@@ -21,7 +21,8 @@
     "Do not decide an unauthorized question; write an agent question and hold for the answer.",
     "Do not accept your own work or move a card to `done`.",
     "Do not merge, rebase or push from the card.",
-    "Do not widen the scope; a scope expansion is an E1 question."
+    "Do not widen the scope; a scope expansion is an E1 question.",
+    "An out-of-scope defect is a `kind=defect` comment plus a question to the director; the director creates the fix card."
   ],
   "self_check": "references/self-check.md",
   "reviewer_prompt": null

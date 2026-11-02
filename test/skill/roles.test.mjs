@@ -255,7 +255,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       ["performance", performance],
     ]) {
       assert.match(text, /^## Steps/m, `${name} opens with its step list`);
-      assert.match(text, /workflow\.md/, `${name} points at the shared contract`);
+      assert.match(text, /workflow\.md|SKILL\.md/, `${name} points at the shared contract`);
     }
 
     assert.match(jobsWorkflow, /Review ownership/i, "Jobs states who reviews what");
@@ -978,7 +978,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       "references/performance-workflow.md",
     ]) {
       const text = read("turing", rel);
-      assert.match(text, /workflow\.md/, `${rel} points at the shared delivery`);
+      assert.match(text, /workflow\.md|SKILL\.md/, `${rel} points at the shared delivery`);
       assert.doesNotMatch(text, /DELIVERY_NEEDS_COMMIT/, `${rel} does not restate the board gate`);
     }
 

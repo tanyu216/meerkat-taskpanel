@@ -277,6 +277,17 @@ describe("roles — selection and routing", () => {
     assert.match(text, /\| tests \| Turing \|/);
     assert.match(text, /goes to the Worker role/);
   });
+
+  it("keeps reviewer-lane roles out of the work routing table", () => {
+    const roles = [
+      { agent: "Linus", lanes: ["worker"], shapes: ["implementation"], workflow: "/s/linus/SKILL.md" },
+      { agent: "Reviewer", lanes: ["reviewer"], shapes: ["independent review"], workflow: "/s/reviewer/SKILL.md" },
+    ];
+    const text = renderRoutingTable(roles);
+    assert.match(text, /\| implementation \| Linus \|/);
+    assert.doesNotMatch(text, /\| independent review \| Reviewer \|/);
+    assert.match(text, /Reviewer roles are never routed/);
+  });
 });
 
 describe("decision policy", () => {

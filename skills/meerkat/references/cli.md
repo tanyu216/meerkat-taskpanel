@@ -533,7 +533,7 @@ the `taskctl` entry its child calls use; `--config <file>` the per-kind config (
 **Cadence and policy.** `--ping-interval <sec>` and `--continue-interval <sec>` set the two
 clocks; `--continue <yes|no>` enables the tick clock. `--opened-by <human|supervisor>`
 records who opened the loop; `--resident <auto|no>` says whether a resident pool is expected.
-`--control` is inert and kept only for CLI compatibility (there is no control turn). `--session-max-age`,
+`--control <internal|external>` marks a pool started by a live session (`external`); there is no LLM control turn. `--session-max-age`,
 `--session-turn-timeout` (1200..7199 s), `--session-poll-ms`, `--session-pool-max`,
 `--project-concurrency` and `--project-idle-ms` bound the pool. `--max-concurrency` caps the
 whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) decides the
@@ -768,8 +768,8 @@ taskctl issue reconcile --workflow --reviewer jobs \
 `{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the snapshot; a
 truncated snapshot still applies outcomes but dispatches nothing. `--rework-max-rounds`
 bounds the delivery rounds since the last hold before the plan emits a `hold_card` (the card
-is parked as `blocked` with a question; see
-[`../scheduling.md` §Liveness bounds](../../../docs/scheduling.md#liveness-bounds-every-cycle-has-a-stop)).
+is parked as `blocked` with a question; the liveness bounds are the repository's
+`docs/scheduling.md` §Liveness bounds).
 The actions are decisions the loop executes, not effects; what each one means, and the
 fail-safe rules behind them, are in
 [`status-lifecycle.md` §11](status-lifecycle.md#11-the-boards-workflow-decisions).

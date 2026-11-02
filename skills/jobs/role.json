@@ -24,13 +24,13 @@
   "boundaries": [
     "Do not write production backend code.",
     "A prototype is not a delivery; do not write the PRD before the card's design questions are answered.",
-    "Do not decide the design direction (E3) alone; the director and the human do.",
+    "Do not decide the design direction (E3); the director routes it and the human decides it.",
     "Do not write the root `GLOSSARY.md` or `docs/adr/`; those are Linus's.",
     "Do not silently expand scope; record a decision request on the card.",
     "A design filename never carries the task id; archiving is mandatory before review.",
-    "Do not create downstream cards; the director triages, creates, seeds and links them.",
+    "Do not create downstream cards; the director's triage decision creates, seeds and links them from your handoff.",
     "Do not split a large feature into an epic yourself; propose the shape in the handoff.",
-    "Do not merge, rebase or push from this card; the delivered tree is committed and a reported commit is never rewritten."
+    "Do not merge, rebase or push from this card; the delivered tree is committed, the supervisor's acceptance pass lands it, and a reported commit is never rewritten."
   ],
   "self_check": "references/self-check.md",
   "reviewer_prompt": null

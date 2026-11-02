@@ -250,6 +250,44 @@ export function readRouteOutcome(opts, ref, log = () => {}, run = runCli) {
 }
 
 /**
+ * Did the director consume an accepted card's required handoff?
+ *
+ * The decision is the marker on the producer, not the children: a producer may
+ * already have children (an epic), and a crash after creating one child must be
+ * recoverable by the next turn. The round is compared numerically because
+ * `delivery_round` is a number and `--meta` stores strings.
+ *
+ * A producer that moved off `done` or past this round is stale: the row has
+ * nothing left to decide and must be completed without any write.
+ *
+ * @param {object} opts
+ * @param {string} ref
+ * @param {number} round
+ * @param {(line: string) => void} [log]
+ * @param {Function} [run]
+ * @returns {{ok: boolean, settled?: boolean, stale?: boolean, consumed?: boolean, declined?: boolean, error: string|null}}
+ */
+export function readTriageOutcome(opts, ref, round, log = () => {}, run = runCli) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, error: "no agent configured" };
+  const read = run(opts, agent, ["issue", "get", String(ref), "--json"]);
+  if (!read.ok) {
+    log(`triage check for ${ref} failed: ${read.error}`);
+    return { ok: false, error: read.error };
+  }
+  const task = read.data?.task ?? {};
+  const status = typeof task.status === "string" ? task.status : null;
+  const liveRound = Number(task.delivery_round);
+  if (status !== "done" || !Number.isFinite(liveRound) || liveRound !== Number(round)) {
+    return { ok: true, settled: false, stale: true, error: null };
+  }
+  const meta = task.meta ?? {};
+  const consumed = Number(meta.handoff_consumed_round) === Number(round);
+  const declined = Number(meta.handoff_declined_round) === Number(round);
+  return { ok: true, settled: consumed || declined, stale: false, consumed, declined, error: null };
+}
+
+/**
  * The human/project answer that caused a same-round re-dispatch.
  *
  * Any **human** comment newer than the latest agent question counts, whatever

@@ -6,7 +6,7 @@
  *   * **continue** — the board-wide judgment turn. It is *coalesced*: a request
  *     that arrives while one is already pending replaces it, because the next
  *     turn rebuilds the same prompt from current state.
- *   * **card** — one claimed card's handoff for a project session. These are
+ *   * **card** — one claimed card's handoff for a lane session. These are
  *     *not* coalesced: every card is a distinct unit of work, and a retry must
  *     not silently swallow a second card.
  *
@@ -369,7 +369,7 @@ function resumeCardsUnlocked(stateDir, ids, options = {}) {
 }
 
 /**
- * Claim up to `limit` pending handoffs for one project session.
+ * Claim up to `limit` pending handoffs for one lane session.
  *
  * `ids` scopes the claim to one directory's (or lane's) rows. The pool groups
  * pending handoffs before claiming, so a first-come-first-served scan would let

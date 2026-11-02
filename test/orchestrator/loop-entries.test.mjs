@@ -486,7 +486,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
         "const status = args.includes('--status') ? args[args.indexOf('--status') + 1] : null;",
         "let data = { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } };",
         "if (args[0] === 'issue' && status === 'in_progress') {",
-        "  data = { tasks: [{ identifier: 'T-1', project: 'P', kind: 'task', status: 'in_progress', assignee: { display_name: 'alice' } }] };",
+        "  data = { tasks: [{ identifier: 'T-1', project_id: 'P', kind: 'task', status: 'in_progress', assignee: { display_name: 'alice' } }] };",
         "} else if (args[0] === 'issue' && args.includes('candidates')) {",
         "  data = { candidates: [{ identifier: 'T-1', project: 'P', agent: 'alice', reason: 'stale_same' }] };",
         "} else if (args[0] === 'comment') {",
@@ -539,7 +539,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
         "const status = argv.includes('--status') ? argv[argv.indexOf('--status') + 1] : null;",
         "let data = { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } };",
         "if (argv.includes('list') && status === 'todo') {",
-        "  data = { tasks: [{ identifier: 'T-9', project: 'P', kind: 'task', status: 'todo', assignee: null, updated_at: '2020-01-01T00:00:00Z' }] };",
+        "  data = { tasks: [{ identifier: 'T-9', project_id: 'P', kind: 'task', status: 'todo', assignee: null, updated_at: '2020-01-01T00:00:00Z' }] };",
         "}",
         'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
       ].join("\n"),
@@ -575,6 +575,55 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     poll();
     assert.equal(routeRows().length, 2, "the third window is capped");
     assert.equal(routeRows().some((row) => row.status === "pending"), false);
+  });
+
+  it("enqueues one triage row for an accepted card's required handoff", () => {
+    const dir = tempDir("tp-triage-lane-");
+    const app = join(dir, "app");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(dir, "projects.json"), JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
+    writeLivePool(dir, { version: 2, capabilities: ["question-lane"] });
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "triage-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "const status = argv.includes('--status') ? argv[argv.indexOf('--status') + 1] : null;",
+        "let data = { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } };",
+        "if (argv.includes('list') && status === 'done') {",
+        "  data = { tasks: [{ identifier: 'T-7', project_id: 'P', kind: 'task', status: 'done', title: 'design', delivery_round: 2, status_changed_at: new Date().toISOString(), meta: { stage_handoff: 'required' } }] };",
+        "}",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
+      ].join("\n"),
+    );
+    const args = [
+      "--actor-kind", "claude", "--agent", "alice",
+      "--cli", script, "--repo", dir,
+      "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+    ];
+    const env = { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir };
+    const poll = () => {
+      const run = runEntry("passes.mjs", args, env, "poll");
+      assert.equal(run.status, 0, run.stderr);
+    };
+    const rows = () => readCards(dir).value.cards.filter((row) => row.id === "triage:T-7:r2");
+
+    poll();
+    const [row] = rows();
+    assert.equal(rows().length, 1, "the accepted handoff is offered once");
+    assert.equal(row.queue_kind, "question");
+    assert.equal(row.role, "triage");
+    assert.equal(row.triage, true);
+    assert.equal(row.card, "T-7");
+    assert.equal(row.agent, "alice");
+    assert.equal(row.target_dir, app);
+    assert.equal(row.round, 2);
+
+    poll();
+    assert.equal(rows().length, 1, "a second poll coalesces the same triage row");
   });
 
   it("does not offer a card whose worker session is still running", () => {
@@ -700,7 +749,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
         "const args = at === -1 ? [] : argv.slice(at);",
         "let data = { tasks: [], candidates: [], comments: [], alerts: [], config: {} };",
         "if (args[0] === 'issue' && args.includes('list')) {",
-        "  data = { tasks: [{ identifier: 'T-1', project: 'P', kind: 'task', status: 'in_progress', heartbeat_at: '2020-01-01T00:00:00Z', assignee: { display_name: 'alice' } }] };",
+        "  data = { tasks: [{ identifier: 'T-1', project_id: 'P', kind: 'task', status: 'in_progress', heartbeat_at: '2020-01-01T00:00:00Z', assignee: { display_name: 'alice' } }] };",
         "} else if (args[0] === 'comment') {",
         "  data = { comments: [{ id: 'q1', kind: 'question', author_kind: 'agent', body: 'Why?', created_at: '2026-01-01T00:00:00Z' }] };",
         "} else if (args[0] === 'sla') {",

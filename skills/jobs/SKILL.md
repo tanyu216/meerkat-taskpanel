@@ -146,10 +146,10 @@ commit before you report. A report citing a path carries the `commit` anchor; th
 delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses one that does not. Set
 `meta.stage_handoff=required`; open `conclusion` with `Outcome:`, then `## Handoff`. In split
 mode the block names the prototype card, path and `commit`; the reviewer reads that anchor, or
-you fold the verdict into the spec/PRD appendix and commit it here. The director
-creates downstream cards; propose the delivery shape and next scopes, per
+you fold the verdict into the spec/PRD appendix and commit it here. The director's triage
+decision creates downstream cards; propose the delivery shape and next scopes, per
 the `meerkat` board skill's card and plan lifecycle. Stop at `in_review`; acceptance is not yours.
-Do not merge, rebase or push.
+Do not merge, rebase or push; the supervisor's acceptance pass lands the delivered tree.
 
 **Essentials.** Archived paths, the findings table, the complete handoff, and a delivery shape
 whose children can land alone (`not one card per layer`). A small change or bug uses
@@ -203,5 +203,6 @@ links it, per the `meerkat` board skill's card and plan lifecycle.
   the task id. A prototype is not a delivery and never production code.
 - The root `GLOSSARY.md` and `docs/adr/` belong to Linus; product terms and ADRs live under
   `design/`.
-- The director creates downstream cards; propose the shape in the handoff.
-- Do not accept your own work; do not merge, rebase or push from this card.
+- The director's triage decision creates downstream cards; propose the shape in the handoff.
+- Do not accept your own work; do not merge, rebase or push from this card — the supervisor's
+  acceptance pass lands it.

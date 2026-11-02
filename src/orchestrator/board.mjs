@@ -10,6 +10,7 @@ import { dirname } from "node:path";
 
 import { ORCHESTRATOR_ACTOR_ID, ROUTE_UNASSIGNED_MS, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
+import { loadRoles } from "../foundation/roles.mjs";
 import { planStrandedTodoAlerts } from "../foundation/scheduling.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import {
@@ -149,7 +150,7 @@ export function readOpenQuestions(opts, log, run = runCli) {
     // A review card has no question lane of its own; the one identity reader
     // agrees with the workflow and the SLA patrol on what "is a review" means.
     if (reviewIdentityOf(task).isReview) continue;
-    const project = textOf(task?.project);
+    const project = textOf(task?.project_id ?? task?.project);
     const ref = textOf(task?.identifier);
     if (project === null || ref === null) continue;
 
@@ -211,7 +212,7 @@ export function readUnownedTodos(opts, log, run = runCli, now = Date.now) {
     const assigned = textOf(assignee?.id) ?? textOf(assignee?.display_name);
     if (assigned !== null) continue;
     const ref = textOf(task?.identifier);
-    const project = textOf(task?.project);
+    const project = textOf(task?.project_id ?? task?.project);
     if (ref === null || project === null) continue;
     const stamp = Date.parse(String(task?.updated_at ?? task?.created_at ?? ""));
     if (!Number.isFinite(stamp) || now() - stamp < ROUTE_UNASSIGNED_MS) continue;
@@ -223,6 +224,71 @@ export function readUnownedTodos(opts, log, run = runCli, now = Date.now) {
     });
   }
   return { ok: true, rows, error: null };
+}
+
+/** How far back an accepted producer card is worth an automatic triage. */
+const HANDOFF_TRIAGE_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The triage lane's input: accepted producer cards whose required handoff has
+ * no decision for the current delivery round.
+ *
+ * `meta` and `delivery_round` are on the `issue list` projection; the decision
+ * itself is read by the director at turn time, so this stays one bounded read.
+ * The round comparison matters because `--meta` stores strings while
+ * `delivery_round` is a number.
+ *
+ * @param {object} opts
+ * @param {(message: string) => void} log
+ * @param {Function} [run] the `runCli` seam, injectable for tests
+ * @param {() => number} [now]
+ * @returns {{ok: boolean, rows: object[], truncated: boolean, error: string|null}}
+ */
+export function readHandoffTriage(opts, log, run = runCli, now = Date.now) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, rows: [], truncated: false, error: "no agent configured" };
+  const read = run(opts, agent, [
+    "issue",
+    "list",
+    "--status",
+    "done",
+    "--meta",
+    "stage_handoff=required",
+    "--include-archived",
+    "--limit",
+    String(opts.boardLimit),
+  ]);
+  if (!read.ok) {
+    log(`triage lane: issue list failed: ${read.error}`);
+    return { ok: false, rows: [], truncated: false, error: read.error };
+  }
+  const tasks = Array.isArray(read.data?.tasks) ? read.data.tasks : [];
+  const rows = [];
+  for (const task of tasks) {
+    if (textOf(task?.kind) === "epic") continue;
+    if (reviewIdentityOf(task).isReview) continue;
+    const meta = task?.meta ?? {};
+    if (textOf(meta.stage_handoff) !== "required") continue;
+    const round = Number(task?.delivery_round);
+    if (!Number.isFinite(round)) continue;
+    if (Number(meta.handoff_consumed_round) === round) continue;
+    if (Number(meta.handoff_declined_round) === round) continue;
+    const project = textOf(task?.project_id ?? task?.project);
+    const ref = textOf(task?.identifier);
+    if (project === null || ref === null) continue;
+    const stamp = Date.parse(String(task?.status_changed_at ?? task?.updated_at ?? ""));
+    if (Number.isFinite(stamp) && now() - stamp > HANDOFF_TRIAGE_LOOKBACK_MS) continue;
+    rows.push({
+      ref,
+      project_id: project,
+      round,
+      title: textOf(task?.title) ?? "",
+      updated_at: textOf(task?.updated_at) ?? textOf(task?.status_changed_at),
+    });
+  }
+  const truncated = tasks.length >= Number(opts.boardLimit);
+  if (truncated) log("triage lane: the accepted-card read is capped; the next pass reads again");
+  return { ok: true, rows, truncated, error: null };
 }
 
 /**
@@ -406,9 +472,43 @@ function strandedTodoAlerts(opts, config, invoke, log) {
       log(`workflow: stranded-pool read failed (${poolRead.error ?? "unknown"})`);
     }
   }
+  // A dedicated reviewer is in the scan set but only takes review cards.
+  // Report an ordinary todo assigned to it as stranded; keep a reviewer that is
+  // also a worker.
+  const reviewerNames = new Set(
+    [...(Array.isArray(config.reviewers) ? config.reviewers : []), config.reviewer]
+      .filter((name) => typeof name === "string" && name !== "")
+      .map((name) => name.toLowerCase()),
+  );
+  const reviewerWorkers = new Set(
+    (Array.isArray(config.reviewerWorkers) ? config.reviewerWorkers : [])
+      .filter((name) => typeof name === "string" && name !== "")
+      .map((name) => name.toLowerCase()),
+  );
+  const roleSet =
+    opts.roles ??
+    loadRoles({
+      home: typeof opts.home === "string" ? opts.home : null,
+      primaryKind: opts.actorKind,
+      explicitDir: opts.rolesDir ?? null,
+    });
+  const workerRoles = (roleSet?.roles ?? [])
+    .filter((role) => !Array.isArray(role.lanes) || role.lanes.includes("worker"))
+    .map((role) => role.agent);
+  const workers = [
+    ...new Set([
+      ...workerRoles,
+      ...agents.filter(
+        (name) =>
+          !reviewerNames.has(name.toLowerCase()) ||
+          reviewerWorkers.has(name.toLowerCase()),
+      ),
+    ]),
+  ];
   return planStrandedTodoAlerts({
     todoTasks,
     unassignedPool,
+    workers,
     agents,
     reviewer: config.reviewer,
     claimUnassigned: config.claimUnassigned,
