@@ -463,18 +463,21 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   same `resolveWakeDir` the glue uses). A card whose project is unmapped or names no
   directory is **deferred before the claim**, so the board never shows a claim that has
   nowhere to run. The handoff tells the session it is the card's own worker — not a
-  subagent of a shared conversation — and that the supervisor holds the claim. On a host
-  whose `/<role>` opener is validated (Claude), the session opens with the skill command and
-  a `Flags:` line, and the handoff is a thin task envelope (brief, plan, board moves, no
-  role layer). Codex/Pi keep the full handoff with the skill path until their host opener is
-  validated. The session's cwd is the card's admitted worktree, and its id is persisted
-  **before** the turn so a crash can resume it. The key includes the actor kind: a role
-  migrated between platforms never resumes the old platform's native session.
+  subagent of a shared conversation — and that the supervisor holds the claim. The role
+  skill loads once, when the session opens: Claude receives a `/<role>` message with a
+  `Flags:` line; Codex receives the skill entry as `developerInstructions` on
+  `thread/start`/`thread/resume`; Pi receives it as an appended system-prompt file. The
+  handoff is then a thin task envelope (brief, plan, board moves, no role layer). On an
+  inline kind the envelope carries the `Flags:` line itself, because no opener message
+  exists to carry it. The session's cwd is the card's admitted worktree, and its id is
+  persisted **before** the turn so a crash can resume it. The key includes the actor kind: a
+  role migrated between platforms never resumes the old platform's native session. A changed
+  installed skill reopens the lane the same way on every kind.
 - **Reviewer sessions** — keyed `(actor_kind, reviewer:<dir>)`, opened only when a review
-  card is queued and evicted by the same idle clock. On Claude the session opens with
-  `/reviewer` and a `Flags:` line; Codex/Pi keep the batch prompt without an opener until
-  their host opener is validated. The batch prompt is the reviewer variant: no question
-  ladder, verdict-only. Each review card is one subagent with its **full** review handoff — a
+  card is queued and evicted by the same idle clock. The reviewer skill loads at open by the
+  kind's mechanism (`/reviewer` on Claude, developer instructions on Codex, an appended
+  system prompt on Pi). The batch prompt is the reviewer variant: no question ladder,
+  verdict-only. Each review card is one subagent with its **full** review handoff — a
   subagent does not inherit the parent's loaded skill, so the review protocol and the role
   path must be in that first context. The allowlist is real for Claude and Pi; Codex and
   other adapters have no per-role tool surface, and the pool logs a one-time warning for
@@ -483,10 +486,10 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   route or escalation row is queued. It is the one LLM decision lane: it assigns unowned
   cards, answers worker questions with a `note` + `todo`, or escalates E1–E5 with
   `awaiting --awaiting-reason --question`. It never claims, never implements and never
-  moves a card to `done`. It runs on the supervisor's primary kind. On Claude it opens with
-  `/meerkat-director` + a `Flags:` line, so the skill is loaded once and each later turn
-  carries only the rows; Codex/Pi keep the decision-policy path in each prompt until their
-  host opener is validated.
+  moves a card to `done`. It runs on the supervisor's primary kind. The director skill loads
+  once, at session open (`/meerkat-director` on Claude, developer instructions on Codex, an
+  appended system prompt on Pi), so each later turn carries only the rows. A missing skill
+  falls back to naming the decision-policy path in every prompt.
 - **Resume and replay** — a same-round re-dispatch (a human answer to an `awaiting`
   question, same-round rework, crash recovery) opens the stored session id **in the same
   actor kind** and sends a **resume** prompt carrying the answer or reason, in the same
@@ -989,9 +992,12 @@ reported. Installation location is the only configuration — there is no platfo
 key.
 
 **Two layers.** The supervisor routes by the card's assignee and puts the role's title,
-responsibilities and boundaries into the handoff (layer 1); the worker session reads the
-role's `SKILL.md` (and `self_check`) from the **selected kind's** skill directory before
-acting (layer 2). The reviewer's prompt is inlined at the start of the review handoff,
+responsibilities and boundaries into the full handoff (layer 1); a resident worker session
+has the role's `SKILL.md` loaded from the **selected kind's** skill directory at session
+open, and reads `self_check` from the same directory before acting (layer 2). The inline
+forms are verified against codex-cli 0.161.0 (`developerInstructions`) and pi 1.4.0
+(`--append-system-prompt` reads an existing file path). The reviewer's
+prompt is inlined at the start of the review handoff,
 bounded at 2,400 characters. Every role is told to write and maintain
 `.meerkat/<identifier>/plan.md`, which the reviewer reads.
 
@@ -1062,9 +1068,10 @@ role: it receives no card, has no assignee, and never appears in the scan set.
 | `triage` | an accepted producer carries `meta.stage_handoff=required` and has no decision for its delivery round | read the current report's `## Handoff`; create/seed/link the proposed cards, or record `handoff_declined_round`; record `handoff_consumed_round` on the producer |
 | escalation | the director cannot decide | `issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."` |
 
-On Claude the session opens with `/meerkat-director` + a `Flags:` line; the host loads the
-skill, whose `references/decision-policy.md` names the decision file for the matter. Codex/Pi
-keep the decision-policy path in each prompt until their host opener is validated. The
+The skill loads once, at session open: Claude opens with `/meerkat-director` + a `Flags:`
+line, Codex receives it as `developerInstructions`, and Pi appends it to the system prompt.
+The skill's `references/decision-policy.md` names the decision file for the matter. A
+deployment whose skill is missing falls back to the decision-policy path in each prompt. The
 per-decision prompt is generated by the supervisor: the routing table built from each role's
 `shapes`, the rows and the exact `taskctl` commands. The director never claims a card, never
 implements, never writes `decision`/`confirm`/`change` kinds, never uses `--as-human`, and

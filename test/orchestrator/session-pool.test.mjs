@@ -72,10 +72,11 @@ function fakePool({ behavior, idPrefix = "sid" } = {}) {
   let next = 1;
   return {
     opened,
-    openSession({ cwd, sessionId, role }) {
+    openSession({ cwd, sessionId, role, skillPath }) {
       const handle = {
         cwd,
         role,
+        skillPath: skillPath ?? null,
         sessionId: sessionId ?? `${idPrefix}-${next++}`,
         closed: false,
         prompts: [],
@@ -391,7 +392,7 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("keeps the full handoff and no opener on an unvalidated kind", async (t) => {
+  it("loads an inline host's skill at session open, with no opener message", async (t) => {
     const f = fixture(t);
     installRole(f.dir, { id: "jobs", agent: "Jobs", lanes: ["worker"], kind: "codex" });
     const fake = fakePool();
@@ -406,8 +407,54 @@ describe("session pool", () => {
     await pool.tick();
     const worker = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
     assert.ok(worker, "the codex worker session opens");
-    assert.doesNotMatch(worker.prompts[0], /^\/jobs/, "no opener on an unvalidated host");
-    assert.match(worker.prompts[0], /work T-1/, "the full handoff carries the card");
+    assert.equal(worker.skillPath, join(f.dir, ".codex", "skills", "jobs", "SKILL.md"));
+    assert.equal(worker.prompts.length, 1, "the skill is loaded at open, not by an extra turn");
+    assert.doesNotMatch(worker.prompts[0], /^\/jobs/, "no opener message on an inline host");
+    assert.match(worker.prompts[0], /work T-1/);
+    await pool.stop();
+  });
+
+  it("does not reopen an inline lane merely because its skill was loaded at open", async (t) => {
+    const f = fixture(t);
+    installRole(f.dir, { id: "reviewer", agent: "Reviewer", lanes: ["reviewer"], kind: "codex" });
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "R-1", f.app, "reviewer"),
+      agent: "Reviewer",
+      actor_kind: "codex",
+    });
+    await pool.tick();
+    enqueueCard(join(f.dir), {
+      ...card(f, "R-2", f.app, "reviewer"),
+      agent: "Reviewer",
+      actor_kind: "codex",
+    });
+    await pool.tick();
+    const reviewers = fake.opened.filter(
+      (handle) => handle.role === "reviewer" && handle.cwd === f.app,
+    );
+    assert.equal(reviewers.length, 1, "the lane keeps its session while the skill is unchanged");
+    assert.equal(reviewers[0].prompts.length, 2, "two batches, no opener turn");
+
+    writeFileSync(
+      join(f.dir, ".codex", "skills", "reviewer", "SKILL.md"),
+      "---\nname: reviewer\ndescription: changed\n---\n\n# Reviewer changed\n",
+      "utf8",
+    );
+    enqueueCard(join(f.dir), {
+      ...card(f, "R-3", f.app, "reviewer"),
+      agent: "Reviewer",
+      actor_kind: "codex",
+    });
+    await pool.tick();
+    const reopened = fake.opened.filter(
+      (handle) => handle.role === "reviewer" && handle.cwd === f.app,
+    );
+    assert.equal(reopened.length, 2, "a changed skill reopens the inline lane");
+    assert.equal(reopened[1].skillPath, join(f.dir, ".codex", "skills", "reviewer", "SKILL.md"));
     await pool.stop();
   });
 
@@ -527,6 +574,43 @@ describe("session pool", () => {
     assert.match(director.prompts[1], /--kind note/);
     assert.match(director.prompts[1], /issue move T-1 todo/);
     assert.doesNotMatch(director.prompts[1], /Decision policy:/);
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+  });
+
+  it("loads the director skill inline when the kind has no message opener", async (t) => {
+    const f = fixture(t);
+    const skillDir = join(f.dir, ".codex", "skills", "meerkat-director");
+    mkdirSync(join(skillDir, "references"), { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: meerkat-director\n---\n", "utf8");
+    writeFileSync(join(skillDir, "references", "decision-policy.md"), "# policy\n", "utf8");
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f, { actorKind: "codex", maxConcurrency: 0 }),
+      kindPool: fake,
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "question:T-1:q-1",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      question_id: "q-1",
+      question: "Which option?",
+      asked_at: "2026-01-01T00:00:00Z",
+    });
+    await pool.routeQuestionsNow();
+
+    const director = fake.opened.find((handle) => handle.role === "director" && handle.cwd === f.app);
+    assert.ok(director, "the codex director lane opens");
+    assert.equal(director.skillPath, join(skillDir, "SKILL.md"));
+    assert.equal(director.prompts.length, 1, "the skill is loaded at open, not by an extra turn");
+    assert.doesNotMatch(director.prompts[0], /^\/meerkat-director/);
+    assert.match(director.prompts[0], /You are the director/);
+    assert.doesNotMatch(director.prompts[0], /Decision policy:/);
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
 
     const ledgerFile = join(f.dir, "subagents.state.json");

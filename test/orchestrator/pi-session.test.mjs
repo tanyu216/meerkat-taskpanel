@@ -142,6 +142,23 @@ describe("pi session args", () => {
     assert.ok(args.includes("--approve"));
     assert.equal(args.includes("--tools"), false);
   });
+
+  it("appends the role skill file and its directory to the system prompt", (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-pi-skill-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const skill = join(dir, "SKILL.md");
+    writeFileSync(skill, "---\nname: jobs\n---\n\nYou are Jobs.\n", "utf8");
+    const args = sessionArgs({ opts: {}, role: "worker", skillPath: skill });
+    const appended = args.flatMap((arg, index) =>
+      arg === "--append-system-prompt" ? [args[index + 1]] : [],
+    );
+    assert.equal(appended.length, 2, "the directory note and the skill file");
+    assert.match(appended[0], new RegExp(`Skill directory: ${dir.replace(/[/\\]/g, "\\$&")}`));
+    assert.equal(appended[1], skill);
+
+    const missing = sessionArgs({ opts: {}, role: "worker", skillPath: join(dir, "missing.md") });
+    assert.equal(missing.includes("--append-system-prompt"), false);
+  });
 });
 
 describe("pi subagent dependency", () => {

@@ -815,10 +815,15 @@ export function buildReviewHandoff(input) {
 
 /**
  * The lean task envelope for a resident role session. The role skill was loaded
- * by the session opener; this message carries only the card and the exact board
- * moves, never the role layer or the skill paths.
+ * when the session opened — by a `/<skill>` message or inside the adapter — so
+ * this message carries only the card and the exact board moves, never the role
+ * layer or the skill paths.
  *
- * @param {{card?: object, decisionPolicyPath?: string|null}} input
+ * `flags` is the attribution line for a lane whose skill was loaded inline: it
+ * did not receive an opener message, so this envelope is the only place the
+ * agent can learn the flags every write needs.
+ *
+ * @param {{card?: object, decisionPolicyPath?: string|null, flags?: string|null}} input
  * @returns {string}
  */
 export function buildResidentEnvelope(input) {
@@ -828,6 +833,7 @@ export function buildResidentEnvelope(input) {
   const project = card.project ?? "<project id>";
   const brief = cardFileRel(ref);
   const processDir = cardDirRel(ref);
+  const flags = typeof input.flags === "string" && input.flags !== "" ? input.flags : null;
   const roundsPath =
     typeof input.decisionPolicyPath === "string" && input.decisionPolicyPath !== ""
       ? input.decisionPolicyPath.replace(/decision-policy\.md$/, "rounds.md")
@@ -838,7 +844,9 @@ export function buildResidentEnvelope(input) {
     `Brief: ${brief} — the supervisor exported it; read it first, it is authoritative for this card.`,
     `Never edit ${brief}: the supervisor overwrites it from the board. Put your process files under ${processDir}/.`,
     `Plan: ${processDir}/plan.md (write and maintain it before you start).`,
-    "Carry the session opener's Flags on every write.",
+    ...(flags === null
+      ? ["Carry the session opener's Flags on every write."]
+      : [`Flags: ${flags}`, "Carry these Flags on every write."]),
     "",
     "Board: heartbeat this card at least every 10 minutes; deliver at in_review with a report;",
     "never move it to done. The loop already claimed it; do not claim it again.",

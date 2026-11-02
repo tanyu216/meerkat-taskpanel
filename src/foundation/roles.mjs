@@ -52,9 +52,35 @@ export const ROLE_KINDS = Object.freeze(["claude", "codex", "pi"]);
  */
 export const SKILL_OPENER_KINDS = Object.freeze(["claude"]);
 
+/**
+ * The kinds whose adapter loads the role skill into the session when it opens
+ * (Codex `developerInstructions`, Pi `--append-system-prompt`), so no message
+ * command is sent.
+ */
+export const INLINE_SKILL_KINDS = Object.freeze(["codex", "pi"]);
+
 /** @param {unknown} kind */
 export function supportsSkillOpener(kind) {
   return SKILL_OPENER_KINDS.includes(String(kind ?? ""));
+}
+
+/** @param {unknown} kind */
+export function supportsInlineSkill(kind) {
+  return INLINE_SKILL_KINDS.includes(String(kind ?? ""));
+}
+
+/**
+ * How a resident lane loads its role skill: a `/<skill>` message (`opener`), at
+ * session open inside the adapter (`inline`), or not at all (`none`).
+ *
+ * @param {unknown} kind
+ * @returns {"opener"|"inline"|"none"}
+ */
+export function skillLoadMode(kind) {
+  const value = String(kind ?? "");
+  if (SKILL_OPENER_KINDS.includes(value)) return "opener";
+  if (INLINE_SKILL_KINDS.includes(value)) return "inline";
+  return "none";
 }
 
 const ROLES_LIMITS = Object.freeze({

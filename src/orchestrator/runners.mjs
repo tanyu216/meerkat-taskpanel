@@ -29,7 +29,7 @@ import {
   selectReviewerRole,
   selectRole,
   selectWorkerRole,
-  supportsSkillOpener,
+  skillLoadMode,
 } from "../foundation/roles.mjs";
 import { resolveRolePlatform } from "../foundation/role-platforms.mjs";
 import { DEFERRAL_HOLD } from "./deferrals.mjs";
@@ -1133,19 +1133,31 @@ export function wakeHandoff(opts, config, action, card, resident = false) {
   const target = resolveRoleTarget(opts, config, action, card);
   const { isReview, roleSet, role, actorKind, files } = target;
   const decisionPolicyPath = roleSet?.decisionPolicy?.path ?? null;
-  // The resident pool injects the role skill at session open; a worker's task
-  // envelope carries the card and the board moves, not the role layer or the
-  // skill paths. A review card keeps the full handoff: the reviewer lane spawns
-  // a subagent per card, and that subagent does not inherit the parent's loaded
-  // skill — its handoff is its first context. A deployment without a role keeps
-  // the full handoff too: there is no skill to load.
-  const lean =
-    resident === true && role !== null && !isReview && supportsSkillOpener(actorKind);
+  // The resident pool loads the role skill when the session opens — a
+  // `/<skill>` message on a host that expands it, or inside the adapter
+  // (`developerInstructions`, `--append-system-prompt`). A worker's task
+  // envelope then carries the card and the board moves, not the role layer or
+  // the skill paths. A review card keeps the full handoff: the reviewer lane
+  // spawns a subagent per card, and that subagent does not inherit the parent's
+  // loaded skill — its handoff is its first context. A deployment without a
+  // role, or with a role whose SKILL.md is missing, keeps the full handoff too:
+  // there is no skill to load.
+  const skillMode = skillLoadMode(actorKind);
+  const skillReady =
+    skillMode === "opener" ||
+    (skillMode === "inline" && typeof files?.workflow === "string");
+  const lean = resident === true && role !== null && !isReview && skillReady;
 
   const handoff = lean
     ? buildResidentEnvelope({
         card: card ?? { identifier: action.identifier },
         decisionPolicyPath,
+        // An inline lane got no opener message, so the envelope carries the
+        // attribution the agent must put on every board write.
+        flags:
+          skillMode === "inline"
+            ? `${action.agent ? `--agent ${action.agent} ` : ""}--actor-kind=${actorKind}`
+            : null,
       })
     : isReview
       ? buildReviewHandoff({

@@ -304,6 +304,31 @@ describe("wakeHandoff selects the card's role", () => {
     assert.doesNotMatch(result.handoff, /taskctl export/);
   });
 
+  it("carries the Flags in a thin envelope when the adapter loads the skill inline", () => {
+    const codexJobs = { ...JOBS, platform: "codex", installedOn: ["codex"] };
+    const result = wakeHandoff(
+      {
+        home: "/tmp",
+        actorKind: "codex",
+        roles: {
+          ...roleSet,
+          roles: [codexJobs],
+          byAgent: new Map([["jobs", codexJobs]]),
+        },
+      },
+      {},
+      { identifier: "T-1", agent: "Jobs" },
+      { identifier: "T-1", title: "Wire it", project: "P1" },
+      true,
+    );
+    assert.match(result.handoff, /Brief: \.meerkat\/T-1\/card\.md/);
+    assert.match(result.handoff, /Flags: --agent Jobs --actor-kind=codex/);
+    assert.match(result.handoff, /Carry these Flags/);
+    assert.doesNotMatch(result.handoff, /session opener's Flags/);
+    assert.doesNotMatch(result.handoff, /## Team role/);
+    assert.doesNotMatch(result.handoff, /## Role skill/);
+  });
+
   it("names the director skill's rounds.md when no policy path is installed", () => {
     const result = wakeHandoff(
       { ...opts, roles: { ...roleSet, decisionPolicy: { path: null } } },

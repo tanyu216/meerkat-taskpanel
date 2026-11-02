@@ -16,7 +16,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { extractAgentIds } from "../ledger.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
@@ -55,13 +55,25 @@ export function piSubagentsInstalled(home = homedir()) {
  * sandbox of its own, so the process always carries the user's OS permissions.
  * The role allowlist is applied through `--tools` when full access is off.
  *
- * @param {{opts?: object, role?: string, sessionId?: string|null}} input
+ * @param {{opts?: object, role?: string, sessionId?: string|null, skillPath?: string|null}} input
  * @returns {string[]}
  */
 export function sessionArgs(input = {}) {
   const args = ["--mode", "rpc"];
   if (input.sessionId !== undefined && input.sessionId !== null && input.sessionId !== "") {
     args.push("--session-id", String(input.sessionId));
+  }
+  // Pi has no `/<skill>` message expansion. `--append-system-prompt` reads a
+  // file when the argument is an existing path, so the role entry becomes part
+  // of the system prompt for the life of the process.
+  if (typeof input.skillPath === "string" && input.skillPath !== "" && existsSync(input.skillPath)) {
+    args.push(
+      "--append-system-prompt",
+      `Skill directory: ${dirname(input.skillPath)}.\n` +
+        "Relative paths in this skill resolve against that directory.",
+      "--append-system-prompt",
+      input.skillPath,
+    );
   }
   if (input.opts?.allowAllTools === true) {
     args.push("--approve");
@@ -347,6 +359,7 @@ export function createPiPool(input) {
         cwd: options.cwd,
         sessionId: options.sessionId ?? null,
         role: options.role ?? "worker",
+        skillPath: options.skillPath ?? null,
         bin: input.bin,
         env: input.env,
         log: input.log,
