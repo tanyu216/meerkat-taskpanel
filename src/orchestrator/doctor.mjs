@@ -30,8 +30,9 @@
 import { closeSync, existsSync, fstatSync, openSync, readSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
+import { ROUTE_UNASSIGNED_MS } from "../foundation/constants.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
-import { QUEUE_FILES } from "../foundation/loop-state.mjs";
+import { QUEUE_FILES, SESSION_DEFAULTS } from "../foundation/loop-state.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import { PATROL_STALE_MS, planPatrol } from "../foundation/scheduling.mjs";
@@ -44,7 +45,7 @@ import {
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { parseArgs } from "./options.mjs";
 import { readCards } from "./queue.mjs";
-import { readPeerMarker } from "./runtime.mjs";
+import { isProcessAlive, readPeerMarker } from "./runtime.mjs";
 import { readWorkerSessions } from "./worker-session.mjs";
 import { probeSupervisor } from "./status.mjs";
 import {
@@ -701,12 +702,156 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     board.error === null
       ? boardLoopFindings(tasks, byId, nowMs)
       : { rework_rounds: [], review_reopens: [] };
+  // Cards the loop has already parked (a loop breaker wrote `meta.loop_hold_code`
+  // and moved them to `blocked`). They are current state, not history: a human
+  // must decide, and the row says which cycle and E-code asked.
+  const heldCards =
+    board.error === null
+      ? tasks
+          .filter((task) => {
+            if (String(task?.status ?? "") !== "blocked") return false;
+            const code = task?.meta?.loop_hold_code;
+            return typeof code === "string" && code !== "";
+          })
+          .map((task) => {
+            const since = task.status_changed_at ?? task.updated_at ?? task.created_at ?? null;
+            const at = since === null ? Number.NaN : Date.parse(since);
+            return {
+              ref: task.identifier,
+              title: task.title ?? null,
+              code: task.meta.loop_hold_code,
+              e_code: task.meta.loop_hold_e_code ?? null,
+              round: task.delivery_round ?? null,
+              since: since ?? null,
+              age_ms: Number.isFinite(at) ? Math.max(0, nowMs - at) : null,
+            };
+          })
+          .sort(byAgeDesc)
+      : [];
+  // The other three dead ends, each read from the source that owns it: the
+  // board for a human wait and an unowned card, the queue for a director row
+  // that exhausted its bound, and the session records for a live agent child
+  // whose row outlived the turn bound.
+  const awaitingCards =
+    board.error === null
+      ? tasks
+          .filter((task) => String(task?.status ?? "") === "awaiting")
+          .map((task) => {
+            const since = task.status_changed_at ?? task.created_at ?? null;
+            const at = Date.parse(String(since ?? ""));
+            return {
+              ref: task.identifier,
+              title: task.title ?? null,
+              reason: task.awaiting_reason ?? null,
+              since: since ?? null,
+              age_ms: Number.isFinite(at) ? Math.max(0, nowMs - at) : null,
+            };
+          })
+          .sort(byAgeDesc)
+      : [];
+
+  const questionLane = (() => {
+    const byCard = new Map();
+    for (const row of queueRows) {
+      if (String(row?.queue_kind ?? "") !== "question") continue;
+      if (String(row?.status ?? "") !== "failed") continue;
+      const ref = String(row?.card ?? "");
+      if (ref === "") continue;
+      const entry =
+        byCard.get(ref) ?? {
+          ref,
+          lane: row?.route === true ? "route" : "question",
+          rows: 0,
+          attempts: 0,
+          last_error: null,
+          last_at: null,
+        };
+      entry.rows += 1;
+      entry.attempts += Math.max(1, Number(row?.attempts ?? 0));
+      if (entry.last_error === null) entry.last_error = row?.lastError ?? null;
+      const at = String(row?.completedAt ?? row?.enqueuedAt ?? "");
+      if (entry.last_at === null || (at !== "" && at > entry.last_at)) entry.last_at = at || null;
+      byCard.set(ref, entry);
+    }
+    return [...byCard.values()];
+  })();
+
+  const unownedCards =
+    board.error === null
+      ? tasks
+          .filter(
+            (task) =>
+              String(task?.status ?? "") === "todo" &&
+              String(task?.kind ?? "") !== "epic" &&
+              (() => {
+                const assignee = task?.assignee ?? {};
+                const id = typeof assignee.id === "string" ? assignee.id : "";
+                const name = typeof assignee.display_name === "string" ? assignee.display_name : "";
+                return id === "" && name === "";
+              })(),
+          )
+          .map((task) => {
+            const since = task.updated_at ?? task.created_at ?? null;
+            const at = Date.parse(String(since ?? ""));
+            return {
+              ref: task.identifier,
+              title: task.title ?? null,
+              since: since ?? null,
+              age_ms: Number.isFinite(at) ? Math.max(0, nowMs - at) : null,
+            };
+          })
+          .filter((card) => card.age_ms !== null && card.age_ms >= ROUTE_UNASSIGNED_MS)
+          .sort(byAgeDesc)
+      : [];
+
+  const orphanedRows = (() => {
+    const read = readWorkerSessions(stateDir);
+    const turnMs =
+      Number(opts.sessionTurnTimeoutMs) > 0
+        ? Number(opts.sessionTurnTimeoutMs)
+        : SESSION_DEFAULTS.turnTimeoutMs;
+    const bound = 2 * turnMs;
+    const alive = typeof deps.isAlive === "function" ? deps.isAlive : isProcessAlive;
+    const owners = new Map();
+    for (const [key, record] of Object.entries(read.workers ?? {})) {
+      const pid = Number(record?.pid);
+      if (!Number.isInteger(pid) || pid <= 0 || !alive(pid)) continue;
+      const since = Date.parse(
+        String(record?.startedAt ?? record?.lastUsedAt ?? record?.lastHeartbeatAt ?? ""),
+      );
+      const age = Number.isFinite(since) ? Math.max(0, nowMs - since) : null;
+      const owner = { key, pid, age };
+      if (typeof record?.cwd === "string" && record.cwd !== "") owners.set(record.cwd, owner);
+      owners.set(key, owner);
+    }
+    const rows = [];
+    for (const row of queueRows) {
+      if (String(row?.status ?? "") !== "processing") continue;
+      if (String(row?.role ?? "worker") === "reviewer") continue;
+      const owner = owners.get(String(row?.target_dir ?? row?.claimedBy ?? ""));
+      if (owner === undefined || owner.age === null || owner.age < bound) continue;
+      rows.push({
+        ref: row?.card ?? null,
+        owner: owner.key,
+        pid: owner.pid,
+        age_ms: owner.age,
+        bound_ms: bound,
+      });
+    }
+    return rows.sort(byAgeDesc);
+  })();
+
   const looping = {
     rework_rounds: boardLoop.rework_rounds,
     review_reopens: boardLoop.review_reopens,
     dispatch_retries: queueLoopFindings(queueRows, boardByRef),
     subagent_failures: ledgerLoopFindings(ledgerRows, boardByRef),
     deferrals: deferralLoopFindings(deferralRows, boardByRef, nowMs),
+    held: heldCards,
+    awaiting: awaitingCards,
+    question_lane: questionLane,
+    unowned: unownedCards,
+    orphaned: orphanedRows,
     total: 0,
   };
   // One card, one count: a card may be named by more than one list, and the
@@ -718,8 +863,15 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     looping.dispatch_retries,
     looping.subagent_failures,
     looping.deferrals,
+    looping.held,
+    looping.awaiting,
+    looping.question_lane,
+    looping.unowned,
+    looping.orphaned,
   ]) {
-    for (const card of list) loopRefs.add(card.ref);
+    for (const card of list) {
+      if (typeof card.ref === "string" && card.ref !== "") loopRefs.add(card.ref);
+    }
   }
   looping.total = loopRefs.size;
 
@@ -1025,6 +1177,11 @@ function humanReport(report) {
     ["dispatch", report.looping.dispatch_retries.length],
     ["subagent", report.looping.subagent_failures.length],
     ["deferred", report.looping.deferrals.length],
+    ["held", report.looping.held.length],
+    ["awaiting", report.looping.awaiting.length],
+    ["question-lane", report.looping.question_lane.length],
+    ["unowned", report.looping.unowned.length],
+    ["orphaned", report.looping.orphaned.length],
   ];
   const loopListed = loopKinds.reduce((sum, [, count]) => sum + count, 0);
   lines.push(
@@ -1066,6 +1223,37 @@ function humanReport(report) {
     lines.push(
       `  ${card.ref}  deferred  ${card.count}x  ${card.code ?? "?"}` +
         `  ${card.status ?? "?"}${detail === "" ? "" : `  ${detail}`}  ${card.title ?? ""}`.trimEnd(),
+    );
+  }
+  for (const card of report.looping.held) {
+    const age = card.age_ms === null ? "?" : minutes(card.age_ms);
+    lines.push(
+      `  ${card.ref}  held  ${card.code}${card.e_code === null ? "" : ` ${card.e_code}`}` +
+        `  round ${card.round ?? "?"}  blocked ${age}  ${card.title ?? ""}`.trimEnd(),
+    );
+  }
+  for (const card of report.looping.awaiting) {
+    const age = card.age_ms === null ? "?" : minutes(card.age_ms);
+    lines.push(
+      `  ${card.ref}  awaiting  ${card.reason ?? "?"}  ${age}  ${card.title ?? ""}`.trimEnd(),
+    );
+  }
+  for (const card of report.looping.question_lane) {
+    const detail = oneLine(card.last_error);
+    lines.push(
+      `  ${card.ref}  ${card.lane}-lane  ${card.rows} row(s), ${card.attempts} attempt(s)` +
+        `${detail === "" ? "" : `  ${detail}`}  ${card.title ?? ""}`.trimEnd(),
+    );
+  }
+  for (const card of report.looping.unowned) {
+    const age = card.age_ms === null ? "?" : minutes(card.age_ms);
+    lines.push(`  ${card.ref}  unowned  ${age}  ${card.title ?? ""}`.trimEnd());
+  }
+  for (const card of report.looping.orphaned) {
+    const age = card.age_ms === null ? "?" : minutes(card.age_ms);
+    lines.push(
+      `  ${card.ref ?? "?"}  orphaned  pid ${card.pid}  ${age} > ${minutes(card.bound_ms)}` +
+        `  ${card.title ?? ""}`.trimEnd(),
     );
   }
   if (report.workspaces.stale.length > 0) {

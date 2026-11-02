@@ -32,6 +32,7 @@
 
 import {
   DEFAULT_REVIEW_AGING_MS,
+  DEFAULT_REWORK_MAX_ROUNDS,
   DEFAULT_WORKFLOW_MAX_ACTIONS,
   LOOP_ACCEPTOR,
   LOOP_AUTO_ACCEPTOR,
@@ -102,6 +103,127 @@ export const DEFAULT_REVIEW_REOPEN_MAX = 2;
 
 /** Statuses a card never leaves. */
 const TERMINAL_STATUSES = new Set(["done", "canceled"]);
+
+/**
+ * The question a hold asks the human.
+ *
+ * It names the cycle and the evidence, and it says what clears it. The loop
+ * posts it as a `question` comment in the same transaction as the move.
+ */
+function holdQuestionFor({ ref, code, round, base }) {
+  const rounds = `round ${round}`;
+  if (code === "review_reopen_exhausted") {
+    return [
+      `${ref} has been re-dispatched for review more times than the loop allows (${rounds}).`,
+      "",
+      "The verdict cannot be applied, so another automatic review would produce the same result.",
+      "Decide: repair the review setup, accept the card as it stands, or cancel it — then move",
+      "this card back to `todo` (or `in_progress`). The loop will not dispatch it again by itself.",
+    ].join("\n");
+  }
+  return [
+    `${ref} has come back for rework more times than the loop allows (held at ${rounds}, ` +
+      `started from round ${base}).`,
+    "",
+    "The last reviews still rejected the delivery, so another automatic round would repeat",
+    "the same cycle. Decide: narrow the acceptance baseline, take the work as it stands, or",
+    "cancel the card — then move it back to `todo` (or `in_progress`). The loop will not",
+    "dispatch it again by itself.",
+  ].join("\n");
+}
+
+/**
+ * The loop breakers: a card that keeps coming back is parked, not re-reviewed.
+ *
+ * The board owns the decision because the counters (`delivery_round`,
+ * `meta.review_retry`) are board fields; the loop executes the hold. Only
+ * `todo` and `in_review` cards are held — an `in_progress` card belongs to a
+ * live worker, and yanking it would race that turn. `blocked` is the only
+ * status reachable from every active state (`awaiting` is `in_progress`-only),
+ * and it is already covered by the SLA's `blocked_clarification` row.
+ *
+ * Idempotent by construction: `meta.loop_hold_round` is the round the card was
+ * held at, so it also suppresses a second hold at the same round. A human who
+ * moves the card back runs a fresh epoch of the same bound, never an unbounded
+ * one.
+ *
+ * @param {{tasks?: object[], config?: object, boardTruncated?: boolean}} [input]
+ * @returns {{actions: object[]}}
+ */
+export function planLoopBreakers(input = {}) {
+  const tasks = Array.isArray(input.tasks) ? input.tasks : [];
+  if (input.boardTruncated === true) return { actions: [] };
+  const nowIso =
+    typeof input.now === "string" && input.now !== "" ? input.now : new Date().toISOString();
+  const config = input.config ?? {};
+  const maxRounds =
+    Number.isFinite(config.reworkMaxRounds) && config.reworkMaxRounds > 0
+      ? config.reworkMaxRounds
+      : DEFAULT_REWORK_MAX_ROUNDS;
+  const byId = reviewIdentityIndex(tasks);
+
+  const openReview = new Map();
+  for (const task of tasks) {
+    if (!isReviewCard(task, byId)) continue;
+    if (TERMINAL_STATUSES.has(task.status)) continue;
+    const original = reviewIdentityOf(task).originalRef;
+    if (typeof original !== "string" || original === "") continue;
+    openReview.set(original, {
+      ref: task.identifier ?? null,
+      status: task.status ?? null,
+    });
+  }
+
+  const actions = [];
+  for (const task of tasks) {
+    if (isReviewCard(task, byId)) continue;
+    if (TERMINAL_STATUSES.has(task.status)) continue;
+    if (task.status !== "todo" && task.status !== "in_review") continue;
+    const ref = String(task.identifier ?? "");
+    if (ref === "") continue;
+    const meta = task.meta ?? {};
+    const round = intOrNull(task.delivery_round) ?? 0;
+    const base = intOrNull(meta.loop_hold_round) ?? 0;
+    // A marker at this exact round means the card was already held here. The
+    // card still being `todo`/`in_review` is either the crash window between the
+    // meta write and the move (retry only the move) or a **human release**.
+    // `status_changed_at` after `loop_hold_at` distinguishes them: a move the
+    // human made is newer than the hold, and must not be undone by re-parking.
+    const heldAt = Date.parse(String(meta.loop_hold_at ?? ""));
+    const changedAt = Date.parse(String(task.status_changed_at ?? ""));
+    const releasedByHuman =
+      Number.isFinite(heldAt) && Number.isFinite(changedAt) && changedAt > heldAt;
+    const alreadyHeld =
+      typeof meta.loop_hold_code === "string" &&
+      meta.loop_hold_code !== "" &&
+      String(meta.loop_hold_round ?? "") === String(round) &&
+      !releasedByHuman;
+    if (!alreadyHeld && round - base < maxRounds) continue;
+    const review = openReview.get(ref) ?? null;
+    const code = alreadyHeld ? String(meta.loop_hold_code) : "rework_cap";
+    actions.push({
+      type: "hold_card",
+      original_ref: ref,
+      review_ref: review?.ref ?? null,
+      review_status: review?.status ?? null,
+      round,
+      code,
+      e_code: "E2",
+      blocked_reason: "decision",
+      held: alreadyHeld,
+      close_review: review !== null,
+      marker: {
+        loop_hold_code: code,
+        loop_hold_round: String(round),
+        loop_hold_retry_base: String(base),
+        loop_hold_e_code: "E2",
+        loop_hold_at: nowIso,
+      },
+      question: holdQuestionFor({ ref, code, round, base }),
+    });
+  }
+  return { actions };
+}
 
 /** Reconcile reasons that are normal, in-flight states rather than findings. */
 const QUIET_RECONCILE_REASONS = new Set([
@@ -835,6 +957,50 @@ export function planReviewOutcomes(input = {}) {
       retries: retry,
       dedupKey: alertKey("review_retries_exhausted", reviewRef, reason),
     });
+    // An exhausted review is a dead end unless the original is parked too. The
+    // card is not yanked while a worker holds it; a later pass will see it in
+    // `todo`/`in_review` and hold it then.
+    const original = byRef.get(originalRef);
+    const originalRound = intOrNull(original?.delivery_round) ?? round;
+    const holdAt = Date.parse(String(original?.meta?.loop_hold_at ?? ""));
+    const movedAt = Date.parse(String(original?.status_changed_at ?? ""));
+    const sameRound = String(original?.meta?.loop_hold_round ?? "") === String(originalRound);
+    const alreadyHeld =
+      typeof original?.meta?.loop_hold_code === "string" &&
+      original.meta.loop_hold_code !== "" &&
+      sameRound &&
+      !(Number.isFinite(holdAt) && Number.isFinite(movedAt) && movedAt > holdAt);
+    if (
+      original !== undefined &&
+      (original.status === "todo" || original.status === "in_review") &&
+      !(sameRound && !alreadyHeld)
+    ) {
+      actions.push({
+        type: "hold_card",
+        original_ref: originalRef,
+        review_ref: reviewRef,
+        review_status: review.status ?? null,
+        round: originalRound,
+        code: "review_reopen_exhausted",
+        e_code: "E2",
+        blocked_reason: "decision",
+        held: alreadyHeld,
+        close_review: true,
+        marker: {
+          loop_hold_code: "review_reopen_exhausted",
+          loop_hold_round: String(originalRound),
+          loop_hold_retry_base: String(retry),
+          loop_hold_e_code: "E2",
+          loop_hold_at: Number.isFinite(now) ? new Date(now).toISOString() : new Date().toISOString(),
+        },
+        question: holdQuestionFor({
+          ref: originalRef,
+          code: "review_reopen_exhausted",
+          round: originalRound,
+          base: retry,
+        }),
+      });
+    }
   };
 
   for (const review of tasks) {
@@ -1459,16 +1625,27 @@ export function planWorkflowTick(input = {}) {
     now: input.now ?? null,
   });
 
+  const breakers = planLoopBreakers({
+    tasks,
+    config,
+    boardTruncated: input.boardTruncated === true,
+    now: input.now ?? null,
+  });
+  const heldRefs = new Set(breakers.actions.map((action) => action.original_ref));
+
   const autoAcceptPlan = planAutoAccept({
     tasks,
     reportsByRef: input.reportsByRef ?? {},
     config,
     boardTruncated: input.boardTruncated === true,
-    skipRefs: new Set(outcomes.actions.map((action) => action.originalRef)),
+    skipRefs: new Set([
+      ...outcomes.actions.map((action) => action.originalRef),
+      ...heldRefs,
+    ]),
   });
 
   const handled = new Set(
-    [...outcomes.actions, ...autoAcceptPlan.actions].map((action) => action.originalRef),
+    [...heldRefs, ...[...outcomes.actions, ...autoAcceptPlan.actions].map((action) => action.originalRef)],
   );
   const dispatch = planReviewDispatch({
     tasks,
@@ -1480,8 +1657,14 @@ export function planWorkflowTick(input = {}) {
   const cap = Number.isFinite(config.maxActions) && config.maxActions >= 0
     ? config.maxActions
     : DEFAULT_WORKFLOW_MAX_ACTIONS;
-  const planned = [...outcomes.actions, ...autoAcceptPlan.actions, ...dispatch.actions];
-  const actions = planned.slice(0, cap);
+  // Holds come first: a backlog of reviews must never starve the stop signal.
+  const planned = [
+    ...breakers.actions,
+    ...outcomes.actions,
+    ...autoAcceptPlan.actions,
+    ...dispatch.actions,
+  ];
+  const actions = planned.slice(0, Math.max(cap, breakers.actions.length));
   const dropped = planned.length - actions.length;
 
   const alerts = [
@@ -1519,6 +1702,7 @@ export function planWorkflowTick(input = {}) {
       held: actions.filter((action) => action.held === true).length,
       rejected: count("reject_task") + count("reject_task_finish") + count("reject_epic"),
       dispatched: count("create_review"),
+      held: count("hold_card"),
       autoAccepted: count("auto_accept"),
       closed: count("close_review") + count("cancel_review") + count("record_verdict"),
       actions: actions.length,

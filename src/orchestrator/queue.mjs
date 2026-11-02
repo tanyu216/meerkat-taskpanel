@@ -20,6 +20,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
+
 // The names live in the shared foundation module now; re-exported because this
 // module was their first home and the loop tests import them from here.
 export { QUEUE_FILES } from "../foundation/loop-state.mjs";
@@ -27,6 +29,13 @@ import { QUEUE_FILES } from "../foundation/loop-state.mjs";
 
 /** A card handoff's terminal failure threshold. */
 const DEFAULT_CARD_MAX_ATTEMPTS = 3;
+/**
+ * How many crash recoveries one worker row survives before it is stopped.
+ *
+ * A crash is not a delivery attempt, so it has its own counter; three in a row
+ * means the same session cannot be restored and replaying it is the loop.
+ */
+const DEFAULT_RECOVERY_MAX = 3;
 
 /**
  * Rows that are history, not work. A row's id is deterministic (`<card>-<role>`),
@@ -117,6 +126,39 @@ function writeCards(stateDir, value) {
   return writeJsonFile(queuePaths(stateDir).cards, value);
 }
 
+/** The interprocess lock beside the cards queue. */
+function cardsLockPath(stateDir) {
+  return `${queuePaths(stateDir).cards}.lock`;
+}
+
+/**
+ * Run one queue mutation under the interprocess lock.
+ *
+ * The tick process enqueues while the pool process claims, requeues and
+ * completes; the file write is atomic but the read-modify-write is not. A lock
+ * that cannot be taken returns the caller's own "could not mutate" shape, so a
+ * tick retries next pass instead of writing a lost update. Re-entry nests (see
+ * `file-lock.mjs`), so a mutator may call another mutator.
+ *
+ * @template T
+ * @param {string} stateDir
+ * @param {T} busy the caller's failure value (its `error` is filled in)
+ * @param {() => T} fn
+ * @returns {T}
+ */
+function locked(stateDir, busy, fn) {
+  const path = cardsLockPath(stateDir);
+  const lock = acquireFileLock(path);
+  if (!lock.acquired) {
+    return { ...busy, error: `cards.queue is locked by another loop process (${lock.reason ?? "busy"})` };
+  }
+  try {
+    return fn();
+  } finally {
+    releaseFileLock(path, lock.token);
+  }
+}
+
 /** A card's dedupe key: one handoff per (card, role). */
 function cardKey(card) {
   // The question lane is keyed by the question, not by the card: one card may
@@ -161,6 +203,12 @@ function normaliseRow(row, id = undefined) {
     claimedBy: null,
     claimedByPid: null,
     attempts: Number(row.attempts ?? 0),
+    // Crash recoveries are not delivery attempts: a crash is not a failure, but
+    // a card that crashes three times in a row is a loop and is stopped.
+    recoveries: Number(row.recoveries ?? 0),
+    // The attempt bound's key. A question row keys on its question id, a route
+    // row on the row id; `question_id` is kept as the legacy spelling.
+    dispatch_key: row.dispatch_key ?? row.question_id ?? null,
     lastError: null,
   };
 }
@@ -176,6 +224,14 @@ function normaliseRow(row, id = undefined) {
  * @returns {{ok: boolean, coalesced: boolean, replaced?: boolean, superseded?: boolean, error: string|null}}
  */
 export function enqueueCard(stateDir, card) {
+  return locked(
+    stateDir,
+    { ok: false, coalesced: false, replaced: false, superseded: false, error: null },
+    () => enqueueCardUnlocked(stateDir, card),
+  );
+}
+
+function enqueueCardUnlocked(stateDir, card) {
   const read = readCards(stateDir);
   if (read.error !== null) return { ok: false, coalesced: false, error: read.error };
   const value = read.value;
@@ -224,6 +280,12 @@ export function enqueueCard(stateDir, card) {
  * @returns {{ok: boolean, cards: object[], error: string|null}}
  */
 export function reownCards(stateDir, ids, options = {}) {
+  return locked(stateDir, { ok: false, cards: [], error: null }, () =>
+    reownCardsUnlocked(stateDir, ids, options),
+  );
+}
+
+function reownCardsUnlocked(stateDir, ids, options = {}) {
   const wanted = new Set((ids ?? []).map(String));
   const read = readCards(stateDir);
   if (read.error !== null) return { ok: false, cards: [], error: read.error };
@@ -246,34 +308,64 @@ export function reownCards(stateDir, ids, options = {}) {
 }
 
 /**
- * Return processing rows to pending **without** counting an attempt. Worker
- * recovery uses this: a crash is not a delivery failure, and the next tick
- * resumes the stored session.
+ * Return processing rows to pending **without** counting a delivery attempt.
+ * Worker recovery uses this: a crash is not a failure, and the next tick
+ * resumes the stored session. Crashes have their own counter — after
+ * `maxRecoveries` (3) the row is failed and returned in `failedIds`, so a card
+ * that crashes every time cannot replay forever.
  *
  * @param {string} stateDir
  * @param {string[]} ids
- * @param {{error?: string|null}} [options]
- * @returns {{ok: boolean, resumed: number, error: string|null}}
+ * @param {{error?: string|null, maxRecoveries?: number}} [options]
+ * @returns {{ok: boolean, resumed: number, failed: number, failedIds: string[], error: string|null}}
  */
 export function resumeCards(stateDir, ids, options = {}) {
+  return locked(stateDir, { ok: false, resumed: 0, failed: 0, failedIds: [], error: null }, () =>
+    resumeCardsUnlocked(stateDir, ids, options),
+  );
+}
+
+function resumeCardsUnlocked(stateDir, ids, options = {}) {
   const wanted = new Set((ids ?? []).map(String));
+  const maxRecoveries = Number(options.maxRecoveries ?? DEFAULT_RECOVERY_MAX);
   const read = readCards(stateDir);
-  if (read.error !== null) return { ok: false, resumed: 0, error: read.error };
+  if (read.error !== null) return { ok: false, resumed: 0, failed: 0, failedIds: [], error: read.error };
   const value = read.value;
   let resumed = 0;
+  let failed = 0;
+  const failedIds = [];
   for (const entry of value.cards) {
     if (!wanted.has(String(entry.id))) continue;
     if (entry.status !== "processing") continue;
-    entry.status = "pending";
+    const recoveries = Number(entry.recoveries ?? 0) + 1;
+    entry.recoveries = recoveries;
     entry.claimedAt = null;
     entry.claimedBy = null;
     entry.claimedByPid = null;
     entry.lastError = options.error ?? null;
-    resumed += 1;
+    if (recoveries >= maxRecoveries) {
+      // A crash is not a delivery failure, but a card that crashes this many
+      // times is a loop: stop replaying it and let the caller hold the card.
+      entry.status = "failed";
+      entry.lastError = `worker session recovery exhausted after ${recoveries} tries`;
+      failed += 1;
+      failedIds.push(String(entry.id));
+    } else {
+      entry.status = "pending";
+      resumed += 1;
+    }
   }
-  if (resumed === 0) return { ok: true, resumed: 0, error: null };
+  if (resumed === 0 && failed === 0) {
+    return { ok: true, resumed: 0, failed: 0, failedIds: [], error: null };
+  }
   const written = writeCards(stateDir, value);
-  return { ok: written.ok, resumed: written.ok ? resumed : 0, error: written.error };
+  return {
+    ok: written.ok,
+    resumed: written.ok ? resumed : 0,
+    failed: written.ok ? failed : 0,
+    failedIds: written.ok ? failedIds : [],
+    error: written.error,
+  };
 }
 
 /**
@@ -289,6 +381,12 @@ export function resumeCards(stateDir, ids, options = {}) {
  * @returns {{ok: boolean, cards: object[], error: string|null}}
  */
 export function claimCards(stateDir, options = {}) {
+  return locked(stateDir, { ok: false, cards: [], error: null }, () =>
+    claimCardsUnlocked(stateDir, options),
+  );
+}
+
+function claimCardsUnlocked(stateDir, options = {}) {
   const read = readCards(stateDir);
   if (read.error !== null) return { ok: false, cards: [], error: read.error };
   const value = read.value;
@@ -327,12 +425,29 @@ export function claimCards(stateDir, options = {}) {
  * @returns {number}
  */
 export function questionDispatches(stateDir, questionId) {
+  return rowDispatches(stateDir, questionId);
+}
+
+/**
+ * How many director turns one dispatch key has used, in any status.
+ *
+ * The director lane has two row kinds — a worker's `question` and an unowned
+ * card's `route` — and both need the same per-key attempt bound. The key is
+ * `dispatch_key`; the older `question_id` spelling is still read so a queue
+ * written by an earlier release does not restart its count.
+ *
+ * @param {string} stateDir
+ * @param {string} key
+ * @returns {number}
+ */
+export function rowDispatches(stateDir, key) {
   const read = readCards(stateDir);
   if (read.error !== null) return 0;
   let used = 0;
   for (const card of read.value.cards) {
     if (String(card.queue_kind ?? "") !== "question") continue;
-    if (String(card.question_id ?? "") !== String(questionId ?? "")) continue;
+    const rowKey = String(card.dispatch_key ?? card.question_id ?? "");
+    if (rowKey !== String(key ?? "")) continue;
     used += Math.max(1, Number(card.attempts ?? 0));
   }
   return used;
@@ -349,6 +464,12 @@ export function questionDispatches(stateDir, questionId) {
  * @returns {{ok: boolean, retired: number, error: string|null}}
  */
 export function retireLegacyDispatched(stateDir) {
+  return locked(stateDir, { ok: false, retired: 0, error: null }, () =>
+    retireLegacyDispatchedUnlocked(stateDir),
+  );
+}
+
+function retireLegacyDispatchedUnlocked(stateDir) {
   const read = readCards(stateDir);
   if (read.error !== null) return { ok: false, retired: 0, error: read.error };
   const value = read.value;
@@ -375,6 +496,12 @@ export function retireLegacyDispatched(stateDir) {
  * @param {{status?: "done"|"failed", error?: string|null}} [options]
  */
 export function completeCards(stateDir, ids, options = {}) {
+  return locked(stateDir, { ok: false, error: null }, () =>
+    completeCardsUnlocked(stateDir, ids, options),
+  );
+}
+
+function completeCardsUnlocked(stateDir, ids, options = {}) {
   const wanted = new Set(ids.map(String));
   const read = readCards(stateDir);
   if (read.error !== null) return { ok: false, error: read.error };
@@ -402,6 +529,12 @@ const CARD_RETENTION_MS = 24 * 60 * 60 * 1000;
  * @returns {{ok: boolean, dropped: number, error: string|null}}
  */
 export function pruneCards(stateDir, options = {}) {
+  return locked(stateDir, { ok: false, dropped: 0, error: null }, () =>
+    pruneCardsUnlocked(stateDir, options),
+  );
+}
+
+function pruneCardsUnlocked(stateDir, options = {}) {
   const ttlMs = Number(options.ttlMs ?? CARD_RETENTION_MS);
   const now = options.now ?? Date.now();
   const read = readCards(stateDir);
@@ -435,13 +568,20 @@ export function pruneCards(stateDir, options = {}) {
  * @returns {{ok: boolean, requeued: number, failed: number, error: string|null}}
  */
 export function requeueCards(stateDir, ids, options = {}) {
+  return locked(stateDir, { ok: false, requeued: 0, failed: 0, failedIds: [], error: null }, () =>
+    requeueCardsUnlocked(stateDir, ids, options),
+  );
+}
+
+function requeueCardsUnlocked(stateDir, ids, options = {}) {
   const wanted = new Set(ids.map(String));
   const maxAttempts = Number(options.maxAttempts ?? DEFAULT_CARD_MAX_ATTEMPTS);
   const read = readCards(stateDir);
-  if (read.error !== null) return { ok: false, requeued: 0, failed: 0, error: read.error };
+  if (read.error !== null) return { ok: false, requeued: 0, failed: 0, failedIds: [], error: read.error };
   const value = read.value;
   let requeued = 0;
   let failed = 0;
+  const failedIds = [];
   for (const entry of value.cards) {
     if (!wanted.has(String(entry.id))) continue;
     if (isTerminalCard(entry)) continue;
@@ -454,13 +594,14 @@ export function requeueCards(stateDir, ids, options = {}) {
     if (attempts >= maxAttempts) {
       entry.status = "failed";
       failed += 1;
+      failedIds.push(String(entry.id));
     } else {
       entry.status = "pending";
       requeued += 1;
     }
   }
   const written = writeCards(stateDir, value);
-  return { ok: written.ok, requeued, failed, error: written.error };
+  return { ok: written.ok, requeued, failed, failedIds: written.ok ? failedIds : [], error: written.error };
 }
 
 /**
@@ -471,6 +612,40 @@ export function requeueCards(stateDir, ids, options = {}) {
  * @returns {{ok: boolean, recovered: number, failed: number, error: string|null}}
  */
 export function recoverStaleCards(stateDir, options = {}) {
+  return locked(stateDir, { ok: false, recovered: 0, failed: 0, error: null }, () =>
+    recoverStaleCardsUnlocked(stateDir, options),
+  );
+}
+
+/**
+ * Directories whose agent child is still alive.
+ *
+ * A row's `claimedByPid` is the **pool manager** that claimed it. When the pool
+ * is SIGKILLed its pid is gone, but the agent child it spawned can still be
+ * working — and re-queueing that row would put a second worker on the card.
+ * The session record is the durable proof: a live pid for the directory owns
+ * the row, whichever process claimed it.
+ *
+ * @param {string} stateDir
+ * @param {(pid: number) => boolean} isAlive
+ * @returns {Set<string>}
+ */
+function liveOwnerDirs(stateDir, isAlive) {
+  const live = new Set();
+  const read = readJsonFile(queuePaths(stateDir).sessions, null);
+  const projects =
+    read.value?.projects && typeof read.value.projects === "object" ? read.value.projects : {};
+  for (const [key, record] of Object.entries(projects)) {
+    const pid = Number(record?.pid);
+    if (!Number.isInteger(pid) || pid <= 0 || !isAlive(pid)) continue;
+    live.add(String(key));
+    if (typeof record?.cwd === "string" && record.cwd !== "") live.add(record.cwd);
+    if (typeof record?.worktree === "string" && record.worktree !== "") live.add(record.worktree);
+  }
+  return live;
+}
+
+function recoverStaleCardsUnlocked(stateDir, options = {}) {
   const isAlive = options.isAlive ?? (() => true);
   const now = options.now ?? Date.now();
   const maxAgeMs = Number(options.maxAgeMs ?? 2 * 60 * 60 * 1000);
@@ -480,9 +655,14 @@ export function recoverStaleCards(stateDir, options = {}) {
   const read = readCards(stateDir);
   if (read.error !== null) return { ok: false, recovered: 0, failed: 0, error: read.error };
   const value = read.value;
+  const liveDirs = liveOwnerDirs(stateDir, isAlive);
   const stale = [];
   for (const entry of value.cards) {
     if (entry.status !== "processing") continue;
+    // A live agent child still owns the work even when the pool that claimed it
+    // is gone; re-queueing would start a second worker on the same card.
+    const ownerDir = String(entry.target_dir ?? entry.claimedBy ?? "");
+    if (ownerDir !== "" && liveDirs.has(ownerDir)) continue;
     // A worker session with a durable record is recovered by `recoverWorkerSessions`,
     // which resumes the same conversation instead of putting a second worker on the card.
     if (entry.worker_key && isResumableWorker !== null && isResumableWorker(entry)) continue;

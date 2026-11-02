@@ -25,6 +25,56 @@ export const DEFERRAL_LEDGER_VERSION = 1;
 /** Failed admission attempts that make a card "looping" rather than unlucky. */
 export const DEFERRAL_THRESHOLD = 3;
 
+/**
+ * Consecutive card-scoped failures that park the card instead of retrying it.
+ *
+ * The streak is the loop's own evidence; the board status is the hold. Five is
+ * deliberately later than the alert at three: the alert is a human's chance to
+ * fix the cause, and the hold is what happens when nobody did.
+ */
+export const DEFERRAL_HOLD = 5;
+
+/**
+ * The wait after the streak becomes a pattern: 30 s, 1 min, 2 min, … capped at
+ * one hour. A card that cannot be admitted is re-offered by every poll, so the
+ * backoff is what keeps a persistent failure from spinning the scan.
+ *
+ * @param {number} count consecutive failures
+ * @returns {number} milliseconds (0 below the threshold)
+ */
+export function deferralBackoffMs(count) {
+  const n = Number(count ?? 0);
+  if (!(n >= DEFERRAL_THRESHOLD)) return 0;
+  const step = Math.min(n - DEFERRAL_THRESHOLD, 7);
+  return Math.min(60 * 60_000, 30_000 * 2 ** step);
+}
+
+/**
+ * Should this card be skipped this pass?
+ *
+ * `retry_at` is set once a streak reaches the threshold; before that every pass
+ * re-offers the card (a one-off failure must not be punished).
+ *
+ * A card whose board `version` changed since the failure is let through even
+ * while the backoff runs: the human edited it, and the loop owes it one try.
+ *
+ * @param {object|null} entry
+ * @param {number} [nowMs]
+ * @param {number|null} [version] the candidate's current board version
+ * @returns {{blocked: boolean, retryAt: number|null, edited?: boolean}}
+ */
+export function deferralGate(entry, nowMs = Date.now(), version = null) {
+  if (entry === null || typeof entry !== "object") return { blocked: false, retryAt: null };
+  const at = Date.parse(String(entry.retry_at ?? ""));
+  if (!Number.isFinite(at)) return { blocked: false, retryAt: null };
+  const current = Number.isInteger(version) ? version : null;
+  const recorded = Number.isInteger(entry.version) ? entry.version : null;
+  if (current !== null && recorded !== null && current !== recorded) {
+    return { blocked: false, retryAt: at, edited: true };
+  }
+  return { blocked: at > nowMs, retryAt: at };
+}
+
 /** An entry older than this is dropped; a still-failing card re-escalates later. */
 export const DEFERRAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -91,10 +141,14 @@ export function writeDeferralLedger(stateDir, ledger) {
  * gate compares it to `alerted_code`, so it is surfaced even though the streak
  * continues.
  *
+ * A card the human edited between attempts is a new attempt, not a longer
+ * streak: a changed board `version` resets the count to one, which is the
+ * "version change gives one try" rule the loop documents.
+ *
  * @param {string} stateDir
- * @param {{identifier: string, code: string, reason: string, round?: number, now?: string}} input
+ * @param {{identifier: string, code: string, reason: string, round?: number, version?: number|null, now?: string}} input
  */
-export function recordCardDeferral(stateDir, { identifier, code, reason, round, now }) {
+export function recordCardDeferral(stateDir, { identifier, code, reason, round, version, now }) {
   const id = String(identifier ?? "").trim();
   if (id === "") return { ok: false, entry: null, error: "no card identifier" };
   const at = typeof now === "string" && now !== "" ? now : new Date().toISOString();
@@ -102,8 +156,15 @@ export function recordCardDeferral(stateDir, { identifier, code, reason, round, 
   const text = String(reason ?? "").slice(0, DEFERRAL_REASON_MAX);
   const { value, error } = readDeferralLedger(stateDir);
   const previous = value.cards[id];
+  const nextVersion = Number.isInteger(version) ? version : null;
+  const previousVersion = Number.isInteger(previous?.version) ? previous.version : null;
+  const editedSince =
+    previous !== null &&
+    nextVersion !== null &&
+    previousVersion !== null &&
+    nextVersion !== previousVersion;
   const entry =
-    previous !== null && typeof previous === "object"
+    previous !== null && typeof previous === "object" && !editedSince
       ? {
           ...previous,
           round: Number(round ?? previous.round ?? 1),
@@ -111,18 +172,22 @@ export function recordCardDeferral(stateDir, { identifier, code, reason, round, 
           last_at: at,
           code: failureCode,
           reason: text,
+          ...(nextVersion === null ? {} : { version: nextVersion }),
         }
       : {
           identifier: id,
-          round: Number(round ?? 1),
+          round: Number(round ?? previous?.round ?? 1),
           count: 1,
           first_at: at,
           last_at: at,
           code: failureCode,
           reason: text,
+          ...(nextVersion === null ? {} : { version: nextVersion }),
           alerted_code: null,
           alerted_at: null,
         };
+  const backoffMs = deferralBackoffMs(entry.count);
+  entry.retry_at = backoffMs > 0 ? new Date(Date.parse(at) + backoffMs).toISOString() : null;
   value.cards[id] = entry;
   const written = writeDeferralLedger(stateDir, value);
   return { ok: written.ok, entry, error: written.error ?? error ?? null };
@@ -303,12 +368,13 @@ export function createDeferralRecorder({
     return { record: () => null, clear: () => ({ ok: true, cleared: false }) };
   }
   return {
-    record(identifier, { code, reason, round }) {
+    record(identifier, { code, reason, round, version = null }) {
       const written = recordCardDeferral(stateDir, {
         identifier,
         code,
         reason,
         round,
+        version,
         now: now(),
       });
       if (written.ok !== true) {

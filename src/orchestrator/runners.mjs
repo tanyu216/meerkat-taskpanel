@@ -30,6 +30,7 @@ import {
   selectWorkerRole,
 } from "../foundation/roles.mjs";
 import { resolveRolePlatform } from "../foundation/role-platforms.mjs";
+import { DEFERRAL_HOLD } from "./deferrals.mjs";
 import { resolveLoopConfig } from "./options.mjs";
 import * as passes from "./passes.mjs";
 import { poolStatus } from "./session.mjs";
@@ -87,6 +88,8 @@ export async function runPollTick(deps) {
     release = null,
     recordDefer = null,
     clearDeferral = null,
+    moveBack = null,
+    holdCard = null,
     limit = Number.POSITIVE_INFINITY,
     verb = "woke",
     // The claim identity for a card no scan agent owns. The pool lists an
@@ -125,6 +128,34 @@ export async function runPollTick(deps) {
   let failed = 0;
   let deferred = 0;
 
+  /**
+   * Park a card whose streak reached the hold bound.
+   *
+   * The ledger entry is the evidence; the board status is the hold. On success
+   * the streak is cleared — if a human moves the card back, it starts a fresh,
+   * still-bounded run instead of being held on the first failure.
+   */
+  const holdIfExhausted = async (identifier, entry) => {
+    if (entry === null || entry === undefined) return;
+    if (Number(entry.count ?? 0) < DEFERRAL_HOLD) return;
+    if (holdCard === null) return;
+    const held = await holdCard(identifier, {
+      code: entry.code ?? "ADMISSION_FAILED",
+      reason: entry.reason ?? "",
+    });
+    if (held?.ok === true) {
+      clearDeferral?.(identifier);
+      log(
+        `hold ${identifier}: parked after ${entry.count} consecutive ${entry.code ?? "admission"} failures`,
+        { level: "warn" },
+      );
+    } else {
+      log(`hold ${identifier}: could not park the card (${held?.error ?? "unknown error"})`, {
+        level: "error",
+      });
+    }
+  };
+
   for (const action of actions) {
     if (action.type === "skip") {
       log(`skip ${action.identifier} (${action.why})`);
@@ -155,11 +186,13 @@ export async function runPollTick(deps) {
       // Card-scoped failures are the ones that can loop forever. Budget and
       // concurrency backpressure are not counted (`accounted: false`).
       if (admitted?.accounted === true) {
-        recordDefer?.(action.identifier, {
+        const entry = recordDefer?.(action.identifier, {
           code: admitted.code ?? "ADMISSION_FAILED",
           reason: admitted.why ?? "not admitted",
           round: Number(card?.delivery_round ?? 1),
+          version: card?.version ?? null,
         });
+        await holdIfExhausted(action.identifier, entry);
       }
       log(`defer ${action.identifier} (${admitted?.why ?? "not admitted"})`);
       continue;
@@ -186,8 +219,27 @@ export async function runPollTick(deps) {
       // Honest failure: a card we could not dispatch is not "running".
       failed += 1;
       // Give back what this pass reserved (brief watch, a workspace it created):
-      // no subagent will use them. The board claim is left to the stale recovery.
+      // no subagent will use them.
       if (release !== null) await release(action.identifier);
+      // Hand the claim back instead of leaving the card `in_progress` until the
+      // board's 30-minute stale recovery. A dispatch failure must be visible and
+      // retryable, not a silent lock held by a worker that never started.
+      if (moveBack !== null) {
+        const moved = await moveBack(action.identifier, action.agent);
+        if (moved?.ok !== true) {
+          log(
+            `release claim failed for ${action.identifier}: ${moved?.error ?? "unknown error"}`,
+            { level: "warn" },
+          );
+        }
+      }
+      const entry = recordDefer?.(action.identifier, {
+        code: "DISPATCH_FAILED",
+        reason: outcome?.error ?? "dispatch failed",
+        round: Number(card?.delivery_round ?? 1),
+        version: card?.version ?? null,
+      });
+      await holdIfExhausted(action.identifier, entry);
       log(`${verb} failed ${action.identifier}: ${outcome?.error ?? "unknown error"}`, {
         level: "error",
       });
@@ -257,6 +309,7 @@ export function runQuestionTick(deps) {
       agent: question.agent,
       target_dir: resolved.dir,
       question_id: question.question_id,
+      dispatch_key: question.question_id,
       question: question.body,
       asked_at: question.asked_at,
     });
@@ -784,6 +837,37 @@ export async function runWorkflowTick(deps) {
             await step(move, "move", action.review_ref, "in_progress");
           }
           await step(move, "move", action.review_ref, "todo");
+          break;
+        }
+
+        case "hold_card": {
+          // The board decided; the loop parks the card. Meta first (the hold
+          // epoch and the crash marker), then the question, then the move, then
+          // the review close — the same recoverable order as `reject_task`.
+          // `held:true` is a crash recovery: only the move is retried.
+          if (action.held !== true) {
+            await step(setMeta, "setMeta", action.original_ref, action.marker ?? {});
+            await step(comment, "comment", action.original_ref, {
+              kind: "question",
+              body:
+                action.question ??
+                `The loop parked ${action.original_ref} after repeated rounds (${action.code ?? "loop breaker"}).`,
+            });
+          }
+          await step(move, "move", action.original_ref, "blocked", {
+            blockedReason: action.blocked_reason ?? "decision",
+          });
+          if (
+            action.close_review === true &&
+            typeof action.review_ref === "string" &&
+            action.review_ref !== ""
+          ) {
+            await closeReviewCard(
+              { ...action, review_status: action.review_status ?? "in_review" },
+              `Loop closed this review card because ${action.original_ref} was parked ` +
+                `(${action.code ?? "loop breaker"}).`,
+            );
+          }
           break;
         }
 

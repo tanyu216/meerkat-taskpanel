@@ -43,7 +43,7 @@ The seven silences, and the row that watches each:
 
 | The silence | The row |
 |---|---|
-| a card parked on the leader's clarification, decision or hand-back | `blocked_clarification` |
+| a card parked on the leader's clarification, decision or hand-back — including a **loop hold** (`blocked_reason=decision` from the workflow breaker) | `blocked_clarification` |
 | a confirmation request the leader never answered | `confirmation_gate` |
 | a defect with no fix card | `defect_card_creation` |
 | a delivery with no acceptance review card | `acceptance_card_creation` |

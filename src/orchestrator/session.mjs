@@ -18,11 +18,13 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { cardFileRel } from "../foundation/card-brief.mjs";
+import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
 import { loadRoles } from "../foundation/roles.mjs";
 import { buildQuestionPrompt } from "../foundation/scheduling.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
-import { readCardForRedispatch, readQuestionOutcome, readRedispatchContext } from "./runtime.mjs";
+import { readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, runCli } from "./runtime.mjs";
 import {
   appendWorkerTurn,
   buildWorkerDispatchPrompt,
@@ -231,6 +233,7 @@ export function poolStatus(input = {}) {
   const file = opts.sessionState ?? sessionsFile(stateDir);
   const empty = {
     live: false,
+    verdict: null,
     reason: null,
     file,
     poolPid: null,
@@ -260,37 +263,62 @@ export function poolStatus(input = {}) {
   if (poolPid === null || !isAlive(poolPid)) {
     return {
       ...empty,
+      verdict: "gone",
       reason: poolPid === null ? "no pool pid" : `pool pid ${poolPid} is gone`,
       projects,
       workers,
       capabilities,
     };
   }
+  // A live pid is a live pool. The heartbeat and the in-flight tick decide which
+  // *kind* of live it is; neither can turn it into "gone", because a blocked
+  // event loop and a three-hour turn both keep the pid. The verdict calls for
+  // an operator (or the ping watchdog) instead of letting a second pool start.
+  const phase = typeof value.phase === "string" ? value.phase : null;
   const beat = Date.parse(String(value.heartbeatAt ?? ""));
-  if (!Number.isFinite(beat)) {
-    return { ...empty, reason: "no heartbeat", poolPid, projects, workers, capabilities };
-  }
-  const age = now() - beat;
-  if (age > POOL_STALE_MS) {
-    return {
-      ...empty,
-      reason: `heartbeat ${Math.round(age / 1000)}s old`,
-      poolPid,
-      projects,
-      workers,
-      capabilities,
-    };
-  }
-  return {
-    live: true,
-    reason: null,
+  const heartbeatAgeMs = Number.isFinite(beat) ? Math.max(0, now() - beat) : null;
+  const tickStart = Date.parse(String(value.tickStartedAt ?? ""));
+  const tickAgeMs = Number.isFinite(tickStart) ? Math.max(0, now() - tickStart) : null;
+  const turnMs =
+    Number(opts.sessionTurnTimeoutMs) > 0
+      ? Number(opts.sessionTurnTimeoutMs)
+      : SESSION_DEFAULTS.turnTimeoutMs;
+  const base = {
     file,
     poolPid,
     projects,
     workers,
     capabilities,
-    heartbeatAgeMs: Math.max(0, age),
+    phase,
+    heartbeatAgeMs,
+    tickAgeMs,
   };
+  if (phase === "starting") {
+    return { ...base, live: true, verdict: "starting", reason: null };
+  }
+  if (phase === "stopped") {
+    return { ...base, live: true, verdict: "stopped", reason: "the pool is stopping" };
+  }
+  if (tickAgeMs !== null && tickAgeMs > 2 * turnMs) {
+    return {
+      ...base,
+      live: true,
+      verdict: "wedged",
+      reason: `tick in flight for ${Math.round(tickAgeMs / 1000)}s`,
+    };
+  }
+  if (heartbeatAgeMs === null || heartbeatAgeMs > POOL_STALE_MS) {
+    return {
+      ...base,
+      live: true,
+      verdict: "unresponsive",
+      reason:
+        heartbeatAgeMs === null
+          ? "no heartbeat"
+          : `heartbeat ${Math.round(heartbeatAgeMs / 1000)}s old`,
+    };
+  }
+  return { ...base, live: true, verdict: "running", reason: null };
 }
 
 /**
@@ -400,6 +428,9 @@ export function createSessionPool(input = {}) {
   // prove it was released. Null in tests that do not inject a board.
   const questionOutcome =
     typeof input.readQuestionOutcome === "function" ? input.readQuestionOutcome : null;
+  // A route row has the same "prove it" rule: the card must be assigned (or
+  // have left `todo`), not merely have had a turn.
+  const routeOutcome = typeof input.routeOutcome === "function" ? input.routeOutcome : null;
   const stateDir = dirname(String(opts.state));
   // `internal` is the installed supervisor; `external` marks a pool started by a
   // live session (`loop status --take-over`). There is no control turn in either
@@ -434,6 +465,11 @@ export function createSessionPool(input = {}) {
   const injectedKindPool = input.kindPool ?? null;
   const injectedKindPools = input.kindPools instanceof Map ? input.kindPools : new Map();
   let started = false;
+  // The liveness verdict's two inputs. `phase` is the pool's own lifecycle;
+  // `tickStartedAt` is set only while a dispatch tick is in flight, so a turn
+  // that legitimately runs for half an hour is not read as a wedged tick.
+  let phase = "starting";
+  let tickStartedAt = null;
   let warnedReviewerAllowlist = false;
 
   /**
@@ -520,8 +556,12 @@ export function createSessionPool(input = {}) {
       version: 3,
       capabilities: ["question-lane", "worker-sessions"],
       // The pool manager's own pid, not an agent child's: an orphaned agent process
-      // would otherwise keep answering "resident" after its manager died.
-      poolPid: process.pid,
+      // would otherwise keep answering "resident" after its manager died. A
+      // stopping pool publishes no pid, so the next start is not refused by a
+      // process that is only waiting to exit.
+      poolPid: phase === "stopped" ? null : process.pid,
+      phase,
+      tickStartedAt,
       heartbeatAt: nowIso(now),
       // A takeover marker only: `--control=external` still decides whether the
       // pool's timers keep a signalled process alive. It is not a session.
@@ -882,7 +922,20 @@ export function createSessionPool(input = {}) {
         const settled = [];
         const unsettled = [];
         for (const row of claimed.cards) {
-          if (row.route === true || questionOutcome === null) {
+          if (row.route === true) {
+            // A route turn is settled only when the board shows an assignee (or
+            // the card left `todo`). A turn that exits 0 without assigning is
+            // retried, and the exhaustion path parks the card for a human.
+            if (routeOutcome === null) {
+              settled.push(row);
+              continue;
+            }
+            const live = await routeOutcome({ card: row.card, row });
+            if (live?.ok === true && live.settled !== true) unsettled.push(row);
+            else settled.push(row);
+            continue;
+          }
+          if (questionOutcome === null) {
             settled.push(row);
             continue;
           }
@@ -901,6 +954,19 @@ export function createSessionPool(input = {}) {
             error: "director turn did not settle the question",
             retryAt: new Date(now() + QUESTION_RETRY_BACKOFF_MS).toISOString(),
           });
+          // The bound is the end of the automatic path. Parking the card is
+          // what stops a permanently unowned card from being re-offered every
+          // pass with nobody to act on it.
+          for (const row of unsettled) {
+            if (!(retried.failedIds ?? []).includes(String(row.id))) continue;
+            parkCard(
+              row.card,
+              row.route === true
+                ? "the director never assigned this unowned card (routing-table gap)"
+                : "the director never settled the question",
+              "decision",
+            );
+          }
           log(
             `session: director did not settle ${unsettled.map((card) => card.card).join(", ")} — ` +
               (retried.failed > 0 ? "row failed after 2 attempts" : "retry scheduled"),
@@ -1127,6 +1193,20 @@ export function createSessionPool(input = {}) {
       if (lane === "worker-session") {
         const parsed = parseWorkerKey(key);
         if (parsed !== null) await closeOlderWorkerGenerations(parsed.card, parsed.round);
+        // A parked worker session must become runnable again once a human has
+        // cleared the hold. Without this the stored `blocked` flag outlives the
+        // board state and every dispatch throws for ever.
+        const stored = state.projects?.[key];
+        if (stored?.blocked === true && revalidateCard !== null) {
+          const live = await revalidateCard({ card: cards[0].card, row: cards[0] });
+          if (live?.ok === true && (live.status === "todo" || live.status === "in_progress")) {
+            delete state.projects[key];
+            persistState();
+            log(
+              `session: worker ${cards[0].card} was parked; the board cleared the hold — opening a fresh session`,
+            );
+          }
+        }
       }
       let entry;
       try {
@@ -1341,6 +1421,9 @@ export function createSessionPool(input = {}) {
           log(`session: worker ${row.card} is blocked after a failed resume: ${error}`, {
             level: "error",
           });
+          // Stop the 30-minute re-dispatch loop: the card is parked for a human
+          // instead of leaving the claim `in_progress` for the stale recovery.
+          parkCard(row.card, error);
           persistState();
           continue;
         }
@@ -1613,6 +1696,39 @@ export function createSessionPool(input = {}) {
   }
 
   /**
+   * Park a card whose worker session cannot be restored.
+   *
+   * A blocked session record is skipped by recovery and every re-dispatch
+   * throws again, so the claim would sit `in_progress` until the board's stale
+   * recovery — a 30-minute loop. `blocked/resource` is the honest state: the
+   * loop could not run it, and a human must clear the cause and move it back.
+   */
+  function parkCard(ref, reason, blockedReason = "resource") {
+    const card = String(ref ?? "");
+    if (card === "") return;
+    const body = [
+      `The loop could not restore this card's worker session (${reason}).`,
+      "",
+      "It will not be dispatched again automatically. Fix the cause (the agent CLI, the session, the workspace), then move this card back to `todo` or `in_progress`.",
+    ].join("\n");
+    runCli(
+      opts,
+      ORCHESTRATOR_ACTOR_ID,
+      ["comment", "add", card, "--kind", "question", "--body", body],
+      { actorKind: SYSTEM_KIND },
+    );
+    const moved = runCli(
+      opts,
+      ORCHESTRATOR_ACTOR_ID,
+      ["issue", "move", card, "blocked", "--blocked-reason", blockedReason, "--reason", "the loop stopped dispatching this card"],
+      { actorKind: SYSTEM_KIND },
+    );
+    if (moved.ok !== true) {
+      log(`session: could not park ${card}: ${moved.error ?? "unknown error"}`, { level: "warn" });
+    }
+  }
+
+  /**
    * A crash leaves a worker row `processing` and its session record durable.
    * Return the row to pending **without** an attempt so the next tick resumes
    * the same conversation; a replay or a fresh open is never a second worker.
@@ -1627,6 +1743,20 @@ export function createSessionPool(input = {}) {
       if (typeof row.worker_key !== "string" || row.worker_key === "") continue;
       const record = workers[row.worker_key];
       if (record === undefined || record.blocked === true) continue;
+      // The turn may have delivered just before the crash. Resuming it would
+      // re-prompt a card that already left the work state; complete the row
+      // locally instead (the board is the durable record).
+      if (revalidateCard !== null) {
+        const live = await revalidateCard({ card: row.card, row });
+        if (live?.ok === true && live.status !== "todo" && live.status !== "in_progress") {
+          completeCards(stateDir, [row.id], {
+            status: "done",
+            error: `not resumed: card is ${live.status ?? "unknown"}`,
+          });
+          log(`session: ${row.card} is ${live.status ?? "unknown"} — recovered row completed without a resume`);
+          continue;
+        }
+      }
       ids.push(String(row.id));
     }
     if (ids.length === 0) return 0;
@@ -1643,27 +1773,51 @@ export function createSessionPool(input = {}) {
       }
     }
     persistState();
+    if (resumed.failed > 0) {
+      for (const id of resumed.failedIds ?? []) {
+        const row = read.value.cards.find((entry) => String(entry.id) === id);
+        if (row !== undefined) parkCard(row.card, "repeated crash recoveries");
+      }
+      log(
+        `session: ${resumed.failed} worker row(s) stopped after repeated crash recoveries — ` +
+          "the cards are parked for a human",
+        { level: "error" },
+      );
+    }
     log(`session: recovered ${resumed.resumed} worker session(s) for resume`, { level: "debug" });
     return resumed.resumed;
   }
 
+  let lockToken = null;
+
   async function acquireLock() {
     ensureStateDir(stateDir);
-    const existing = readJsonFile(lockFile(stateDir), null);
-    if (existing.value !== null && isAlive(Number(existing.value.pid))) {
-      return { ok: false, holder: existing.value, error: `session pool already running (pid ${existing.value.pid})` };
-    }
-    const written = writeJsonFile(lockFile(stateDir), {
-      version: 1,
-      pid: process.pid,
-      startedAt: nowIso(now),
+    // The same `wx` lock the queue uses: the pool lock is never stolen from a
+    // live pid, so a wedged-but-alive pool is one process, not two. A dead
+    // holder (a crash) is reclaimed without waiting for a timeout.
+    const lock = acquireFileLock(lockFile(stateDir), {
+      retries: 0,
+      stealAlive: false,
+      // Two pools in one process are two owners: the second is refused, not
+      // admitted through the re-entry shortcut.
+      reentrant: false,
     });
-    return { ok: written.ok, holder: null, error: written.error };
+    if (!lock.acquired) {
+      const pid = lock.holder?.pid ?? null;
+      return {
+        ok: false,
+        holder: lock.holder,
+        error: pid === null ? "session pool already running" : `session pool already running (pid ${pid})`,
+      };
+    }
+    lockToken = lock.token;
+    return { ok: true, holder: null };
   }
 
   function releaseLock() {
-    const existing = readJsonFile(lockFile(stateDir), null);
-    if (existing.value?.pid === process.pid) rmSync(lockFile(stateDir), { force: true });
+    if (lockToken === null) return;
+    releaseFileLock(lockFile(stateDir), lockToken);
+    lockToken = null;
   }
 
   return {
@@ -1676,14 +1830,20 @@ export function createSessionPool(input = {}) {
     async start() {
       const lock = await acquireLock();
       if (!lock.ok) return lock;
+      // The startup window is its own verdict: a second pool must not start
+      // beside a pool that is still reattaching its sessions.
+      phase = "starting";
+      persistState();
       started = true;
       await reattachOnStart();
       await recoverWorkerSessions();
+      phase = "running";
       persistState();
       return { ok: true };
     },
     async stop() {
       started = false;
+      phase = "stopped";
       // Every kind's pool is ours to close. An injected pool (tests) is not:
       // its owner decides when it ends.
       for (const pool of kindPools.values()) {
@@ -1700,10 +1860,19 @@ export function createSessionPool(input = {}) {
       return { ok: true };
     },
     async tick(options = {}) {
-      const cardResult = await routeCards(options);
-      await evictIdle();
+      // The in-flight marker is what separates a long tick from a healthy one.
+      // It is written before the first await and cleared in `finally`, so a
+      // thrown pass cannot leave the pool "wedged" forever.
+      tickStartedAt = nowIso(now);
       persistState();
-      return { cards: cardResult };
+      try {
+        const cardResult = await routeCards(options);
+        await evictIdle();
+        return { cards: cardResult };
+      } finally {
+        tickStartedAt = null;
+        persistState();
+      }
     },
     async routeCards(options = {}) {
       return routeCards(options);
@@ -1783,6 +1952,7 @@ export async function runSession(opts, deps = {}) {
     revalidateCard: (input) => readCardForRedispatch(opts, input.card, log),
     readQuestionOutcome: (input) =>
       readQuestionOutcome(opts, input.card, input.questionId, log),
+    routeOutcome: (input) => readRouteOutcome(opts, input.card, log),
   });
   let started;
   try {

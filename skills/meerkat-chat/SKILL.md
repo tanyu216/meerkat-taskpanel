@@ -181,7 +181,7 @@ list is a healthy answer, not a reason to invent one.
 |---|---|---|
 | `stuck_cards` | stale or unreadable heartbeat on a claimed card | name the holder and the age; the loop owns recovery — never heartbeat or steal for it |
 | `blocked_acceptance` | the board refused the close | show the refusal; offer a release only when the human says the blocker is gone |
-| `looping` | rework rounds, review reopens, dispatch retries, failed subagents | explain the loop; the fix is a decision (reject, cut scope, reassign), not a retry |
+| `looping` | rework rounds, review reopens, dispatch retries, failed subagents, and `held` cards the loop already parked | explain the loop; the fix is a decision (reject, cut scope, reassign), not a retry — a held card is released only by an explicit human move |
 | `unlanded` | a `done` card whose lane branch is not in the project's current branch | report it; the fix is a git merge, not a board write |
 | `workers` | blocked, stale or missing-worktree worker records | report; do not restart daemons |
 | `queue` | failed dispatch rows | report; the loop retries within its own budget |

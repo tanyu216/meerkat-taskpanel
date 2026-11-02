@@ -39,6 +39,7 @@ import { exitCodeFor } from "../foundation/transport/errors.mjs";
 import { renderFailure, renderResult } from "./output/index.mjs";
 import { connectBoard, createBoardSession } from "../foundation/transport/session.mjs";
 import { commandUsage, groupUsage, topLevelUsage, versionLine } from "./usage.mjs";
+import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 /** `--json`, in either spelling. Read from the raw argv so it survives a parse failure. */
@@ -317,6 +318,13 @@ if (isEntryPoint(import.meta.url)) {
     process.stderr.write(`${unsupportedNodeMessage(process.versions.node, { bin: "taskctl" })}\n`);
     process.exit(CLI_EXIT.USAGE);
   }
+
+  // One crash boundary for every CLI command, including the loop entries that
+  // run through this dispatch: an escaped rejection leaves a `process_crash`
+  // record instead of a silent non-zero exit. The CLI's own EPIPE listener
+  // below still exits 0 for a reader that stopped early — that is a choice for
+  // a one-shot command, and the guard's swallow is for long-lived entries.
+  installEntryCrashGuard("taskctl");
 
   // Letting the writes drain (below) exposes what `process.exit()` used to hide: a
   // reader that stops early — `… | head`, `… | jq -c 'first'` — closes the pipe, and

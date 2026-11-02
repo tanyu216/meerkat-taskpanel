@@ -27,6 +27,7 @@ import {
   resolveClaimUnassigned,
   resolveContinueEnabled,
   resolveRecoverStale,
+  resolveRecoverWedged,
   resolveIntervalSeconds,
   resolveWorkflowConfig,
 } from "../foundation/scheduling.mjs";
@@ -198,10 +199,12 @@ flag("--max-concurrency", (opts, value) => { opts.maxConcurrency = number("--max
 flag("--claim-unassigned", (opts, value) => { opts.claimUnassigned = value; });
 flag("--assignee-only", (opts) => { opts.claimUnassigned = "no"; }, "switch");
 flag("--recover-stale", (opts, value) => { opts.recoverStale = value; });
+flag("--recover-wedged", (opts, value) => { opts.recoverWedged = value; });
 flag("--workflow", (opts, value) => { opts.workflow = value; });
 flag("--reviewer", (opts, value) => { opts.reviewer = value; });
 flag("--workflow-max-actions", (opts, value) => { opts.workflowMaxActions = value; });
 flag("--review-aging-minutes", (opts, value) => { opts.reviewAgingMinutes = value; });
+flag("--rework-max-rounds", (opts, value) => { opts.reworkMaxRounds = number("--rework-max-rounds", value); });
 flag("--once", (opts) => { opts.once = true; }, "switch");
 flag("--ping-only", (opts) => { opts.pingOnly = true; }, "switch");
 flag("--continue-only", (opts) => { opts.continueOnly = true; }, "switch");
@@ -269,10 +272,12 @@ function defaultOptions(env) {
     maxConcurrency: undefined, // resolved below: flag > env > per-kind config > 8
     claimUnassigned: undefined,
     recoverStale: undefined,
+    recoverWedged: undefined,
     workflow: undefined,
     reviewer: undefined,
     workflowMaxActions: undefined,
     reviewAgingMinutes: undefined,
+    reworkMaxRounds: undefined,
     once: false,
     pingOnly: false,
     continueOnly: false,
@@ -665,12 +670,18 @@ export function resolveLoopConfig(opts, env = process.env) {
     env: env.MEERKAT_TASKPANEL_RECOVER_STALE,
     file: configFile,
   });
+  const recoverWedged = resolveRecoverWedged({
+    flag: opts.recoverWedged,
+    env: env.MEERKAT_TASKPANEL_RECOVER_WEDGED,
+    file: configFile,
+  });
   const workflow = resolveWorkflowConfig({
     flags: {
       workflow: opts.workflow,
       reviewer: opts.reviewer,
       workflowMaxActions: opts.workflowMaxActions,
       reviewAgingMinutes: opts.reviewAgingMinutes,
+      reworkMaxRounds: opts.reworkMaxRounds,
     },
     env,
     file: configFile,
@@ -680,6 +691,7 @@ export function resolveLoopConfig(opts, env = process.env) {
     maxConcurrency: opts.maxConcurrency,
     claimUnassigned,
     recoverStale,
+    recoverWedged,
     patrolLlm: opts.patrolLlm,
     actorKind: opts.actorKind,
     workflow: workflow.workflow,
@@ -687,6 +699,7 @@ export function resolveLoopConfig(opts, env = process.env) {
     reviewerIsWorker,
     maxActions: workflow.maxActions,
     reviewAgingMs: workflow.reviewAgingMs,
+    reworkMaxRounds: workflow.reworkMaxRounds,
   };
   return {
     config,
@@ -792,10 +805,12 @@ Options:
   --claim-unassigned=yes|no Also claim unassigned cards (default: yes).
   --assignee-only           Alias for --claim-unassigned=no.
   --recover-stale=yes|no    Also recover stale in_progress claims (default: yes).
+  --recover-wedged=yes|no   Stop a pool whose tick outlived 2× the turn timeout (default: yes).
   --workflow=yes|no         Run the workflow pass in each tick (default: yes).
   --reviewer <agent>        The independent reviewer. Unset disables review dispatch.
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
+  --rework-max-rounds <n>   Park a card after this many delivery rounds since its last hold (default: 4).
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).
   --notify <cmd>            Run <cmd> with each patrol alert as JSON on stdin.
   --dry-run                 Print intended actions; write nothing, spawn nothing.

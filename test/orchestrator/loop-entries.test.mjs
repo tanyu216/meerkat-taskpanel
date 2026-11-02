@@ -45,8 +45,11 @@ import {
   acquireContinueLock,
   loadContinueLock,
   readCardForRedispatch,
+  readRouteOutcome,
   recordContinuePid,
+  recoverWedgedPool,
   releaseContinueLock,
+  runCli,
   runPingTick,
 } from "../../src/orchestrator/runtime.mjs";
 
@@ -179,6 +182,63 @@ describe("runPingTick", () => {
   });
 });
 
+describe("the pool watchdog", () => {
+  it("stops a wedged pool and nothing else", () => {
+    const kills = [];
+    const kill = (pid, signal) => kills.push([pid, signal]);
+    const log = () => {};
+
+    for (const verdict of ["running", "starting", "unresponsive", "gone"]) {
+      const result = recoverWedgedPool({
+        pool: { live: verdict !== "gone", verdict, poolPid: 4242 },
+        kill,
+        log,
+      });
+      assert.equal(result.killed, false, `${verdict} is not wedged`);
+    }
+
+    const stopped = recoverWedgedPool({
+      pool: { live: true, verdict: "wedged", poolPid: 4242, reason: "tick in flight for 3h" },
+      kill,
+      log,
+    });
+    assert.equal(stopped.killed, true);
+    assert.deepEqual(kills, [[4242, "SIGTERM"]], "the unit restarts the stopped pool");
+  });
+});
+
+describe("the route lane's board check", () => {
+  it("settles only when the card is assigned or has left todo", () => {
+    const opts = { agents: ["alice"] };
+    const run = (fields) => () => ({ ok: true, data: { task: fields } });
+    assert.equal(readRouteOutcome(opts, "T-1", () => {}, run({ status: "todo", assignee: null })).settled, false);
+    assert.equal(
+      readRouteOutcome(opts, "T-1", () => {}, run({ status: "todo", assignee: { display_name: "linus" } })).settled,
+      true,
+    );
+    assert.equal(readRouteOutcome(opts, "T-1", () => {}, run({ status: "in_progress", assignee: null })).settled, true);
+    const failed = readRouteOutcome(opts, "T-1", () => {}, () => ({ ok: false, error: "board down" }));
+    assert.equal(failed.ok, false);
+  });
+});
+
+describe("the taskctl boundary", () => {
+  it("kills a taskctl that never answers instead of wedging the tick", () => {
+    const dir = tempDir("tp-cli-timeout-");
+    const cli = join(dir, "hang-cli.mjs");
+    writeFileSync(cli, "setInterval(() => {}, 1000);\n");
+
+    const started = Date.now();
+    const result = runCli({ cli, cliTimeoutMs: 100 }, "alice", ["issue", "list"], {
+      actorKind: "system",
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.error, /timed out/);
+    assert.ok(Date.now() - started < 5_000, "the bound is the child's, not the test's");
+  });
+});
+
 describe("the continue lock", () => {
   it("is single-flight while its holder is alive", () => {
     const path = join(tempDir("tp-lock-"), "continue.state.json");
@@ -210,6 +270,18 @@ describe("the continue lock", () => {
     assert.equal(loadContinueLock(path).pid, 4242);
     releaseContinueLock(path);
     assert.equal(loadContinueLock(path), null);
+  });
+
+  it("does not release a lock another process now owns", () => {
+    const path = join(tempDir("tp-lock-"), "continue.state.json");
+    writeFileSync(
+      path,
+      JSON.stringify({ version: 1, pid: 4242, token: "new-holder", startedAt: new Date().toISOString() }),
+    );
+    const result = releaseContinueLock(path);
+    assert.equal(result.released, false, "a slow ex-holder must not delete the new holder's lock");
+    assert.equal(result.foreign, true);
+    assert.notEqual(loadContinueLock(path), null);
   });
 });
 
@@ -1670,6 +1742,7 @@ describe("poll deferral accounting", () => {
           code: "WORKSPACE_CREATE_FAILED",
           reason: "WORKSPACE_CREATE_FAILED: x",
           round: 2,
+          version: null,
         },
       },
     ]);

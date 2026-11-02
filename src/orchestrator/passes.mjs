@@ -35,6 +35,7 @@ import {
 import { briefCards, openCardWatch, registerCardWatch, stopCardWatch } from "./card-watch.mjs";
 import {
   createDeferralRecorder,
+  deferralGate,
   pruneDeferrals,
   readDeferralLedger,
   writeDeferralLedger,
@@ -546,6 +547,10 @@ export async function runPollOnce(opts, env = process.env) {
   const { config } = resolveLoopConfig(opts, env);
   const stateDir = dirname(String(opts.state));
   const deferrals = deferralRecorderFor(opts, stateDir, log);
+  // A card whose admission has failed a pattern of times is not re-offered on
+  // every pass: the backoff is the counter's whole purpose.
+  const deferralNow = Date.now();
+  const deferralCards = readDeferralLedger(stateDir).value.cards;
 
   // 0031 — project-level reviewer overrides join the deployment reviewer in the
   // scan/wake set. A failed read falls back to the global reviewer (the board
@@ -640,10 +645,11 @@ export async function runPollOnce(opts, env = process.env) {
           agent: agents[0] ?? "agent",
           target_dir: resolved.dir,
           route: true,
-          // The attempt cap reads `question_id`; a route row has no question,
-          // so its stable row id is the counter's key. Without this the cap is
-          // dead and every poll re-dispatches the same unowned card.
+          // The attempt cap reads the dispatch key; a route row has no
+          // question, so its stable row id is the key. `question_id` stays as
+          // the legacy spelling for a queue written by an earlier release.
           question_id: rowId,
+          dispatch_key: rowId,
           title: row.title,
           updated_at: row.updated_at,
         });
@@ -782,6 +788,7 @@ export async function runPollOnce(opts, env = process.env) {
       const found = (read.data.candidates ?? []).filter((candidate) => {
         const ref = String(candidate.identifier ?? "");
         if (runningCards.has(ref)) return false;
+        if (deferralGate(deferralCards[ref], deferralNow, candidate.version).blocked) return false;
         if (questionsKnown) return !openQuestionRefs.has(ref);
         return String(candidate.status ?? "") !== "in_progress";
       });
@@ -801,6 +808,45 @@ export async function runPollOnce(opts, env = process.env) {
     release: admission.release,
     recordDefer: (identifier, failure) => deferrals.record(identifier, failure),
     clearDeferral: (identifier) => deferrals.clear(identifier),
+    // A claim that cannot be dispatched goes back to the queue instead of
+    // sitting `in_progress` until the board's stale recovery finds it.
+    moveBack: (identifier, agent) => {
+      if (opts.dryRun) return { ok: true, dryRun: true };
+      const moved = runCli(
+        opts,
+        agent,
+        ["issue", "move", identifier, "todo", "--reason", "dispatch failed; the card returned to the queue"],
+        { actorKind: opts.actorKind },
+      );
+      return moved.ok ? { ok: true } : { ok: false, error: moved.error };
+    },
+    // The execution-fault hold: a card the loop cannot advance is parked as a
+    // human-owned decision, never auto-cancelled and never retried forever.
+    holdCard: (identifier, { code, reason }) => {
+      if (opts.dryRun) return { ok: true, dryRun: true };
+      const blockedReason = code === "DISPATCH_FAILED" ? "resource" : "external";
+      const body = [
+        `The loop stopped dispatching this card after repeated \`${code}\` failures.`,
+        "",
+        String(reason ?? "").slice(0, 500),
+        "",
+        "It will not be retried automatically. Fix the cause, then move this card back to `todo` (or `in_progress`).",
+      ].join("\n");
+      const commented = runCli(
+        opts,
+        ORCHESTRATOR_ACTOR_ID,
+        ["comment", "add", identifier, "--kind", "question", "--body", body],
+        { actorKind: SYSTEM_KIND },
+      );
+      if (!commented.ok) log(`hold ${identifier}: comment failed: ${commented.error}`, { level: "warn" });
+      const moved = runCli(
+        opts,
+        ORCHESTRATOR_ACTOR_ID,
+        ["issue", "move", identifier, "blocked", "--blocked-reason", blockedReason, "--reason", "the loop stopped dispatching after repeated failures"],
+        { actorKind: SYSTEM_KIND },
+      );
+      return moved.ok ? { ok: true } : { ok: false, error: moved.error };
+    },
     limit: budget,
     verb: "enqueued",
     now: () => new Date().toISOString(),

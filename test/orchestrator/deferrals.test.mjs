@@ -176,3 +176,74 @@ describe("orchestrator/deferrals — escalation", () => {
     assert.equal(comments, 2);
   });
 });
+
+describe("orchestrator/deferrals — backoff and the hold bound", () => {
+  it("backs off once a streak becomes a pattern, then releases the card", () => {
+    const dir = stateDir();
+    const at = "2026-01-01T00:00:00.000Z";
+    const first = d.recordCardDeferral(dir, {
+      identifier: "T-1",
+      code: "ADMISSION_FAILED",
+      reason: "no project directory",
+      now: at,
+    });
+    assert.equal(first.entry.retry_at, null, "a one-off failure is not punished");
+
+    d.recordCardDeferral(dir, { identifier: "T-1", code: "ADMISSION_FAILED", reason: "x", now: at });
+    const third = d.recordCardDeferral(dir, {
+      identifier: "T-1",
+      code: "ADMISSION_FAILED",
+      reason: "x",
+      now: at,
+    });
+    assert.equal(third.entry.count, 3);
+    assert.ok(third.entry.retry_at, "the pattern starts a backoff");
+    assert.equal(d.deferralGate(third.entry, Date.parse(at)).blocked, true);
+    assert.equal(
+      d.deferralGate(third.entry, Date.parse(third.entry.retry_at) + 1).blocked,
+      false,
+      "the card is re-offered when the backoff expires",
+    );
+  });
+
+  it("caps the backoff at one hour", () => {
+    assert.equal(d.deferralBackoffMs(3), 30_000);
+    assert.equal(d.deferralBackoffMs(4), 60_000);
+    assert.equal(d.deferralBackoffMs(50), 60 * 60_000);
+  });
+
+  it("parks after five consecutive failures, not three", () => {
+    assert.equal(d.DEFERRAL_HOLD, 5);
+    assert.ok(d.DEFERRAL_HOLD > d.DEFERRAL_THRESHOLD, "the alert comes before the hold");
+  });
+});
+
+describe("orchestrator/deferrals — a human edit gives one try", () => {
+  it("resets the streak when the board version changed", () => {
+    const dir = stateDir();
+    const at = "2026-01-01T00:00:00.000Z";
+    let entry;
+    for (let index = 0; index < 3; index += 1) {
+      entry = d.recordCardDeferral(dir, {
+        identifier: "T-1",
+        code: "ADMISSION_FAILED",
+        reason: "no project directory",
+        version: 7,
+        now: at,
+      }).entry;
+    }
+    assert.equal(entry.count, 3);
+    assert.equal(d.deferralGate(entry, Date.parse(at), 7).blocked, true);
+
+    const edited = d.recordCardDeferral(dir, {
+      identifier: "T-1",
+      code: "ADMISSION_FAILED",
+      reason: "no project directory",
+      version: 8,
+      now: at,
+    }).entry;
+    assert.equal(edited.count, 1, "the human's edit starts a fresh, still-bounded run");
+    assert.equal(edited.retry_at, null);
+    assert.equal(d.deferralGate(entry, Date.parse(at), 8).blocked, false, "the backoff yields to the edit");
+  });
+});

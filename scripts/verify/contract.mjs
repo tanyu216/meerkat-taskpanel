@@ -413,9 +413,29 @@ export function collectWire() {
         acceptedBy: "loop-auto",
         held: false,
       },
+      {
+        type: "hold_card",
+        original_ref: "T-4",
+        review_ref: "T-5",
+        review_status: "in_review",
+        round: 4,
+        code: "rework_cap",
+        e_code: "E2",
+        blocked_reason: "decision",
+        held: false,
+        close_review: true,
+        marker: {
+          loop_hold_code: "rework_cap",
+          loop_hold_round: "4",
+          loop_hold_retry_base: "0",
+          loop_hold_e_code: "E2",
+          loop_hold_at: "2026-10-19T10:00:00.000Z",
+        },
+        question: "T-4 came back more times than the loop allows.",
+      },
     ],
     changes: [{ epic: "E-1", action: "close", reason: "all_children_terminal" }],
-    summary: { approved: 1, actions: 2, alerts: 1, autoAccepted: 1 },
+    summary: { approved: 1, actions: 3, alerts: 1, autoAccepted: 1, held: 1 },
   });
   const shapes = {
     activity: activityToWire(PROBE_ACTIVITY),
@@ -444,6 +464,10 @@ export function collectWire() {
   out.push({ shape: "task.reporter", fields: fieldTypes(task.reporter) });
   out.push({ shape: "task.report_waiver", fields: fieldTypes(task.report_waiver) });
   out.push({ shape: "workflow_plan.action", fields: fieldTypes(workflow.actions[0]) });
+  out.push({
+    shape: "workflow_plan.action_hold",
+    fields: fieldTypes(workflow.actions.find((action) => action.type === "hold_card") ?? {}),
+  });
   out.push({
     shape: "workflow_plan.action_auto_accept",
     fields: fieldTypes(

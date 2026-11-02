@@ -25,14 +25,21 @@ import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 import * as passesEntry from "./passes.mjs";
-import { runSession } from "./session.mjs";
+import { poolStatus, runSession } from "./session.mjs";
 import * as subscribeEntry from "./subscribe.mjs";
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./options.mjs";
 import { availableKinds, isKindAvailable } from "./platforms.mjs";
 import { loadRoles } from "../foundation/roles.mjs";
 import { describeRolePlatforms } from "../foundation/role-platforms.mjs";
 import { runContinueOnce } from "./runners.mjs";
-import { createLogger, isProcessAlive, loadRegistry, runPingTick, saveRegistry } from "./runtime.mjs";
+import {
+  createLogger,
+  isProcessAlive,
+  loadRegistry,
+  recoverWedgedPool,
+  runPingTick,
+  saveRegistry,
+} from "./runtime.mjs";
 
 /**
  * One ping pass. A write failure is the only failure this clock can have; the
@@ -42,7 +49,7 @@ import { createLogger, isProcessAlive, loadRegistry, runPingTick, saveRegistry }
  * @param {(line: string) => void} log
  * @returns {number} exit code
  */
-function runPingOnce(opts, log) {
+function runPingOnce(opts, env, log) {
   try {
     if (!opts.dryRun && !existsSync(opts.state)) {
       log("ping: registry missing — nothing to prune");
@@ -55,6 +62,14 @@ function runPingOnce(opts, log) {
       dryRun: opts.dryRun,
       log,
     });
+    // The liveness clock is also the pool's watchdog: a live pid whose tick has
+    // outlived twice the turn timeout is stopped, and the unit restarts it.
+    if (!opts.dryRun) {
+      const { config } = resolveLoopConfig(opts, env);
+      if (config.recoverWedged) {
+        recoverWedgedPool({ pool: poolStatus({ opts, isAlive: isProcessAlive }), log });
+      }
+    }
     return 0;
   } catch (err) {
     log(`ping error: ${err.message}`, { level: "error" });
@@ -79,7 +94,7 @@ async function runDaemon(opts, env, log) {
 
   const ping = () => {
     try {
-      runPingOnce(opts, log);
+      runPingOnce(opts, env, log);
     } catch (err) {
       log(`ping error: ${err.message}`, { level: "error" });
     }
@@ -180,7 +195,7 @@ export async function main(argv, env = process.env, io = {}) {
 
   switch (mode) {
     case "ping":
-      return runPingOnce(opts, log);
+      return runPingOnce(opts, env, log);
     case "continue":
       return runContinueOnce(opts, env);
     case "patrol":

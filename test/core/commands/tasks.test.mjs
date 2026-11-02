@@ -2085,6 +2085,7 @@ describe("commands/tasks — listCandidates (poll read)", () => {
           "status",
           "target",
           "title",
+          "version",
         ],
         "the poll read: the card's fields, its opaque meta, and `reason`",
       );

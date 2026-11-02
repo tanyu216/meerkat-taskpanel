@@ -138,7 +138,7 @@ validates it and stops to ask rather than guessing; `project map` is the only wr
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue meta <ref> --meta <k>=<v>…` | Merge metadata keys into a card, leaving other keys intact. The read-modify-write form with `--if-version` CAS. |
 | `issue deliver <ref> --report-file <file\|-> [--to done] [--no-report --reason "<why>"] [--seg <seg>]` | **Write the report and move, in one transaction.** The default destination is `in_review`; `--to done` is the `off` card's **direct acceptance** (any other `--to`, and a waiver with `--to done`, are usage errors). The two report forms are mutually exclusive. On an **epic** the report is its rollup: it must name every live child by `ref` (`ROLLUP_STALE` otherwise) and is stored with `is_rollup = 1`; `--no-report` is refused for an epic (`ROLLUP_REQUIRED`). |
-| `issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] [--review-aging-ms <n>] [--max-actions <n>] [--board-limit <n>]` | Without `--workflow`: replay the epic rules over every non-terminal container. With it: return the board's workflow plan (see below). `--dry-run` writes nothing. Idempotent. |
+| `issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] [--review-aging-ms <n>] [--rework-max-rounds <n>] [--max-actions <n>] [--board-limit <n>]` | Without `--workflow`: replay the epic rules over every non-terminal container. With it: return the board's workflow plan (see below). `--dry-run` writes nothing. `--rework-max-rounds` bounds the delivery rounds before a loop hold. Idempotent. |
 
 #### `issue create`
 
@@ -537,10 +537,13 @@ records who opened the loop; `--resident <auto|no>` says whether a resident pool
 `--session-turn-timeout` (1200..7199 s), `--session-poll-ms`, `--session-pool-max`,
 `--project-concurrency` and `--project-idle-ms` bound the pool. `--max-concurrency` caps the
 whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) decides the
-claim pool; `--recover-stale <yes|no>` recovers stale in-progress claims. `--workflow
-<yes|no>` applies the board's plan and `--reviewer <agent>` names the independent reviewer;
+claim pool; `--recover-stale <yes|no>` recovers stale in-progress claims, and
+`--recover-wedged <yes|no>` lets the ping clock stop a pool whose dispatch tick outlived
+twice the turn timeout (the service manager restarts it). `--workflow <yes|no>` applies the
+board's plan and `--reviewer <agent>` names the independent reviewer;
 `--workflow-max-actions` and `--review-aging-minutes` bound workflow execution and
-silent-review escalation. `--workspace <worktree|shared>` says where a card runs: its own
+silent-review escalation, and `--rework-max-rounds` sets how many delivery rounds since the
+last hold before the loop parks a card as `blocked`/`decision`. `--workspace <worktree|shared>` says where a card runs: its own
 worktree and lane branch (the default) or the project checkout. `--allow-all-tools` gives
 spawned agents the unrestricted tool set and **requires** a non-empty
 `--allow-all-tools-reason` naming who authorized it.
@@ -758,14 +761,18 @@ cannot be moved directly to `canceled`; cancel it with
 
 ```bash
 taskctl issue reconcile --workflow --reviewer jobs \
-  --review-aging-ms 3600000 --max-actions 20 --board-limit 500 --json
+  --review-aging-ms 3600000 --rework-max-rounds 4 --max-actions 20 --board-limit 500 --json
 ```
 
 `--json` returns `{dry_run, scanned, actions, workflow}`, where `workflow` is
 `{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the snapshot; a
-truncated snapshot still applies outcomes but dispatches nothing. The actions are decisions
-the loop executes, not effects; what each one means, and the fail-safe rules behind them, are
-in [`status-lifecycle.md` §11](status-lifecycle.md#11-the-boards-workflow-decisions).
+truncated snapshot still applies outcomes but dispatches nothing. `--rework-max-rounds`
+bounds the delivery rounds since the last hold before the plan emits a `hold_card` (the card
+is parked as `blocked` with a question; see
+[`../scheduling.md` §Liveness bounds](../../../docs/scheduling.md#liveness-bounds-every-cycle-has-a-stop)).
+The actions are decisions the loop executes, not effects; what each one means, and the
+fail-safe rules behind them, are in
+[`status-lifecycle.md` §11](status-lifecycle.md#11-the-boards-workflow-decisions).
 
 ## `--json`
 

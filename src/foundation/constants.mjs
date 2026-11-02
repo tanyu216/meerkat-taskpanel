@@ -239,8 +239,10 @@ export const LOOP_CONFIG_KEYS = Object.freeze([
   "MEERKAT_TASKPANEL_PROJECT_CONCURRENCY",
   "MEERKAT_TASKPANEL_PROJECT_IDLE_MS",
   "MEERKAT_TASKPANEL_RECOVER_STALE",
+  "MEERKAT_TASKPANEL_RECOVER_WEDGED",
   "MEERKAT_TASKPANEL_REPO",
   "MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES",
+  "MEERKAT_TASKPANEL_REWORK_MAX_ROUNDS",
   "MEERKAT_TASKPANEL_REVIEWER",
   "MEERKAT_TASKPANEL_ROLES_DIR",
   "MEERKAT_TASKPANEL_SESSION_MAX_AGE",
@@ -841,6 +843,34 @@ export const DEFAULT_BOARD_LIMIT = 500;
 
 /** Default cap on writes one workflow pass may perform (board plan and loop). */
 export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
+
+/** How long an unassigned `todo` card waits for the director before it is the
+ * route lane's, and before `loop doctor` reports it as unowned. One number, so
+ * the lane and the inspection agree on the window. */
+export const ROUTE_UNASSIGNED_MS = 30 * 60 * 1000;
+
+/**
+ * How many delivery rounds one card may run before the board parks it.
+ *
+ * Round 1 is the first delivery; every rejection, rework or audited reopen bumps
+ * `delivery_round`. Four means the work came back three times — the same number
+ * `loop doctor` has always reported as looping. The board decides the hold; the
+ * loop only executes it. A human who moves the card back starts a fresh epoch
+ * from the round it was held at.
+ */
+export const DEFAULT_REWORK_MAX_ROUNDS = 4;
+
+/**
+ * How long one `taskctl` child may run before the loop kills and reports it.
+ *
+ * The CLI's own HTTP call is bounded at 30 s (`foundation/transport/http.mjs`),
+ * so this is a second, outer bound: a `taskctl` that hangs before or after the
+ * HTTP call must not wedge the tick, which would hold the continue lock until
+ * its two-hour staleness bound. It is deliberately four times the inner bound —
+ * a slow board is not a hung one. No configuration key: a deployment that needs
+ * a different value is a recorded decision, not a knob.
+ */
+export const DEFAULT_CLI_TIMEOUT_MS = 120_000;
 
 /**
  * How long a review card may sit without a readable verdict before the loop

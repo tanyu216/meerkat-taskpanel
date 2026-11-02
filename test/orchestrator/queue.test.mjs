@@ -20,6 +20,7 @@ import {
   requeueCards,
   pruneCards,
   questionDispatches,
+  rowDispatches,
   retireLegacyDispatched,
 } from "../../src/orchestrator/queue.mjs";
 
@@ -28,6 +29,65 @@ function dirFor(t) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
+
+describe("card queue interprocess lock", () => {
+  it("refuses a mutation while another live process holds the queue lock", (t) => {
+    const dir = dirFor(t);
+    const lockPath = join(dir, "cards.queue.json.lock");
+    writeFileSync(
+      lockPath,
+      JSON.stringify({ version: 1, pid: process.pid, token: "other-process" }),
+    );
+
+    const enqueued = enqueueCard(dir, { card: "T-1", role: "worker" });
+    assert.equal(enqueued.ok, false);
+    assert.match(enqueued.error, /locked by another loop process/);
+
+    const claimed = claimCards(dir, { claimedBy: "/work/app", limit: 1 });
+    assert.equal(claimed.ok, false);
+    assert.deepEqual(claimed.cards, []);
+
+    // The refused caller wrote nothing: the queue is still the empty work list.
+    assert.deepEqual(readCards(dir).value.cards, []);
+  });
+
+  it("takes the lock over once its holder is gone", (t) => {
+    const dir = dirFor(t);
+    const lockPath = join(dir, "cards.queue.json.lock");
+    writeFileSync(lockPath, JSON.stringify({ version: 1, pid: 999_999, token: "dead" }));
+
+    const enqueued = enqueueCard(dir, { card: "T-1", role: "worker" });
+    assert.equal(enqueued.ok, true, "a dead holder is reclaimed, not waited out");
+    assert.equal(readCards(dir).value.cards.length, 1);
+  });
+});
+
+describe("card queue dispatch keys", () => {
+  it("counts a route row by dispatch_key and a legacy row by question_id", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, {
+      id: "route:T-1",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      dispatch_key: "route:T-1",
+    });
+    enqueueCard(dir, {
+      id: "question:T-2:q-1",
+      queue_kind: "question",
+      role: "question",
+      card: "T-2",
+      question_id: "q-1",
+    });
+    assert.equal(rowDispatches(dir, "route:T-1"), 1);
+    assert.equal(rowDispatches(dir, "q-1"), 1, "a row written before dispatch_key still counts");
+    assert.equal(rowDispatches(dir, "route:T-1"), questionDispatches(dir, "route:T-1"));
+
+    requeueCards(dir, ["route:T-1"], { maxAttempts: 5 });
+    requeueCards(dir, ["route:T-1"], { maxAttempts: 5 });
+    assert.equal(rowDispatches(dir, "route:T-1"), 2, "each requeue is another turn");
+  });
+});
 
 describe("card queue retention", () => {
   it("drops a terminal row past its retention and keeps live ones", (t) => {

@@ -1596,6 +1596,9 @@
             "reviewer": {
               "type": "string"
             },
+            "rework_max_rounds": {
+              "type": "integer"
+            },
             "workflow": {
               "type": "boolean"
             }
@@ -1942,6 +1945,23 @@
     },
     {
       "fields": {
+        "blocked_reason": "string",
+        "close_review": "boolean",
+        "code": "string",
+        "e_code": "string",
+        "held": "boolean",
+        "marker": "object",
+        "original_ref": "string",
+        "question": "string",
+        "review_ref": "string",
+        "review_status": "string",
+        "round": "number",
+        "type": "string"
+      },
+      "shape": "workflow_plan.action_hold"
+    },
+    {
+      "fields": {
         "acceptance_mode": "string",
         "assignee_id": "string",
         "close_review": "boolean",
@@ -1979,7 +1999,8 @@
         "actions": "number",
         "alerts": "number",
         "approved": "number",
-        "auto_accepted": "number"
+        "auto_accepted": "number",
+        "held": "number"
       },
       "shape": "workflow_plan.summary"
     }

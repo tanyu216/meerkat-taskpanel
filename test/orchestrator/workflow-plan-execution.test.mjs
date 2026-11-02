@@ -348,6 +348,16 @@ const SCENARIOS = [
       "move:PROJ-0002:todo",
     ],
   },
+  {
+    name: "hold_card (rework cap)",
+    tasks: [card({ delivery_round: 4 })],
+    expectedAction: "hold_card",
+    expectedOrder: [
+      'setMeta:PROJ-0001:{"loop_hold_code":"rework_cap","loop_hold_round":"4","loop_hold_retry_base":"0","loop_hold_e_code":"E2","loop_hold_at":"2026-10-08T00:05:00.000Z"}',
+      "comment:PROJ-0001:question",
+      "move:PROJ-0001:blocked",
+    ],
+  },
 ];
 
 describe("workflow plan → execution", () => {
@@ -608,6 +618,10 @@ describe("workflow plan → execution", () => {
       reopen_review: ["type", "review_status", "review_ref", "original_ref", "round", "retry", "reason"],
       close_review: ["type", "review_status", "review_ref", "original_ref", "round", "reason", "close_review"],
       cancel_review: ["type", "review_status", "review_ref", "original_ref", "reason"],
+      hold_card: [
+        "type", "original_ref", "review_ref", "review_status", "round", "code", "e_code",
+        "blocked_reason", "held", "close_review", "marker", "question",
+      ],
     };
     for (const scenario of SCENARIOS) {
       const plan = planWorkflowTick({

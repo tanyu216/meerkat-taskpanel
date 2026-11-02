@@ -213,8 +213,14 @@ cards that keep going round the same loop, from the snapshot and the rows alread
 or its own round `>= 3`), **dispatch retries** (five handoffs for one card, or two handoffs that
 each exhausted their attempt budget, inside the queue's 24 h retention), **worker and
 subagent failures** (three `failed`/`interrupted`/`stale` ledger rows for one card inside the ledger's
-7-day retention), and **deferred admission** (three consecutive card-scoped admission
-failures in `deferrals.json` — the card is never enqueued, so no queue row can show it). A
+7-day retention), **deferred admission** (three consecutive card-scoped admission
+failures in `deferrals.json` — the card is never enqueued, so no queue row can show it),
+**held** cards (a `blocked` card carrying `meta.loop_hold_code`: the cycle, its E-code, the
+round it was held at and its age — the loop already stopped, so this is the human's queue),
+**awaiting** cards (reason and age), **question-lane** cards (a director row that exhausted
+its two attempts, with the last error and lane), **unowned** `todo` cards past the route
+window, and **orphaned** rows (a processing handoff whose agent child is alive past twice the
+turn timeout — read-only, because re-dispatching under it is exactly what must not happen). A
 card the board snapshot knows is `done`/`canceled` is dropped from the three local halves;
 when the board cannot be read those halves still report, and a truncated board
 read makes the two board-derived lists a lower bound (the board line says `TRUNCATED`).
@@ -250,6 +256,9 @@ is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `1800
 | patrol stale (scans `in_progress` work cards; an epic container is excluded) | 30 min (= `CLAIM_STALE_SAME_MS`) | `src/foundation/scheduling.mjs` |
 | tick interval (the `continue` unit) | 10 min | `src/orchestrator/options.mjs` |
 | queue `recoverStaleCards` | `2 × turn` | `src/orchestrator/session.mjs` |
+| pool `wedged` verdict | `2 × turn` | `src/orchestrator/session.mjs` |
+| `runCli` spawn bound | 120 s (`DEFAULT_CLI_TIMEOUT_MS`) | `src/orchestrator/runtime.mjs` |
+| admission deferral backoff | 30 s → 1 h, from the 3rd failure | `src/orchestrator/deferrals.mjs` |
 | ledger live-row reap | 2 h (`LEDGER_STALE_MS`) | `src/foundation/scheduling.mjs` |
 | pool heartbeat / stale | 15 s / 60 s | `src/orchestrator/session.mjs` |
 | project idle / session max age | 30 min / 24 h | `src/orchestrator/options.mjs` |
@@ -282,6 +291,45 @@ clock remains the fallback when the subscriber is not installed). That delay is 
 floor, not a new clock. The same holds for a worker's own `question`: `comment_added` with
 `kind: "question"` wakes the question lane immediately, and the director's release
 (`in_progress → todo`) wakes the worker's same-round resume.
+
+## Liveness bounds: every cycle has a stop
+
+The clocks above say *when* the passes run. This section says *when they stop*. Every retry
+in the loop has a counter with one home and a defined action at its bound; a card that
+reaches the bound is parked for a human, never cancelled and never silently dropped. The
+policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
+
+| Cycle | Counter (home) | Bound | At the bound |
+|---|---|---|---|
+| Deliver → review → rework | `delivery_round − meta.loop_hold_round` (board) | `--rework-max-rounds` = 4 | `hold_card`: question + `blocked/decision` + close the review |
+| Review verdict unappliable | `meta.review_retry − meta.loop_hold_retry_base` (board) | 2 | `hold_card` on the original + `close_review` |
+| Card handoff turn | queue row `attempts` | 3 | row `failed`; execution hold |
+| Crash recovery | queue row `recoveries` | 3 | row `failed` + card `blocked/resource` |
+| Admission failure | `deferrals.json` `count` | backoff at 3 (30 s→1 h), hold at 5 | `blocked/external` + `Orchestrator` question |
+| Dispatch failure after a claim | `deferrals.json` `DISPATCH_FAILED` | 3 | claim released immediately; `blocked/resource` at the bound |
+| Worker session unrestorable | session record | first failure | row failed, claim released, `blocked/resource` |
+| Question turn | director row dispatches | 2 | left for the human; `question_stale` + doctor |
+| Route turn | route row dispatches | 2 | the card is parked `blocked/decision` (never assigned) |
+| Wedged pool | `sessions.state.json` `tickStartedAt` | `2 × turn timeout` | ping sends SIGTERM; the unit restarts it |
+| Hung `taskctl` | `runCli` | 120 s | the pass fails and releases the tick lock |
+
+**The hold is an epoch, not a latch.** `meta.loop_hold_round` records the round the card was
+held at; the next hold is due only after another full bound. A human who moves the card back
+therefore gets a fresh bounded run — never an unbounded one — and a `held: true` re-emission
+recovers a crash between the marker and the move.
+
+**Why `blocked`, not `awaiting`.** `awaiting` is reachable only from `in_progress`, while a
+looping card is normally `todo` or `in_review`; a two-hop move into `in_progress` would
+fabricate a claim with no owner. `blocked` is legal from every active status and is watched
+by the SLA's `blocked_clarification` row (120/1440 min), so a held card is never invisible.
+The requested E-code rides in the `question` comment and `meta.loop_hold_e_code`.
+
+**The pool has four live verdicts.** A live pid is always `live: true`; `starting`,
+`running`, `unresponsive` (heartbeat stale) and `wedged` (`tickStartedAt` past twice the turn
+timeout) say which kind of live it is. A second pool is refused in every one of them, and
+only `wedged` is stopped by the ping clock — `starting` and `unresponsive` may still recover.
+A row whose agent child is alive is never recovered: `recoverStaleCards` reads the session
+record, so a SIGKILLed pool cannot put a second worker on a card its orphan still holds.
 
 ## Atomic claim = the single dispatch source
 
@@ -531,7 +579,11 @@ Every dependency's failure is named; nothing degrades silently.
 | malformed `role.json` | that role is skipped with a warning; never an exception |
 | tick lock held | the tick is skipped; the event subscriber keeps its early-tick request pending |
 | board unreachable | the pass logs the error and claims nothing |
-| worker crashed | the next tick resumes the session by id, or replays a bounded transcript |
+| worker crashed | the next tick resumes the session by id, or replays a bounded transcript; three failed recoveries park the card |
+| worker session cannot be restored | row failed, claim released, card `blocked/resource` with a question — never a 30-minute re-dispatch loop |
+| dispatch failed after the claim | the claim is handed back to `todo` immediately; at three consecutive failures the card is parked |
+| a card keeps coming back | the board's plan emits `hold_card`; the card is `blocked/decision` with a question, and a human move starts a fresh epoch |
+| resident pool wedged | `loop doctor`/`status` report `wedged`; the ping clock SIGTERMs it (`--recover-wedged=no` opts out) |
 | stale claim | `--recover-stale` offers it; the claim itself is `issue claim` |
 | old roles tree / old `ROLES_DIR` shape | a directory with no `role.json` is reported as deprecated by `/setup-meerkat`; never deleted automatically. A directory of role directories is a valid custom team and replaces discovery |
 
@@ -1182,8 +1234,8 @@ The supervisor now keeps `<state>/deferrals.json`:
   "version": 1,
   "cards": {
     "TP-0009": {
-      "identifier": "TP-0009", "round": 3, "count": 4,
-      "first_at": "…", "last_at": "…",
+      "identifier": "TP-0009", "round": 3, "count": 4, "version": 12,
+      "first_at": "…", "last_at": "…", "retry_at": "…",
       "code": "WORKSPACE_CREATE_FAILED", "reason": "…",
       "alerted_code": "WORKSPACE_CREATE_FAILED", "alerted_at": "…"
     }
@@ -1195,9 +1247,14 @@ Both admission sites record into it — the poll pass and the patrol's LLM turn.
 admission (a claim in the patrol lane; admission itself in poll) removes the entry. At
 `count >= 3` the supervisor writes **one** `Orchestrator` note on the card for that failure code,
 logs at error, and (when `--notify` is configured) pushes the same alert; a new failure code
-earns its own note, and a failed comment is retried on the next deferral. The patrol prunes
-terminal cards and entries older than seven days. There is no auto-block: the card's status
-stays the human's call, and `loop doctor` reports the same card under `looping` until it moves.
+earns its own note, and a failed comment is retried on the next deferral. From the third
+failure the card also backs off — 30 s, then doubling to a one-hour cap (`retry_at`) — so a
+persistent failure stops spinning the scan. At `count >= 5` the loop stops dispatching the
+card and parks it `blocked/external` with a question: the execution hold. The patrol prunes
+terminal cards and entries older than seven days. A card whose board `version` changed since
+the failure (a human edited it) resets the streak to one and is offered immediately — that
+is the one-attempt override. After a hold is cleared by a human move, the entry has already
+been dropped, so the card starts a fresh, still-bounded run.
 
 ## Where the supervisor runs
 

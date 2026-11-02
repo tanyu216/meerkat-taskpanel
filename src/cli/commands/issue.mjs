@@ -927,7 +927,7 @@ export const COMMANDS = [
     summary: "Replay the epic rules and, with --workflow, return the board's workflow plan.",
     usage:
       'issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] ' +
-      "[--review-aging-ms <n>] [--max-actions <n>] [--board-limit <n>]",
+      "[--review-aging-ms <n>] [--rework-max-rounds <n>] [--max-actions <n>] [--board-limit <n>]",
     positionals: [],
     flags: [
       {
@@ -955,6 +955,13 @@ export const COMMANDS = [
         as: "string",
         value: "<n>",
         summary: "Silent-review threshold, in milliseconds.",
+      },
+      {
+        flag: "rework-max-rounds",
+        key: "reworkMaxRounds",
+        as: "string",
+        value: "<n>",
+        summary: "Delivery rounds since the last hold before a card is parked.",
       },
       {
         flag: "max-actions",
@@ -986,6 +993,7 @@ export const COMMANDS = [
         workflow: ctx.flags.workflow === true ? true : undefined,
         reviewer: ctx.flags.reviewer,
         review_aging_ms: integerFlag("--review-aging-ms", ctx.flags.reviewAgingMs),
+        rework_max_rounds: integerFlag("--rework-max-rounds", ctx.flags.reworkMaxRounds),
         max_actions: integerFlag("--max-actions", ctx.flags.maxActions),
         board_limit: integerFlag("--board-limit", ctx.flags.boardLimit),
       });

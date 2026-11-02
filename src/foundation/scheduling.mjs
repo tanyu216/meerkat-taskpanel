@@ -25,6 +25,7 @@ import {
   CLAIM_STALE_SAME_MS,
   DEFAULT_PATROL_SECONDS,
   DEFAULT_REVIEW_AGING_MS,
+  DEFAULT_REWORK_MAX_ROUNDS,
   DEFAULT_WORKFLOW_MAX_ACTIONS,
 } from "./constants.mjs";
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
@@ -145,6 +146,30 @@ export function resolveRecoverStale(input = {}) {
 }
 
 /**
+ * Whether the liveness clock may stop a **wedged** resident pool.
+ *
+ * Only `wedged` qualifies — a live pid whose dispatch tick has outlived twice
+ * the turn timeout. `starting` and `unresponsive` are not stopped: the first is
+ * a legitimate startup and the second is a blocked event loop that may recover.
+ * Stopping it is what lets launchd/systemd restart the pool; the orphaned agent
+ * child is protected from re-dispatch by the queue's owner-liveness check.
+ * Precedence is the usual flag > environment > per-kind config > default **on**.
+ *
+ * @param {{flag?: unknown, env?: unknown, file?: Record<string, string>|null}} [input]
+ * @returns {boolean}
+ */
+export function resolveRecoverWedged(input = {}) {
+  const fromFlag = parseYesNo(input.flag);
+  if (fromFlag !== null) return fromFlag;
+  const fromEnv = parseYesNo(input.env);
+  if (fromEnv !== null) return fromEnv;
+  const file = input.file ?? null;
+  const fromFile = parseYesNo(file === null ? undefined : file.MEERKAT_TASKPANEL_RECOVER_WEDGED);
+  if (fromFile !== null) return fromFile;
+  return true;
+}
+
+/**
  * Whether the scheduler wakes the agent's periodic judgment turn.
  *
  * Precedence is the same as `resolveClaimUnassigned`: **flag > environment >
@@ -259,6 +284,15 @@ export function resolveWorkflowConfig(input = {}) {
         env.MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES,
         file.MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES,
       ) ?? DEFAULT_REVIEW_AGING_MINUTES) * 60_000,
+    // The board's breaker bound, resolved on the loop side so both read one
+    // number: a card is held once `delivery_round` exceeds this many rounds
+    // since its last hold epoch.
+    reworkMaxRounds:
+      firstPositive(
+        flags.reworkMaxRounds,
+        env.MEERKAT_TASKPANEL_REWORK_MAX_ROUNDS,
+        file.MEERKAT_TASKPANEL_REWORK_MAX_ROUNDS,
+      ) ?? DEFAULT_REWORK_MAX_ROUNDS,
   };
 }
 

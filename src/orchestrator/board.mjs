@@ -8,7 +8,7 @@
 
 import { dirname } from "node:path";
 
-import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { ORCHESTRATOR_ACTOR_ID, ROUTE_UNASSIGNED_MS, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { planStrandedTodoAlerts } from "../foundation/scheduling.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
@@ -225,9 +225,6 @@ export function readUnownedTodos(opts, log, run = runCli, now = Date.now) {
   return { ok: true, rows, error: null };
 }
 
-/** A `todo` card with no assignee is the director's after this window. */
-const ROUTE_UNASSIGNED_MS = 30 * 60 * 1000;
-
 /**
  * Read the board — the legacy stale-heartbeat patrol's input. The SLA rows come
  * from `sla list` (the board computes them); this one read is what the older
@@ -429,6 +426,7 @@ export async function runWorkflowPass(opts, config, log) {
   if (opts.dryRun) args.push("--dry-run");
   if (config.reviewer !== null) args.push("--reviewer", config.reviewer);
   args.push("--review-aging-ms", String(config.reviewAgingMs));
+  args.push("--rework-max-rounds", String(config.reworkMaxRounds));
   args.push("--max-actions", String(config.maxActions));
   args.push("--board-limit", String(opts.boardLimit));
 
@@ -501,8 +499,12 @@ export async function runWorkflowPass(opts, config, log) {
       const added = invoke(["relation", "add", epicRef, "--type", "parent", "--target", childRef]);
       return added.ok ? { ok: true } : boardRefusal(added);
     },
-    move: (ref, to) => {
-      const read = invoke(["issue", "move", ref, to]);
+    move: (ref, to, options = {}) => {
+      const args = ["issue", "move", ref, to];
+      if (typeof options.blockedReason === "string" && options.blockedReason !== "") {
+        args.push("--blocked-reason", options.blockedReason);
+      }
+      const read = invoke(args);
       return read.ok ? { ok: true } : boardRefusal(read);
     },
     comment: (ref, { kind, body }) => {

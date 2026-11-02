@@ -731,12 +731,15 @@ describe("planReviewOutcomes", () => {
     assert.deepEqual(result.alerts.map((alert) => alert.type), ["verdict_unreadable"]);
   });
 
-  it("stops reopening at the bound and leaves the card to a human", () => {
+  it("stops reopening at the bound and parks the original for a human", () => {
     const review = reviewCard({
       meta: { review_of: "T-1", flow: "B", review_round: 1, review_retry: "2" },
     });
     const result = outcomes({ tasks: [card(), review], verdicts: {}, config: CONFIG });
-    assert.deepEqual(result.actions, []);
+    assert.deepEqual(result.actions.map((action) => action.type), ["hold_card"]);
+    assert.equal(result.actions[0].code, "review_reopen_exhausted");
+    assert.equal(result.actions[0].blocked_reason, "decision");
+    assert.equal(result.actions[0].close_review, true);
     assert.ok(result.alerts.some((alert) => alert.type === "review_retries_exhausted"));
   });
 
@@ -1567,5 +1570,98 @@ describe("planWorkflowTick — auto-accept ordering", () => {
       now: NOW,
     });
     assert.deepEqual(result.actions.map((action) => action.type), ["auto_accept"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The loop breakers — a card that keeps coming back is parked, not re-reviewed
+// ---------------------------------------------------------------------------
+
+describe("loop breakers", () => {
+  const tick = (tasks, config = {}) =>
+    planWorkflowTick({ tasks, verdicts: {}, reportsByRef: {}, config: { ...CONFIG, ...config } });
+
+  it("parks a card at the rework bound instead of dispatching another review", () => {
+    const result = tick([card({ status: "in_review", delivery_round: 4 })]);
+    assert.equal(result.actions[0].type, "hold_card");
+    const hold = result.actions[0];
+    assert.equal(hold.original_ref, "T-1");
+    assert.equal(hold.code, "rework_cap");
+    assert.equal(hold.e_code, "E2");
+    assert.equal(hold.blocked_reason, "decision");
+    assert.equal(hold.held, false);
+    assert.equal(hold.marker.loop_hold_round, "4");
+    assert.match(hold.question, /more times than the loop allows/);
+    assert.equal(
+      result.actions.some((action) => action.type === "create_review"),
+      false,
+      "a parked card is not dispatched for another review",
+    );
+  });
+
+  it("does not park below the bound, and parks again after a fresh epoch", () => {
+    const below = tick([card({ status: "in_review", delivery_round: 3 })]);
+    assert.deepEqual(below.actions.map((action) => action.type), ["create_review"]);
+
+    // A human moved the card back at round 4: rounds 5–7 are inside the epoch.
+    const epoch = card({ status: "in_review", delivery_round: 6, meta: { loop_hold_round: "4" } });
+    assert.equal(tick([epoch]).actions.some((action) => action.type === "hold_card"), false);
+
+    const next = card({ status: "in_review", delivery_round: 8, meta: { loop_hold_round: "4" } });
+    assert.equal(tick([next]).actions[0].type, "hold_card");
+  });
+
+  it("re-emits an interrupted hold as a retry of the move only", () => {
+    const interrupted = card({
+      status: "in_review",
+      delivery_round: 4,
+      meta: { loop_hold_round: "4", loop_hold_code: "rework_cap" },
+    });
+    const [hold] = tick([interrupted]).actions;
+    assert.equal(hold.type, "hold_card");
+    assert.equal(hold.held, true, "the marker and the question were already written");
+  });
+
+  it("holds nothing when the board read is truncated", () => {
+    const result = planWorkflowTick({
+      tasks: [card({ status: "in_review", delivery_round: 9 })],
+      verdicts: {},
+      reportsByRef: {},
+      config: CONFIG,
+      boardTruncated: true,
+    });
+    assert.equal(result.actions.some((action) => action.type === "hold_card"), false);
+  });
+
+  it("closes the open review it stops dispatching", () => {
+    const review = reviewCard();
+    const result = tick([card({ status: "in_review", delivery_round: 4 }), review]);
+    const hold = result.actions.find((action) => action.type === "hold_card");
+    assert.equal(hold.review_ref, "T-2");
+    assert.equal(hold.close_review, true);
+  });
+});
+
+describe("loop breakers — a human release wins", () => {
+  const tick = (tasks) =>
+    planWorkflowTick({ tasks, verdicts: {}, reportsByRef: {}, config: CONFIG, now: "2026-10-19T10:00:00.000Z" });
+
+  it("does not undo a human move that follows the hold", () => {
+    const released = card({
+      status: "todo",
+      delivery_round: 4,
+      status_changed_at: "2026-10-19T09:59:00.000Z",
+      meta: {
+        loop_hold_code: "rework_cap",
+        loop_hold_round: "4",
+        loop_hold_at: "2026-10-19T09:30:00.000Z",
+      },
+    });
+    const result = tick([released]);
+    assert.deepEqual(
+      result.actions,
+      [],
+      "a marker older than the human's move is spent: the card is free to run again",
+    );
   });
 });

@@ -57,10 +57,12 @@ const POLICY = [
   str("claim-unassigned", "claimUnassigned", "<yes|no>", "Claim from the unassigned pool."),
   bool("assignee-only", "assigneeOnly", "Shorthand for `--claim-unassigned no`."),
   str("recover-stale", "recoverStale", "<yes|no>", "Recover stale in-progress claims."),
+  str("recover-wedged", "recoverWedged", "<yes|no>", "Stop a pool whose tick outlived its turn bound."),
   str("workflow", "workflow", "<yes|no>", "Apply the board's workflow plan."),
   str("reviewer", "reviewer", "<agent>", "The independent reviewer."),
   str("workflow-max-actions", "workflowMaxActions", "<n>", "Cap on applied workflow actions."),
   str("review-aging-minutes", "reviewAgingMinutes", "<n>", "Silent-review threshold."),
+  num("rework-max-rounds", "reworkMaxRounds", "<n>", "Delivery rounds before a card is parked."),
 ];
 
 /** SLA / event / notification knobs. */

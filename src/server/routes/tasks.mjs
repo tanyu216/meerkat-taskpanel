@@ -107,6 +107,7 @@ const RECONCILE_BODY = shape({
   workflow: bool(),
   reviewer: str(),
   review_aging_ms: int(),
+  rework_max_rounds: int(),
   max_actions: int(),
   board_limit: int(),
 });
@@ -285,6 +286,7 @@ export function registerTaskRoutes(router, surface) {
       const result = commands.workflowTick({
         reviewer: body.reviewer ?? null,
         reviewAgingMs: body.review_aging_ms,
+        reworkMaxRounds: body.rework_max_rounds,
         maxActions: body.max_actions,
         boardLimit: body.board_limit,
         dryRun: body.dry_run === true,

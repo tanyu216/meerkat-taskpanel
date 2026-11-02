@@ -11,6 +11,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   closeSync,
   mkdirSync,
@@ -23,7 +24,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { EVENT_STREAM_LINE } from "../foundation/constants.mjs";
+import { DEFAULT_CLI_TIMEOUT_MS, EVENT_STREAM_LINE } from "../foundation/constants.mjs";
 import {
   createFileSink,
   createLogger as createFoundationLogger,
@@ -149,12 +150,22 @@ export function cliInvocation(opts, agent, args, { actorKind = null } = {}) {
 
 export function runCli(opts, agent, args, { input = null, actorKind = null } = {}) {
   const { argv, env } = cliInvocation(opts, agent, args, { actorKind });
+  // A bound on the child, not on the board call it makes: a `taskctl` that
+  // hangs before or after its 30 s HTTP call would otherwise hold the tick (and
+  // its continue lock) until the two-hour staleness bound.
   const run = spawnSync(process.execPath, argv, {
     encoding: "utf8",
     input,
     env,
+    timeout: Number(opts.cliTimeoutMs ?? DEFAULT_CLI_TIMEOUT_MS),
+    killSignal: "SIGKILL",
   });
-  if (run.error) return { ok: false, error: run.error.message };
+  if (run.error) {
+    if (run.error.code === "ETIMEDOUT") {
+      return { ok: false, error: `taskctl timed out after ${opts.cliTimeoutMs ?? DEFAULT_CLI_TIMEOUT_MS}ms` };
+    }
+    return { ok: false, error: run.error.message };
+  }
   try {
     const parsed = JSON.parse(run.stdout ?? "");
     if (parsed?.ok === true) return { ok: true, data: parsed.data ?? {} };
@@ -198,6 +209,44 @@ export function readCardForRedispatch(opts, ref, log = () => {}, run = runCli) {
   }
   const status = read.data?.task?.status;
   return { ok: true, status: typeof status === "string" ? status : null, error: null };
+}
+
+/**
+ * Did the director actually settle an unowned card?
+ *
+ * A route row's turn can exit 0 without assigning anybody. The settle rule is
+ * the board's, not the turn's: the card left `todo`, or it now has an assignee.
+ * A failed read is returned, never thrown, so the caller can decide (it is
+ * treated as unsettled — the next poll re-enqueues only if the card is still
+ * unowned, which the read would have shown).
+ *
+ * @param {object} opts
+ * @param {string} ref
+ * @param {(line: string) => void} [log]
+ * @param {Function} [run]
+ * @returns {{ok: boolean, settled?: boolean, status?: string|null, assigned?: string|null, error: string|null}}
+ */
+export function readRouteOutcome(opts, ref, log = () => {}, run = runCli) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, error: "no agent configured" };
+  const read = run(opts, agent, ["issue", "get", String(ref), "--json"]);
+  if (!read.ok) {
+    log(`route check for ${ref} failed: ${read.error}`);
+    return { ok: false, error: read.error };
+  }
+  const task = read.data?.task ?? {};
+  const assignee = task.assignee ?? {};
+  const assigned =
+    (typeof assignee.id === "string" && assignee.id !== "" ? assignee.id : null) ??
+    (typeof assignee.display_name === "string" && assignee.display_name !== "" ? assignee.display_name : null);
+  const status = typeof task.status === "string" ? task.status : null;
+  return {
+    ok: true,
+    settled: status !== "todo" || assigned !== null,
+    status,
+    assigned,
+    error: null,
+  };
 }
 
 /**
@@ -595,6 +644,41 @@ export function createLogger(opts) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Stop a **wedged** resident pool so the service manager restarts it.
+ *
+ * Only `wedged` qualifies. `starting` is a legitimate startup, `unresponsive`
+ * is a blocked event loop that may still recover, and `running` is healthy —
+ * none of them is stopped by this function. The killed pool's agent children
+ * are protected from re-dispatch by `recoverStaleCards`' live-owner check, so a
+ * restart cannot put a second worker on a card the orphan is still holding.
+ *
+ * @param {{
+ *   pool: object,
+ *   kill?: (pid: number, signal: string) => void,
+ *   log?: (line: string, meta?: object) => void,
+ * }} input
+ * @returns {{killed: boolean, pid?: number, reason?: string}}
+ */
+export function recoverWedgedPool(input = {}) {
+  const { pool, kill = (pid, signal) => process.kill(pid, signal), log = () => {} } = input;
+  if (pool?.live !== true || pool?.verdict !== "wedged" || !Number.isInteger(pool?.poolPid)) {
+    return { killed: false, reason: "not wedged" };
+  }
+  try {
+    kill(pool.poolPid, "SIGTERM");
+    log(
+      `ping: pool pid ${pool.poolPid} is wedged (${pool.reason ?? "unknown"}) — ` +
+        "sent SIGTERM; the service manager restarts it",
+      { level: "warn" },
+    );
+    return { killed: true, pid: pool.poolPid };
+  } catch (err) {
+    log(`ping: could not stop wedged pool ${pool.poolPid}: ${err.message}`, { level: "error" });
+    return { killed: false, pid: pool.poolPid, reason: err.message };
+  }
+}
+
+/**
  * One ping pass: drop registry entries whose worker pid is gone.
  *
  * Ping reads and writes one small file — no board read, no claim, no LLM. A
@@ -674,6 +758,9 @@ function lockAgeMs(path, now) {
  * @param {{isAlive?: (pid:number)=>boolean, now?: ()=>number, maxAgeMs?: number}} [options]
  * @returns {{acquired: boolean, holder: object|null, reason?: string}}
  */
+/** The owners this process holds, so a rewritten pid is still released by us. */
+const continueLockTokens = new Map();
+
 export function acquireContinueLock(path, options = {}) {
   const isAlive = options.isAlive ?? isProcessAlive;
   const now = options.now ?? Date.now;
@@ -682,14 +769,25 @@ export function acquireContinueLock(path, options = {}) {
   const claim = () => {
     mkdirSync(dirname(path), { recursive: true });
     const fd = openSync(path, "wx");
-    const holder = { version: 1, pid: process.pid, startedAt: new Date(now()).toISOString() };
+    const holder = {
+      version: 1,
+      pid: process.pid,
+      token: randomUUID(),
+      startedAt: new Date(now()).toISOString(),
+    };
     writeFileSync(fd, `${JSON.stringify(holder, null, 2)}\n`);
     closeSync(fd);
     return holder;
   };
 
+  const take = () => {
+    const holder = claim();
+    continueLockTokens.set(path, holder.token);
+    return holder;
+  };
+
   try {
-    return { acquired: true, holder: claim() };
+    return { acquired: true, holder: take() };
   } catch (err) {
     if (err?.code !== "EEXIST") throw err;
   }
@@ -700,7 +798,7 @@ export function acquireContinueLock(path, options = {}) {
     if (age !== null && age < 60_000) return { acquired: false, holder: null, reason: "starting" };
     try {
       unlinkSync(path);
-      return { acquired: true, holder: claim() };
+      return { acquired: true, holder: take() };
     } catch {
       return { acquired: false, holder: null, reason: "raced" };
     }
@@ -714,25 +812,64 @@ export function acquireContinueLock(path, options = {}) {
 
   try {
     unlinkSync(path);
-    return { acquired: true, holder: claim() };
+    return { acquired: true, holder: take() };
   } catch {
     return { acquired: false, holder: existing, reason: "raced" };
   }
 }
 
 /** Rewrite the lock with the running turn's pid, atomically. */
-export function recordContinuePid(path, pid, startedAt) {
+export function recordContinuePid(path, pid, startedAt, token = null) {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify({ version: 1, pid, startedAt }, null, 2)}\n`);
+  const existing = loadContinueLock(path);
+  const holder = { version: 1, pid, startedAt };
+  // The owner token survives the pid rewrite, so the acquiring process can
+  // still prove it is the holder when it releases.
+  const owner = token ?? existing?.token ?? null;
+  if (owner !== null) holder.token = owner;
+  writeFileSync(tmp, `${JSON.stringify(holder, null, 2)}\n`);
   renameSync(tmp, path);
 }
 
-/** Drop the lock after a failed spawn. */
-export function releaseContinueLock(path) {
+/**
+ * Drop the lock after a failed spawn or a finished tick.
+ *
+ * Release is owner-checked: a slow ex-holder whose lock was reclaimed by the
+ * next tick must not delete the new holder's file. Without a token the pid is
+ * the ownership proof (the common case); a rewritten child pid is released by
+ * passing it explicitly.
+ *
+ * @param {string} path
+ * @param {{token?: string, pid?: number}} [options]
+ * @returns {{released: boolean, holder?: object|null, foreign?: boolean}}
+ */
+export function releaseContinueLock(path, options = {}) {
+  const holder = loadContinueLock(path);
+  // An explicit token wins; otherwise the token this process acquired (which
+  // survives `recordContinuePid`'s pid rewrite) is the proof.
+  const token =
+    typeof options.token === "string"
+      ? options.token
+      : continueLockTokens.get(path) ?? null;
+  if (holder !== null) {
+    const heldPid = Number(holder.pid);
+    const owned =
+      token !== null
+        ? holder.token === token
+        : heldPid === process.pid ||
+          (Number.isInteger(options.pid) && heldPid === Number(options.pid));
+    if (!owned) {
+      continueLockTokens.delete(path);
+      return { released: false, holder, foreign: true };
+    }
+  }
+  continueLockTokens.delete(path);
   try {
     unlinkSync(path);
+    return { released: true, holder };
   } catch {
     // Already gone is success.
+    return { released: true, holder };
   }
 }

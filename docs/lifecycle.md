@@ -64,6 +64,14 @@ A card has three independent axes:
 | `done` | Accepted. Terminal, with one audited exit: reopen to `todo`. |
 | `canceled` | Abandoned. Terminal, with the same one exit. |
 
+A `blocked` card may also be **a loop hold**: the board's workflow plan parks a card that
+kept coming back (`blocked_reason=decision`, plus a `question` comment and
+`meta.loop_hold_round`), and the loop parks a card it repeatedly failed to run
+(`resource`/`external`). A hold is cleared only by a human moving the card back
+(`blocked → todo|in_progress`); it never auto-resumes. See
+[ADR 0009](adr/0009-a-cycle-stops-at-a-human-decision.md) and
+[scheduling.md](scheduling.md#liveness-bounds-every-cycle-has-a-stop).
+
 The whitelist is the whole state machine:
 
 ```text

@@ -215,6 +215,11 @@ describe("loop doctor — the report", () => {
       dispatch_retries: [],
       subagent_failures: [],
       deferrals: [],
+      held: [],
+      awaiting: [],
+      question_lane: [],
+      unowned: [],
+      orphaned: [],
       total: 0,
     }, "the looping section is always present, and empty when nothing is circling");
 
@@ -654,7 +659,10 @@ describe("loop doctor — looping cards", () => {
       2 + 2 + 5 + 3,
       "the aggregate still counts question and unattributed rows",
     );
-    assert.ok(report.attention_reasons.includes("looping: 2"));
+    assert.ok(
+      report.attention_reasons.includes("looping: 3"),
+      "question rows are their own list now, so T-4 is a third looping card",
+    );
   });
 
   it("flags a subagent failure loop from the ledger", () => {
@@ -800,6 +808,11 @@ describe("loop doctor — looping cards", () => {
       dispatch_retries: [],
       subagent_failures: [],
       deferrals: [],
+      held: [],
+      awaiting: [],
+      question_lane: [],
+      unowned: [],
+      orphaned: [],
       total: 0,
     });
     assert.equal(report.attention_reasons.some((reason) => reason.startsWith("looping")), false);
@@ -1164,5 +1177,87 @@ describe("loop doctor — worker sessions", () => {
     assert.equal(report.workers.missing_worktree.length, 1);
     assert.ok(report.attention_reasons.includes("workers: 1"));
     assert.ok(report.attention_reasons.includes("worker_worktrees: 1"));
+  });
+});
+
+describe("loop doctor — the human queue and the loop's dead ends", () => {
+  it("reports awaiting, unowned, a failed director row and an orphaned child", () => {
+    const dir = tempDir();
+    const app = join(dir, "app");
+    mkdirSync(app, { recursive: true });
+    const tasks = [
+      {
+        identifier: "T-400",
+        title: "Waiting on a human",
+        status: "awaiting",
+        awaiting_reason: "E2",
+        status_changed_at: at(60 * MIN),
+      },
+      {
+        identifier: "T-401",
+        title: "Nobody owns this",
+        status: "todo",
+        kind: "task",
+        created_at: at(45 * MIN),
+      },
+      { identifier: "T-402", title: "Fine", status: "in_review", status_changed_at: at(5 * MIN) },
+    ];
+    const { script } = sentinel(dir, { tasks });
+    writeJson(join(dir, "cards.queue.json"), {
+      version: 1,
+      cards: [
+        {
+          id: "question:T-402:q-1",
+          card: "T-402",
+          role: "question",
+          queue_kind: "question",
+          status: "failed",
+          attempts: 2,
+          lastError: "director turn did not settle the question",
+          enqueuedAt: at(20 * MIN),
+        },
+        {
+          id: "T-402-worker",
+          card: "T-402",
+          role: "worker",
+          queue_kind: "handoff",
+          status: "processing",
+          target_dir: app,
+          enqueuedAt: at(180 * MIN),
+        },
+      ],
+    });
+    writeJson(join(dir, "subagents.state.json"), { version: 1, subagents: [] });
+    writeJson(join(dir, "sessions.state.json"), {
+      version: 2,
+      projects: {
+        "worker:T-402:r1": {
+          kind: "worker-session",
+          card: "T-402",
+          cwd: app,
+          pid: process.pid,
+          startedAt: at(180 * MIN),
+          status: "running",
+        },
+      },
+    });
+    writeJson(join(dir, "loop-patrol-last-ok.json"), {
+      mechanism: "sla",
+      last_ok: at(5 * MIN),
+      cadence_period_min: 15,
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps({ isAlive: () => true }));
+
+    assert.equal(report.looping.awaiting[0].ref, "T-400");
+    assert.equal(report.looping.awaiting[0].reason, "E2");
+    assert.equal(report.looping.unowned[0].ref, "T-401");
+    assert.equal(report.looping.question_lane[0].ref, "T-402");
+    assert.equal(report.looping.question_lane[0].lane, "question");
+    assert.equal(report.looping.question_lane[0].rows, 1);
+    assert.equal(report.looping.orphaned[0].ref, "T-402");
+    assert.equal(report.looping.orphaned[0].pid, process.pid);
+    assert.equal(report.looping.orphaned[0].bound_ms, 2 * 30 * MIN);
+    assert.equal(report.looping.total, 3, "T-402 is one card even in two lists");
   });
 });

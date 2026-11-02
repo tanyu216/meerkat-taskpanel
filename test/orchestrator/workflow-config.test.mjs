@@ -42,6 +42,7 @@ describe("resolveWorkflowConfig", () => {
       reviewer: null,
       maxActions: 20,
       reviewAgingMs: 3_600_000,
+      reworkMaxRounds: 4,
     });
   });
 
@@ -50,17 +51,20 @@ describe("resolveWorkflowConfig", () => {
       MEERKAT_TASKPANEL_WORKFLOW: "no",
       MEERKAT_TASKPANEL_REVIEWER: "file-reviewer",
       MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS: "7",
+      MEERKAT_TASKPANEL_REWORK_MAX_ROUNDS: "6",
     };
     const env = {
       MEERKAT_TASKPANEL_WORKFLOW: "yes",
       MEERKAT_TASKPANEL_REVIEWER: "env-reviewer",
       MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS: "9",
+      MEERKAT_TASKPANEL_REWORK_MAX_ROUNDS: "5",
     };
     assert.deepEqual(resolveWorkflowConfig({ env, file }), {
       workflow: true,
       reviewer: "env-reviewer",
       maxActions: 9,
       reviewAgingMs: 3_600_000,
+      reworkMaxRounds: 5,
     });
     assert.deepEqual(
       resolveWorkflowConfig({
@@ -69,17 +73,25 @@ describe("resolveWorkflowConfig", () => {
           reviewer: "flag-reviewer",
           workflowMaxActions: "3",
           reviewAgingMinutes: "30",
+          reworkMaxRounds: "2",
         },
         env,
         file,
       }),
-      { workflow: false, reviewer: "flag-reviewer", maxActions: 3, reviewAgingMs: 1_800_000 },
+      {
+        workflow: false,
+        reviewer: "flag-reviewer",
+        maxActions: 3,
+        reviewAgingMs: 1_800_000,
+        reworkMaxRounds: 2,
+      },
     );
     assert.deepEqual(resolveWorkflowConfig({ file }), {
       workflow: false,
       reviewer: "file-reviewer",
       maxActions: 7,
       reviewAgingMs: 3_600_000,
+      reworkMaxRounds: 6,
     });
   });
 

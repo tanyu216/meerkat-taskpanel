@@ -1945,6 +1945,9 @@ function candidateOf(task, reason, resolveRef = null) {
     // The admission pass names the card's worktree by round; the round is a
     // board fact, read here so the loop needs no second `issue get`.
     delivery_round: task.deliveryRound,
+    // The optimistic-concurrency token. The loop's deferral streak resets when
+    // a human edits the card between attempts: the new version is the signal.
+    version: task.version,
   };
 }
 

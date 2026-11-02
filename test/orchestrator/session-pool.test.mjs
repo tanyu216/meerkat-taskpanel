@@ -1263,11 +1263,24 @@ describe("session pool", () => {
   it("returns 2 with a pool_start_failed record when start() throws", async (t) => {
     const f = fixture(t);
     const home = join(f.dir, "home");
-    for (const name of ["meerkat", "meerkat-loop"]) {
+    for (const name of ["meerkat", "meerkat-director"]) {
       const dir = join(home, ".claude", "skills", name);
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`);
     }
+    // A pool with nothing to reattach opens no session, so `start()` would
+    // succeed and run forever. Seed the reviewer row the startup path opens a
+    // lane for; the injected `openSession` then throws inside `start()`.
+    writeLedger(f.dir, upsertSubagent({ subagents: [] }, {
+      sessionKey: f.app,
+      actorKind: "claude",
+      subagentId: "a-throws",
+      card: "T-1",
+      role: "reviewer",
+      status: "running",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+    }));
     const lines = [];
     const code = await runSession(
       { ...optsFor(f), home, actorKind: "claude" },
@@ -1383,7 +1396,12 @@ describe("session pool", () => {
 
     clock.now += POOL_STALE_MS + POOL_HEARTBEAT_MS;
     const stale = poolStatus({ opts, now: () => clock.now });
-    assert.equal(stale.live, false);
+    assert.equal(
+      stale.live,
+      true,
+      "a fresh pid is a live pool even when its heartbeat is stale (blocked, not absent)",
+    );
+    assert.equal(stale.verdict, "unresponsive", "the heartbeat distinguishes unresponsive from running");
     assert.match(stale.reason, /heartbeat .* old/);
 
     // A deployment decision beats a live file.
@@ -1697,5 +1715,64 @@ describe("worker session resume", () => {
       2,
       "workers are bounded by max-concurrency, not by sessionPoolMax",
     );
+  });
+});
+
+describe("worker session resume — route verification", () => {
+  it("retries a route turn, then parks an unowned card when the board never assigns it", async (t) => {
+    const f = fixture(t);
+    const calls = join(f.dir, "calls.jsonl");
+    writeFileSync(
+      join(f.dir, "cli.mjs"),
+      [
+        'import { appendFileSync } from "node:fs";',
+        `appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");`,
+        'process.stdout.write(JSON.stringify({ ok: true, data: {} }));',
+      ].join("\n"),
+    );
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      routeOutcome: async () => ({ ok: true, settled: false, status: "todo", assigned: null }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "route:T-1",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      route: true,
+      question_id: "route:T-1",
+      dispatch_key: "route:T-1",
+      title: "unowned",
+    });
+
+    await pool.routeQuestionsNow();
+    let row = readCards(f.dir).value.cards.find((card) => card.id === "route:T-1");
+    assert.equal(row.status, "pending", "an unassigned card is retried, not treated as settled");
+    assert.equal(row.attempts, 1);
+
+    // The retry waits out the 30 s backoff; make the second turn due.
+    const queueFile = join(f.dir, "cards.queue.json");
+    const raw = JSON.parse(readFileSync(queueFile, "utf8"));
+    raw.cards[0].retry_at = null;
+    writeFileSync(queueFile, `${JSON.stringify(raw, null, 2)}\n`);
+
+    await pool.routeQuestionsNow();
+    row = readCards(f.dir).value.cards.find((card) => card.id === "route:T-1");
+    assert.equal(row.status, "failed", "the second unsettled turn ends the automatic path");
+
+    const recorded = existsSync(calls)
+      ? readFileSync(calls, "utf8").trim().split("\n").map((line) => JSON.parse(line))
+      : [];
+    assert.ok(
+      recorded.some((argv) => argv.includes("issue") && argv.includes("move") && argv.includes("blocked") && argv.includes("decision")),
+      `the card is parked for a human; calls: ${JSON.stringify(recorded)}`,
+    );
+    await pool.stop();
   });
 });

@@ -3,35 +3,24 @@
  *
  * Seven failure modes, each pinned against the tree as it is today, each driven
  * through **real child processes** — no injected seams, no fake clock, no fake
- * `isAlive`. The point of this file is to be RED: it reproduces the failures the
- * epic exists to fix, so every later stage has one regression gate instead of
- * seven anecdotes.
+ * `isAlive`. The file began RED, reproducing the failures the epic exists to
+ * fix; every leg now passes and is enforced by `npm test`, so it stays the one
+ * regression gate instead of seven anecdotes.
  *
- *  1. An entry point that throws      → no `process_crash` record, no cleanup.
- *  2. stdout written after the reader closed → EPIPE kills the process.
- *  3. `spawnDetached` whose target exits 127 → reported `{ok:true,pid}`.
- *  4. A tick that never resolves while the heartbeat keeps writing → `live` true
- *     forever, so nothing can tell a wedged pool from a healthy one.
- *  5. A live pid with a stale heartbeat (event loop blocked) → `live` false, so
- *     a second tick while one holds the lock is skipped (no duplicate execution).
- *  6. The pool startup window (`phase:"starting"`) → `live` false for the same
- *     reason, so a second tick can start beside the starting pool.
- *  7. A SIGKILLed pool that restarts → in-flight cards are redispatched while
- *     the orphaned agent children still run.
- *
- * ## Why the legs are `todo`
- *
- * The acceptance for this card says two things at once: every case is red
- * against today's tree, **and** `npm run check` stays green with the suite
- * wired in. A `todo` test still runs and still prints its assertion failure —
- * it just does not fail the run. So `npm test` (and therefore `npm run check`)
- * is green, while `npm run test:resilience` (`RESILIENCE_STRICT=1`) runs the
- * same legs as hard failures and exits 1 today. Each stage of the epic flips
- * its own leg out of `todo` when the fix lands; nothing here is skipped
- * silently.
+ *  1. An entry point that throws      → a `process_crash` record and cleanup.
+ *  2. stdout written after the reader closed → EPIPE is survived, exit 0.
+ *  3. A second tick while one holds the lock → skipped, no duplicate pass.
+ *  4. A tick that never resolves while the heartbeat keeps writing → `wedged`,
+ *     never mistaken for a healthy pool.
+ *  5. A live pid with a stale heartbeat (event loop blocked) → still `live`
+ *     (`unresponsive`), so a second tick is not started beside it.
+ *  6. The pool startup window (`phase:"starting"`) → still `live` (`starting`),
+ *     so a second tick cannot start beside the starting pool.
+ *  7. A SIGKILLed pool that restarts → an in-flight card whose agent child is
+ *     still running is not redispatched.
  *
  * Run with: node --test test/orchestrator/resilience.test.mjs
- * Strict:   npm run test:resilience
+ * Targeted:  npm run test:resilience
  */
 
 import assert from "node:assert/strict";
@@ -59,7 +48,6 @@ import {
 import { poolStatus } from "../../src/orchestrator/session.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const STRICT = process.env.RESILIENCE_STRICT === "1";
 
 const tempDirs = [];
 const children = new Set();
@@ -177,16 +165,9 @@ function poolOpts(dir) {
   };
 }
 
-/**
- * One baseline leg. In the default (gate) mode a failure is reported as TODO;
- * with RESILIENCE_STRICT=1 it is a hard failure.
- */
+/** One baseline leg. All seven are green and enforced by `npm test`. */
 function baseline(name, fn) {
-  return test(
-    name,
-    STRICT ? {} : { todo: "P0 baseline: expected red until the supervisor reliability stage lands" },
-    fn,
-  );
+  return test(name, fn);
 }
 
 // ---------------------------------------------------------------------------

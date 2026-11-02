@@ -68,7 +68,11 @@ only for what the human asks about or what the reasons name.
 | `queue` | `depth`, `pending`, `processing`, `failed` | failed rows are the loop's to retry; report |
 | `subagents` | live and total subagent rows | context for a stalled fleet |
 | `stuck_cards` | stale or unreadable heartbeat on claimed cards | name holder and age; never heartbeat or steal |
-| `looping` | cards going round the same loop | explain the pattern; the fix is a decision |
+| `looping` | cards going round the same loop, including `held` cards the loop already parked (`meta.loop_hold_code`, blocked) | explain the pattern; the fix is a decision — never move a held card back without one |
+| `looping.awaiting` | cards parked on a human question (`awaiting_reason`, age) | surface them in the human's waiting register |
+| `looping.question_lane` | director rows that exhausted their two attempts (question or route) | explain the failed turn; a route card is parked, a question card still waits |
+| `looping.unowned` | `todo` cards nobody owns past the route window | the routing table has no shape for them — ask the human to assign |
+| `looping.orphaned` | processing rows whose agent child outlived twice the turn bound | report; do **not** re-dispatch the card under a live child |
 | `waiting.in_review` | delivered cards awaiting acceptance | feed the human's waiting register |
 | `blocked_acceptance` | the board refused a close; the card still carries the marker | show the refusal and what it demands |
 | `unlanded` | `done` cards whose lane branch is not in the project's branch | report; the fix is a git merge |
