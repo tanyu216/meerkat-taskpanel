@@ -15,12 +15,19 @@
 
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { cardFileRel } from "../foundation/card-brief.mjs";
 import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
-import { loadRoles } from "../foundation/roles.mjs";
+import {
+  loadRoles,
+  selectReviewerRole,
+  selectRole,
+  selectWorkerRole,
+  skillFingerprint,
+  supportsSkillOpener,
+} from "../foundation/roles.mjs";
 import { buildQuestionPrompt } from "../foundation/scheduling.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
@@ -530,6 +537,7 @@ export function createSessionPool(input = {}) {
       lastUsedAt: entry.lastUsedAt,
       lastResumeAt: worker.lastResumeAt ?? previous.lastResumeAt ?? null,
       lastError: worker.lastError ?? null,
+      openerFingerprint: entry.openerFingerprint ?? previous.openerFingerprint ?? null,
       closedAt: null,
     };
   }
@@ -549,6 +557,7 @@ export function createSessionPool(input = {}) {
         startedAt: entry.startedAt,
         lastHeartbeatAt: nowIso(now),
         lastUsedAt: entry.lastUsedAt,
+        openerFingerprint: entry.openerFingerprint ?? null,
         closedAt: null,
       };
     }
@@ -580,6 +589,51 @@ export function createSessionPool(input = {}) {
   /** @param {string} key */
   function storedSession(key) {
     return state.projects?.[key] ?? null;
+  }
+
+  /**
+   * Record that a session has loaded its skill. The opener is sent once per
+   * fresh process; the fingerprint lets a later skill change reopen it.
+   *
+   * @param {object} entry
+   * @param {string|null} fingerprint
+   */
+  function markOpener(entry, fingerprint) {
+    entry.fresh = false;
+    entry.openerFingerprint = fingerprint;
+    const record = state.projects?.[entry.key];
+    if (record !== undefined) record.openerFingerprint = fingerprint ?? null;
+    persistState();
+  }
+
+  /**
+   * Send the resident session's opener (`/<skill>` + Flags) when the session is
+   * fresh or its installed skill changed. A resume with the same fingerprint
+   * skips it: the skill is in the conversation history.
+   *
+   * @param {object} entry
+   * @param {{command: string, flags: string, fingerprint: string|null}|null} opener
+   * @returns {Promise<{ok: boolean, sent: boolean}>}
+   */
+  async function ensureOpener(entry, opener) {
+    if (opener === null || typeof opener.command !== "string" || opener.command === "") {
+      return { ok: true, sent: false };
+    }
+    const needed =
+      entry.fresh === true ||
+      (typeof opener.fingerprint === "string" && entry.openerFingerprint !== opener.fingerprint);
+    if (!needed) return { ok: true, sent: false };
+    const text = `${opener.command}\nFlags: ${opener.flags}`;
+    const outcome = await entry.handle.send(text, { timeoutMs: turnTimeoutMs });
+    if (outcome?.ok !== true) {
+      log(
+        `session: ${entry.key} skill opener failed (${outcome?.error ?? "unknown"}) — falling back to paths`,
+      );
+      return { ok: false, sent: true };
+    }
+    markOpener(entry, opener.fingerprint ?? null);
+    log(`session: ${entry.key} opened with ${opener.command}`);
+    return { ok: true, sent: true };
   }
 
   /**
@@ -653,6 +707,9 @@ export function createSessionPool(input = {}) {
       lastUsedAt: nowIso(now),
       busy: false,
       batch: null,
+      fresh: plan.mode !== "resume",
+      openerFingerprint:
+        typeof stored?.openerFingerprint === "string" ? stored.openerFingerprint : null,
       worker: {
         ...(stored ?? {}),
         kind: "worker-session",
@@ -747,6 +804,9 @@ export function createSessionPool(input = {}) {
       lastUsedAt: nowIso(now),
       busy: false,
       batch: null,
+      fresh: resumeId === null,
+      openerFingerprint:
+        typeof stored?.openerFingerprint === "string" ? stored.openerFingerprint : null,
     };
     sessions.set(key, entry);
     if (
@@ -879,7 +939,7 @@ export function createSessionPool(input = {}) {
         log(`session: lane session pool is full (${poolMax}) — leaving ${cards.length} decision row(s) pending`);
         continue;
       }
-      const entry = await ensureSession(dir, { cwd: dir, role: "director" });
+      let entry = await ensureSession(dir, { cwd: dir, role: "director" });
       if (entry.busy === true) {
         log(`session: ${dir} is busy — leaving ${cards.length} decision row(s) pending`);
         continue;
@@ -901,13 +961,36 @@ export function createSessionPool(input = {}) {
         primaryKind: opts.actorKind,
         explicitDir: opts.rolesDir ?? null,
       });
+      const directorKind = String(opts.actorKind ?? roleSet?.primaryKind ?? "claude");
+      const opener =
+        supportsSkillOpener(directorKind)
+          ? {
+              command: "/meerkat-director",
+              flags: `--actor-kind=${directorKind}`,
+              fingerprint: skillFingerprint(roleSet?.decisionPolicy?.skillDir ?? null),
+            }
+          : null;
+      if (
+        entry.fresh !== true &&
+        typeof opener.fingerprint === "string" &&
+        entry.openerFingerprint !== opener.fingerprint
+      ) {
+        await closeEntry(entry, { dropSession: true });
+        entry = await ensureSession(dir, { cwd: dir, role: "director" });
+      }
       entry.busy = true;
       let outcome;
       try {
+        const opened = await ensureOpener(entry, opener);
+        // Only a skill that actually resolved (a fingerprint) makes the per-turn
+        // path redundant; a missing or failed install keeps the old fallback.
+        const charterLoaded = opened.ok === true && typeof opener.fingerprint === "string";
         outcome = await entry.handle.send(
           buildQuestionPrompt(claimed.cards, {
             actorKind: opts.actorKind,
-            decisionPolicyPath: roleSet?.decisionPolicy?.path ?? null,
+            decisionPolicyPath: charterLoaded
+              ? null
+              : (roleSet?.decisionPolicy?.path ?? null),
             routing: roleSet?.routing?.text ?? null,
           }),
           { timeoutMs: turnTimeoutMs },
@@ -1241,16 +1324,17 @@ export function createSessionPool(input = {}) {
           }
         }
       }
+      const openOptions = {
+        cwd: dir,
+        role: lane === "reviewer" ? "reviewer" : lane === "worker-session" ? "worker" : "project",
+        actorKind: cards[0].actor_kind ?? null,
+        ...(lane === "worker-session"
+          ? { worker: { row: cards[0], workspace: cards[0].workspace ?? null } }
+          : {}),
+      };
       let entry;
       try {
-        entry = await ensureSession(key, {
-          cwd: dir,
-          role: lane === "reviewer" ? "reviewer" : lane === "worker-session" ? "worker" : "project",
-          actorKind: cards[0].actor_kind ?? null,
-          ...(lane === "worker-session"
-            ? { worker: { row: cards[0], workspace: cards[0].workspace ?? null } }
-            : {}),
-        });
+        entry = await ensureSession(key, openOptions);
       } catch (err) {
         completeCards(stateDir, [cards[0].id], { status: "failed", error: err.message });
         log(`session: worker ${cards[0].card} could not open a session: ${err.message} — failed`);
@@ -1302,7 +1386,33 @@ export function createSessionPool(input = {}) {
         loggedRoleWarnings.add(warning);
         log(`roles: ${warning}`);
       }
-      jobs.push({ key, dir, lane, entry, cards: batch, roleSet });
+      const row = batch[0];
+      const role =
+        lane === "reviewer"
+          ? selectReviewerRole(roleSet, row.agent)
+          : (selectRole(roleSet, row.agent, "worker") ?? selectWorkerRole(roleSet));
+      const sessionKind = String(row.actor_kind ?? opts.actorKind ?? "claude");
+      const opener =
+        role === null || !supportsSkillOpener(sessionKind)
+          ? null
+          : {
+              command: `/${basename(role.skillDir)}`,
+              flags:
+                `${row.agent ? `--agent ${row.agent} ` : ""}` +
+                `--actor-kind=${sessionKind}`,
+              fingerprint: skillFingerprint(role.skillDir),
+              skillPath: join(role.skillDir, "SKILL.md"),
+            };
+      if (
+        opener !== null &&
+        entry.fresh !== true &&
+        typeof opener.fingerprint === "string" &&
+        entry.openerFingerprint !== opener.fingerprint
+      ) {
+        await closeEntry(entry, { dropSession: true });
+        entry = await ensureSession(key, openOptions);
+      }
+      jobs.push({ key, dir, lane, entry, cards: batch, roleSet, opener });
     }
 
     // Fan out: each job owns a distinct session key, so no two sends share a
@@ -1318,31 +1428,36 @@ export function createSessionPool(input = {}) {
         answer = context.ok === true ? context.answer : null;
       }
       const run = async (entry, planMode) => {
-        const prompt =
-          planMode === "replay"
-            ? buildWorkerReplayPrompt({
-                row,
-                handoff: row.handoff,
-                reason: entry.worker?.reason,
-                answer,
-                transcript: readWorkerTranscript(stateDir, job.key),
-                nativeError: entry.worker?.lastError,
-              })
-            : planMode === "resume"
-              ? buildWorkerResumePrompt({
-                  row,
-                  handoff: row.handoff,
-                  reason: entry.worker?.reason,
-                  answer,
-                  sessionId: entry.sessionId,
-                })
-              : buildWorkerDispatchPrompt({ row, handoff: row.handoff });
-        appendWorkerTurn(stateDir, job.key, { kind: "dispatch", text: `${planMode} ${row.card}` });
         entry.busy = true;
         entry.worker.status = "running";
         persistState();
         try {
-          return await entry.handle.send(prompt, { timeoutMs: turnTimeoutMs });
+          const opened = await ensureOpener(entry, job.opener);
+          const prompt =
+            planMode === "replay"
+              ? buildWorkerReplayPrompt({
+                  row,
+                  handoff: row.handoff,
+                  reason: entry.worker?.reason,
+                  answer,
+                  transcript: readWorkerTranscript(stateDir, job.key),
+                  nativeError: entry.worker?.lastError,
+                })
+              : planMode === "resume"
+                ? buildWorkerResumePrompt({
+                    row,
+                    handoff: row.handoff,
+                    reason: entry.worker?.reason,
+                    answer,
+                    sessionId: entry.sessionId,
+                  })
+                : buildWorkerDispatchPrompt({ row, handoff: row.handoff });
+          const fallback =
+            opened.ok !== true && typeof job.opener?.skillPath === "string"
+              ? `Role skill: ${job.opener.skillPath} — read it before acting.\n\n`
+              : "";
+          appendWorkerTurn(stateDir, job.key, { kind: "dispatch", text: `${planMode} ${row.card}` });
+          return await entry.handle.send(`${fallback}${prompt}`, { timeoutMs: turnTimeoutMs });
         } finally {
           entry.busy = false;
           entry.lastUsedAt = nowIso(now);
@@ -1373,8 +1488,13 @@ export function createSessionPool(input = {}) {
         job.entry.busy = true;
         let outcome;
         try {
+          const opened = await ensureOpener(job.entry, job.opener);
+          const fallback =
+            opened.ok !== true && typeof job.opener?.skillPath === "string"
+              ? `Role skill: ${job.opener.skillPath} — read it before acting.\n\n`
+              : "";
           outcome = await job.entry.handle.send(
-            buildReviewerBatchPrompt(job.cards, job.roleSet),
+            `${fallback}${buildReviewerBatchPrompt(job.cards, job.roleSet)}`,
             { timeoutMs: turnTimeoutMs },
           );
         } finally {
@@ -1705,13 +1825,44 @@ export function createSessionPool(input = {}) {
       });
     }
     for (const { key, dir, lane, subagents } of groups.values()) {
-      const entry = await ensureSession(key, { cwd: dir, role: "reviewer" });
+      let entry = await ensureSession(key, { cwd: dir, role: "reviewer" });
+      const roleSet = loadRoles({
+        home: opts.home,
+        primaryKind: opts.actorKind,
+        explicitDir: opts.rolesDir ?? null,
+      });
+      const reviewerName = String(subagents[0]?.role ?? subagents[0]?.agent ?? "Reviewer");
+      const role = selectReviewerRole(roleSet, reviewerName);
+      const sessionKind = String(subagents[0]?.actorKind ?? opts.actorKind ?? "claude");
+      const opener =
+        role === null || !supportsSkillOpener(sessionKind)
+          ? null
+          : {
+              command: `/${basename(role.skillDir)}`,
+              flags: `--agent ${reviewerName} --actor-kind=${sessionKind}`,
+              fingerprint: skillFingerprint(role.skillDir),
+              skillPath: join(role.skillDir, "SKILL.md"),
+            };
+      if (
+        entry.fresh !== true &&
+        typeof opener?.fingerprint === "string" &&
+        entry.openerFingerprint !== opener.fingerprint
+      ) {
+        await closeEntry(entry, { dropSession: true });
+        entry = await ensureSession(key, { cwd: dir, role: "reviewer" });
+      }
       entry.busy = true;
       let outcome;
       try {
-        outcome = await entry.handle.send(buildReattachPrompt({ targetDir: dir, subagents }), {
-          timeoutMs: turnTimeoutMs,
-        });
+        const opened = await ensureOpener(entry, opener);
+        const fallback =
+          opened.ok !== true && typeof opener?.skillPath === "string"
+            ? `Role skill: ${opener.skillPath} — read it before acting.\n\n`
+            : "";
+        outcome = await entry.handle.send(
+          `${fallback}${buildReattachPrompt({ targetDir: dir, subagents })}`,
+          { timeoutMs: turnTimeoutMs },
+        );
       } finally {
         entry.busy = false;
         entry.lastUsedAt = nowIso(now);

@@ -477,7 +477,7 @@ export function createQueueDispatch(input) {
     // worktree: `.meerkat/roles/` lives at the project root.
     const projectDir = context?.projectDir ?? dir;
     const round = card?.delivery_round ?? card?.review_round ?? 1;
-    const handoffRow = buildHandoffRow({ opts, config, action, card, projectDir, round });
+    const handoffRow = buildHandoffRow({ opts, config, action, card, projectDir, round, resident: true });
     const { role, agentRole, actorKind, platformFallback, roleWarnings, handoff, worker_key } = handoffRow;
     for (const warning of roleWarnings) {
       if (loggedRoleWarnings.has(warning)) continue;

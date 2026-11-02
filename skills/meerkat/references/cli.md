@@ -631,7 +631,7 @@ an honest `404` on download. Removal deletes the row and the bytes in one transa
 **not recoverable**. An attachment id must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`.
 `--meta attachments=…` stores literal text, not an array; it is not a channel into this table.
 Loop convention: `card.md` and every downloaded attachment for a task live under
-`.meerkat/<identifier>/`; see `meerkat-director/references/operation.md` §Card briefs.
+`.meerkat/<identifier>/`.
 
 ### `depends_on` — a `blocks` edge, written the other way round
 

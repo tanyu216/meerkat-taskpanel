@@ -121,6 +121,36 @@ const card = (f, ref, dir, role = "worker") => ({
   handoff: `work ${ref}`,
 });
 
+/** Install one minimal role skill under the fixture's primary-kind home. */
+function installRole(dir, { id, agent, lanes, kind = "claude" }) {
+  const skill = join(dir, `.${kind}`, "skills", id);
+  mkdirSync(join(skill, "references"), { recursive: true });
+  writeFileSync(
+    join(skill, "role.json"),
+    JSON.stringify({
+      schema: "meerkat-role",
+      id,
+      agent,
+      native_agent: id,
+      lanes,
+      title: agent,
+      summary: `${agent} role.`,
+      shapes: ["work"],
+      responsibilities: [],
+      boundaries: [],
+      self_check: "references/self-check.md",
+      reviewer_prompt: null,
+    }),
+    "utf8",
+  );
+  writeFileSync(
+    join(skill, "SKILL.md"),
+    `---\nname: ${id}\ndescription: ${agent} role.\n---\n\n# ${agent}\n`,
+    "utf8",
+  );
+  writeFileSync(join(skill, "references", "self-check.md"), `# ${agent} self-check\n`, "utf8");
+}
+
 /** Force a queue row's attempt counter (a retry of a previous turn). */
 function setAttempts(dir, ref, attempts) {
   const file = join(dir, "cards.queue.json");
@@ -330,6 +360,109 @@ describe("session pool", () => {
     await pool.stop();
   });
 
+  it("opens a fresh worker and reviewer session by loading the role skill first", async (t) => {
+    const f = fixture(t);
+    installRole(f.dir, { id: "jobs", agent: "Jobs", lanes: ["worker"] });
+    installRole(f.dir, { id: "reviewer", agent: "Reviewer", lanes: ["reviewer"] });
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), { ...card(f, "T-1", f.app, "worker"), agent: "Jobs" });
+    enqueueCard(join(f.dir), { ...card(f, "R-1", f.app, "reviewer"), agent: "Reviewer" });
+    await pool.tick();
+
+    const worker = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
+    const reviewer = fake.opened.find((handle) => handle.role === "reviewer" && handle.cwd === f.app);
+    assert.ok(worker, "the worker session opens");
+    assert.ok(reviewer, "the reviewer session opens");
+    assert.equal(
+      worker.prompts[0],
+      "/jobs\nFlags: --agent Jobs --actor-kind=claude",
+      "the worker session opens by loading its role skill with the card's attribution",
+    );
+    assert.equal(
+      reviewer.prompts[0],
+      "/reviewer\nFlags: --agent Reviewer --actor-kind=claude",
+      "the reviewer session opens by loading its role skill",
+    );
+    assert.match(worker.prompts[1], /work T-1/);
+    assert.match(reviewer.prompts[1], /You are the reviewer session/);
+    await pool.stop();
+  });
+
+  it("keeps the full handoff and no opener on an unvalidated kind", async (t) => {
+    const f = fixture(t);
+    installRole(f.dir, { id: "jobs", agent: "Jobs", lanes: ["worker"], kind: "codex" });
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app, "worker"),
+      agent: "Jobs",
+      actor_kind: "codex",
+    });
+    await pool.tick();
+    const worker = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
+    assert.ok(worker, "the codex worker session opens");
+    assert.doesNotMatch(worker.prompts[0], /^\/jobs/, "no opener on an unvalidated host");
+    assert.match(worker.prompts[0], /work T-1/, "the full handoff carries the card");
+    await pool.stop();
+  });
+
+  it("falls back to the role skill path when the opener fails", async (t) => {
+    const f = fixture(t);
+    installRole(f.dir, { id: "jobs", agent: "Jobs", lanes: ["worker"] });
+    const fake = fakePool({
+      behavior: ({ prompt }) => (prompt.startsWith("/jobs") ? { ok: false, error: "no such skill" } : {}),
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), { ...card(f, "T-1", f.app, "worker"), agent: "Jobs" });
+    await pool.tick();
+    const worker = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
+    assert.ok(worker, "the worker session opens even without the opener");
+    assert.equal(worker.prompts[0], "/jobs\nFlags: --agent Jobs --actor-kind=claude");
+    assert.match(worker.prompts[1], /Role skill: .*\/jobs\/SKILL\.md/);
+    assert.match(worker.prompts[1], /work T-1/);
+    await pool.stop();
+  });
+
+  it("reopens a lane session when its installed skill changes", async (t) => {
+    const f = fixture(t);
+    installRole(f.dir, { id: "reviewer", agent: "Reviewer", lanes: ["reviewer"] });
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), { ...card(f, "R-1", f.app, "reviewer"), agent: "Reviewer" });
+    await pool.tick();
+    const first = fake.opened.find((handle) => handle.role === "reviewer" && handle.cwd === f.app);
+    assert.ok(first, "the reviewer lane opens");
+    assert.equal(first.prompts[0], "/reviewer\nFlags: --agent Reviewer --actor-kind=claude");
+
+    writeFileSync(
+      join(f.dir, ".claude", "skills", "reviewer", "SKILL.md"),
+      "---\nname: reviewer\ndescription: changed\n---\n\n# Reviewer changed\n",
+      "utf8",
+    );
+    enqueueCard(join(f.dir), { ...card(f, "R-2", f.app, "reviewer"), agent: "Reviewer" });
+    await pool.tick();
+    const reviewers = fake.opened.filter(
+      (handle) => handle.role === "reviewer" && handle.cwd === f.app,
+    );
+    assert.equal(reviewers.length, 2, "a changed skill reopens the lane");
+    assert.equal(
+      reviewers[1].prompts[0],
+      "/reviewer\nFlags: --agent Reviewer --actor-kind=claude",
+      "the new session loads the skill again",
+    );
+    assert.match(reviewers[1].prompts[1], /R-2/);
+    await pool.stop();
+  });
+
   it("reattaches a legacy reviewer row to the reviewer lane", async (t) => {
     const f = fixture(t);
     const now = new Date().toISOString();
@@ -383,11 +516,17 @@ describe("session pool", () => {
 
     const director = fake.opened.find((handle) => handle.role === "director" && handle.cwd === f.app);
     assert.ok(director, "a question wakes the director lane, not the reviewer lane");
-    assert.match(director.prompts[0], /You are the director/);
-    assert.match(director.prompts[0], /Which option\?/);
-    assert.match(director.prompts[0], /never spawn a subagent/);
-    assert.match(director.prompts[0], /--kind note/);
-    assert.match(director.prompts[0], /issue move T-1 todo/);
+    assert.equal(
+      director.prompts[0],
+      "/meerkat-director\nFlags: --actor-kind=claude",
+      "a fresh director session opens by loading its skill",
+    );
+    assert.match(director.prompts[1], /You are the director/);
+    assert.match(director.prompts[1], /Which option\?/);
+    assert.match(director.prompts[1], /never spawn a subagent/);
+    assert.match(director.prompts[1], /--kind note/);
+    assert.match(director.prompts[1], /issue move T-1 todo/);
+    assert.doesNotMatch(director.prompts[1], /Decision policy:/);
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
 
     const ledgerFile = join(f.dir, "subagents.state.json");
@@ -706,9 +845,28 @@ describe("session pool", () => {
     await pool.routeQuestionsNow();
     const director = fake.opened.find((handle) => handle.role === "director" && handle.cwd === f.app);
     assert.ok(director, "a route row wakes the director");
-    assert.match(director.prompts[0], /unowned todo/);
-    assert.match(director.prompts[0], /issue assign T-7 --assignee <role>/);
-    assert.match(director.prompts[0], /goes to the Worker role/);
+    assert.equal(director.prompts[0], "/meerkat-director\nFlags: --actor-kind=claude");
+    assert.match(director.prompts[1], /unowned todo/);
+    assert.match(director.prompts[1], /issue assign T-7 --assignee <role>/);
+    assert.match(director.prompts[1], /goes to the Worker role/);
+    enqueueCard(join(f.dir), {
+      id: "route:T-8",
+      queue_kind: "question",
+      role: "question",
+      card: "T-8",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      route: true,
+      title: "Wire the second widget",
+    });
+    await pool.routeQuestionsNow();
+    assert.equal(
+      director.prompts.filter((prompt) => prompt.startsWith("/meerkat-director")).length,
+      1,
+      "the resident director session loads its skill once",
+    );
+    assert.match(director.prompts[2], /unowned todo/);
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
     await pool.stop();
   });

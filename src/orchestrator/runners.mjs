@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 import {
   buildHandoff,
+  buildResidentEnvelope,
   buildReviewHandoff,
   planPatrol,
   planTick,
@@ -28,6 +29,7 @@ import {
   selectReviewerRole,
   selectRole,
   selectWorkerRole,
+  supportsSkillOpener,
 } from "../foundation/roles.mjs";
 import { resolveRolePlatform } from "../foundation/role-platforms.mjs";
 import { DEFERRAL_HOLD } from "./deferrals.mjs";
@@ -1127,31 +1129,44 @@ export function resolveRoleTarget(opts, config, action, card) {
   };
 }
 
-export function wakeHandoff(opts, config, action, card) {
+export function wakeHandoff(opts, config, action, card, resident = false) {
   const target = resolveRoleTarget(opts, config, action, card);
   const { isReview, roleSet, role, actorKind, files } = target;
   const decisionPolicyPath = roleSet?.decisionPolicy?.path ?? null;
+  // The resident pool injects the role skill at session open; a worker's task
+  // envelope carries the card and the board moves, not the role layer or the
+  // skill paths. A review card keeps the full handoff: the reviewer lane spawns
+  // a subagent per card, and that subagent does not inherit the parent's loaded
+  // skill — its handoff is its first context. A deployment without a role keeps
+  // the full handoff too: there is no skill to load.
+  const lean =
+    resident === true && role !== null && !isReview && supportsSkillOpener(actorKind);
 
-  const handoff = isReview
-    ? buildReviewHandoff({
+  const handoff = lean
+    ? buildResidentEnvelope({
         card: card ?? { identifier: action.identifier },
-        agent: action.agent,
-        actorKind,
-        role,
-        roleWorkflowPath: files?.workflow ?? null,
-        reviewerPrompt: readRoleText(files?.reviewerPrompt),
-        reviewerPromptPath: files?.reviewerPrompt ?? null,
         decisionPolicyPath,
       })
-    : buildHandoff({
-        card: card ?? { identifier: action.identifier },
-        agent: action.agent,
-        actorKind,
-        role,
-        roleWorkflowPath: files?.workflow ?? null,
-        selfCheckPath: files?.selfCheck ?? null,
-        decisionPolicyPath,
-      });
+    : isReview
+      ? buildReviewHandoff({
+          card: card ?? { identifier: action.identifier },
+          agent: action.agent,
+          actorKind,
+          role,
+          roleWorkflowPath: files?.workflow ?? null,
+          reviewerPrompt: readRoleText(files?.reviewerPrompt),
+          reviewerPromptPath: files?.reviewerPrompt ?? null,
+          decisionPolicyPath,
+        })
+      : buildHandoff({
+          card: card ?? { identifier: action.identifier },
+          agent: action.agent,
+          actorKind,
+          role,
+          roleWorkflowPath: files?.workflow ?? null,
+          selfCheckPath: files?.selfCheck ?? null,
+          decisionPolicyPath,
+        });
   // Only claim the role as the card's named agent when the manifest actually names
   // this assignee. A fallback reviewer role still guides the handoff, but spawning
   // the default subagent is correct when the assignee is a custom name.
@@ -1176,11 +1191,11 @@ export function wakeHandoff(opts, config, action, card) {
  * The queue row's handoff fields, shared by poll and patrol. A worker row names
  * its own session; a review row keeps the batch/subagent path.
  *
- * @param {{opts: object, config: object, action: object, card?: object, projectDir?: string|null, round?: number}} input
+ * @param {{opts: object, config: object, action: object, card?: object, projectDir?: string|null, round?: number, resident?: boolean}} input
  */
 export function buildHandoffRow(input = {}) {
-  const { opts, config, action, card, projectDir = null, round = 1 } = input;
-  const result = wakeHandoff(opts, config, action, card);
+  const { opts, config, action, card, projectDir = null, round = 1, resident = false } = input;
+  const result = wakeHandoff(opts, config, action, card, resident === true);
   return {
     ...result,
     // The queue row carries the kind so the pool keys the session by

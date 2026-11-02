@@ -282,13 +282,13 @@ describe("chat skill: the manual front end has one home", () => {
 
   it("keeps the decision policy's decision-round protocol", () => {
     // The rounds are how a question is asked, not who answers it; the chat skill
-    // reuses them, so the policy keeps its one home.
-    const policy = readFileSync(
-      join(DIRECTOR_SKILL, "references", "decision-policy.md"),
+    // reuses them, so `rounds.md` keeps its one home.
+    const rounds = readFileSync(
+      join(DIRECTOR_SKILL, "references", "rounds.md"),
       "utf8",
     );
-    assert.match(policy, /## Decision rounds/);
-    assert.match(policy, /frontier/);
-    assert.match(policy, /so "yes" accepts/i);
+    assert.match(rounds, /## Decision rounds/);
+    assert.match(rounds, /frontier/);
+    assert.match(rounds, /so "yes" accepts/i);
   });
 });

@@ -284,6 +284,62 @@ describe("wakeHandoff selects the card's role", () => {
     }
   });
 
+  it("uses a thin task envelope for a resident worker session", () => {
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "T-1", agent: "Jobs" },
+      { identifier: "T-1", title: "Wire it", project: "P1" },
+      true,
+    );
+    assert.match(result.handoff, /Brief: \.meerkat\/T-1\/card\.md/);
+    assert.match(result.handoff, /Plan: \.meerkat\/T-1\/plan\.md/);
+    assert.match(result.handoff, /Carry the session opener's Flags/);
+    assert.match(result.handoff, /taskctl issue wait T-1 --question <id> <flags>/);
+    assert.match(result.handoff, /rounds\.md/);
+    assert.doesNotMatch(result.handoff, /## Team role/);
+    assert.doesNotMatch(result.handoff, /## Role skill/);
+    assert.doesNotMatch(result.handoff, /## Role self-check/);
+    assert.doesNotMatch(result.handoff, /Decision policy:/);
+    assert.doesNotMatch(result.handoff, /taskctl export/);
+  });
+
+  it("names the director skill's rounds.md when no policy path is installed", () => {
+    const result = wakeHandoff(
+      { ...opts, roles: { ...roleSet, decisionPolicy: { path: null } } },
+      {},
+      { identifier: "T-1", agent: "Jobs" },
+      { identifier: "T-1", title: "Wire it", project: "P1" },
+      true,
+    );
+    assert.match(result.handoff, /meerkat-director skill's rounds\.md/);
+  });
+
+  it("keeps the full reviewer handoff for a resident reviewer session", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-role-resident-"));
+    try {
+      const promptPath = join(dir, "reviewer-prompt.md");
+      writeFileSync(promptPath, "# Reviewer protocol\nVERDICT first.\n", "utf8");
+      const reviewer = { ...REVIEWER, reviewerPrompt: promptPath };
+      const result = wakeHandoff(
+        {
+          ...opts,
+          roles: { ...roleSet, roles: [JOBS, reviewer], defaultReviewer: reviewer },
+        },
+        { reviewer: "Reviewer", reviewers: ["Reviewer"], reviewerWorkers: [] },
+        { identifier: "R-1", agent: "Reviewer" },
+        { identifier: "R-1", review_of: "T-1", review_round: 1, project: "P1" },
+        true,
+      );
+      assert.equal(result.isReview, true);
+      assert.match(result.handoff, /## Reviewer protocol/);
+      assert.match(result.handoff, /## Role skill/);
+      assert.match(result.handoff, /VERDICT first/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps the no-role path when the role set is empty", () => {
     const result = wakeHandoff(
       { ...opts, roles: { roles: [], defaultReviewer: null, decisionPolicy: { path: null }, warnings: [] } },

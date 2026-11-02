@@ -27,6 +27,7 @@
  * role remains visible for reporting.
  */
 
+import { createHash } from "node:crypto";
 import {
   existsSync,
   readFileSync,
@@ -43,6 +44,18 @@ const ROLE_SCHEMA = "meerkat-role";
 
 /** The kinds the supervisor scans and may dispatch on, in fixed preference order. */
 export const ROLE_KINDS = Object.freeze(["claude", "codex", "pi"]);
+
+/**
+ * The kinds whose host is verified to expand a `/<skill>` opener as a user
+ * message. Resident lanes on every other kind keep the full handoff with the
+ * skill path, so an unexpanded command cannot run as a stray instruction.
+ */
+export const SKILL_OPENER_KINDS = Object.freeze(["claude"]);
+
+/** @param {unknown} kind */
+export function supportsSkillOpener(kind) {
+  return SKILL_OPENER_KINDS.includes(String(kind ?? ""));
+}
 
 const ROLES_LIMITS = Object.freeze({
   roleJsonBytes: 32 * 1024,
@@ -282,7 +295,7 @@ function scanRoleDirectory(dir, kind, warnings) {
  *   byAgent: Map<string, object>,
  *   defaultReviewer: object|null,
  *   routing: {source: string|null, text: string|null},
- *   decisionPolicy: {source: string|null, path: string|null, text: string|null, isDefault: boolean, truncated: boolean},
+ *   decisionPolicy: {source: string|null, path: string|null, text: string|null, skillDir: string|null, isDefault: boolean, truncated: boolean},
  *   warnings: string[],
  *   error?: string,
  * }}
@@ -422,23 +435,76 @@ export function renderRoutingTable(roles) {
  *
  * @param {string|null} home
  * @param {string} primaryKind
- * @returns {{source: string|null, path: string|null, text: string|null, isDefault: boolean, truncated: boolean}}
+ * @returns {{source: string|null, path: string|null, text: string|null, skillDir: string|null, isDefault: boolean, truncated: boolean}}
  */
 function loadDecisionPolicy(home, primaryKind) {
   if (!nonEmptyString(home)) {
-    return { source: null, path: null, text: null, isDefault: true, truncated: false };
+    return { source: null, path: null, text: null, skillDir: null, isDefault: true, truncated: false };
   }
   const skillDir = join(home, AGENT_DIRS[primaryKind] ?? `.${primaryKind}`, "skills", "meerkat-director");
   const path = join(skillDir, "references", "decision-policy.md");
   if (!existsSync(path)) {
-    return { source: null, path: null, text: null, isDefault: true, truncated: false };
+    return { source: null, path: null, text: null, skillDir, isDefault: true, truncated: false };
   }
   try {
     const { text, truncated } = readBounded(path, ROLES_LIMITS.policyBytes);
-    return { source: "director", path, text, isDefault: true, truncated };
+    return { source: "director", path, text, skillDir, isDefault: true, truncated };
   } catch {
-    return { source: null, path: null, text: null, isDefault: true, truncated: false };
+    return { source: null, path: null, text: null, skillDir, isDefault: true, truncated: false };
   }
+}
+
+/**
+ * A stable fingerprint of one installed skill: every regular file under it, by
+ * relative path and content. The pool uses it to decide whether a resident
+ * session still holds the skill it was opened with; a change reopens the session
+ * and re-sends the opener.
+ *
+ * @param {string|null} skillDir
+ * @returns {string|null}
+ */
+export function skillFingerprint(skillDir) {
+  if (!nonEmptyString(skillDir) || !existsSync(skillDir)) return null;
+  let root;
+  try {
+    root = statSync(skillDir);
+  } catch {
+    return null;
+  }
+  if (!root.isDirectory()) return null;
+  const files = [];
+  const walk = (dir, prefix) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full, rel);
+        continue;
+      }
+      if (entry.isFile()) files.push({ rel, full });
+    }
+  };
+  walk(skillDir, "");
+  files.sort((a, b) => a.rel.localeCompare(b.rel));
+  const hash = createHash("sha256");
+  for (const file of files) {
+    hash.update(file.rel);
+    hash.update("\0");
+    try {
+      hash.update(readFileSync(file.full));
+    } catch {
+      return null;
+    }
+    hash.update("\0");
+  }
+  return hash.digest("hex");
 }
 
 /**

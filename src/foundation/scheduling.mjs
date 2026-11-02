@@ -814,6 +814,48 @@ export function buildReviewHandoff(input) {
 }
 
 /**
+ * The lean task envelope for a resident role session. The role skill was loaded
+ * by the session opener; this message carries only the card and the exact board
+ * moves, never the role layer or the skill paths.
+ *
+ * @param {{card?: object, decisionPolicyPath?: string|null}} input
+ * @returns {string}
+ */
+export function buildResidentEnvelope(input) {
+  const card = input.card ?? {};
+  const title = String(card.title ?? "").slice(0, 300);
+  const ref = card.identifier;
+  const project = card.project ?? "<project id>";
+  const brief = cardFileRel(ref);
+  const processDir = cardDirRel(ref);
+  const roundsPath =
+    typeof input.decisionPolicyPath === "string" && input.decisionPolicyPath !== ""
+      ? input.decisionPolicyPath.replace(/decision-policy\.md$/, "rounds.md")
+      : null;
+  return [
+    `You are the worker for the ${project} project — one card: ${ref}.`,
+    `Title: ${title}`,
+    `Brief: ${brief} — the supervisor exported it; read it first, it is authoritative for this card.`,
+    `Never edit ${brief}: the supervisor overwrites it from the board. Put your process files under ${processDir}/.`,
+    `Plan: ${processDir}/plan.md (write and maintain it before you start).`,
+    "Carry the session opener's Flags on every write.",
+    "",
+    "Board: heartbeat this card at least every 10 minutes; deliver at in_review with a report;",
+    "never move it to done. The loop already claimed it; do not claim it again.",
+    `  taskctl issue heartbeat ${ref} <flags>`,
+    `  taskctl issue deliver ${ref} --report-file - <flags>`,
+    "The frozen acceptance is in the brief; changing an existing item is E2. Do not enter",
+    "awaiting yourself: a question goes to the director.",
+    `  taskctl comment add ${ref} --kind question --body "..." <flags>`,
+    `  taskctl issue wait ${ref} --question <id> <flags>`,
+    roundsPath === null
+      ? "The round method is the meerkat-director skill's rounds.md. Your role skill is"
+      : `The round method is ${roundsPath}. Your role skill is`,
+    "already loaded; read the branch file it names once and follow it.",
+  ].join("\n");
+}
+
+/**
  * The prompt the director lane gets for the **question lane**.
  *
  * A worker that cannot decide writes an agent `question` comment and holds with

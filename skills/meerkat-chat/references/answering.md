@@ -6,7 +6,7 @@ for them.
 
 The question-shaping rules — the frontier, the numbered round, "facts are the asker's job" — are
 the director's decision policy and have one home:
-[`../../meerkat-director/references/decision-policy.md#decision-rounds`](../../meerkat-director/references/decision-policy.md#decision-rounds).
+[`../../meerkat-director/references/rounds.md#decision-rounds`](../../meerkat-director/references/rounds.md#decision-rounds).
 Reuse them here; do not re-derive a second protocol.
 
 ## Find the open question
