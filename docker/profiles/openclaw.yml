@@ -1,4 +1,4 @@
-# Agent-kind profile: OpenClaw. See docs/agents/docker.md § Profiles and docs/ops/install.md.
+# Agent-kind profile: OpenClaw. See docs/maintenance/docker.md § Profiles and docs/ops/install.md.
 actor_kind: openclaw
 label: OpenClaw
 installer: scripts/install/openclaw.sh

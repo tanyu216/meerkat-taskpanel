@@ -312,6 +312,7 @@ describe("skill frontmatter and assets", () => {
       "docs/events.md",
       "docs/README.md",
       "docs/im-integration.md",
+      "docs/maintenance/",
       "docs/ops/install.md",
       "docs/ops/observability.md",
       "docs/ops/publishing.md",

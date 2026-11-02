@@ -40,7 +40,7 @@ It is a board for teams that already run agents — Claude Code, Codex, OpenClaw
 >
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and `openBoard()`. `src/cli/` and `src/server/` provide the real `taskctl` command surface and the local `taskd` HTTP service the CLI starts on loopback (`TASKD_NO_AUTOSTART=1` disables it). `src/server/` serves the board HTTP API and its SSE stream. `web/` is the Vue 3 board, built to `web/dist` and served by `taskd`. Agent integration is skill-only and drives the `taskctl` CLI (see [`docs/ops/install.md`](docs/ops/install.md)).
 >
-> Still planned (in priority order): IM integration (channel plugins), the Epic view, and iteration management (see the [roadmap](#roadmap)). More detail: `CLAUDE.md` and [`docs/agents/development.md`](docs/agents/development.md).
+> Still planned (in priority order): IM integration (channel plugins), the Epic view, and iteration management (see the [roadmap](#roadmap)). More detail: `CLAUDE.md` and [`docs/maintenance/development.md`](docs/maintenance/development.md).
 
 ## Highlights
 
@@ -178,7 +178,7 @@ Role skills have no roles root to own: each one is discovered from the agent kin
 
 Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the agent's board identity, default `Worker`; it seeds the shipped shim and, by default, the `MEERKAT_TASKPANEL_AGENTS` scan set, which the installer seeds as `Jobs,Linus,Turing,Worker`; an existing value is kept without `--force`), `--no-automation` (skip the Codex scheduling units and the taskd guard), `--link` (symlink instead of copy), `--force` (**the only** way to overwrite existing files and managed keys — without it an existing value is kept and reported as `left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
-**Board configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root (the checkout root, or the npm package root) for the board URL, the client token, the allow-list and the SLA thresholds (`TASKD_SLA_*`, validated by the board and published on `GET /api/v1/sla`). The process environment wins key by key, and a CLI flag wins over both. `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file. `install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to the same file. Each actor kind also has a **per-kind config** — `<program root>/.env.<actor-kind>` (for example `.env.claude`) — read by `taskctl` as a per-agent default layer (identity, the engine location) and by `taskctl loop …` for the loop policy. Beside it sits **one** machine-local `projects.json`: the project → directory map, shared by every agent kind and maintained only with `taskctl project map` (never on the board). It is not board configuration, and the loader refuses loop-policy keys in `.env`. Every `taskctl` command also needs an identity: `--actor-kind claude` (or `codex`, `pi`, …; `--as-human` for a person), which the installed shim supplies. **Breaking change:** the old `<dataDir>/taskd.env` is no longer read — move its keys into `.env` by hand. Details: [`docs/ops/install.md`](docs/ops/install.md) and [`docs/agents/development.md`](docs/agents/development.md).
+**Board configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root (the checkout root, or the npm package root) for the board URL, the client token, the allow-list and the SLA thresholds (`TASKD_SLA_*`, validated by the board and published on `GET /api/v1/sla`). The process environment wins key by key, and a CLI flag wins over both. `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file. `install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to the same file. Each actor kind also has a **per-kind config** — `<program root>/.env.<actor-kind>` (for example `.env.claude`) — read by `taskctl` as a per-agent default layer (identity, the engine location) and by `taskctl loop …` for the loop policy. Beside it sits **one** machine-local `projects.json`: the project → directory map, shared by every agent kind and maintained only with `taskctl project map` (never on the board). It is not board configuration, and the loader refuses loop-policy keys in `.env`. Every `taskctl` command also needs an identity: `--actor-kind claude` (or `codex`, `pi`, …; `--as-human` for a person), which the installed shim supplies. **Breaking change:** the old `<dataDir>/taskd.env` is no longer read — move its keys into `.env` by hand. Details: [`docs/ops/install.md`](docs/ops/install.md) and [`docs/maintenance/development.md`](docs/maintenance/development.md).
 
 ## The supervisor and the director
 
@@ -317,7 +317,7 @@ Ordered by priority; IM integration is the next planned item.
 
 > The `M0`–`M6` labels are retired from this table: `M3` (the stdio MCP server) was landed
 > and then removed outright — see
-> [the migration note](docs/agents/migration.md#separate-migration-the-mcp-integration-is-gone).
+> [the migration note](docs/maintenance/migration.md#separate-migration-the-mcp-integration-is-gone).
 
 ## License
 

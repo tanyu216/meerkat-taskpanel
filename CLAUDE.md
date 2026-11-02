@@ -183,7 +183,7 @@ the release workflow stages the image's build there before `npm pack`.
   starting or serving the app, the CLI, agent skill installs, plugin installs, migration
   rehearsals — runs in the container (`npm run verify:docker`, `docker/verify-in-container.sh`).
   `.githooks/pre-push` runs that gate on every branch push, so the push itself is the merge-time
-  container check. Host-allowed (static/pure only, per `docs/agents/docker.md` §Host-allowed checks):
+  container check. Host-allowed (static/pure only, per `docs/maintenance/docker.md` §Host-allowed checks):
   `node --test`, `node --check`, the `scripts/verify/*` checkers, `git` and file inspection,
   prototype screenshots, and the browser-rendered `web/` DOM/selector checks (the image has no
   Chromium).
@@ -193,7 +193,7 @@ the release workflow stages the image's build there before `npm pack`.
 - **`web/` is the one exception, and it is build-time only.** Its committed
   `web/package-lock.json` + committed npm cache at `web/.vendor/npm-cache` let the image's
   `webbuild` stage run `npm ci --offline`, so the image builds with no network. The cache is a
-  **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/agents/docker.md`
+  **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/maintenance/docker.md`
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
 - **The skills are authored source, never generated.** `skills/meerkat/`,
   `skills/meerkat-director/`, `skills/meerkat-chat/`, the five role skills
@@ -206,7 +206,7 @@ the release workflow stages the image's build there before `npm pack`.
 - **Migrations are append-only.** Never edit or delete a committed
   `src/core/storage/migrations/*.sql`; add a new numbered file. The DB runner refuses a database
   whose applied file changed, and adding a migration reds several hand-kept version lists — see
-  `npm run verify:migrations` and `docs/agents/migration.md`.
+  `npm run verify:migrations` and `docs/maintenance/migration.md`.
 - **The contracts are explicit.** A route, error code or wire-field change must update
   `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` —
   never let it drift. Adding a new `DomainError` code touches `ERROR_CODES`, its bucket and that
@@ -278,7 +278,7 @@ The mechanisms those rules rest on, by home:
   downstream/fix card creation, E1–E5; the single decision policy.
 - `skills/meerkat-chat/` — the human's console: progress, awaiting questions, acceptance,
   `loop doctor` and abnormal-card triage; it records the human's words with `--as-human`.
-- `docs/agents/development.md` — one writer per data directory and `DB_BUSY`; auth (`TASKD_ALLOW_CIDRS`
+- `docs/maintenance/development.md` — one writer per data directory and `DB_BUSY`; auth (`TASKD_ALLOW_CIDRS`
   and the token, loopback trusted); the bounded `SIGTERM` stop.
 - `docs/ops/install.md` — config topology: `.env` layering, the per-kind `.env.<actor-kind>` at the
   program root, the install root, and the `taskd` guard unit. The key inventory itself is
@@ -319,8 +319,8 @@ Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/age
 - `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
 - `CONTRIBUTING.md` — how a change lands: isolation, the gate, the PR flow, cleanup. `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
 - `.env.example` — the configuration inventory (every key the application reads, grouped by the file it lands in).
-- `docs/agents/development.md` — the two build layers and the server operations (one writer, bounded stop, lock contention).
-- `docs/agents/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
-- `docs/agents/contract.md` — the API and CLI contract snapshots + route-request lint.
-- `docs/agents/migration.md`, `docs/scheduling.md`, `docs/ops/observability.md` — the named subsystems.
+- `docs/maintenance/development.md` — the two build layers and the server operations (one writer, bounded stop, lock contention).
+- `docs/maintenance/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
+- `docs/maintenance/contract.md` — the API and CLI contract snapshots + route-request lint.
+- `docs/maintenance/migration.md`, `docs/scheduling.md`, `docs/ops/observability.md` — the named subsystems.
 - `src/core/README.md` — what the core engine owns and the rules it enforces.

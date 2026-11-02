@@ -65,7 +65,7 @@ silently.
 
 ## Errors and contract
 
-The canonical artifacts are [`docs/agents/contract.md`](agents/contract.md) and the two snapshots
+The canonical artifacts are [`docs/maintenance/contract.md`](maintenance/contract.md) and the two snapshots
 under `test/fixtures/contract/`. There is no OpenAPI document, by decision.
 
 | Rule | Statement | Enforcement |
@@ -75,7 +75,7 @@ under `test/fixtures/contract/`. There is no OpenAPI document, by decision.
 | TS-22 | Every failure is a `DomainError` with a registered code — never a bare `Error` — and a validation failure carries the offending `field`. | review + `test/contract/**` |
 | TS-23 | A route's **declared** request shape equals what its handler actually reads. The declaration is not a validator; domain validation is what refuses a bad body. This deviation from "one schema validator at the boundary" is recorded, and changing it is a contract change. | `scripts/verify/route-request.mjs` |
 | TS-24 | A route, error code or wire-field change updates `api.snapshot.json`; a command, positional or flag change updates `cli.snapshot.json` and is named in `skills/meerkat/references/cli.md`. | `scripts/verify/contract.mjs`, `scripts/verify/cli-contract.mjs` |
-| TS-25 | Pagination has two recorded shapes and no third: offset (`limit` / `offset`) for card lists, cursor (`after` = the activity revision) for activities, comments, sessions and the SSE stream. An invalid page or cursor is a validation error, not an empty list. | `test/server/**`, `docs/agents/contract.md` |
+| TS-25 | Pagination has two recorded shapes and no third: offset (`limit` / `offset`) for card lists, cursor (`after` = the activity revision) for activities, comments, sessions and the SSE stream. An invalid page or cursor is a validation error, not an empty list. | `test/server/**`, `docs/maintenance/contract.md` |
 
 ## Configuration
 
@@ -111,7 +111,7 @@ One logger, `src/foundation/log.mjs`; the operator's contract is
 | TS-35 | Coverage floors are 80 % line, branch and function over `src/core/**`, `src/foundation/**`, `src/cli/**`, `src/server/**`. The numbers live once, in `package.json`'s `test:coverage` script. `web/` and `scripts/` are excluded by that decision, not by accident. | `npm run test:coverage` |
 | TS-36 | Mocks sit only at an external boundary (HTTP, the database, a spawned process) — never at an internal module. | review |
 | TS-37 | Migrations are append-only: never edit or delete a committed file, add a new number. | `scripts/verify/migrations.mjs` |
-| TS-38 | A verification that only runs on the host is not the gate: `design/` is dropped from the image, so design-derived tests self-skip in the container and that skip is not a pass. | review + `docs/agents/docker.md` |
+| TS-38 | A verification that only runs on the host is not the gate: `design/` is dropped from the image, so design-derived tests self-skip in the container and that skip is not a pass. | review + `docs/maintenance/docker.md` |
 
 ## Security toolchain
 

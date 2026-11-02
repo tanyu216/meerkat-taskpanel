@@ -1005,7 +1005,7 @@ as does `npm link` or a global install.
 ## Verifying the install
 
 **Everything that runs is verified inside the container** (see
-[`docker.md`](../agents/docker.md) and ARCHITECTURE §9.1): the four agent CLIs are not installed in
+[`docker.md`](../maintenance/docker.md) and ARCHITECTURE §9.1): the four agent CLIs are not installed in
 the image and there is no network, so the container asserts each agent kind's *detection
 contract* offline instead.
 

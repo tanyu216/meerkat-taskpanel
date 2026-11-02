@@ -32,7 +32,7 @@ driver. Positioning and rationale: [`README.md`](../README.md) § Why / What it 
 
 | Attribute | What it means concretely | Where it is held |
 |---|---|---|
-| Reliability | A crashed agent never wedges a card (heartbeat staleness); one writer per data directory; a bounded graceful stop | [`docs/agents/development.md`](agents/development.md) |
+| Reliability | A crashed agent never wedges a card (heartbeat staleness); one writer per data directory; a bounded graceful stop | [`docs/maintenance/development.md`](maintenance/development.md) |
 | Traceability | The audit trail is append-only; a delivery needs a report for the current round | [`docs/lifecycle.md`](lifecycle.md) |
 | Simplicity | Zero runtime dependencies, one SQLite file, no build step for the engine | [`docs/tech-spec.md`](tech-spec.md) |
 | Operability | One process, structured logs with a request id, a `/health` probe, metrics | [`docs/ops/observability.md`](ops/observability.md) |
@@ -90,7 +90,7 @@ must hold for every writer live in the database first (a trigger or a `CHECK`), 
 domain check and tested against it under `test/contract/`.
 
 The data directory holds `board.sqlite`, `logs/`, the `writer.lock` and the runtime pointer. Its
-topology, backup and upgrade behaviour: [`docs/agents/migration.md`](agents/migration.md) and
+topology, backup and upgrade behaviour: [`docs/maintenance/migration.md`](maintenance/migration.md) and
 [`docs/ops/install.md`](ops/install.md). There is no squashed baseline to keep: `0001_init.sql`
 is the first append and is never edited.
 
@@ -113,7 +113,7 @@ resource model — and one CLI surface. It **consumes** nothing third-party at r
   `cli.snapshot.json`, regenerated with `--update` and checked by the pre-push hook and CI. There
   is no OpenAPI document, by decision.
 
-Detail, including the pagination shapes in use: [`docs/agents/contract.md`](agents/contract.md).
+Detail, including the pagination shapes in use: [`docs/maintenance/contract.md`](maintenance/contract.md).
 
 ## Configuration surface
 
@@ -186,7 +186,7 @@ meerkat-taskpanel/
 ├── scripts/            # build / install / release / verify / security checkers
 ├── docker/             # Dockerfile, compose files, verify-in-container.sh, profiles/
 ├── monitoring/         # the metrics sidecar (Prometheus / OTLP)
-├── docs/               # this document, the standard, agents/ and ops/ ; index in docs/README.md
+├── docs/               # this document, the standard, agents/, maintenance/ and ops/ ; index in docs/README.md
 ├── design/             # prototype, DESIGN/BLOCKS specs — a live oracle for tests, not documentation
 ├── test/               # mirrors src/ by path; contract/, web/, install/, concurrency/ alongside
 └── .env.example        # the configuration inventory (this file is documentation, not a loadable env)
@@ -212,8 +212,8 @@ SSE increment — and it is what the container suite drives end to end
 | Layered style, DDD rejected | `reconstructed — src/ import graph; recorded in docs/adr/0001` |
 | Module boundaries and import direction | `reconstructed — src/**; enforced by review` |
 | Team roles and ownership | `reconstructed — skills/<role>/role.json (shapes) and src/foundation/roles.mjs (routing)` |
-| Data model, append-only migrations | `inherited — docs/agents/migration.md`, `src/core/storage/` |
-| Envelope and contract snapshots | `inherited — docs/agents/contract.md` |
+| Data model, append-only migrations | `inherited — docs/maintenance/migration.md`, `src/core/storage/` |
+| Envelope and contract snapshots | `inherited — docs/maintenance/contract.md` |
 | Configuration inventory and load order | `reconstructed — src/foundation/env-config.mjs; inventoried in .env.example` |
 | Logger contract | `inherited — docs/ops/observability.md`, `src/foundation/log.mjs` |
 | Security boundaries | `inherited — docs/access.md` |

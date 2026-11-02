@@ -1,8 +1,8 @@
 # Contributing
 
 Thanks for looking. This file is the short version of "how work lands here"; the prose
-sources of truth are [docs/agents/development.md](docs/agents/development.md) (layout and commands) and
-[docs/agents/docker.md](docs/agents/docker.md) (why verification is containerised).
+sources of truth are [docs/maintenance/development.md](docs/maintenance/development.md) (layout and commands) and
+[docs/maintenance/docker.md](docs/maintenance/docker.md) (why verification is containerised).
 
 ## Requirements
 
@@ -22,7 +22,7 @@ npm run verify:docker          # build the image + run the whole suite + tear do
 
 Only pure static checks may run on the host: `node --check`, `node --test`, the
 `scripts/verify/*` checkers, `git`, and prototype screenshots. The full list is under
-"Host-allowed checks" in [docs/agents/docker.md](docs/agents/docker.md).
+"Host-allowed checks" in [docs/maintenance/docker.md](docs/maintenance/docker.md).
 
 ## Before you open a pull request
 
