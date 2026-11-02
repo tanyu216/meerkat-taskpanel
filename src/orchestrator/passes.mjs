@@ -945,7 +945,9 @@ export async function runPatrolOnce(opts, env = process.env) {
         return { ok: false };
       }
       const task = tasks.find((entry) => entry.identifier === alert.identifier) ?? null;
-      const project = typeof task?.project === "string" ? task.project.trim() : "";
+      const project = typeof (task?.project_id ?? task?.project) === "string"
+        ? String(task.project_id ?? task.project).trim()
+        : "";
       if (project === "") {
         log(`patrol: ${alert.identifier} — the card names no project; notify-only, no LLM turn`);
         return { ok: false };

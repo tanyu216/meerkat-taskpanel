@@ -149,7 +149,7 @@ export function readOpenQuestions(opts, log, run = runCli) {
     // A review card has no question lane of its own; the one identity reader
     // agrees with the workflow and the SLA patrol on what "is a review" means.
     if (reviewIdentityOf(task).isReview) continue;
-    const project = textOf(task?.project);
+    const project = textOf(task?.project_id ?? task?.project);
     const ref = textOf(task?.identifier);
     if (project === null || ref === null) continue;
 
@@ -211,7 +211,7 @@ export function readUnownedTodos(opts, log, run = runCli, now = Date.now) {
     const assigned = textOf(assignee?.id) ?? textOf(assignee?.display_name);
     if (assigned !== null) continue;
     const ref = textOf(task?.identifier);
-    const project = textOf(task?.project);
+    const project = textOf(task?.project_id ?? task?.project);
     if (ref === null || project === null) continue;
     const stamp = Date.parse(String(task?.updated_at ?? task?.created_at ?? ""));
     if (!Number.isFinite(stamp) || now() - stamp < ROUTE_UNASSIGNED_MS) continue;
