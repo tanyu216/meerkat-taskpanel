@@ -32,6 +32,7 @@ describe("chat skill: shape", () => {
       "references/console.md",
       "references/answering.md",
       "references/acceptance.md",
+      "references/watch.md",
     ]) {
       assert.ok(existsSync(join(CHAT_SKILL, rel)), `${rel} must land`);
     }
@@ -83,6 +84,12 @@ describe("chat skill: the description reaches the human's questions", () => {
   it("triggers in any language without carrying language-specific keywords", () => {
     assert.match(description, /any language|Chinese, English/i);
     assert.match(description, /bare card id or title/i);
+  });
+
+  it("reaches a request to watch the waiting queue", () => {
+    // "watch" / "keep checking" / "notify me" are the phrasings a human uses
+    // for a standing request; without them the description never routes here.
+    assert.match(description, /watch|keep checking|notify/i);
   });
 
   it("hands board mechanics and decisions to their own skills", () => {
@@ -191,6 +198,60 @@ describe("chat skill: the four things a human asks for", () => {
   });
 });
 
+describe("chat skill: watch mode on the waiting queue", () => {
+  const text = readFileSync(join(CHAT_SKILL, "SKILL.md"), "utf8");
+  const watchText = () => readFileSync(join(CHAT_SKILL, "references", "watch.md"), "utf8");
+
+  it("enters on request with an event clock and a 60-second safety read", () => {
+    assert.match(text, /watch mode/i);
+    assert.match(text, /keep checking|notify me when a card needs me/i);
+    assert.match(watchText(), /taskctl events follow/);
+    assert.match(watchText(), /--after <rev>/);
+    assert.match(watchText(), /--idle 10000/);
+    assert.match(watchText(), /60[- ]?(s|sec|seconds?)/i);
+    assert.match(watchText(), /taskctl loop console --json/);
+  });
+
+  it("watches only questions and pending acceptance, and leaves doctor one-shot", () => {
+    const watch = watchText();
+    assert.match(watch, /questions\[\]/);
+    assert.match(watch, /pending_acceptance/);
+    assert.match(watch, /loop doctor/);
+    assert.match(watch, /one-shot|on request|not part of/i);
+  });
+
+  it("notifies and never writes, and is not a second dispatcher", () => {
+    const watch = watchText();
+    assert.match(watch, /never (write|accept|claim|move|heartbeat|deliver)/i);
+    assert.match(watch, /second dispatcher|not .*scheduler/i);
+  });
+
+  it("dedupes with the three keys and invalidates on the board's events", () => {
+    const watch = watchText();
+    assert.match(watch, /awaiting:<ref>:<awaiting_reason \?\? "-">:<asked_at \?\? sha1\(question\)>/);
+    assert.match(watch, /agent-question:<ref>:<asked_at \?\? sha1\(question\)>:<sha1\(question\)>/);
+    assert.match(watch, /acceptance:<ref>:<delivery_round>/);
+    assert.match(watch, /task_resumed/);
+    assert.match(watch, /task_delivered/);
+    assert.match(watch, /report_written/);
+  });
+
+  it("confirms a resolution, and never resolves on a failed read", () => {
+    const watch = watchText();
+    assert.match(watch, /resolved/i);
+    assert.match(watch, /issue get <ref>/);
+    assert.match(watch, /errors\[\]/);
+    assert.match(watch, /degraded/i);
+  });
+
+  it("hands the human's answer and acceptance to the existing flows", () => {
+    const watch = watchText();
+    assert.match(watch, /answering\.md/);
+    assert.match(watch, /acceptance\.md/);
+    assert.match(watch, /show-then-write/i);
+  });
+});
+
 describe("chat skill: boundaries", () => {
   const text = readFileSync(join(CHAT_SKILL, "SKILL.md"), "utf8");
 
@@ -217,7 +278,13 @@ describe("chat skill: boundaries", () => {
 
 describe("chat skill: references resolve where the skill is installed", () => {
   const skillDir = CHAT_SKILL;
-  const files = ["SKILL.md", "references/console.md", "references/answering.md", "references/acceptance.md"];
+  const files = [
+    "SKILL.md",
+    "references/console.md",
+    "references/answering.md",
+    "references/acceptance.md",
+    "references/watch.md",
+  ];
   const read = (rel) => readFileSync(join(skillDir, rel), "utf8");
 
   it("has no link that climbs out of the skill into the repository root", () => {
