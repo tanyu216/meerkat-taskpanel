@@ -778,7 +778,6 @@ describe("agent bundle: --force preserves operator data", () => {
 
     const config = join(kindConfigDirFor(home), ".env.claude");
     const before = readFileSync(config, "utf8");
-    assert.match(before, /^MEERKAT_TASKPANEL_REVIEWER=/m);
     // An operator-owned key (written through `/setup-meerkat` or by hand) that the
     // installer's template does not carry must survive a forced rewrite.
     writeFileSync(config, `${before}MEERKAT_TASKPANEL_SLA_LEADER=alice\n`, "utf8");

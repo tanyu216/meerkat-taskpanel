@@ -740,7 +740,6 @@ async function main(argv) {
     const programRoot = resolveKindConfigDir(opts, opts.home, candidate, env);
     const platformConfigPath = programRoot.dir === null ? null : kindConfigFile(programRoot.dir, candidate);
     const platformConfig = parseEnvText(readText(platformConfigPath) ?? "");
-    const reviewer = platformConfig.get("MEERKAT_TASKPANEL_REVIEWER");
     platforms[candidate] = {
       kind: candidate,
       dir: AGENT_KINDS[candidate].dir,
@@ -757,7 +756,6 @@ async function main(argv) {
         present: platformConfigPath !== null && existsSync(platformConfigPath),
         // No scan-set key: the claimable set is the discovered role skills above.
         kindOrder: splitList(platformConfig.get("MEERKAT_TASKPANEL_AGENT_KIND_ORDER")),
-        reviewer: typeof reviewer === "string" && reviewer.trim() !== "" ? reviewer.trim() : null,
       },
       roles: roleSkillsAt(opts.home, candidate).map((role) => role.agent),
       capabilities: [...(PLATFORM_CAPABILITIES[candidate] ?? [])],

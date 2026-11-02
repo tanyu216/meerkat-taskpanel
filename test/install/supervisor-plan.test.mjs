@@ -303,15 +303,8 @@ describe("supervisor: the discovered scan set and the machine-level view", () =>
     assert.equal(discovered.source, "discovered");
     assert.deepEqual(
       [...discovered.agents].sort(),
-      ["Jobs", "Linus"],
-      "a reviewer-lane role is not a worker and is not scanned unconfigured",
-    );
-
-    // The configured reviewer joins the scan; it is not discovered as a worker.
-    writeFileSync(path, "MEERKAT_TASKPANEL_REVIEWER=Reviewer\n", "utf8");
-    assert.deepEqual(
-      [...scanSetFromConfig(path, { home, actorKind: "claude" }).agents].sort(),
       ["Jobs", "Linus", "Reviewer"],
+      "every discovered role in the worker or reviewer lane is scanned",
     );
   });
 

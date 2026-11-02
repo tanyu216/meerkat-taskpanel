@@ -56,9 +56,8 @@ MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-}"
 MEERKAT_TASKPANEL_SUPERVISOR="${MEERKAT_TASKPANEL_SUPERVISOR:-}"
 MEERKAT_TASKPANEL_SCHEDULER="${MEERKAT_TASKPANEL_SCHEDULER:-}"
 # The workflow channel's persisted answers. Empty means "not given" and falls back to
-# the supervisor's default (workflow on, no reviewer).
+# the supervisor's default (workflow on; the role catalog's default reviewer).
 MEERKAT_TASKPANEL_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-}"
-MEERKAT_TASKPANEL_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
 MEERKAT_TASKPANEL_RECOVER_STALE="${MEERKAT_TASKPANEL_RECOVER_STALE:-}"
 # "The server target rewrote the runtime tree" — set by install.sh from the
 # server step's report and consumed by install_scheduling. A restart signal, not
@@ -68,7 +67,7 @@ export MEERKAT_TASKPANEL_TARGET_HOME MEERKAT_TASKPANEL_AGENT_NAME MEERKAT_TASKPA
   MEERKAT_TASKPANEL_FORCE MEERKAT_TASKPANEL_DRY_RUN MEERKAT_TASKPANEL_NO_AUTOMATION \
   MEERKAT_TASKPANEL_MIN_NODE MEERKAT_TASKPANEL_SKIP_NODE_CHECK MEERKAT_TASKPANEL_CLAIM_UNASSIGNED \
   MEERKAT_TASKPANEL_SUPERVISOR MEERKAT_TASKPANEL_SCHEDULER \
-  MEERKAT_TASKPANEL_WORKFLOW MEERKAT_TASKPANEL_REVIEWER MEERKAT_TASKPANEL_RECOVER_STALE \
+  MEERKAT_TASKPANEL_WORKFLOW MEERKAT_TASKPANEL_RECOVER_STALE \
   MEERKAT_TASKPANEL_RUNTIME_CHANGED
 
 # is_int64 <value> — 0 when <value> is a non-negative integer that fits in a
@@ -356,10 +355,9 @@ export_tp_env() {
   TP_SCHED="$(target_home)/$agent_dir/scheduling"
   TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
   TP_RECOVER_STALE="${MEERKAT_TASKPANEL_RECOVER_STALE:-yes}"
-  # The workflow channel's remembered answers. An empty reviewer is deliberate and
-  # renders as `KEY=`, which the supervisor reads as "not configured".
+  # The workflow channel's remembered answer. The review card's assignee selects
+  # the reviewer role from the installed catalog; there is no reviewer key.
   TP_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-yes}"
-  TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-Reviewer}"
   # The claimable identities are the discovered role skills; there is no scan-set
   # key to seed. `TP_AGENT` stays the loop's *writer* identity, rendered into
   # every scheduling unit (a unit started by launchd/systemd/cron has no shell
@@ -1035,7 +1033,6 @@ ensure_agent_config_keys() {
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
   ensure_env_key "MEERKAT_TASKPANEL_RECOVER_STALE" "$TP_RECOVER_STALE"
   ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
-  ensure_env_key "MEERKAT_TASKPANEL_REVIEWER" "$TP_REVIEWER"
   ensure_env_key "MEERKAT_TASKPANEL_PING_INTERVAL" "$TP_PING_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE_INTERVAL" "$TP_CONTINUE_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE" "$TP_CONTINUE"

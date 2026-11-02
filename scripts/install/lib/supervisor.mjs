@@ -121,11 +121,12 @@ function agentConfigValue(path, key) {
 
 /**
  * The scan set one agent kind's loop will actually use: every role skill
- * discovered under the install's agent kinds, plus the configured reviewer.
+ * discovered under the install's agent kinds, in the worker or reviewer lane.
  *
- * There is no scan-set key any more, so this reads the target home rather than
- * the per-kind config — the same discovery the loop performs at runtime.
- * `none` is the finding: no role skill is installed, so nothing can be claimed.
+ * There is no scan-set key and no reviewer key any more, so this reads the
+ * target home rather than the per-kind config — the same discovery the loop
+ * performs at runtime. `none` is the finding: no role skill is installed, so
+ * nothing can be claimed.
  *
  * @param {string} path the per-kind config (`<program root>/.env.<kind>`)
  * @param {{home?: string|null, actorKind?: string|null}} [options]
@@ -142,10 +143,7 @@ export function scanSetFromConfig(path, options = {}) {
   } catch {
     // Discovery is deliberately soft; an unreadable tree means no roles.
   }
-  const reviewer = agentConfigValue(path, "MEERKAT_TASKPANEL_REVIEWER");
-  const reviewers =
-    typeof reviewer === "string" && reviewer.trim() !== "" ? [reviewer.trim()] : [];
-  const agents = effectiveScanAgents({ roleSet, reviewers });
+  const agents = effectiveScanAgents({ roleSet });
   return agents.length > 0 ? { agents, source: "discovered" } : { agents: [], source: "none" };
 }
 
@@ -1137,7 +1135,7 @@ export function runSupervisorAction(options) {
     log(`supervisor:   platform: ${paths.actorKind} (~/${paths.agentDir})`);
     log(
       scan.source === "discovered"
-        ? `supervisor:   scan set: ${scan.agents.join(",")} (discovered roles + reviewer)`
+        ? `supervisor:   scan set: ${scan.agents.join(",")} (discovered worker and reviewer roles)`
         : "supervisor:   scan set: none — no role skill is installed (run setup-meerkat)",
     );
     const names = scheduler === "auto" ? ["launchd", "systemd", "cron"] : [requested];

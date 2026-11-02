@@ -178,7 +178,7 @@ describe("install.sh: claim-unassigned flags and persisted config", () => {
 });
 
 describe("install.sh: the workflow config", () => {
-  it("persists the defaults: workflow on, recover on, reviewer Reviewer", () => {
+  it("persists the defaults: workflow on, recover on", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
@@ -186,11 +186,11 @@ describe("install.sh: the workflow config", () => {
     assert.equal(run.status, 0, run.stderr);
     const text = configOf(home, ".claude");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=Reviewer$/m);
+    assert.doesNotMatch(text, /MEERKAT_TASKPANEL_REVIEWER/, "the role catalog owns the reviewer");
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m);
   });
 
-  it("persists --reviewer / --workflow=no", () => {
+  it("accepts --reviewer as a deprecated no-op and persists --workflow=no", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "codex");
@@ -202,25 +202,24 @@ describe("install.sh: the workflow config", () => {
       installEnv(home, bin),
     );
     assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stderr, /--reviewer is deprecated and ignored/);
     const text = configOf(home, ".codex");
-    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
+    assert.doesNotMatch(text, /MEERKAT_TASKPANEL_REVIEWER/);
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=no$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=no$/m);
   });
 
-  it("takes the values from the environment when no flag is given", () => {
+  it("takes the workflow values from the environment when no flag is given", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
     const run = runInstall(["--target", "claude", "--agent-name", "alice"], {
       ...installEnv(home, bin),
       MEERKAT_TASKPANEL_WORKFLOW: "no",
-      MEERKAT_TASKPANEL_REVIEWER: "jobs",
     });
     assert.equal(run.status, 0, run.stderr);
     const text = configOf(home, ".claude");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=no$/m);
-    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
   });
 
   it("rejects an invalid yes/no before installing anything", () => {

@@ -91,10 +91,10 @@ wizard_int() {
   done
 }
 
-# wizard_text <prompt> <default> <plain|path|name|reviewer>
+# wizard_text <prompt> <default> <plain|path|name>
 #
 # Blank accepts the default. `path` expands only a leading ~ or ~/. `name`
-# treats q literally. `reviewer` accepts none or - to clear the value.
+# treats q literally.
 wizard_text() {
   local prompt="${1}" default="${2}" kind="${3}" display answer
   display="$prompt"
@@ -108,11 +108,6 @@ wizard_text() {
     esac
   fi
 
-  if [ "$kind" = "reviewer" ]; then
-    case "$answer" in
-      none | -) printf '\n'; return 0 ;;
-    esac
-  fi
 
   [ -n "$answer" ] || answer="$default"
 

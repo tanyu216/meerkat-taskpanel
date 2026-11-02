@@ -656,7 +656,7 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     mkdirSync(join(home, ".claude", "meerkat-taskpanel"), { recursive: true });
     writeFileSync(
       join(configDir, ".env.claude"),
-      "MEERKAT_TASKPANEL_AGENT_KIND_ORDER=claude,codex,pi\nMEERKAT_TASKPANEL_REVIEWER=Reviewer\n",
+      "MEERKAT_TASKPANEL_AGENT_KIND_ORDER=claude,codex,pi\n",
     );
     return { home, project, configDir };
   }
@@ -681,10 +681,9 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     assert.equal(typeof claude.supervisor.installed, "boolean");
     assert.deepEqual(claude.roles.sort(), ["Jobs", "Linus", "Reviewer"]);
     assert.deepEqual(claude.config.kindOrder, ["claude", "codex", "pi"]);
-    assert.equal(claude.config.reviewer, "Reviewer");
+    assert.equal(claude.config.reviewer, undefined, "the role catalog owns the reviewer");
     assert.equal(claude.available, true);
 
-    assert.equal(result.body.platforms.codex.config.reviewer, null);
     assert.deepEqual(result.body.platforms.codex.roles, ["Turing"]);
 
     assert.deepEqual(result.body.roles.installedOn.claude.sort(), ["Jobs", "Linus", "Reviewer"]);
@@ -831,21 +830,21 @@ describe("configure-env.mjs", () => {
     const file = join(dir, ".env");
     writeFileSync(file, "# keep me\nTASKD_URL=http://localhost:9527\n", "utf8");
 
-    const first = runJson(t, CONFIGURE, ["--file", file, "--key", "MEERKAT_TASKPANEL_REVIEWER", "--value", "Jobs,Linus,Turing"]);
+    const first = runJson(t, CONFIGURE, ["--file", file, "--key", "MEERKAT_TASKPANEL_CUSTOM", "--value", "Jobs,Linus,Turing"]);
     assert.equal(first.status, 0, first.stderr);
     assert.match(readFileSync(file, "utf8"), /# keep me/);
     assert.match(readFileSync(file, "utf8"), /TASKD_URL=http:\/\/localhost:9527/);
 
-    const second = runJson(t, CONFIGURE, ["--file", file, "--key", "MEERKAT_TASKPANEL_REVIEWER", "--value", "Jobs,Linus,Turing"]);
+    const second = runJson(t, CONFIGURE, ["--file", file, "--key", "MEERKAT_TASKPANEL_CUSTOM", "--value", "Jobs,Linus,Turing"]);
     assert.equal(second.status, 0);
     assert.equal(second.body.action, "unchanged");
 
-    const conflict = runJson(t, CONFIGURE, ["--file", file, "--key", "MEERKAT_TASKPANEL_REVIEWER", "--value", "Alice"]);
+    const conflict = runJson(t, CONFIGURE, ["--file", file, "--key", "MEERKAT_TASKPANEL_CUSTOM", "--value", "Alice"]);
     assert.equal(conflict.status, 3);
     assert.equal(conflict.body.action, "conflict");
 
-    const forced = runJson(t, CONFIGURE, ["--file", file, "--key", "MEERKAT_TASKPANEL_REVIEWER", "--value", "Alice", "--force"]);
+    const forced = runJson(t, CONFIGURE, ["--file", file, "--key", "MEERKAT_TASKPANEL_CUSTOM", "--value", "Alice", "--force"]);
     assert.equal(forced.status, 0);
-    assert.match(readFileSync(file, "utf8"), /MEERKAT_TASKPANEL_REVIEWER=Alice/);
+    assert.match(readFileSync(file, "utf8"), /MEERKAT_TASKPANEL_CUSTOM=Alice/);
   });
 });
