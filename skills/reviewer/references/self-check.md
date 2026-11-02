@@ -18,9 +18,10 @@ remember reading. It moves nothing — the loop applies the verdict. Board opera
    row plus any surface-specific security check is dispositioned; read-only arms carry job + sha.
 6. A REJECT's must-fix items are numbered, each with file/line, reproduction, expected versus
    actual and the missing case.
-7. The shape floor was walked (`references/audit-playbook.md`): every skip has a reason, every
-   extra check recorded; the loop claimed the review card, I did not claim it again, I heartbeated
-   only it, neither card moved, no card awaited, no human decision written.
+7. The universal floor and every matching shape refinement were walked
+   (`references/audit-playbook.md`); a type no shape names, or a mixed type, is not a skip; every
+   skip has a reason, every extra check recorded; the loop claimed the review card, I did not claim
+   it again, I heartbeated only it, neither card moved, no card awaited, no human decision written.
 8. First line: `VERDICT: APPROVE` or `VERDICT: REJECT`.
 
 ## What may not be a leftover

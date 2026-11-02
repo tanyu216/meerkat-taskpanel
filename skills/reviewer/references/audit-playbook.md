@@ -2,6 +2,7 @@
 
 Read this before the verdict. The nine steps in `SKILL.md` own the order; this file is the index of what each step must do. **This is a floor, not a ceiling: not limited to these items.** Use any read-only method available in the lane (code, history, tests, docs, CI, scans, comparisons), and audit anything outside the list that can reveal a problem. A shape not named here is not exempt. Do not suppress a real problem because it is outside the list. Record every extra check (what, why, result): an extra finding is classified by impact and can block APPROVE. Start from the change and its blast radius, but that is a starting point, not a cap: follow a credible signal; stop only when the floor is done and no credible risk is unresolved. Any check beyond the floor is allowed when it can find a problem.
 
+- **Scope.** Any delivered card the loop dispatches for review is in scope, whatever its target type. The named floors below are refinements, not a gate: a type no floor names, or a mixed type, follows **Default — a target type no floor names**, never a skip; the reviewer is never routed an ordinary card.
 - **One pass.** The steps own the sequence; this file is an index, not a second pass, and the must-do items are a floor, not a ceiling.
 - **Snapshot is the report frame.** Every original acceptance item and every review-card generic item gets a status.
 - **Board operations are the `meerkat` board skill's contract;** this file records only what to check.
@@ -42,16 +43,20 @@ Each step has **Must do** and **Beyond**. Beyond means any read-only method, not
 **Beyond.** Any additional security check or read-only method; an extra security finding is classified by impact and can block APPROVE.
 
 ### Step 8 — Shape and surface
-**Must do.** Audit the shapes the delivered artefacts actually touch (not only the assignee's row): product planning / brief / PRD; prototype / UI / UX; architecture; development / implementation; refactor; test design / regression / performance; docs / operations / release; epic / rollup. Walk docs and contracts, independence and scope. Run any extra check the surface and risk call for, and record it. An extra finding is classified by impact and can block APPROVE.
+**Must do.** Start from the universal floor — all nine steps, the project's own standards, and the surface/risk checks each step calls for — then apply every named refinement the delivered artefacts actually touch (not only the assignee's row): product planning / brief / PRD; prototype / UI / UX; architecture; development / implementation; refactor; test design / regression / performance; docs / operations / release; epic / rollup. The list is a refinement index, not a scope: a type no floor names, or a mixed type, follows the default below. Walk docs and contracts, independence and scope. Run any extra check the surface and risk call for, and record it. An extra finding is classified by impact and can block APPROVE.
 **Beyond.** Any read-only method; anything outside this list that can reveal a problem.
 
 ### Step 9 — Verdict, self-check, deliver
 **Must do.** Apply the verdict rule and precedence below. Number the must-fix items; the loop appends at most ten items of 400 characters each to the original's acceptance, so put blocking items first and put the rest in the body/leftovers with an owner. Keep the numbered items inside the first 4,000 characters of the findings; the report accepts at most 64 acceptance items/anchors, a 16,384-character conclusion and 64 KiB. Put the verdict on the review card, first line `VERDICT: APPROVE` or `VERDICT: REJECT`; run `references/self-check.md` before delivering.
 **Beyond.** Write the strongest reason to REJECT, then show why it does not hold; record what would change the verdict.
 
-## Shape floors (Step 8 must-do, not upper bounds)
+## Shape floors and the default (Step 8 must-do, not upper bounds)
 
 Each shape has **Floor** and **Beyond**. Beyond is not exhaustive.
+
+### Default — a target type no floor names
+**Floor.** A delivered card whose target type no named floor matches — or that mixes several — gets the universal floor: all nine steps, with Step 8 adding the classification and the surface/risk checks no named floor covers, plus the project's own standards. Record the classification and why no named floor matched. This is a target-type default, not the design-stage classification in Step 2. A named shape is a refinement of this floor, never a precondition; its absence is never a skip, and is not by itself a REJECT.
+**Beyond.** Any read-only method; follow any credible risk signal and record it.
 
 ### Product planning / brief / PRD (Jobs)
 **Floor.** Problem, evidence, users, goals/non-goals/metrics, scope. Every PRD Must maps to a testable acceptance item. The card sets `stage_handoff=required`; the current report's `## Handoff` is complete and its archived paths resolve; the handoff's acceptance source matches the frozen acceptance; any follow-up named in `leftovers` is in the handoff; glossary/ADR terms. Audit conformance and evidence, not design taste.
@@ -110,7 +115,7 @@ supplies its own equivalents.
 ## Verdict rule, precedence and classification
 
 ### Verdict rule
-APPROVE only when all of these hold: (1) the ledger is complete — every requirement has an acceptance item and an implementation; (2) every snapshot item is `met` or `not_applicable` with a reason, while `partial`/`not_met` do not pass; (3) every `met` has `evidence[n]`, anchors resolve at the delivered sha, and at least one valid `command` anchor exists; (4) there is no blocking finding — from the floor, a shape or any extra check; an extra finding that proves the delivery incorrect, unsafe, non-conformant or unverifiable blocks APPROVE; (5) the declared review gate is green — a red gate is a REJECT (TS-34), pre-existing or not; (6) security has no unwaived high/critical, no committed secret and no unresolved ASVS row at the target level; the checklist is a floor — an extra security finding can block APPROVE; (7) every prior finding is resolved with evidence or explicitly deferred; (8) every plan deviation is recorded and justified; (9) there is no self-review conflict, extra checks are recorded not hidden, and a real problem is not suppressed because it is outside the list.
+APPROVE only when all of these hold: (1) the ledger is complete — every requirement has an acceptance item and an implementation; (2) every snapshot item is `met` or `not_applicable` with a reason, while `partial`/`not_met` do not pass; (3) every `met` has `evidence[n]`, anchors resolve at the delivered sha, and at least one valid `command` anchor exists; (4) there is no blocking finding — from the floor, a shape refinement or any extra check; an extra finding that proves the delivery incorrect, unsafe, non-conformant or unverifiable blocks APPROVE; (5) the declared review gate is green — a red gate is a REJECT (TS-34), pre-existing or not; (6) security has no unwaived high/critical, no committed secret and no unresolved ASVS row at the target level; the checklist is a floor — an extra security finding can block APPROVE; (7) every prior finding is resolved with evidence or explicitly deferred; (8) every plan deviation is recorded and justified; (9) there is no self-review conflict, extra checks are recorded not hidden, and a real problem is not suppressed because it is outside the list.
 
 Otherwise REJECT. Insufficient evidence, ambiguity or an unreproducible claim is a REJECT; the reviewer never decides a product, scope, acceptance, design, security-risk or architecture question itself.
 

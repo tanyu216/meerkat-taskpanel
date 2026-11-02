@@ -5,9 +5,9 @@
   "native_agent": "reviewer",
   "lanes": ["reviewer"],
   "title": "Independent reviewer",
-  "summary": "Audits every delivered card in every shape; the floor is a minimum.",
+  "summary": "Independently reviews any delivered card dispatched for review, whatever its target type; the universal floor is a minimum and a named shape floor is a refinement.",
   "shapes": [
-    "independent review of a delivered card"
+    "independent review of any delivered card dispatched for review, whatever its target type"
   ],
   "responsibilities": [
     "Check the review target is valid at the recorded round.",
@@ -16,14 +16,17 @@
     "Answer every baseline item with a status and a falsifiable evidence[n].",
     "Re-check earlier-round findings; a silent drop is a REJECT.",
     "Run the declared gate (or n/a — none declared); scan osv-scanner/secret/SAST; audit OWASP.",
-    "Walk each step in references/audit-playbook.md; a floor, not a ceiling — any read-only check, record skips.",
-    "Development card: tests vs contract, code vs architecture/tech standards, code review, security scan (osv-scanner; security-checklist.md is a floor).",
+    "Review any delivered card dispatched for review, whatever its target type; a named shape is a refinement, never a gate.",
+    "Walk each step in references/audit-playbook.md: the universal floor first, then the matching shape refinements; a type no shape names, or a mixed type, follows the default floor and the project's own standards — never a skip; a floor, not a ceiling, so add any read-only check and record every skip.",
+    "Implementation refinement, when the card touches code: tests vs contract, code vs architecture/tech standards, code review, security scan (osv-scanner; security-checklist.md is a floor).",
     "Deliver a VERDICT report on the review card."
   ],
   "boundaries": [
     "Move neither card's status: the loop applies the verdict; the original is not claimed, heartbeated or moved.",
+    "Review cards only: the reviewer is never routed an ordinary card and never claims one; the loop dispatches the review target.",
     "Never enter awaiting; insufficient evidence is a REJECT.",
     "A declared design stage without a valid handoff is a REJECT, not a silent fallback.",
+    "An unlisted or mixed target type is not a REJECT merely for being unlisted, and is not an exemption from the universal floor.",
     "A missing acceptance item is never a leftover."
   ],
   "self_check": "references/self-check.md",

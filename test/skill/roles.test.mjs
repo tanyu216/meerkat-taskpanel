@@ -115,6 +115,49 @@ describe("role skills: identity, discovery and model invocation", () => {
     }
   });
 
+  it("reviews any delivered card by default, whatever its target type", () => {
+    const text = read("reviewer");
+    const description = text.match(/\ndescription: ([^\n]+)/)?.[1] ?? "";
+    assert.match(description, /any delivered card dispatched for review/i);
+    assert.match(description, /whatever its target type/i);
+    assert.match(description, /named shape refinements/i);
+    assert.match(
+      description,
+      /product.*prototype.*architecture.*implementation.*refactor.*test.*docs.*epic/i,
+      "the common shapes stay named as refinements",
+    );
+    assert.match(description, /never a skip/i);
+    assert.match(description, /never a REJECT merely for being unlisted/i);
+    assert.match(description, /Return one VERDICT\.$/);
+
+    assert.match(text, /any delivered card dispatched for review is in scope/i);
+    assert.match(text, /a type no shape names, or a mixed one/i);
+    assert.match(text, /never a skip/i);
+    assert.match(text, /never routed an ordinary card/i);
+
+    const identity = roleJson("reviewer");
+    assert.match(identity.summary, /any delivered card/i);
+    assert.ok(
+      identity.shapes.some((line) => /^independent review of any delivered card/i.test(line)),
+      "the reviewer still owns review cards, and only review cards",
+    );
+    assert.ok(
+      identity.boundaries.some((line) => /never routed an ordinary card/i.test(line)),
+      "the identity keeps the reviewer out of ordinary work routing",
+    );
+    assert.ok(
+      identity.boundaries.some((line) => /not a REJECT merely for being unlisted/i.test(line)),
+      "an unlisted type is a normal review path, not a reject",
+    );
+
+    const prompt = read("reviewer", "references/reviewer-prompt.md");
+    assert.match(prompt, /any target type is in scope/i);
+
+    const check = read("reviewer", "references/self-check.md");
+    assert.match(check, /universal floor and every matching shape refinement/i);
+    assert.match(check, /mixed type, is not a skip/i);
+  });
+
   it("routes every work shape to exactly one role", () => {
     const shapes = ROLES.flatMap((role) => roleJson(role).shapes.map((line) => `${role}: ${line}`));
     const text = shapes.join("\n");
@@ -1236,6 +1279,17 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       ["docs / operations / release", /docs\s*\/\s*operations\s*\/\s*release/i],
       ["epic / rollup", /epic\s*\/\s*rollup/i],
     ]) assert.match(playbook, pattern, `the playbook floors ${shape}`);
+
+    // The named shapes refine the universal floor; they are never the set of
+    // reviewable cards, and a type none names is a normal path.
+    assert.match(playbook, /Default — a target type no floor names/);
+    assert.match(playbook, /refinement index, not a scope/i);
+    assert.match(playbook, /all nine steps/i);
+    assert.match(playbook, /Step 8 adding the classification/i);
+    assert.match(playbook, /record the classification/i);
+    assert.match(playbook, /project's own standards/i);
+    assert.match(playbook, /is not by itself a REJECT/i);
+    assert.match(playbook, /never routed an ordinary card/i);
 
     for (const [subject, pattern] of [
       ["unit tests", /unit test/i],
