@@ -3,9 +3,9 @@
  *
  * One `claude -p --input-format stream-json --output-format stream-json` process
  * owns one conversation. The process stays alive between turns; `send()` writes
- * one user message and waits for that turn's `result` event. A lane session
- * is opened with `cwd = target_dir`, so the worker/reviewer subagents it spawns
- * inherit the project directory.
+ * one user message and waits for that turn's `result` event. A card session is
+ * opened with `cwd = target_dir`, so the card's work happens in its own
+ * worktree and nothing is spawned from inside the session.
  *
  * The adapter never uses `--bare`: it would skip skill discovery, including the
  * model-invocable `meerkat-chat` console a human uses.
@@ -13,7 +13,6 @@
 
 import { spawn } from "node:child_process";
 
-import { extractAgentIds } from "../ledger.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
@@ -26,19 +25,17 @@ export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
  * @param {string} role
  */
 export function allowedToolsFor(role) {
-  // The Agent tool is the project/reviewer session's subagent mechanism (older
-  // CLIs spell it `Task`; an allowlist entry that never matches is inert).
+  // A card session owns its whole card: nothing spawns a subagent, so no role
+  // carries `Agent`/`Task`. The reviewer runs the project's gate itself, hence
+  // the command entries; it never edits.
   switch (role) {
     case "director":
       return "Read,Grep,Glob,Bash(taskctl *),Bash(node *)";
     case "reviewer":
-      // `npm run` / `node` / `bash` are here because the reviewer's contract is
-      // to re-run the project's gate itself; a lane that cannot run a command
-      // turns "reproducible evidence" into "read the report and trust it".
-      return "Read,Grep,Glob,Agent,Task,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)";
+      return "Read,Grep,Glob,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)";
     case "worker":
     default:
-      return "Read,Edit,Write,Grep,Glob,Agent,Task,Bash(taskctl *),Bash(node *),Bash(git *)";
+      return "Read,Edit,Write,Grep,Glob,Bash(taskctl *),Bash(node *),Bash(git *)";
   }
 }
 
@@ -111,7 +108,6 @@ class ClaudeSession {
     this.onEvent = input.onEvent ?? null;
     this.closed = false;
     this.current = null;
-    this.turnIds = [];
     // The session's own kind environment: its shim directory leads PATH and
     // TASKCTL_ACTOR_KIND is pinned, so a codex worker spawned by a claude
     // supervisor still writes as codex.
@@ -173,12 +169,8 @@ class ClaudeSession {
       return;
     }
     if (event.type === "user") {
-      // Tool results live in user messages. The Agent tool's result carries
-      // `agentId: …`; that is the handle the ledger stores for reattach.
-      for (const subagentId of extractAgentIds(JSON.stringify(event.message?.content ?? ""))) {
-        if (!this.turnIds.includes(subagentId)) this.turnIds.push(subagentId);
-        this.onEvent?.({ type: "subagent", sessionId: this.sessionId, subagentId, phase: "result" });
-      }
+      // Tool results live in user messages; no card session spawns an agent, so
+      // there is no handle to collect.
       return;
     }
     if (event.type === "result") {
@@ -210,7 +202,6 @@ class ClaudeSession {
       resumeFailed: outcome.resumeFailed === true || this.resumeMismatch === true,
       sessionId: this.sessionId,
       cwd: this.cwd,
-      ids: this.turnIds.slice(),
     });
   }
 
@@ -228,7 +219,6 @@ class ClaudeSession {
       return Promise.resolve({ ok: false, error: "a turn is already in flight", sessionId: this.sessionId, cwd: this.cwd });
     }
     const timeoutMs = Number(options.timeoutMs ?? this.opts?.sessionTurnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS);
-    this.turnIds = [];
     this.sawResult = false;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {

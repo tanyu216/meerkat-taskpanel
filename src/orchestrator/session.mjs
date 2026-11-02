@@ -1,10 +1,9 @@
 /**
  * The resident session pool — the loop's long-lived agent conversations.
  *
- * One **worker** session per card, one **reviewer** session per target
- * directory and one **director** lane per project directory. The director
- * decision turn runs in the directory's project context; reviewer subagents
- * inherit that directory.
+ * One **card** session per card — worker or review — plus one **director** lane
+ * per project directory for the question lane. The director decision turn runs
+ * in the directory's project context; no session spawns another.
  *
  * The pool manager owns the queues, routing, ledger, concurrency, heartbeat,
  * idle eviction and resume. It never talks to the board itself: the supervisor's
@@ -24,7 +23,6 @@ import {
   loadRoles,
   resolveDirectorSkill,
   roleVariant,
-  selectReviewerRole,
   selectRole,
   selectWorkerRole,
   skillFingerprint,
@@ -67,11 +65,8 @@ import {
 } from "./queue.mjs";
 import {
   liveSubagents,
-  markSubagent,
   prune,
-  reap,
   readLedger,
-  reattachCandidates,
   upsertSubagent,
   writeLedger,
 } from "./ledger.mjs";
@@ -91,15 +86,6 @@ import {
   SESSION_LOCK_FILE,
 } from "../foundation/loop-state.mjs";
 
-/**
- * A review card is dispatched from its own resident conversation.
- *
- * A subagent inherits its session's permission surface, and the `reviewer` role
- * has no Edit/Write. The worker lane keeps the directory itself as its key, so
- * state written before the split still resumes.
- */
-const REVIEWER_KEY_SUFFIX = "#reviewer";
-
 /** Actor kinds whose adapter turns `role` into a real tool allowlist. */
 const ROLE_ALLOWLIST_KINDS = new Set(["claude", "pi"]);
 
@@ -117,31 +103,6 @@ const QUESTION_RETRY_BACKOFF_MS = 30_000;
 
 /** A queue row on the question lane (everything else is a card handoff). */
 const isQuestionRow = (row) => String(row?.queue_kind ?? "handoff") === "question";
-
-/**
- * The session key for a review card's lane. The kind is part of the key when it
- * is known: two reviewer roles on different platforms review in the same
- * directory, and their conversations must not merge.
- */
-function reviewerKey(dir, actorKind) {
-  return typeof actorKind === "string" && actorKind !== ""
-    ? `${dir}${REVIEWER_KEY_SUFFIX}@${actorKind}`
-    : `${dir}${REVIEWER_KEY_SUFFIX}`;
-}
-
-/** The lane a pool session key belongs to. */
-function laneOf(key) {
-  if (isWorkerKey(key)) return "worker-session";
-  return String(key).includes(REVIEWER_KEY_SUFFIX) ? "reviewer" : "worker";
-}
-
-/** The directory a lane key runs in; a worker key carries its cwd on the entry. */
-function targetDirOf(key) {
-  const value = String(key);
-  if (isWorkerKey(value)) return "";
-  const index = value.indexOf(REVIEWER_KEY_SUFFIX);
-  return index === -1 ? value : value.slice(0, index);
-}
 
 /**
  * The session an event belongs to.
@@ -327,30 +288,6 @@ export function poolStatus(input = {}) {
     };
   }
   return { ...base, live: true, verdict: "running", reason: null };
-}
-
-/** @param {{targetDir: string, subagents: object[]}} input */
-function buildReattachPrompt(input) {
-  const lines = [
-    `You are the reviewer session for ${input.targetDir}.`,
-    "The previous process left these review subagents unfinished:",
-  ];
-  for (const subagent of input.subagents) {
-    const card = typeof subagent.card === "string" && subagent.card !== "" ? subagent.card : null;
-    lines.push(
-      `  - ${subagent.subagentId} (${subagent.role ?? "reviewer"}) card ${card ?? "?"}` +
-        (card === null
-          ? ""
-          : ` — re-read ${cardFileRel(card)} before continuing; never edit it`),
-    );
-  }
-  lines.push(
-    "",
-    "Reattach each one with the agent kind's native mechanism (Claude: SendMessage with the agent",
-    "id; Codex: thread/resume; Pi: subagent resume). Verify side effects before",
-    "continuing. If a handle cannot be reattached, say so; do not repeat work blindly.",
-  );
-  return lines.join("\n");
 }
 
 /**
@@ -875,14 +812,20 @@ export function createSessionPool(input = {}) {
       groups.get(dir).push(row);
     }
     let answered = 0;
+    // The in-flight card sessions, counted from the queue: a processing row is
+    // the slot. The question rows themselves are not card work.
+    const processingByProject = new Map();
+    for (const row of readCards(stateDir).value.cards) {
+      if (row.status !== "processing" || isQuestionRow(row)) continue;
+      const key = String(row.project ?? row.project_dir ?? row.target_dir ?? "");
+      processingByProject.set(key, (processingByProject.get(key) ?? 0) + 1);
+    }
     for (const [dir, cards] of groups) {
       // The director lane draws no worker budget, but it is still bounded by the
       // project's concurrency cap: one decision conversation per project must not
       // pile on a project whose workers are already at the limit.
       const project = String(cards[0]?.project ?? cards[0]?.project_dir ?? dir);
-      const projectLive = liveSubagents(ledger).filter(
-        (subagent) => String(subagent.project ?? subagent.sessionKey ?? "") === project,
-      ).length;
+      const projectLive = processingByProject.get(project) ?? 0;
       if (projectConcurrency > 0 && projectLive >= projectConcurrency) {
         log(`session: ${project} is at its project cap — leaving ${cards.length} decision row(s) pending`);
         continue;
@@ -1141,14 +1084,6 @@ export function createSessionPool(input = {}) {
     // retention, and the board's card remains the durable record.
     pruneCards(stateDir, { now: now() });
     retireLegacyDispatched(stateDir);
-    // A live row is either a turn in flight or an orphan. No adapter reports a
-    // subagent's end, so age is the only release signal.
-    const reaped = reap(ledger, { now: now() });
-    ledger = reaped.ledger;
-    if (reaped.reaped.length > 0) {
-      log(`session: reaped stale ledger row(s): ${reaped.reaped.join(", ")}`);
-      writeLedgerState();
-    }
     let read = readCards(stateDir);
     if (read.error !== null) {
       log(`session: card queue unreadable: ${read.error}`);
@@ -1634,7 +1569,6 @@ export function createSessionPool(input = {}) {
   }
 
   async function evictIdle() {
-    const live = liveSubagents(ledger);
     for (const entry of [...sessions.values()]) {
       if (entry.busy === true) continue;
       if (isWorkerKey(entry.key)) {
@@ -1675,14 +1609,8 @@ export function createSessionPool(input = {}) {
         }
         continue;
       }
-      const dir = targetDirOf(entry.key);
-      const lane = laneOf(entry.key);
-      const held = live.some(
-        (subagent) =>
-          String(subagent.sessionKey ?? "") === dir &&
-          String(subagent.lane ?? (String(subagent.role ?? "") === "reviewer" ? "reviewer" : "worker")) === lane,
-      );
-      if (held) continue;
+      // A non-card key is a director lane: the key is its directory.
+      const dir = entry.key;
       const age = now() - Date.parse(String(entry.startedAt));
       const idle = now() - Date.parse(String(entry.lastUsedAt));
       // A swept worktree takes its session with it; a stale key must not be
@@ -1699,122 +1627,6 @@ export function createSessionPool(input = {}) {
         await closeEntry(entry, { dropSession: false });
         log(`session: lane session ${entry.key} idle — closed; resume id kept`);
       }
-    }
-  }
-
-  async function reattachOnStart() {
-    const groups = new Map();
-    let staleWorkers = 0;
-    for (const subagent of reattachCandidates(ledger)) {
-      const dir = String(subagent.sessionKey ?? "");
-      if (dir === "" || !existsSync(dir)) {
-        ledger = markSubagent(ledger, subagent.subagentId, { status: "stale" });
-        continue;
-      }
-      // Only reviewer subagents are reattached. A worker card resumes through
-      // its own worker session; an old worker subagent row is stale history and
-      // would only pin a concurrency slot.
-      const lane = String(
-        subagent.lane ?? (String(subagent.role ?? "") === "reviewer" ? "reviewer" : "worker"),
-      );
-      if (lane !== "reviewer") {
-        ledger = markSubagent(ledger, subagent.subagentId, { status: "stale" });
-        staleWorkers += 1;
-        continue;
-      }
-      const key = reviewerKey(dir, subagent.actorKind ?? null);
-      let group = groups.get(key);
-      if (group === undefined) {
-        group = { key, dir, lane, subagents: [] };
-        groups.set(key, group);
-      }
-      group.subagents.push(subagent);
-    }
-    if (staleWorkers > 0) {
-      writeLedgerState();
-      log(`session: marked ${staleWorkers} legacy worker subagent(s) stale — their cards resume as worker sessions`, {
-        level: "debug",
-      });
-    }
-    for (const { key, dir, lane, subagents } of groups.values()) {
-      const roleSet = loadRoles({
-        home: opts.home,
-        primaryKind: opts.actorKind,
-        kindOrder: opts.kindOrder,
-        explicitDir: opts.rolesDir ?? null,
-      });
-      const reviewerName = String(subagents[0]?.role ?? subagents[0]?.agent ?? "Reviewer");
-      const role = selectReviewerRole(roleSet, reviewerName);
-      const sessionKind = String(subagents[0]?.actorKind ?? opts.actorKind ?? "claude");
-      const skillMode = skillLoadMode(sessionKind);
-      const files = role === null ? null : roleVariant(role, sessionKind);
-      const skillReady = typeof files?.workflow === "string";
-      const roleSkillPath = files?.skillDir ? join(files.skillDir, "SKILL.md") : null;
-      const fingerprint = files?.skillDir ? skillFingerprint(files.skillDir) : null;
-      const skill =
-        role === null || !skillReady
-          ? null
-          : {
-              path: roleSkillPath,
-              fingerprint,
-              opener:
-                skillMode === "opener"
-                  ? {
-                      command: `/${basename(files.skillDir)}`,
-                      flags: `--agent ${reviewerName} --actor-kind=${sessionKind}`,
-                      fingerprint,
-                      skillPath: roleSkillPath,
-                    }
-                  : null,
-              skillPath: skillMode === "inline" ? roleSkillPath : null,
-            };
-      let entry = await ensureSession(key, {
-        cwd: dir,
-        role: "reviewer",
-        skillPath: skill?.skillPath ?? null,
-      });
-      if (
-        entry.fresh !== true &&
-        skill !== null &&
-        typeof skill.fingerprint === "string" &&
-        entry.openerFingerprint !== skill.fingerprint
-      ) {
-        await closeEntry(entry, { dropSession: true });
-        entry = await ensureSession(key, {
-          cwd: dir,
-          role: "reviewer",
-          skillPath: skill.skillPath ?? null,
-        });
-      }
-      entry.busy = true;
-      let outcome;
-      try {
-        const opened = await ensureOpener(
-          entry,
-          skill?.opener ?? null,
-          skill?.fingerprint ?? null,
-        );
-        const fallback =
-          opened.ok !== true && typeof skill?.path === "string"
-            ? `Role skill: ${skill.path} — read it before acting.\n\n`
-            : "";
-        outcome = await entry.handle.send(
-          `${fallback}${buildReattachPrompt({ targetDir: dir, subagents })}`,
-          { timeoutMs: turnTimeoutMs },
-        );
-      } finally {
-        entry.busy = false;
-        entry.lastUsedAt = nowIso(now);
-      }
-      if (outcome?.ok === true) {
-        log(`session: reattach prompt sent for ${dir} (${lane}, ${subagents.length} subagent(s))`);
-      } else {
-        for (const subagent of subagents) {
-          ledger = markSubagent(ledger, subagent.subagentId, { status: "stale" });
-        }
-        log(`session: reattach failed for ${dir} (${lane}): ${outcome?.error ?? "unknown error"} — marked stale`);
-      }
-      writeLedgerState();
     }
   }
 
@@ -1986,7 +1798,6 @@ export function createSessionPool(input = {}) {
       phase = "starting";
       persistState();
       started = true;
-      await reattachOnStart();
       await recoverWorkerSessions();
       phase = "running";
       persistState();

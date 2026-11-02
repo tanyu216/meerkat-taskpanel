@@ -568,57 +568,6 @@ describe("detect.mjs — read-only discovery", () => {
     assert.equal(result.body.mattPocock.tracker.unrelated, false);
   });
 
-  it("reports a missing pi subagent extension, and clears it once installed", (t) => {
-    const home = temp(t);
-    const project = temp(t);
-    const env = { HOME: home, PATH: temp(t) };
-    const args = ["--home", home, "--project", project, "--actor-kind", "pi", "--no-network"];
-
-    const missing = runJson(t, DETECT, args, { cwd: project, env });
-    assert.equal(missing.status, 0, missing.stderr);
-    assert.equal(missing.body.piSubagents.installed, false);
-    assert.match(missing.body.piSubagents.recommended, /pi install npm:pi-subagents/);
-    assert.ok(missing.body.missing.includes("pi-subagents"));
-    assert.ok(missing.body.actions.includes("install-pi-subagents"));
-    assert.match(missing.body.warnings.join("\n"), /pi install npm:pi-subagents/);
-
-    const claude = runJson(
-      t,
-      DETECT,
-      ["--home", home, "--project", project, "--actor-kind", "claude", "--no-network"],
-      { cwd: project, env },
-    );
-    assert.equal(claude.body.piSubagents.installed, false);
-    assert.equal(claude.body.missing.includes("pi-subagents"), false, "a non-pi host is not blocked");
-    assert.equal(claude.body.actions.includes("install-pi-subagents"), false);
-
-    mkdirSync(join(home, ".pi", "agent", "extensions", "subagent"), { recursive: true });
-    const present = runJson(t, DETECT, args, { cwd: project, env });
-    assert.equal(present.body.piSubagents.installed, true);
-    assert.equal(present.body.piSubagents.recommended, null);
-    assert.equal(present.body.missing.includes("pi-subagents"), false);
-    assert.equal(present.body.actions.includes("install-pi-subagents"), false);
-  });
-
-  it("recognises the npm layout `pi install npm:pi-subagents` uses", (t) => {
-    // pi 1.x writes the package under ~/.pi/agent/npm/node_modules and does not
-    // create ~/.pi/agent/extensions; the legacy-only check reported a working
-    // install as missing.
-    const home = temp(t);
-    const project = temp(t);
-    mkdirSync(join(home, ".pi", "agent", "npm", "node_modules", "pi-subagents"), { recursive: true });
-    const result = runJson(
-      t,
-      DETECT,
-      ["--home", home, "--project", project, "--actor-kind", "pi", "--no-network"],
-      { cwd: project, env: { HOME: home, PATH: temp(t) } },
-    );
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.body.piSubagents.installed, true);
-    assert.equal(result.body.piSubagents.recommended, null);
-    assert.equal(result.body.missing.includes("pi-subagents"), false);
-    assert.equal(result.body.actions.includes("install-pi-subagents"), false);
-  });
 });
 
 describe("detect.mjs — platforms and the role→platform proposal", () => {
@@ -719,9 +668,9 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     assert.equal(result.body.legacy.some((entry) => entry.kind.startsWith("roles-dir")), false);
   });
 
-  it("marks pi available only when its subagent extension is installed", (t) => {
-    // Pi's loop cannot spawn a worker without `pi-subagents`, so a platform that cannot
-    // run the work is never offered — the same gate the interview relies on.
+  it("marks pi available from the director skill alone — no extension needed", (t) => {
+    // A card session spawns nothing, so Pi needs no subagent extension to run
+    // the work; the director skill is the whole gate.
     const home = temp(t);
     const project = temp(t);
     const configDir = temp(t);
@@ -730,16 +679,10 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     const args = ["--home", home, "--project", project, "--actor-kind", "all", "--no-network"];
     const env = { HOME: home, PATH: temp(t), MEERKAT_TASKPANEL_CONFIG_DIR: configDir };
 
-    const without = runJson(t, DETECT, args, { cwd: project, env });
-    assert.equal(without.status, 0, without.stderr);
-    assert.equal(without.body.platforms.pi.skills.director, true, "the director skill alone is not enough");
-    assert.equal(without.body.platforms.pi.available, false);
-
-    mkdirSync(join(home, ".pi", "agent", "npm", "node_modules", "pi-subagents"), { recursive: true });
-    const withExtension = runJson(t, DETECT, args, { cwd: project, env });
-    assert.equal(withExtension.status, 0, withExtension.stderr);
-    assert.equal(withExtension.body.platforms.pi.available, true);
-    assert.equal(withExtension.body.platforms.pi.piSubagents.installed, true);
+    const result = runJson(t, DETECT, args, { cwd: project, env });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.platforms.pi.skills.director, true);
+    assert.equal(result.body.platforms.pi.available, true);
   });
 
   it("proposes the configured kind order — a proposal, never a write", (t) => {
@@ -797,7 +740,7 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     assert.equal(single.status, "single");
     assert.deepEqual(single.byPlatform, { claude: ["Jobs", "Linus", "Turing", "Reviewer"] });
 
-    // pi without pi-subagents is not available, so there is no platform at all.
+    // pi is not available either, so there is no platform at all.
     const none = recommendRolePlatforms(roles, {
       claude: { available: false, capabilities: caps.claude },
       codex: { available: false, capabilities: caps.codex },

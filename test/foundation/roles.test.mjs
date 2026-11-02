@@ -27,7 +27,6 @@ import {
   loadRoles,
   renderRoutingTable,
   roleVariant,
-  selectReviewerRole,
   selectRole,
   selectWorkerRole,
   skillFingerprint,
@@ -298,8 +297,6 @@ describe("roles — selection and routing", () => {
       const result = loadRoles({ home: f.home, primaryKind: "claude" });
       assert.equal(selectRole(result, "Jobs", "worker")?.id, "jobs");
       assert.equal(selectRole(result, "reviewer", "worker"), null);
-      assert.equal(selectReviewerRole(result, "Reviewer")?.id, "reviewer");
-      assert.equal(selectReviewerRole(result, "someone-else")?.id, "reviewer");
     } finally {
       f.cleanup();
     }

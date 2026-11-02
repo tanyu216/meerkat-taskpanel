@@ -134,12 +134,12 @@ describe("claude session args", () => {
     assert.match(allowedToolsFor("reviewer"), /Bash\(git \*\)/);
   });
 
-  it("lets each lane spawn its subagent", () => {
-    // A project/reviewer session that cannot spawn has no way to dispatch the
-    // card it was handed. `Agent` is the current CLI's tool; `Task` is the alias
-    // older builds use, and an unmatched allowlist entry is inert.
-    assert.match(allowedToolsFor("reviewer"), /Agent/);
-    assert.match(allowedToolsFor("worker"), /Agent/);
+  it("gives no lane the subagent tool", () => {
+    // A card session owns its whole card: worker and review sessions both run
+    // top-level and spawn nothing, so `Agent`/`Task` stay out of every allowlist.
+    for (const role of ["director", "reviewer", "worker"]) {
+      assert.doesNotMatch(allowedToolsFor(role), /\b(Agent|Task)\b/);
+    }
   });
 });
 
@@ -169,7 +169,6 @@ describe("claude resident session", () => {
     assert.ok(argv.includes("stream-json"));
     assert.equal(argv.includes("--bare"), false);
     assert.equal(realpathSync(readFileSync(f.cwdFile, "utf8").trim()), realpathSync(f.project));
-    assert.ok(events.some((event) => event.type === "subagent" && event.subagentId === "a-fake-1"));
     await session.close();
   });
 

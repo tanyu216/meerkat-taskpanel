@@ -6,8 +6,7 @@
  * clock that silently breaks its neighbour fails here instead of in production:
  *
  *   * a claim is fresh longer than a worker is expected to pulse (10m < 30m);
- *   * a turn outlasts two heartbeat windows and finishes before the ledger
- *     reaps a live row (20m ≤ turn < 2h);
+ *   * a turn outlasts two heartbeat windows (20m ≤ turn < 2h);
  *   * the continue cadence fits inside a turn;
  *   * patrol's staleness is the same-holder recovery window;
  *   * a pool heartbeat is stale well after it is written.
@@ -26,7 +25,6 @@ import {
 } from "../../src/foundation/constants.mjs";
 import {
   DEFAULT_CONTINUE_SECONDS,
-  LEDGER_STALE_MS,
   PATROL_STALE_MS,
   planPatrol,
 } from "../../src/foundation/scheduling.mjs";
@@ -43,12 +41,10 @@ describe("scheduling/time-contract — the clocks relate", () => {
     assert.ok(CLAIM_STALE_SAME_MS < CLAIM_STALE_ANY_MS);
   });
 
-  it("a turn outlasts two heartbeat windows and ends before the ledger reap", () => {
+  it("a turn outlasts two heartbeat windows, within its documented bounds", () => {
     assert.ok(2 * HEARTBEAT_FRESH_MS <= TURN_MIN_MS, "a 20-minute floor covers two 10-minute pulses");
     assert.ok(TURN_DEFAULT_MS >= TURN_MIN_MS);
     assert.ok(TURN_DEFAULT_MS <= TURN_MAX_EXCLUSIVE_MS);
-    assert.ok(TURN_DEFAULT_MS < LEDGER_STALE_MS, "the turn must finish before its ledger row is reclaimed");
-    assert.ok(TURN_MAX_EXCLUSIVE_MS <= LEDGER_STALE_MS);
   });
 
   it("the continue cadence fits inside a turn", () => {

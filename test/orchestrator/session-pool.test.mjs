@@ -527,7 +527,7 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("reattaches a legacy reviewer row to the reviewer lane", async (t) => {
+  it("opens nothing for a legacy reviewer ledger row — there is no lane to reattach", async (t) => {
     const f = fixture(t);
     const now = new Date().toISOString();
     writeLedger(f.dir, {
@@ -550,11 +550,7 @@ describe("session pool", () => {
     t.after(() => pool.stop());
     await pool.start();
 
-    const reviewer = fake.opened.find((handle) => handle.role === "reviewer");
-    assert.ok(reviewer, "a reviewer row resumes the reviewer lane, not the worker one");
-    assert.equal(reviewer.cwd, f.app);
-    assert.match(reviewer.prompts[0], /rev-1/);
-    assert.match(reviewer.prompts[0], /You are the reviewer session/);
+    assert.equal(fake.opened.length, 0, "a review card is dispatched only through its own queue row");
     await pool.stop();
   });
 
@@ -1505,62 +1501,6 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("sends a reattach prompt for unfinished review subagents on start", async (t) => {
-    const f = fixture(t);
-    writeLedger(f.dir, upsertSubagent({ subagents: [] }, {
-      sessionKey: f.app,
-      actorKind: "claude",
-      subagentId: "a-old",
-      card: "T-9",
-      role: "reviewer",
-      status: "running",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-    }));
-    const fake = fakePool();
-    const pool = createSessionPool({
-      opts: optsFor(f),
-      kindPool: fake,
-      now: () => Date.parse("2026-01-01T00:01:00.000Z"),
-    });
-    t.after(() => pool.stop());
-    await pool.start();
-    const reviewer = fake.opened.find((handle) => handle.cwd === f.app);
-    assert.ok(reviewer, "the reviewer lane was opened for reattach");
-    assert.equal(reviewer.role, "reviewer");
-    assert.match(reviewer.prompts[0], /a-old/);
-    assert.match(reviewer.prompts[0], /Reattach/);
-    assert.match(reviewer.prompts[0], /re-read \.meerkat\/T-9\/card\.md before continuing/);
-    assert.match(reviewer.prompts[0], /never edit it/);
-    await pool.stop();
-  });
-
-  it("marks an old worker subagent row stale instead of opening a project session", async (t) => {
-    const f = fixture(t);
-    writeLedger(f.dir, upsertSubagent({ subagents: [] }, {
-      sessionKey: f.app,
-      actorKind: "claude",
-      subagentId: "a-old-worker",
-      card: "T-9",
-      role: "worker",
-      status: "running",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-    }));
-    const fake = fakePool();
-    const pool = createSessionPool({
-      opts: optsFor(f),
-      kindPool: fake,
-      now: () => Date.parse("2026-01-01T00:01:00.000Z"),
-    });
-    t.after(() => pool.stop());
-    await pool.start();
-    assert.equal(fake.opened.length, 0, "a worker card resumes through its worker session");
-    const ledger = readLedger(f.dir).value;
-    assert.equal(ledger.subagents.find((row) => row.subagentId === "a-old-worker").status, "stale");
-    await pool.stop();
-  });
-
   it("refuses a second pool on the same state directory", async (t) => {
     const f = fixture(t);
     const first = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
@@ -1598,30 +1538,24 @@ describe("session pool", () => {
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`);
     }
-    // A pool with nothing to reattach opens no session, so `start()` would
-    // succeed and run forever. Seed the reviewer row the startup path opens a
-    // lane for; the injected `openSession` then throws inside `start()`.
-    writeLedger(f.dir, upsertSubagent({ subagents: [] }, {
-      sessionKey: f.app,
-      actorKind: "claude",
-      subagentId: "a-throws",
-      card: "T-1",
-      role: "reviewer",
-      status: "running",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-    }));
+    // `start()` now only takes the lock and persists the starting phase, so the
+    // throwing seam is the clock its first state write reads. A throw there used
+    // to escape as an unhandled rejection and kill the pool with no record.
+    let clockCalls = 0;
     const lines = [];
     const code = await runSession(
       { ...optsFor(f), home, actorKind: "claude" },
       {
-        // The control session cannot be opened: `pool.start()` throws instead of
-        // returning `{ok:false}`. That used to be an unhandled rejection.
         kindPool: {
           openSession() {
             throw new Error("spawn refused");
           },
           async close() {},
+        },
+        now: () => {
+          clockCalls += 1;
+          if (clockCalls === 1) throw new Error("spawn refused");
+          return Date.parse("2026-01-01T00:00:00.000Z");
         },
         log: (line, meta) => lines.push({ line, meta }),
       },
@@ -1724,8 +1658,11 @@ describe("session pool", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(child.exitCode, null, `the external-control pool exited (${child.exitCode}); log: ${log}`);
 
+    // Attach the listener before the signal: a pool that exits between `kill`
+    // and `once` would otherwise leave the await pending for ever.
+    const exited = new Promise((resolve) => child.once("exit", resolve));
     child.kill("SIGTERM");
-    await new Promise((resolve) => child.once("exit", resolve));
+    await exited;
   });
 
   it("answers 'is the pool resident?' from the state file, pid and heartbeat", (t) => {

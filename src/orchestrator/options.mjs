@@ -379,7 +379,7 @@ export function parseArgs(argv, env = process.env) {
   opts.kindOrder = env.MEERKAT_TASKPANEL_AGENT_KIND_ORDER ?? opts.configFile.MEERKAT_TASKPANEL_AGENT_KIND_ORDER ?? null;
   const rolesDir = opts.rolesDir ?? env.MEERKAT_TASKPANEL_ROLES_DIR ?? opts.configFile.MEERKAT_TASKPANEL_ROLES_DIR;
   opts.rolesDir = typeof rolesDir === "string" && rolesDir.trim() !== "" ? resolve(rolesDir.trim()) : null;
-  // One concurrency cap for the whole fleet of subagents: workers and reviewers
+  // One concurrency cap for the whole fleet of card sessions: worker and review
   // share it and compete for the slots by demand. Zero is meaningful ("claim
   // nothing"), so this uses the non-negative resolver.
   opts.maxConcurrency = resolveNonNegative(
@@ -747,9 +747,8 @@ surface: \`loop session\` is the resident pool, \`loop subscribe\` the event dae
 \`loop run --ping-once\` / \`--continue-once\` one-shot clocks.
 
 The loop's scheduler. In its default resident shape it owns a session pool:
-  session    long-lived — one control conversation (cwd = this checkout) plus one
-             lane conversation per target directory; the pool spawns
-             the worker/reviewer subagent, which inherits that directory.
+  session    long-lived — one card session per card (worker or review, cwd = the
+             card's directory) plus one director lane per project directory.
 It also owns two clocks:
   ping       every ${DEFAULT_PING_SECONDS}s — prune dead worker pids; no board read, no LLM.
   continue   every ${DEFAULT_CONTINUE_SECONDS}s — run patrol → workflow → poll in-process
@@ -791,7 +790,7 @@ Options:
                             board; a human-opened one may ask its own operator.
   --session-poll-ms <ms>    Queue poll interval (default: 1000).
   --session-pool-max <n>    Max resident lane sessions (default: 8).
-  --project-concurrency <n> Max live subagents per project (default: --max-concurrency).
+  --project-concurrency <n> Max live card sessions per project (default: --max-concurrency).
   --workspace <worktree|shared>
                             Per-card git worktree for a git project (default: worktree).
   --project-idle-ms <ms>    Close an idle lane session after this (default: 1800000).
@@ -819,10 +818,10 @@ Options:
   --patrol-interval <sec>   SLA measurement period P (default: the board's
                             TASKD_SLA_PERIOD_SECONDS, else ${DEFAULT_PATROL_SECONDS}). It no longer
                             schedules anything; an explicit value overrides the board.
-  --max-concurrency <n>     Max concurrent subagents. Workers and reviewers share
-                            this cap and compete for slots by demand; no per-role
+  --max-concurrency <n>     Max concurrent card sessions. Worker and review sessions
+                            share this cap and compete for slots by demand; no per-role
                             reservation (default: ${DEFAULT_MAX_CONCURRENCY}; at 8 the nominal
-                            working set is 6 workers + 2 reviewers).
+                            working set is 6 workers + 2 reviews).
   --claim-unassigned=yes|no Also claim unassigned cards (default: yes).
   --assignee-only           Alias for --claim-unassigned=no.
   --recover-stale=yes|no    Also recover stale in_progress claims (default: yes).

@@ -40,7 +40,6 @@ import {
   readDeferralLedger,
   writeDeferralLedger,
 } from "./deferrals.mjs";
-import { liveSubagents, readLedger } from "./ledger.mjs";
 import { effectiveScanAgents, parseArgs, resolveLoopConfig, roleIsReviewer, roleIsWorker, USAGE } from "./options.mjs";
 import { isKindAvailable } from "./platforms.mjs";
 import { defaultReviewerAgent, loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
@@ -537,11 +536,10 @@ export function createQueueDispatch(input) {
  * One poll pass: scan, atomically claim, enqueue the handoff.
  *
  * **Poll never spawns.** It claims on the board and writes the handoff to the
- * card queue; a resident lane session (one per target directory) takes the
- * handoff and spawns the worker/reviewer subagent in that directory. Without a
- * live pool there is nowhere to send the handoff, so this pass claims **nothing**
- * and alerts once — a claimed card that cannot run is worse than an untouched
- * one.
+ * card queue; the card's own resident session (one per card, worker or review)
+ * takes the handoff in that card's directory. Without a live pool there is
+ * nowhere to send the handoff, so this pass claims **nothing** and alerts once —
+ * a claimed card that cannot run is worse than an untouched one.
  *
  * An empty board scans nothing; a refused claim never enqueues. `--recover-stale`
  * also offers stale `in_progress` claims.
@@ -707,10 +705,9 @@ export async function runPollOnce(opts, env = process.env) {
     ? { version: 1, running: {} }
     : pruneRegistry(loadRegistry(opts.state), isProcessAlive);
 
-  // The claim budget: what the pool can actually run. A live subagent and a
-  // handoff already queued both occupy a slot, so neither is claimed twice. A
-  // question row is a project-session turn, not a subagent, and is not counted.
-  const live = liveSubagents(readLedger(stateDir).value);
+  // The claim budget: what the pool can actually run. A pending or processing
+  // handoff occupies a slot, so it is neither claimed nor enqueued twice. A
+  // question row is a project-session turn, not card work, and is not counted.
   const queued = readCards(stateDir).value.cards.filter(
     (card) =>
       (card.status === "pending" || card.status === "processing") &&
@@ -738,12 +735,14 @@ export async function runPollOnce(opts, env = process.env) {
     }
     return counts;
   };
-  const liveByProject = countByProject(live);
+  // No live ledger rows: a card session holds its slot through its queue row,
+  // so a pending or processing handoff is the whole load.
+  const liveByProject = new Map();
   const queuedByProject = countByProject(queued);
-  const budget = Math.max(0, maxConcurrency - live.length - queued.length);
+  const budget = Math.max(0, maxConcurrency - queued.length);
   if (budget === 0) {
     log(
-      `poll: claim budget is 0 (${live.length} live subagent(s), ${queued.length} queued card(s), ` +
+      `poll: claim budget is 0 (${queued.length} queued card(s), ` +
         `cap ${maxConcurrency}) — nothing claimed`,
     );
     return 0;
@@ -957,15 +956,14 @@ export async function runPatrolOnce(opts, env = process.env) {
 
   // Terminal cards' worktrees are removed here, not when a turn completes: the
   // reviewer may still need the tree after delivery. A path still named by a
-  // queued row or a live subagent is left alone.
+  // queued (pending or processing) row is left alone.
   const stateDir = dirname(String(opts.state));
   const deferrals = deferralRecorderFor(opts, stateDir, log);
-  const busyPaths = new Set([
-    ...readCards(stateDir)
+  const busyPaths = new Set(
+    readCards(stateDir)
       .value.cards.filter((card) => card.status === "pending" || card.status === "processing")
       .map((card) => card.target_dir),
-    ...liveSubagents(readLedger(stateDir).value).map((row) => row.sessionKey),
-  ]);
+  );
   if (opts.dryRun !== true) {
     sweepWorkspaces({
       stateDir,

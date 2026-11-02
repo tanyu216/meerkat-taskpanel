@@ -44,7 +44,6 @@ import { AGENT_DIRS, resolveKindConfigPath } from "../../../src/foundation/agent
 import { loadRoles } from "../../../src/foundation/roles.mjs";
 import { effectiveScanAgents } from "../../../src/orchestrator/options.mjs";
 import {
-  LIVE_STATUSES,
   QUEUE_FILES,
 } from "../../../src/foundation/loop-state.mjs";
 
@@ -153,7 +152,7 @@ export function scanSetFromConfig(path, options = {}) {
  *
  * @param {string} stateDir the directory holding `sessions.state.json` etc.
  * @param {{isAlive?: (pid: number) => boolean, now?: () => number}} [options]
- * @returns {{live: boolean, pid: number|null, heartbeatAgeMs: number|null, liveSubagents: number,
+ * @returns {{live: boolean, pid: number|null, heartbeatAgeMs: number|null, runningSessions: number,
  *            cardsQueued: number, reason: string}}
  */
 export function poolReport(stateDir, options = {}) {
@@ -169,11 +168,11 @@ export function poolReport(stateDir, options = {}) {
   // The state-file names and the live-status set come from the loop itself: a
   // status line that re-derives either drifts the moment the pool adds one.
   const sessions = readJson(QUEUE_FILES.sessions);
-  const ledger = readJson(QUEUE_FILES.ledger);
   const cards = readJson(QUEUE_FILES.cards);
-  const liveSubagents = Array.isArray(ledger?.subagents)
-    ? ledger.subagents.filter((row) => LIVE_STATUSES.includes(String(row?.status ?? ""))).length
-    : 0;
+  // A running card session is the pool's real load: worker and reviewer alike.
+  const runningSessions = Object.values(
+    sessions?.projects !== null && typeof sessions?.projects === "object" ? sessions.projects : {},
+  ).filter((record) => String(record?.status ?? "") === "running").length;
   const cardsQueued = Array.isArray(cards?.cards)
     ? cards.cards.filter(
         (row) =>
@@ -190,7 +189,7 @@ export function poolReport(stateDir, options = {}) {
       live: false,
       pid,
       heartbeatAgeMs,
-      liveSubagents,
+      runningSessions,
       cardsQueued,
       reason: pid === null ? "no session state" : `pool pid ${pid} is gone`,
     };
@@ -199,7 +198,7 @@ export function poolReport(stateDir, options = {}) {
     live: true,
     pid,
     heartbeatAgeMs,
-    liveSubagents,
+    runningSessions,
     cardsQueued,
     reason: "",
   };
@@ -1153,7 +1152,7 @@ export function runSupervisorAction(options) {
     // actually alive and what it is carrying.
     const pool = poolReport(paths.stateDir, { now: options.now });
     const detail = pool.live
-      ? `pid ${pool.pid}, ${pool.liveSubagents} live subagent(s), ${pool.cardsQueued} card(s) queued` +
+      ? `pid ${pool.pid}, ${pool.runningSessions} running session(s), ${pool.cardsQueued} card(s) queued` +
         `${pool.heartbeatAgeMs === null ? "" : `, heartbeat ${Math.round(pool.heartbeatAgeMs / 1000)}s`}`
       : pool.reason;
     log(`supervisor:   session: ${pool.live ? "running" : "not running"} (${detail})`);

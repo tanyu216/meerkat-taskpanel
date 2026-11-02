@@ -663,21 +663,6 @@ export function selectWorkerRole(roleSet) {
 }
 
 /**
- * Select the reviewer role for an agent. A dedicated reviewer whose own role is
- * worker-only falls back to the manifest's default reviewer, so a worker's
- * boundaries never leak into a review.
- *
- * @param {object|null} roleSet
- * @param {unknown} agent
- * @returns {object|null}
- */
-export function selectReviewerRole(roleSet, agent) {
-  const direct = selectRole(roleSet, agent, "reviewer");
-  if (direct !== null) return direct;
-  return roleSet?.defaultReviewer ?? null;
-}
-
-/**
  * The catalog's default review-card assignee: the declared `default_reviewer`,
  * else the first reviewer-lane role. `null` means no reviewer role is installed.
  *

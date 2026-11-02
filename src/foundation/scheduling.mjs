@@ -41,9 +41,9 @@ import {
 } from "./role-prompt.mjs";
 
 /**
- * Default cap on concurrently running subagents — workers and reviewers share it.
- * The loop reserves no slots per role: demand decides the split (at 8 the nominal
- * steady state is 6 workers + 2 reviewers, not a guarantee).
+ * Default cap on concurrently running card sessions — worker and review sessions
+ * share it. The loop reserves no slots per role: demand decides the split (at 8
+ * the nominal steady state is 6 workers + 2 reviews, not a guarantee).
  */
 export const DEFAULT_MAX_CONCURRENCY = 8;
 /**
@@ -66,18 +66,6 @@ export const DEFAULT_CONTINUE_SECONDS = 600; // 10 minutes
 
 /** A claim older than this is "stale" for patrol (same-holder recovery window). */
 export const PATROL_STALE_MS = CLAIM_STALE_SAME_MS;
-
-/**
- * 0034 — how long a live ledger row survives after its card has left the work
- * state. The reconcile pass reaps it at this age.
- *
- * It is the upper bound of the **time contract**: a turn must finish before the
- * bookkeeping that describes it is reclaimed (`sessionTurnTimeoutMs <
- * LEDGER_STALE_MS`), or a long turn outlives its own slot. One fact source: the
- * ledger imports this rather than spelling `2h` a second time.
- */
-export const LEDGER_STALE_MS = 2 * 60 * 60 * 1000;
-
 
 /**
  * Parse a yes/no-ish string into a boolean, or `null` when it says nothing.
