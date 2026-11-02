@@ -46,7 +46,7 @@ taskctl issue deliver <ref> --report-file - --to done   # an `off` card's direct
 
 A report with an explicit non-current `round` is `REPORT_ROUND_MISMATCH` — a report-write
 error, not a move refusal. A refusal names the round and the fixing command; the exact text is
-in [`cli.md#the-delivery-gate`](../cli.md#the-delivery-gate).
+in [`cli/issue.md#the-delivery-gate`](../cli/issue.md#the-delivery-gate).
 
 ## 4a. The acceptance baseline
 

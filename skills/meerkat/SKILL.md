@@ -17,7 +17,7 @@ taskctl --help                       # when the shim is on PATH
 ```
 
 `--actor-kind` is required except on `--help`, `--version`, `status` and the `project map` actions; a human writes with `--as-human`. Config, flags and exit codes:
-[`references/cli.md#configuration-env`](references/cli.md#configuration-env),
+[`references/cli/core.md#configuration-env`](references/cli/core.md#configuration-env),
 [`references/cli.md#global-options`](references/cli.md#global-options).
 
 ## Reading a refusal
@@ -212,7 +212,7 @@ Three rules that fail **silently**:
 - **A child attached after the rollup makes it stale**; rework the epic to start a new round.
 
 Claim exactly **one** leaf child; the container holds no work of its own. Full rules:
-[`references/lifecycle/containers.md#6-containers-epic`](references/lifecycle/containers.md#6-containers-epic), [`references/cli.md#promoting-an-existing-card-to-an-epic`](references/cli.md#promoting-an-existing-card-to-an-epic).
+[`references/lifecycle/containers.md#6-containers-epic`](references/lifecycle/containers.md#6-containers-epic), [`references/cli/issue.md#promoting-an-existing-card-to-an-epic`](references/cli/issue.md#promoting-an-existing-card-to-an-epic).
 
 ## Review cards (flow B)
 
@@ -235,7 +235,7 @@ The review card's `review_round` is the **original's** audited round; its own `d
 - **`blocked`** is for everything else; `--blocked-reason` is optional. Literals: [`references/schema/blocked-reason.md#blocked_reason--what-a-blocked-card-is-waiting-for`](references/schema/blocked-reason.md#blocked_reason--what-a-blocked-card-is-waiting-for).
 
 Full protocols:
-[`references/cli.md#the-awaiting-state--asking-a-human-a-question`](references/cli.md#the-awaiting-state--asking-a-human-a-question), [`references/cli.md#the-blocked-state--what-the-card-is-waiting-for`](references/cli.md#the-blocked-state--what-the-card-is-waiting-for).
+[`references/cli/issue.md#the-awaiting-state--asking-a-human-a-question`](references/cli/issue.md#the-awaiting-state--asking-a-human-a-question), [`references/cli/issue.md#the-blocked-state--what-the-card-is-waiting-for`](references/cli/issue.md#the-blocked-state--what-the-card-is-waiting-for).
 
 ## Coordinating with other agents
 
@@ -264,7 +264,7 @@ Which directory does it work in? I will register it with
 ## Keeping the brief fresh
 
 A card exported into a project directory is a **snapshot**. Register it once with the local event hub — `export watch <ref> --dir <dir> --detach` — and check it with `--watch-status`; `--stop` ends it, and the portable form is `--once`. Never use a plain `&`: the hub, not your shell, owns the connection. It writes `.meerkat/<identifier>/card.md`, stops at `done` or `canceled`, and is one-way — re-read the brief before a decision, and never hand-edit it. **A supervisor-dispatched worker starts no watcher.** Detail:
-[`references/cli.md#export-watch`](references/cli.md#export-watch).
+[`references/cli/issue.md#export-watch`](references/cli/issue.md#export-watch).
 
 ## Where to look
 
@@ -278,9 +278,9 @@ A card exported into a project directory is a **snapshot**. Register it once wit
 | creating in a status | [§8](references/lifecycle/transitions.md#8-creating-a-card-in-a-status) |
 | refusal codes, enforced vs practice | [§9–§10](references/lifecycle/refusals.md#9-refusals) |
 | the board's workflow plan | [§11](references/lifecycle/workflow.md#11-the-boards-workflow-decisions) |
-| commands, flags, exit codes, JSON envelope | [Commands](references/cli.md#commands), [`--json`](references/cli.md#--json), [returns](references/cli.md#what-each-command-returns) |
-| `issue create`, attachments, `export watch` | [create](references/cli.md#issue-create), [attachment](references/cli.md#attachment), [export watch](references/cli.md#export-watch) |
-| awaiting / blocked | [awaiting](references/cli.md#the-awaiting-state--asking-a-human-a-question), [blocked](references/cli.md#the-blocked-state--what-the-card-is-waiting-for) |
+| commands, flags, exit codes, JSON envelope | [Commands](references/cli.md#commands), [`--json`](references/cli/ops.md#--json), [returns](references/cli/ops.md#what-each-command-returns) |
+| `issue create`, attachments, `export watch` | [create](references/cli.md#issue-create), [attachment](references/cli.md#attachment), [export watch](references/cli/issue.md#export-watch) |
+| awaiting / blocked | [awaiting](references/cli/issue.md#the-awaiting-state--asking-a-human-a-question), [blocked](references/cli/issue.md#the-blocked-state--what-the-card-is-waiting-for) |
 | review protocol and verdict | [§1–§3](references/review-workflow.md#1-two-flows), [§6](references/review-workflow.md#6-what-happens-after-a-delivery) |
 | wire object, export format, identifiers, `blocked_reason` | [reading](references/schema/wire.md#reading-a-card-as-json), [fields](references/schema/records.md#field-reference), [identifiers](references/schema/identifiers.md#identifier-syntax), [blocked_reason](references/schema/blocked-reason.md#blocked_reason--what-a-blocked-card-is-waiting-for), [export](references/schema/records.md#export-rules) |
 | project ↔ directory map | [managed](references/projects-json.md#managed-by-taskctl), [validation](references/projects-json.md#project--directory-what-is-checked), [unregistered](references/projects-json.md#unregistered-no-fallback--ask) |
