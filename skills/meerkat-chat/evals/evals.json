@@ -28,6 +28,13 @@
       "prompt": "A card just went to in_review; accept it for me.",
       "expected_output": "Reads acceptance_mode, the current-round report and review verdict, shows coverage and the exact close, declines without evidence, and re-reads after the write.",
       "files": []
+    },
+    {
+      "id": 4,
+      "name": "watch-queue",
+      "prompt": "Keep checking and notify me when a card needs me.",
+      "expected_output": "Holds a foreground watch over loop console in the session that owns it: events follow as the clock with --idle 10000 and a ~30-second wall-clock cap via the runtime timeout, reads questions[] and pending_acceptance[] again on a signal and about every 60 seconds, announces only new/changed/resolved items with the dedupe keys and never reprints the queue, answers the human before announcing and never talks over them, refuses to delegate the watch to a subagent or background script (a subagent may take one one-shot read, not events follow; unattended notification is the supervisor's patrol/subscribe/SLA path), re-reads and announces the queue once after a lost snapshot with no state file, never writes or accepts, does not resolve anything on a failed read, and hands the human's reply to the answering or acceptance flow.",
+      "files": []
     }
   ]
 }

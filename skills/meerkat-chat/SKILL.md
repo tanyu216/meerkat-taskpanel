@@ -1,6 +1,6 @@
 ---
 name: meerkat-chat
-description: Use this skill whenever a human asks about their Meerkat TaskPanel board in a live agent session — the progress or status of a task card, what is left or what happens next, who is on it, why it is stuck, blocked, looping or otherwise abnormal, what is waiting on them, an awaiting question that needs a reply, a card in `in_review` waiting for acceptance (`in_review → done`) or a review verdict, and the loop's health (`loop doctor`, `loop console`). It also writes on the human's behalf — reply to an on-card question, accept a delivered card, release backlog work, and triage abnormal cards — showing the exact comment or move before it is written. It replies in the human's language, whichever language that is. Trigger in any language the human writes in, including Chinese, English or a mix, and on a bare card id or title when the human is asking about it. Board operations themselves are the `meerkat` skill's; the decision authority is the supervisor-only `meerkat-director` policy, which humans never invoke.
+description: Use this skill whenever a human asks about their Meerkat TaskPanel board in a live agent session — the progress or status of a task card, what is left or what happens next, who is on it, why it is stuck, blocked, looping or otherwise abnormal, what is waiting on them, an awaiting question that needs a reply, a card in `in_review` waiting for acceptance (`in_review → done`) or a review verdict, and the loop's health (`loop doctor`, `loop console`). It can also watch the waiting queue — keep checking and notify the human when a card needs them — without writing anything. It also writes on the human's behalf — reply to an on-card question, accept a delivered card, release backlog work, and triage abnormal cards — showing the exact comment or move before it is written. It replies in the human's language, whichever language that is. Trigger in any language the human writes in, including Chinese, English or a mix, and on a bare card id or title when the human is asking about it. Board operations themselves are the `meerkat` skill's; the decision authority is the supervisor-only `meerkat-director` policy, which humans never invoke.
 ---
 
 # Meerkat Chat — the human's console
@@ -51,8 +51,10 @@ Lead with one short digest before answering the specific question:
 (The example is English for readability; write the digest in the human's language.)
 
 Then answer what they asked. Re-run the reads when a write changed the board, when the human
-asks for fresh state, or when a while has passed — not between every sentence. If a read
-fails, report the failure as the failure; never substitute a guess.
+asks for fresh state, or when a while has passed — not between every sentence. Watch mode (§2)
+is the one exception to that cadence: it re-reads on a signal and on a 60-second safety read,
+and never writes between them. If a read fails, report the failure as the failure; never
+substitute a guess.
 
 Reply in the human's language. Mirror the language of their own messages — do not default to
 English, and do not reproduce the English examples in this skill as if they were the default.
@@ -102,6 +104,47 @@ derived, not a field: combine the uncovered `acceptance[]` items, the current re
 
 This register is what makes the skill *proactive*: when the conversation turns to the board and
 you have not yet shown it, show it before the detail work.
+
+### Watch mode
+
+When the human asks you to watch — "keep checking", "notify me when a card needs me" — you may
+hold a foreground watch over this register. It is a conversation cadence over read-only
+projections, not a scheduler, a daemon or a second dispatcher, and it is not `taskctl export
+watch` (that refreshes one card's brief).
+
+- **Scope is this register only.** `questions[]` and `pending_acceptance[]`; `loop doctor` stays
+  a one-shot read or an answer to a direct question.
+- **The tick.** Wait on `taskctl events follow --after <rev> --idle 10000`; read
+  `taskctl loop console --json` for the baseline, on a signal, on the sixth idle tick or about
+  every 60 seconds (whichever comes first), and after a degraded read. The idle bound must stay
+  below the hub's 15-second heartbeat — a larger value never fires. Cap the call at about
+  30 seconds with the runtime's command timeout (`events follow` has no timeout flag); a cap is
+  a tick, not a failure.
+- **Notify only.** Announce only the changed set (new, changed, resolved); never reprint the
+  whole queue on a tick, and announce nothing on a quiet one. Never write, accept, claim, move,
+  heartbeat, deliver or comment on your own.
+- **One session.** Prefer a dedicated session for a long watch, and never run the watch beside
+  another task. If the human asks for another task, suspend the watch first and resume it after,
+  from a fresh read, only if they still want it. A quick question about the queue is answered
+  inline and the watch continues.
+- **Never talk over the human.** If their message arrives while a tick is out, answer them
+  first; announce the change after that answer is complete, never in the middle of it.
+- **No delegation, no background.** Never delegate the watch to a subagent or a background
+  script: a subagent cannot receive the human's reply or record it, and a second follower is a
+  second poller. A subagent may take one one-shot read, not `events follow`. Unattended
+  notification is the supervisor's `loop patrol` / `loop subscribe` / SLA path, never this
+  skill's; never start one of those.
+- **Identity.** `loop console` is local; `events follow` needs the session's actor identity
+  (`--actor-kind` or `TASKCTL_ACTOR_KIND`). It is a read: never `--as-human`.
+- **Dedupe, and fail honestly.** Do not re-raise a shown item. The snapshot lives in the
+  conversation, not a state file: after a compaction or a lost snapshot, re-read the console and
+  announce the current queue once, saying the watch lost its place. A failed console read
+  (`ok:false` or non-empty `errors[]`) resolves nothing. If `events follow` cannot open, say the
+  watch is degraded and fall back to the console re-read.
+- **The human's answer is §3 / §4.** When they reply, stop watching, apply the existing
+  show-then-write flow unchanged, then resume from a fresh read if they still want it.
+
+Full protocol: [`references/watch.md`](references/watch.md).
 
 ## 3. Answer a question for the human
 
@@ -176,7 +219,8 @@ Details: [`references/acceptance.md`](references/acceptance.md).
 ## 5. Read the loop's health, and triage what is abnormal
 
 `taskctl loop doctor --json` is one read-only inspection. Start at `attention_reasons`; an empty
-list is a healthy answer, not a reason to invent one.
+list is a healthy answer, not a reason to invent one. Health is not part of watch mode: a watch
+announces waiting cards only; health stays a one-shot read or an answer to a direct question.
 
 | Row | What it means | What you do |
 |---|---|---|
@@ -228,5 +272,6 @@ Every one is shown first, verbatim, and confirmed.
 | doctor and console payloads, the abnormal-card playbook | [`references/console.md`](references/console.md) |
 | finding a question, decision rounds, comment kinds, requeue rules | [`references/answering.md`](references/answering.md) |
 | acceptance modes, the current-round gate, review cards, refusals | [`references/acceptance.md`](references/acceptance.md) |
+| watch mode: event clock, dedupe, changed-set reporting | [`references/watch.md`](references/watch.md) |
 | every command and flag | [`../meerkat/SKILL.md`](../meerkat/SKILL.md) and its `references/` |
 | routing, worker questions, E1–E5, decision authority | [`../meerkat-director/references/decision-policy.md`](../meerkat-director/references/decision-policy.md) — the director skill itself is supervisor-only ([`../meerkat-director/SKILL.md`](../meerkat-director/SKILL.md)); humans never invoke it |
