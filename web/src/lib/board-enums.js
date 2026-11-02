@@ -44,5 +44,5 @@ export const PRIORITIES = Object.freeze(["urgent", "high", "medium", "low", "non
 /** The awaiting categories the core writes, all of them questions to a human. */
 export const AWAITING_CATEGORIES = Object.freeze(["E1", "E2", "E3", "E4", "E5"]);
 
-/** The three values a card stores; `auto` is a project word, not a card word. */
-export const ACCEPTANCE_MODES = Object.freeze(["off", "agent", "human"]);
+/** The three values a card stores. */
+export const ACCEPTANCE_MODES = Object.freeze(["off", "auto", "human"]);

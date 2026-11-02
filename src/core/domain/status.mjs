@@ -126,7 +126,7 @@ export const EPIC_ONLY_TRANSITIONS = Object.freeze({
  * gains on top of the base table.
  *
  * `off` means "no review" — the deliverer may close the card directly, so
- * `in_progress → done` is the honest edge. `agent` and `human` still reach done
+ * `in_progress → done` is the honest edge. `auto` and `human` still reach done
  * only through `in_review`; the overlay is keyed on an explicitly supplied
  * mode, never on a missing one, so a caller that has not read the card keeps the
  * base table (the fail-closed direction).
@@ -239,7 +239,7 @@ export function isTerminalStatus(value) {
  *
  * @param {string} from
  * @param {string|null} [kind] the card's kind, or `null`/omitted for the base table
- * @param {"off"|"agent"|"human"|null} [acceptanceMode] the card's acceptance
+ * @param {"off"|"auto"|"human"|null} [acceptanceMode] the card's acceptance
  *   mode; only an explicit `off` adds the direct-done edge
  * @returns {readonly string[]} allowed targets (empty for terminal statuses and
  *   for unknown inputs).
@@ -254,8 +254,8 @@ export function allowedTargets(from, kind = null, acceptanceMode = null, reviewC
   const extra = [];
   if (kind === TASK_KIND.EPIC) extra.push(...(EPIC_ONLY_TRANSITIONS[from] ?? []));
   // 0038 — only an explicit `off` gains the direct edge. A missing mode keeps
-  // the base table; `cardAcceptanceOf(null)` would default to `off` and widen
-  // every caller that has not read the card. A review card is flow B: it must
+  // the base table rather than the column default, so a caller that has not
+  // read the card cannot widen the transitions it may offer. A review card is flow B: it must
   // deliver its verdict through `in_review`, so the direct edge is withheld.
   if (!reviewCard && normalizeCardAcceptance(acceptanceMode) === "off") {
     extra.push(...(AUTO_ONLY_TRANSITIONS[from] ?? []));
@@ -267,7 +267,7 @@ export function allowedTargets(from, kind = null, acceptanceMode = null, reviewC
  * @param {string} from
  * @param {string} to
  * @param {string|null} [kind] the card's kind (see {@link allowedTargets})
- * @param {"off"|"agent"|"human"|null} [acceptanceMode] the card's acceptance mode
+ * @param {"off"|"auto"|"human"|null} [acceptanceMode] the card's acceptance mode
  * @param {boolean} [reviewCard] whether the card is a flow-B review card
  * @returns {boolean} whether the pair is on the whitelist for this kind/mode
  */
@@ -283,7 +283,7 @@ export function canTransition(from, to, kind = null, acceptanceMode = null, revi
  * @param {string} from
  * @param {string} to
  * @param {string|null} [kind] the card's kind (see {@link allowedTargets})
- * @param {"off"|"agent"|"human"|null} [acceptanceMode] the card's acceptance mode
+ * @param {"off"|"auto"|"human"|null} [acceptanceMode] the card's acceptance mode
  * @param {boolean} [reviewCard] whether the card is a flow-B review card
  * @returns {"TERMINAL_STATE"|"INVALID_TRANSITION"|null}
  */
@@ -307,7 +307,7 @@ export function transitionReasonCode(from, to, kind = null, acceptanceMode = nul
  * @param {string} from
  * @param {string} to
  * @param {string|null} [kind] the card's kind (see {@link allowedTargets})
- * @param {"off"|"agent"|"human"|null} [acceptanceMode] the card's acceptance mode
+ * @param {"off"|"auto"|"human"|null} [acceptanceMode] the card's acceptance mode
  * @param {boolean} [reviewCard] whether the card is a flow-B review card
  * @returns {string} `to`, for chaining
  */

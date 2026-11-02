@@ -641,9 +641,9 @@ An **empty** `MEERKAT_TASKPANEL_REVIEWER` is the manual opt-out: the supervisor
 then dispatches no review card and a delivery waits for a human to accept it
 (edit the per-kind config; the wizard does not ask).
 
-Acceptance is **not** install configuration any more: each project stores a default
-(`auto | off | agent | human`) and each card a snapshot, both set through
-`taskctl project update <id> --acceptance …` / `issue create --acceptance-mode …`.
+Acceptance is **not** install configuration: each card states its own mode
+(`off | auto | human`) with `issue create --acceptance-mode …`. There is no project-level
+default; a project may document its creators' guidance in `docs/acceptance-mode.md`.
 The file is merged, never rewritten.
 
 `MEERKAT_TASKPANEL_ENV_FILE` points the installer and both binaries at a different board

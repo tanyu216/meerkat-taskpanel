@@ -12,8 +12,9 @@ The design stance, in four sentences:
   key; the **effective prefix** — the token every card of the project is numbered with — comes
   from a declared slot if the project has one, otherwise from the id. One function resolves it
   for both the allocator and the collision check.
-- **A project carries defaults, not workflow.** It supplies a new card's acceptance mode and
-  reviewer; what a card does with them is [acceptance.md](acceptance.md)'s subject.
+- **A project carries a reviewer, not workflow.** The card states its own acceptance mode;
+  the project only supplies the optional reviewer override. What a card does with its mode is
+  [acceptance.md](acceptance.md)'s subject.
 - **The board decides the order, the client consumes it.** The `PROJECTS` list is ranked
   server-side by recent activity ([DESIGN.md](../design/DESIGN.md) §20); the browser never
   re-sorts it.
@@ -29,7 +30,7 @@ The design stance, in four sentences:
 | **identifier allocation** | `src/core/storage/repositories/projects.mjs#allocateIdentifier` | counter read and bump happen in one transaction, so numbers never repeat |
 | **use-cases** | `src/core/commands/projects.mjs` | creation refuses a taken prefix; the prefix is fixed once issued |
 | **wire projection** | `src/foundation/wire.mjs#projectToWire` | camelCase → snake_case in one place; `prefix` is derived, never client-computed |
-| **defaults** | `src/core/domain/acceptance-mode.mjs`, `src/core/domain/reviewer.mjs` | a project supplies values; the card's snapshot is frozen at creation |
+| **reviewer** | `src/core/domain/reviewer.mjs` | the project's optional override; the card's mode is its own |
 | **ordering** | `src/foundation/project-order.mjs` | rank-normalised weights, computed at the boundary |
 | **directory map** | `src/foundation/project-dir.mjs` | the map is host-local; an unregistered project is a coded stop, never a guess |
 
@@ -39,7 +40,7 @@ A project **is**:
 
 - the owner of an identifier counter, so its cards read `PREFIX-0001`, `PREFIX-0002`, …;
 - the foreign-key scope of every card, comment, label registry entry and activity row;
-- the carrier of two defaults a new card inherits — the acceptance mode and the reviewer;
+- the carrier of an optional reviewer override; the acceptance mode is the card's own;
 - a name, a free-form `meta` document, an optional `labels` set and an optional `readme`.
 
 A project **is not**:
@@ -187,7 +188,6 @@ token to the board.
 | `labels` | `labels` | yes | a stored label set; see the note below |
 | `meta` | `meta` | yes | free-form JSON; PATCH merges at the HTTP surface |
 | `readme` | `readme` | yes | a whole document, replaced by `PUT …/readme` |
-| `acceptance` | `acceptance` | yes | `auto` (default), `off`, `agent`, `human` |
 | `reviewer` | `reviewer` | yes | optional override; `null` falls back to the deployment reviewer |
 | `archived_at` | `archived_at` | storage only | no product command sets it |
 | `created_at`, `updated_at` | same | system | ISO-8601 UTC, millisecond precision |
@@ -195,13 +195,11 @@ token to the board.
 The wire additionally carries `task_count`, a **computed** per-request number (below), never a
 stored column.
 
-### The two defaults a project supplies
+### The reviewer a project supplies
 
-- **`acceptance`** — the default mode for cards created in the project. `auto` means "the
-  creator decides per card" and is never stored on a card; `off`, `agent` and `human` are
-  concrete defaults. Resolution at creation, the `human`-is-top-level-only rule and the
-  `agent` fallback are [acceptance.md](acceptance.md)'s subject. Changing the project value
-  affects **future cards only** — a card's mode is frozen when it is created.
+A project carries no acceptance default: every card states its own `off | auto | human` mode,
+resolved at creation ([acceptance.md](acceptance.md)).
+
 - **`reviewer`** — an optional override naming the agent that reviews the project's cards. A
   blank or absent value means "use the deployment-level reviewer". The board has no agent
   dictionary to validate against, so the value is trimmed and stored verbatim; only a
@@ -249,19 +247,18 @@ use-cases; an archived project keeps its prefix reserved and its cards keep thei
 | directory (host-local) | — | `project map list\|show\|set\|remove` | — |
 
 **Create.** `name` is required (stored trimmed, non-blank); `id` is optional and a UUID is
-minted when absent. `acceptance` is validated against the four project values and `reviewer`
-normalized; the prefix is resolved and checked as described above. The write emits a
-`project_created` activity carrying the project, the acceptance and (when set) the reviewer.
-The web dialog sends `{name, meta: {prefix}, acceptance, reviewer}` — never an id — and reports
+minted when absent. `reviewer` is normalized; the prefix is resolved and checked as described
+above. The write emits a `project_created` activity carrying the project and (when set) the
+reviewer. The web dialog sends `{name, meta: {prefix}, reviewer}` — never an id — and reports
 the server's own refusals in the app's words, with the dialog still open.
 
 **Ensure.** `PUT` is the idempotent form: create if the id is absent, otherwise return the
-existing row **untouched** — an existing project's name, labels, meta, readme, acceptance and
-reviewer are the caller's earlier decisions, not this call's. A race that loses to another
+existing row **untouched** — an existing project's name, labels, meta, readme and reviewer are
+the caller's earlier decisions, not this call's. A race that loses to another
 writer is read back as "already existed" rather than surfaced as a conflict.
 
-**Update.** A partial patch; an empty one is refused. `meta` merges, `acceptance` and
-`reviewer` are normalized, `meta.prefix` is protected. A missing project is `NOT_FOUND`.
+**Update.** A partial patch; an empty one is refused. `meta` merges, `reviewer` is normalized,
+`meta.prefix` is protected. A missing project is `NOT_FOUND`.
 
 **Read.** `GET /api/v1/projects/:id` answers `{project: null}` for an unknown id rather than
 404, so a caller can tell "no such project" from a failed read. `GET /api/v1/projects` returns
@@ -339,7 +336,7 @@ Two events are project-scoped and task-less, and each names its project:
 
 | Event | Writer | Payload |
 |---|---|---|
-| `project_created` | `createProject` | `project`, `acceptance`, optional `reviewer` |
+| `project_created` | `createProject` | `project`, optional `reviewer` |
 | `project_updated` | `updateProject`, `readmeSet` | `project`, `fields` (the patched field names) |
 
 Both are **task-less** events: the web board answers any task-less event by reloading projects →
@@ -358,9 +355,9 @@ rosters → tasks (debounced), and the loop's subscriber watches them. The full 
 | the ordering algorithm | DESIGN.md §20 | `test/server/project-order.test.mjs` |
 | no directory ever reaches the wire | — | `test/server/routes.test.mjs` (asserts no `workspace_path`, and that `current` is no longer a route) |
 
-Two storage-level facts back these: the `projects` table is `STRICT`, with `next_task_number >= 1`
-and an `acceptance IN (…)` check; and the revision trigger covers `name, labels, meta_json,
-readme, archived_at, updated_at, reviewer, acceptance` — deliberately not `next_task_number`.
+Two storage-level facts back these: the `projects` table is `STRICT`, with
+`next_task_number >= 1`; and the revision trigger covers `name, labels, meta_json, readme,
+archived_at, updated_at, reviewer` — deliberately not `next_task_number`.
 
 ## Known edges
 

@@ -137,9 +137,9 @@ describe("blocked_reason — the card field (0016)", () => {
         sql: match[0],
       })),
     );
-    assert.equal(declarations.length, 1, "the baseline declares the revision cursor once");
-    const live = declarations[0];
-    assert.equal(live.version, "0001", "the live declaration is the baseline");
+    assert.ok(declarations.length >= 1, "the revision cursor is declared");
+    const live = declarations.at(-1);
+    assert.equal(live.version, "0002", "the live declaration is the rebuild");
     assert.equal(/\bblocked_reason\b/.test(live.sql), false, "the cursor's column list does not name blocked_reason");
     assert.ok(live.sql.includes("acceptance_mode"), "but it does name the acceptance decision");
     assert.ok(live.sql.includes("version") && live.sql.includes("updated_at"), "but it does name both CAS columns");

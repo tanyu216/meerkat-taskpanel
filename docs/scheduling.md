@@ -729,7 +729,7 @@ in this order:
    `in_review → done`. A `human` card never reaches this part — its mode is not `off`, so it
    is reviewed instead, and only the close waits for the person. Nothing is alerted for this
    state: silence is the implemented behaviour.
-4. **dispatch.** For every flow-A card in `in_review` whose `acceptance_mode` is `agent` or
+4. **dispatch.** For every flow-A card in `in_review` whose `acceptance_mode` is `auto` or
    `human` — review is mode-independent; only `off` is skipped — create a review card for the
    effective reviewer, one per `(original, delivery round)`, with the deterministic
    idempotency key `loop-review|<ref>|r<round>`. The effective reviewer is
@@ -771,7 +771,7 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
   with a status, how it checked and an `evidence[n]` anchor; a `met` the board cannot trace,
   or an `APPROVE` with no command anchor, is refused rather than applied. It delivers a
   report whose first line is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
-- the supervisor applies the verdict as `--actor-kind system --agent Orchestrator`. An `APPROVE` on an `agent` original
+- the supervisor applies the verdict as `--actor-kind system --agent Orchestrator`. An `APPROVE` on an `auto` original
   writes `meta.accepted_by=loop-review` and moves it `in_review → done`; on a `human`
   original it writes `meta.review_verdict=approve` / `meta.review_verdict_round` and leaves
   the card `in_review` for the person. A `REJECT` — in either mode — comments the findings,
@@ -784,9 +784,10 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
 - The supervisor always closes the review card it dispatched — there is no switch that could leave
   it for nobody. On a `human` card it records the round-scoped verdict and stops; the person
   closes the original through the ordinary acceptance gate.
-- An `agent` card with no effective reviewer is refused at startup: the supervisor reads
-  `project list` and computes `project.reviewer ?? the deployment reviewer`. The board still
-  reports `reviewer_not_configured` per project at runtime.
+- A reviewed card with no effective reviewer is reported per card at runtime
+  (`reviewer_not_configured` / `dispatch_skipped`): the supervisor reads `project list` and
+  computes `project.reviewer ?? the deployment reviewer`; there is no project-level startup
+  refusal, because there is no project-level acceptance default.
 
 Why not let the reviewer close its own card (or skip the card entirely)? A reviewer that
 both produces the verdict and accepts it is not a second pair of eyes, and a card is the
@@ -801,12 +802,12 @@ stand-in.
 The separation is not only a prompt rule. `in_review → done` has a **board-level
 acceptance authority**: the card's own `acceptance_mode` decides who may perform it.
 `off` may be closed by the deliverer, the supervisor (the workflow pass) or a human, and
-`in_progress → done` is allowed; `agent` waits for a current-round `APPROVE`, then any
+`in_progress → done` is allowed; `auto` waits for a current-round `APPROVE`, then any
 actor but the one who wrote the verdict closes it — the supervisor, another agent, or a human;
 `human` is a person only. A review card is the one structural exception — its reviewer
 reports the verdict, and anyone but that reviewer (or a human) closes it. The **kind is not
 an allow-list**: the authority is the evidence, so the board's own `system` writes carry no
-extra right. There is no board-level policy and no child/top-level matrix. The refusal is
+extra right. There is no board-level policy and no scope matrix. The refusal is
 `ACCEPTANCE_FORBIDDEN` (409) and it changes nothing. This is what makes "a worker stops
 at `in_review`" a machine rule rather than a habit, and it is why the supervisor's automated
 acceptance is attributable as `system`.
@@ -928,20 +929,20 @@ and the shared `.env` (so `.env.<kind>` supplies per-agent identity and project-
 without one, so reviews already in flight can finish after a deployment removes its reviewer.
 
 The effective reviewer for a card is `projects.reviewer ??` the deployment reviewer. The supervisor
-reads `project list` at startup to merge every project reviewer into its scan/wake set, and
-refuses to start when an `agent` card would be dispatachable with no effective reviewer.
+reads `project list` at startup to merge every project reviewer into its scan/wake set; a card
+whose mode needs review but has no effective reviewer is reported per card
+(`reviewer_not_configured` / `dispatch_skipped`), not as a project-level start-up refusal.
 
 **Who closes a card is the card's own `acceptance_mode`** — `off` (the deliverer may close it,
-and `in_progress → done` is allowed), `agent` (a current-round `APPROVE`, applied by the supervisor)
-or `human` (a person only, after the verdict is recorded). The project's `acceptance`
-(`auto | off | agent | human`) is the default a new card inherits; an unresolved card — task
-or epic — falls back to `agent`. `human` is opt-in and **top-level only**: a project-level
-`human` gives a child that names no mode `agent`, and no parent edge may attach to a `human`
-card. The supervisor's creator path passes `--acceptance-mode` explicitly when the project says
-`auto`. There is no board-level policy and no local copy to keep in step. A `human` card is
-reviewed like an `agent` one; the supervisor records the verdict and stops, and it never closes the
-card itself. A container is a card too: an epic is dispatched a review card like any other
-(its review reads the rollup and the child cards) and is closed only after an `APPROVE`.
+and `in_progress → done` is allowed), `auto` (a current-round `APPROVE`, applied by the
+supervisor) or `human` (a person only, after the review finishes). A card that names no mode
+falls back to `auto`; there is no project-level default and no local copy to keep in step. A
+project may document its creators' selection guidance in
+`<project-dir>/docs/acceptance-mode.md`, which the `meerkat` skill reads when it creates a
+card; that document is not board data. A `human` card is reviewed like an `auto` one; the
+supervisor records the verdict and stops, and it never closes the card itself. A container is
+a card too: an epic is dispatched a review card like any other (its review reads the rollup
+and the child cards) and is closed only after an `APPROVE`.
 
 ## Role skills and platform routing
 

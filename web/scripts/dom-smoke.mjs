@@ -81,10 +81,10 @@ function fixture(projectId, status, overrides = {}) {
     labels: overrides.labels ?? ["bug"],
     // M1 — the `awaiting` entry category (`null` on every other card).
     awaiting_reason: overrides.awaiting_reason ?? null,
-    // 0038 — the acceptance decision. The fixture is a wire reading, so the
-    // field has to be present: the waiting queue derives "a human still owes
-    // this" from `acceptance_mode === "human"`, and an absent field would read
-    // as `off` and silently empty the queue.
+    // 0038/0002 — the acceptance decision. The fixture is a wire reading, so the
+    // field is present: the waiting queue derives "a human still owes this" from
+    // `acceptance_mode === "human"`. An absent field would read as `auto`; the
+    // fixture states `off` for the cards that deliberately need no review.
     acceptance_mode: overrides.acceptance_mode ?? "off",
     // 0032 — the card's frozen acceptance baseline (`task.acceptance` on the
     // wire). Present on every card: a card with no list answers `[]`, which is

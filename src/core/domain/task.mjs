@@ -75,8 +75,7 @@ export const TASK_COLUMNS = Object.freeze([
   // counter. Seeded once, then only appended (or pruned by an audited human).
   "acceptance_json",
   "acceptance_revision",
-  // 0038 — the single acceptance decision (`off | agent | human`). `auto` is a
-  // project word and is never stored here.
+  // 0038/0002 — the single acceptance decision (`off | auto | human`).
   "acceptance_mode",
 ]);
 
@@ -344,9 +343,9 @@ export function normalizeTaskCreate(input, context) {
     // reference (the importer stamps its own after resolving).
     reviewOfId: null,
     reviewRound: null,
-    // 0038 — the single acceptance decision. The column default is `off`; the
-    // create resolver writes the real value.
-    acceptanceMode: "off",
+    // 0038/0002 — the single acceptance decision. The column default is `auto`;
+    // the create resolver writes the real value.
+    acceptanceMode: "auto",
     // 0032 — the acceptance baseline. `createTask` seeds it from the card's
     // meta (or the review action's list); a direct write starts empty.
     acceptance: [],

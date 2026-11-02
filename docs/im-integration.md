@@ -63,7 +63,7 @@ When any of these appears, push an IM message:
 
 `loop console --json` is the projection. `pending_acceptance[]` is **mode-agnostic**, so the
 host MUST enrich `in_review` refs with `issue list --status in_review --json` and filter by
-`acceptance_mode`: only a `human` card awaits a person, while an `agent` card is reviewed and
+`acceptance_mode`: only a `human` card awaits a person, while an `auto` card is reviewed and
 closed by the loop. If enrichment fails, acceptance pushes fail closed.
 
 ### R2 — Decide in IM
@@ -302,7 +302,7 @@ validate `channel-kit`; WeChat iLink is the least clean SDK ecosystem and should
 
 - A fake adapter can receive pushes for all three classes and inject replies that become
   human comments; `awaiting → todo` is observed.
-- `acceptance_mode=agent` cards are not pushed as human-needed.
+- `acceptance_mode=auto` cards are not pushed as human-needed.
 - An IM reply anchors by quote, explicit ref, single active item and numbered clarification.
 - `TASKCTL_HUMAN` is the only identity; the channel neither overrides nor persists it.
 - Deterministic commands work with the session and adapter stopped.

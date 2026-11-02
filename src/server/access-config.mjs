@@ -5,8 +5,8 @@
  * data. `taskd` needs it before it serves a request (and before the first
  * remote caller is judged), exactly like `TASKD_ALLOW_CIDRS`. Saving through the
  * Access panel therefore writes the shared config file, never a database row —
- * and that file is also where the client's board URL, token and the acceptance
- * policy live.
+ * and that file is also where the server's host/port, client board URL and
+ * token live.
  *
  * The file format is the simple `KEY=VALUE` subset documented in
  * `src/foundation/env-config.mjs`:

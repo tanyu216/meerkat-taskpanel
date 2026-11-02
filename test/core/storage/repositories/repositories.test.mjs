@@ -81,7 +81,9 @@ function makeReview(repos, { id, status, reviewOfId, reviewRound } = {}) {
     { title: "A review", ...(status === undefined ? {} : { status }) },
     { now: TS, id: id ?? `task-${identifier}`, identifier, projectId: "proj" },
   );
-  return repos.tasks.insert({ ...task, reviewOfId, reviewRound });
+  // `normalizeTaskCreate` carries the column default (`auto`); a review card is
+  // always `off`, and the marker trigger refuses anything else.
+  return repos.tasks.insert({ ...task, acceptanceMode: "off", reviewOfId, reviewRound });
 }
 
 describe("repositories/projects", () => {

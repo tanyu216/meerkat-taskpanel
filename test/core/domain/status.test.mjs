@@ -326,7 +326,7 @@ describe("domain/status — the card-derived policy", () => {
   const CARD_SHAPES = [];
   for (const from of STATUSES) {
     for (const kind of ["task", "epic"]) {
-      for (const mode of ["off", "agent", "human"]) {
+      for (const mode of ["off", "auto", "human"]) {
         for (const reviewCard of [false, true]) {
           CARD_SHAPES.push({
             status: from,
@@ -388,7 +388,7 @@ describe("domain/status — the card-derived policy", () => {
   });
 
   it("exposes the round bump and the report requirement", () => {
-    const policy = transitionPolicyFor({ status: "in_review", kind: "task", acceptanceMode: "agent", meta: {} });
+    const policy = transitionPolicyFor({ status: "in_review", kind: "task", acceptanceMode: "auto", meta: {} });
     assert.equal(policy.bumpsRound("in_progress"), true);
     assert.equal(policy.bumpsRound("done"), false);
     assert.equal(policy.requiresReport("in_review"), true);

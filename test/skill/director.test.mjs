@@ -390,7 +390,7 @@ describe("board skill: the acceptance matrix has one home", () => {
 
     const data = rows.slice(1);
     const modes = data.map((row) => row[0].replace(/`/g, "").trim());
-    assert.deepEqual(modes, ["off", "agent", "human", "a review card"]);
+    assert.deepEqual(modes, ["off", "auto", "human", "a review card"]);
 
     // Each mode row's `done` cell is read against the domain's own predicate.
     // The two questions the matrix answers are "may a person?" and "may an agent
@@ -398,7 +398,7 @@ describe("board skill: the acceptance matrix has one home", () => {
     const cellAllows = (cell) => cell.replace(/`/g, "").toLowerCase();
     const admitsAnAgent = (cell) =>
       cell.includes("deliverer") || cell.includes("any actor kind") || cell.includes("anyone but the reviewer");
-    for (const [index, mode] of ["off", "agent", "human"].entries()) {
+    for (const [index, mode] of ["off", "auto", "human"].entries()) {
       const cell = cellAllows(data[index][2]);
       assert.equal(cell.includes("human"), acceptanceAllows("human", mode), `${mode} × human`);
       assert.equal(

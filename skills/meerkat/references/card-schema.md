@@ -92,7 +92,7 @@ Without `--include` the payload is byte-identical to what it always was.
 | `review_of` | string \| null | derived — the audited card's **identifier** |
 | `acceptance` | string[] | derived — the **frozen baseline**, the delivery contract |
 | `acceptance_revision` | number | derived — the baseline's revision (the prune's CAS) |
-| `acceptance_mode` | string | derived — `off` · `agent` · `human`; never `auto` |
+| `acceptance_mode` | string | derived — `off` · `auto` · `human` |
 | `assignee` | object \| null | derived — `{id, display_name, kind}` |
 | `reporter` | object \| null | derived — `{id, display_name, kind}` |
 | `claimed_by_actor` | object \| null | derived — `{id, display_name, kind}` beside `claimed_by` |
@@ -154,7 +154,7 @@ plain card does not grow a line.
 | `status` | Where the card sits in the lifecycle. | One of the canonical words (`backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`, plus the `awaiting` overlay). |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`. |
 | `kind` | The card's role. | `task` · `epic`. |
-| `acceptance_mode` | Who closes the card. | `off` · `agent` · `human`; a created card always carries a concrete resolved value (`agent` when nothing was declared — task or epic). **Absent** is only the storage default on a raw write, and reads as `off`. `human` is top-level only: a card with a parent is never human-accepted. A review card (flow B) is always `off`. |
+| `acceptance_mode` | Who closes the card. | `off` · `auto` · `human`; a created card always carries a concrete value (`auto` when nothing was declared — task or epic). A raw write that omits it takes the column default, `auto`, and the wire always carries the column value. Any card, at any depth, may be `human`; there is no project default. A review card (flow B) is always `off`. |
 | `labels` | Free-form tags, shown in order. | Inline array. |
 | `project` | The board project. | Its id. |
 | `assignee` | Who is on the hook. | A dictionary name; empty ⇒ unassigned. |

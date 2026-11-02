@@ -32,8 +32,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   CARD_ACCEPTANCE_MODES,
-  DEFAULT_PROJECT_ACCEPTANCE,
-  PROJECT_ACCEPTANCES,
+  FALLBACK_CARD_ACCEPTANCE,
   currentRevision,
   openBoard,
   readToken,
@@ -368,9 +367,9 @@ export async function createTaskd(options = {}) {
       // is what this capability's `upload_url` points at.
       attachments: true,
       allow_list: allowList.configured,
-      // 0038 — the acceptance vocabulary, stated once: a project default
-      // (`auto` included) and a card snapshot (never `auto`). A client
-      // feature-detects the fields instead of assuming them.
+      // 0038/0002 — the acceptance vocabulary, stated once: one card word,
+      // defaulting to `auto`. A client feature-detects the field instead of
+      // assuming it.
       acceptance: ACCEPTANCE_CAPABILITY,
       // The effective SLA table (`GET /api/v1/sla` publishes the same values
       // with the alerts). A client feature-detects the configured thresholds
@@ -708,17 +707,15 @@ export async function closeServer(server, graceMs = SHUTDOWN_GRACE_MS) {
  * 500, so the raw text is returned and fails the id lookup instead.
  */
 /**
- * The `/meta` view of the acceptance vocabulary (0038).
+ * The `/meta` view of the acceptance vocabulary (0038/0002).
  *
- * It is a constant: there is no board-level policy to read, and the project
- * default is board data (`projects.acceptance`) rather than configuration.
+ * It is a constant: there is no board-level policy and no project default to
+ * read. The card stores its own word; an omitted one falls back to `auto`.
  */
 const ACCEPTANCE_CAPABILITY = Object.freeze({
   modes: [...CARD_ACCEPTANCE_MODES],
-  project_modes: [...PROJECT_ACCEPTANCES],
-  default: DEFAULT_PROJECT_ACCEPTANCE,
+  default: FALLBACK_CARD_ACCEPTANCE,
   card_field: "acceptance_mode",
-  project_field: "acceptance",
 });
 
 /**

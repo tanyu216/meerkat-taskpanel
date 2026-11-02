@@ -136,7 +136,7 @@ describe("contract/liveness — every non-terminal status can reach canceled", (
     // The mode changes *who* may take the `done` edge, not whether the state
     // machine has it: `in_review → done` is present under every mode.
     assert.ok(allowedTargets("in_review").includes("done"));
-    for (const mode of ["off", "agent", "human"]) {
+    for (const mode of ["off", "auto", "human"]) {
       assert.ok(
         ["human", "system", "agent"].some((kind) => acceptanceAllows(kind, mode)),
         `${mode} has at least one acceptor — a mode no actor satisfies is a guaranteed stall`,

@@ -294,8 +294,8 @@ The mechanisms those rules rest on, by home:
 Work is tracked as cards on the local Meerkat TaskPanel board; `/meerkat` is the entry for
 every card operation — a card is created, claimed, kept alive with a heartbeat and delivered
 through that skill, never through a side-channel queue. A card stops at `in_review`; the
-card's `acceptance_mode` names who moves it to `done` (`agent`: the supervisor after a
-current-round `APPROVE`; `human`: a person; `off`: the deliverer). See
+card's `acceptance_mode` names who moves it to `done` (`auto`: the supervisor after a
+current-round `APPROVE`; `human`: a person, after the review finishes; `off`: the deliverer). See
 `docs/agents/issue-tracker.md`.
 
 A card is the work a role owns: product design, architecture, implementation, bug fixes,

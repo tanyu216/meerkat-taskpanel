@@ -373,15 +373,15 @@ export function createTasksRepository(db) {
      * acceptance-relevant decision without the command layer's audit
      * (`acceptance_override`).
      *
-     * @param {{id: string, value: "off"|"agent"|"human", ifVersion?: number, now: string}} input
+     * @param {{id: string, value: "off"|"auto"|"human", ifVersion?: number, now: string}} input
      * @returns {object} the updated Task DTO
      */
     setAcceptanceMode(input) {
       const { id, value, ifVersion, now } = input;
-      if (!["off", "agent", "human"].includes(value)) {
+      if (!["off", "auto", "human"].includes(value)) {
         throw new DomainError("VALIDATION_FAILED", {
           message: `unknown acceptance mode ${JSON.stringify(value)}`,
-          details: { field: "acceptance_mode", received: value, allowed: ["off", "agent", "human"] },
+          details: { field: "acceptance_mode", received: value, allowed: ["off", "auto", "human"] },
         });
       }
       const where = ["id = ?"];

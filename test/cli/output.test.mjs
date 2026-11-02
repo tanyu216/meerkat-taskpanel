@@ -129,9 +129,8 @@ describe("cli/wire — the JSON vocabulary", () => {
         meta: {},
         readme: null,
         task_count: null,
-        // 0038 — the single acceptance default; no project override means the
-        // deployment reviewer applies, so `reviewer` is null.
-        acceptance: "auto",
+        // No project-level acceptance; no override means the deployment
+        // reviewer applies, so `reviewer` is null.
         reviewer: null,
         archived_at: null,
         created_at: "t",

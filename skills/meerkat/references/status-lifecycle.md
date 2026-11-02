@@ -115,7 +115,7 @@ A pair on the whitelist can still be refused; the target decides which guard app
 | `in_review` | The **delivery gate**: a `delivery` report for the current `delivery_round`, or an audited waiver for that round (§4). Every child must be terminal (`CHILDREN_OPEN`). |
 | `blocked` | `--blocked-reason` is **optional**. Entering `blocked` does not bump the round; **`in_review → blocked` does**. |
 | `awaiting` | Only `in_progress → awaiting`, naming `--awaiting-reason E1`…`E5`. An **agent** must also supply `--question` (or already have an unanswered `question` comment) — `QUESTION_REQUIRED`; a human may park silently. Exits: `→ in_progress` (live worker), `→ todo` (any human comment re-queues the card; releases the claim, no round bump), `→ canceled`. Leaving clears the reason. `awaiting → blocked`/`in_review`/`done` are forbidden. |
-| `done` | From `in_review` — **acceptance**, so the delivery gate is not re-consulted — or **directly from `in_progress`** when the card's `acceptance_mode` is `off`. The writer must be allowed by the card's mode (§7); every child must be terminal (`CHILDREN_OPEN`). An `agent` card needs a current-round APPROVE review (`REVIEW_REQUIRED`; the DB trigger checks that a review card reached the reviewer). A human closing an `agent` card also needs the current round's review cards resolved (`REVIEW_PENDING`). A non-empty **acceptance baseline** must be covered by the current round's report (`ACCEPTANCE_UNVERIFIED` / `ACCEPTANCE_INCOMPLETE`, §4a). |
+| `done` | From `in_review` — **acceptance**, so the delivery gate is not re-consulted — or **directly from `in_progress`** when the card's `acceptance_mode` is `off`. The writer must be allowed by the card's mode (§7); every child must be terminal (`CHILDREN_OPEN`). An `auto` card needs a current-round review card (`REVIEW_REQUIRED`), and a `human` card needs that review **done**; the DB trigger enforces the structural half. A human closing a `human` card also needs the current round's review cards resolved (`REVIEW_PENDING`). A non-empty **acceptance baseline** must be covered by the current round's report (`ACCEPTANCE_UNVERIFIED` / `ACCEPTANCE_INCOMPLETE`, §4a). |
 | `canceled` | From `backlog`, `todo`, `in_progress`, `awaiting` or `blocked` — **never directly from `in_review`**. Terminal. |
 
 ### The order the guards run
@@ -135,7 +135,7 @@ The first refusal wins, so the error you see is stable:
    `CLAIM_LOST`, `not_claimable`);
 7. for `in_review`: the delivery gate (`REPORT_REQUIRED`), then the artifact contract
    (`DELIVERY_NEEDS_COMMIT`) when the report cites a path but no commit;
-8. for `done`: the `agent` card's review evidence (`REVIEW_REQUIRED` when there is no
+8. for `done`: the reviewed card's evidence (`REVIEW_REQUIRED` when there is no
    current-round review), then the human open-review check (`REVIEW_PENDING`);
 9. the compare-and-swap write (`VERSION_CONFLICT` on a stale `--if-version`).
 
@@ -213,7 +213,7 @@ into the snapshot; the gates never read meta.
   **beyond** the baseline also blocks if it is `partial` / `not_met` — the report itself says
   work is unfinished. Empty baseline → vacuous, allowed: the rule is "once non-empty, it
   cannot be shortened", not "every card must have criteria".
-- **A `met` must point at its evidence.** On an `agent` card the gate also reads the report's
+- **A `met` must point at its evidence.** On an `auto` or `human` card the gate also reads the report's
   `evidence[]`: each `met` item's note must cite at least one `evidence[n]` that resolves
   within that list, or the item is `unsupported` (`no_anchor` / `dangling_anchor`) and the gate
   refuses with `ACCEPTANCE_INCOMPLETE` (`details.unsupported`). This is structural — it forces
@@ -280,7 +280,7 @@ is not `done` — literally `status !== "done"`, so a `canceled` predecessor wit
   one is `done`, and there is evidence to roll up, it writes the **rollup report**
   (`is_rollup = 1`) and moves the epic. Auto-close works from `todo`, `in_progress` and
   `blocked`; acceptance stays separate.
-- **An epic is reviewed like any other card.** Its default mode is `agent`, so the workflow
+- **An epic is reviewed like any other card.** Its default mode is `auto`, so the workflow
   pass dispatches a review card for it in the same tick that rolls it up (the reconcile runs
   before the snapshot). The reviewer reads the children and the rollup; `APPROVE` closes the
   container (both cards), `REJECT` creates a fix child and reworks the container. An explicit
@@ -318,50 +318,49 @@ idempotent; the ordinary path does not need it.
 ## 7. Acceptance: one mode per card
 
 `done` is the board's acceptance act, and the card's own `acceptance_mode` names who may
-perform it. There is no board-level policy and no scope matrix: a child is closed by whoever
-its own mode names, and a review card is the one structural exception. The mode is the
-**closer** selector, not a review selector — an `agent` and a `human` card are both reviewed;
-only `off` skips the review.
+perform it. There is no board-level policy, no project default and no scope matrix: a card at
+any depth is closed by whoever its own mode names, and a review card is the one structural
+exception. The mode is the **closer** selector, not a review selector — an `auto` and a
+`human` card are both reviewed; only `off` skips the review.
 
 <!-- acceptance-matrix:begin -->
 | Card mode | Review card | Who may move it to `done` |
 |---|---|---|
 | `off` | none | the deliverer (any actor kind), or a human; `in_progress → done` is allowed |
-| `agent` | yes — an agent reviewer | anyone but the reviewer, after a current-round `APPROVE`; a human may always |
-| `human` | yes — an agent reviewer | a human only |
+| `auto` | yes — an agent reviewer | the loop after a current-round `APPROVE`; anyone but the reviewer; a human may always |
+| `human` | yes — an agent reviewer | a human only, after the current-round review is finished |
 | a review card | — | a human, or any actor but its reviewer — never the one who wrote the verdict |
 <!-- acceptance-matrix:end -->
 
-The **project default** (`projects.acceptance`: `auto | off | agent | human`, default
-`auto`) is a default at creation only. The creator — in practice the loop — resolves it to
-one of the three card modes; a card **never stores `auto`**. An unresolved card — task or
-epic — falls back to `agent`: review is the default, and `human` is opt-in. An explicit
-`--acceptance-mode` wins over the project value. The structural rules:
+The creator states the mode at creation; an explicit `--acceptance-mode` is the whole
+decision. An unresolved card — task or epic — falls back to `auto`: review is the default,
+and `human` is opt-in. A project may document how its creators choose in
+`docs/acceptance-mode.md` under its working directory; the `meerkat` skill discovers that file
+when it creates a card. It is guidance for the creator, not board data — not stored, not
+inherited, not read by `taskd`. The structural rules:
 
 - a review card is always `off`;
-- **`human` is top-level only.** A card with a parent is never human-accepted: the parent
-  edge refuses a `human` child (even with `--force`), and
-  `issue update <child> --acceptance-mode human` is `VALIDATION_FAILED`. A person's decision
-  on a subtask is an `awaiting` question, not a close. A project-level `human` is a
-  top-level default — a child that names no mode under it resolves to `agent`;
+- there is no parent/depth restriction: any card, at any depth, may be `human`, `auto` or
+  `off`;
 - an epic is a card like any other: it is dispatched a review card (against its children and
   rollup) and closed only after an `APPROVE`; `off` remains the one explicit skip.
 
-- A worker agent delivers an `agent`, `human` or review card to `in_review`; a card whose mode
+- A worker agent delivers an `auto`, `human` or review card to `in_review`; a card whose mode
   is `off` may also go **straight to `done`** (`issue deliver --report-file - --to done`).
-- A worker that closes an `agent` or `human` card gets `ACCEPTANCE_FORBIDDEN`; `details` carry
-  `mode` and `reviewCard`, never a policy or scope.
-- `REVIEW_PENDING` applies only to an **`agent`** card whose current-round review card is still
-  open, and only to a human closing it; a non-human closer is exempt (its protocol is to move
-  the original first and close the review card last).
+- A worker must not close its own work. The board's authority is evidence-based: `auto` admits
+  any actor except the verdict's author (and a human always); `human` admits only a human.
+  `details` carry `mode` and `reviewCard`, never a policy or scope.
+- A `human` card cannot be closed before its current-round review is finished:
+  `REVIEW_PENDING` while the review card is open, and `REVIEW_REQUIRED` without an `APPROVE`.
+  A human may also close an `auto` card as a fallback once its current-round `APPROVE` exists.
 - `--actor-kind human` is reserved; a human write uses `--as-human` — in a conversation with
   the human, or when the instruction explicitly came from them (see the board skill's create
   section).
-- The mode is board data, readable on the card (`acceptance_mode`) and on the project
-  (`acceptance`); there is **no `taskctl` command that reads a policy**. Attempt the move and
-  handle `ACCEPTANCE_FORBIDDEN`.
+- The mode is board data, readable on the card (`acceptance_mode`); there is **no project
+  field and no `taskctl` command that reads a policy**. Attempt the move and handle
+  `ACCEPTANCE_FORBIDDEN`.
 - Changing the mode is the audited `issue update <ref> --acceptance-mode <value> --reason
-  "<why>"`: an agent may only tighten (`off → agent|human`), and leaving `agent` needs no open
+  "<why>"`: an agent may only tighten (`off → auto|human`), and leaving `auto` needs no open
   current-round review card.
 
 ## 8. Creating a card in a status
@@ -385,9 +384,9 @@ epic — falls back to `agent`: review is the default, and `human` is opt-in. An
 | `REPORT_REQUIRED` | 422 | Entering `in_review` without a current-round report or waiver; creating in `in_review`/`done`. |
 | `ACCEPTANCE_FORBIDDEN` | 409 | The writer may not move the card to `done` under the card's `acceptance_mode`. |
 | `CHILDREN_OPEN` | 409 | `in_review` or `done` while a child is non-terminal. |
-| `REVIEW_PENDING` | 409 | A human closing an `agent` card with current-round review cards still open, or leaving `agent` while one is open. |
-| `REVIEW_REQUIRED` | 409 | An `agent` card reaching `done` with no APPROVE verdict for the current round. |
-| `REVIEW_CARD_MARKER_INVALID` | 409 | A write tried to give a review card an `agent` mode (flow B is never reviewed again). |
+| `REVIEW_PENDING` | 409 | A human closing a `human` card with current-round review cards still open, or leaving `auto` while one is open. |
+| `REVIEW_REQUIRED` | 409 | An `auto` or `human` card reaching `done` with no APPROVE verdict for the current round. |
+| `REVIEW_CARD_MARKER_INVALID` | 409 | A write tried to give a review card a non-`off` mode (flow B is never reviewed again). |
 | `VALIDATION_FAILED` | 400 | Unknown status; create in `in_progress`/`awaiting`; an epic's illegal initial status; an unknown `awaiting_reason`/`blocked_reason`; a malformed waiver; a `review_of` whose original is not `in_review`; a `review_of` that names a review card; a `review_round` that is not the original's current `delivery_round`; a review card that is not `kind=task`; a `parent` edge with a review card on either end. |
 | `VERSION_CONFLICT` | 409 | `--if-version` does not match the card's version. |
 | `EXECUTION_ACTIVE` | 409 | Another actor holds a fresh claim, or a non-holder sends a heartbeat. |
@@ -464,7 +463,7 @@ The fail-safe rules are part of the decision:
 - the dispatch key is `loop-review|<ref>|r<round>` — one card per pair;
 - a delivery on flow B (a review card) is never itself reviewed;
 - self-review is refused: the reviewer may not be the card's assignee/holder;
-- the card's `acceptance_mode` decides what an `APPROVE` closes: an `agent` original is
+- the card's `acceptance_mode` decides what an `APPROVE` closes: an `auto` original is
   accepted by the loop (`approve`); a `human` original gets the verdict recorded and its
   review card closed (`record_verdict`) and stays in `in_review` for a person; an `off`
   original is only touched by an ad-hoc review card (`close_review`).

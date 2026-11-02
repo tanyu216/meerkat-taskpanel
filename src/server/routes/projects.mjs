@@ -38,7 +38,6 @@ const CREATE_BODY = shape({
   labels: arr(str()),
   meta: obj(),
   readme: str(),
-  acceptance: REQUEST.projectAcceptance,
   reviewer: str(),
 });
 
@@ -48,7 +47,6 @@ const ENSURE_BODY = shape({
   labels: arr(str()),
   meta: obj(),
   readme: str(),
-  acceptance: REQUEST.projectAcceptance,
   reviewer: str(),
 });
 
@@ -58,7 +56,6 @@ const PATCH_BODY = shape({
   labels: arr(str()),
   readme: str(),
   meta: obj(),
-  acceptance: REQUEST.projectAcceptance,
   reviewer: str(),
 });
 
@@ -98,7 +95,6 @@ export function registerProjectRoutes(router, surface) {
       labels: body.labels,
       meta: body.meta,
       readme: body.readme,
-      acceptance: body.acceptance,
       reviewer: body.reviewer,
       actor,
     });
@@ -112,7 +108,6 @@ export function registerProjectRoutes(router, surface) {
       labels: body.labels,
       meta: body.meta,
       readme: body.readme,
-      acceptance: body.acceptance,
       reviewer: body.reviewer,
       actor,
     });
@@ -139,7 +134,6 @@ export function registerProjectRoutes(router, surface) {
     if (body.name !== undefined) patch.name = body.name;
     if (body.labels !== undefined) patch.labels = body.labels;
     if (body.readme !== undefined) patch.readme = body.readme;
-    if (body.acceptance !== undefined) patch.acceptance = body.acceptance;
     if (body.reviewer !== undefined) patch.reviewer = body.reviewer;
     // `--meta k=v` merges, for the same reason it does on a task: a flag is a
     // delta, not a replacement document.

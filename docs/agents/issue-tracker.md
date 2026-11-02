@@ -21,8 +21,8 @@ In a team project, **the create is the routing step**: the card carries its acco
 as the assignee. A role is a standalone skill (`skills/<role>/`), and the supervisor claims an
 unassigned card as `Worker` and routes it through `meerkat-director`; a card (or one
 assigned to a name nobody scans) is never claimed until someone routes it.
-Acceptance is somebody else's act: a human, or the supervisor when the card's `acceptance_mode` is
-`agent`/`off`. Never write the board's SQLite file or its HTTP API directly, and never edit an
+Acceptance is somebody else's act: a human for `human`, or the supervisor for
+`auto`/`off`. Never write the board's SQLite file or its HTTP API directly, and never edit an
 exported brief.
 
 ## Commands the skills may expect

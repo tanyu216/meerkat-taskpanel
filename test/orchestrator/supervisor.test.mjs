@@ -667,8 +667,8 @@ describe("buildHandoff (pure)", () => {
     assert.doesNotMatch(text, /relation add T-1 --type parent/);
     assert.match(
       text,
-      /stop at in_review — the loop dispatches an independent reviewer; do not move it to done yourself/,
-      "the default mode is agent: an undeclared card is reviewed",
+      /stop at in_review — the loop dispatches an independent reviewer; after APPROVE it closes the card/,
+      "the default mode is auto: an undeclared card is reviewed",
     );
   });
 
@@ -680,7 +680,7 @@ describe("buildHandoff (pure)", () => {
     });
     assert.match(
       text,
-      /the loop dispatches an independent reviewer and a human accepts to done/,
+      /the loop dispatches an independent reviewer; a human accepts after APPROVE/,
       "human is reviewed; only the close is the person's",
     );
   });
@@ -727,7 +727,7 @@ describe("buildHandoff (pure)", () => {
       review: true,
     });
     assert.match(text, /the loop dispatches an independent reviewer/);
-    assert.match(text, /do not move it to done yourself/);
+    assert.match(text, /after APPROVE it closes the card/);
   });
 
   it("reads the closing rule from the card's acceptance mode", () => {
@@ -739,7 +739,7 @@ describe("buildHandoff (pure)", () => {
       });
     assert.match(text("off"), /the loop auto-accepts an off card/);
     assert.match(text("agent"), /the loop dispatches an independent reviewer/);
-    assert.match(text("human"), /a human accepts to done/);
+    assert.match(text("human"), /a human accepts after APPROVE/);
     // The card's own mode wins over the identity hint: a reviewer agent working
     // an `off` card is not told the loop will dispatch a reviewer for it.
     assert.match(
@@ -2604,7 +2604,7 @@ describe("the workflow plan survives the wire and executes", () => {
         projectId: "proj",
         title: "Do the thing",
         assignee: "linus",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: HUMAN,
       });
       commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });

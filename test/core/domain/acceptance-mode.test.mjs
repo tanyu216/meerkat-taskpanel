@@ -1,10 +1,8 @@
 /**
- * The single acceptance vocabulary (0038).
+ * The single acceptance vocabulary (0038/0002).
  *
- * One project-level default (`auto | off | agent | human`) and one card-level
- * snapshot (`off | agent | human`). `auto` is a delegation word, never a stored
- * card value: the creator resolves it at creation and the card keeps the
- * concrete answer.
+ * A card stores exactly one word — `off | auto | human` — chosen by its
+ * creator. There is no project default and no `agent` card word.
  */
 
 import assert from "node:assert/strict";
@@ -12,114 +10,61 @@ import { describe, it } from "node:test";
 
 import {
   CARD_ACCEPTANCE_MODES,
-  PROJECT_ACCEPTANCES,
   acceptanceAllows,
   acceptanceAuthorityFor,
   assertAcceptanceAuthority,
   assertCardAcceptance,
+  cardAcceptanceOf,
   normalizeCardAcceptance,
-  normalizeProjectAcceptance,
   resolveCardAcceptance,
 } from "../../../src/core/domain/acceptance-mode.mjs";
 
 const throwsCode = (fn, code) => assert.throws(fn, (err) => err?.code === code);
 
 describe("domain/acceptance-mode — vocabulary", () => {
-  it("keeps auto out of the stored card vocabulary", () => {
-    assert.deepEqual([...CARD_ACCEPTANCE_MODES], ["off", "agent", "human"]);
-    assert.deepEqual([...PROJECT_ACCEPTANCES], ["auto", "off", "agent", "human"]);
-    assert.equal(normalizeCardAcceptance(" AGENT "), "agent");
-    assert.equal(normalizeCardAcceptance("auto"), null);
+  it("stores off, auto and human; agent is gone", () => {
+    assert.deepEqual([...CARD_ACCEPTANCE_MODES], ["off", "auto", "human"]);
+    assert.equal(normalizeCardAcceptance(" AUTO "), "auto");
+    assert.equal(normalizeCardAcceptance(" human "), "human");
+    assert.equal(normalizeCardAcceptance("agent"), null);
     assert.equal(normalizeCardAcceptance("sometimes"), null);
-    assert.equal(normalizeProjectAcceptance(" AUTO "), "auto");
-    assert.equal(normalizeProjectAcceptance("agent"), "agent");
-    assert.equal(normalizeProjectAcceptance("sometimes"), null);
-    throwsCode(() => assertCardAcceptance("auto"), "VALIDATION_FAILED");
+    assert.equal(assertCardAcceptance("auto"), "auto");
     assert.equal(assertCardAcceptance("human"), "human");
+    throwsCode(() => assertCardAcceptance("agent"), "VALIDATION_FAILED");
+  });
+
+  it("reads an unreadable row as its default, auto", () => {
+    assert.equal(cardAcceptanceOf(null), "auto");
+    assert.equal(cardAcceptanceOf("agent"), "auto");
+    assert.equal(cardAcceptanceOf("human"), "human");
   });
 });
 
 describe("domain/acceptance-mode — resolveCardAcceptance", () => {
   it("forces a review card to off and refuses a review of a review", () => {
     assert.equal(resolveCardAcceptance({ reviewCard: true }).mode, "off");
-    assert.equal(resolveCardAcceptance({ reviewCard: true, projectAcceptance: "agent" }).mode, "off");
-    throwsCode(
-      () => resolveCardAcceptance({ reviewCard: true, requested: "agent" }),
-      "VALIDATION_FAILED",
-    );
-    throwsCode(
-      () => resolveCardAcceptance({ reviewCard: true, requested: "human" }),
-      "VALIDATION_FAILED",
-    );
+    assert.equal(resolveCardAcceptance({ reviewCard: true }).source, "review_card");
+    throwsCode(() => resolveCardAcceptance({ reviewCard: true, requested: "auto" }), "VALIDATION_FAILED");
+    throwsCode(() => resolveCardAcceptance({ reviewCard: true, requested: "human" }), "VALIDATION_FAILED");
   });
 
-  it("lets an explicit card value win over the project default", () => {
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "human", requested: "off" }).mode, "off");
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "off", requested: "agent" }).mode, "agent");
+  it("lets an explicit card value win", () => {
+    assert.equal(resolveCardAcceptance({ requested: "off" }).mode, "off");
+    assert.equal(resolveCardAcceptance({ requested: "auto" }).mode, "auto");
+    assert.equal(resolveCardAcceptance({ requested: "human" }).mode, "human");
+    assert.equal(resolveCardAcceptance({ requested: "auto" }).source, "requested");
   });
 
-  it("adopts a concrete project default", () => {
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "off" }).mode, "off");
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "agent" }).mode, "agent");
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "human" }).mode, "human");
-  });
-
-  it("resolves project auto by the creator, and falls back to agent", () => {
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "auto", requested: "agent" }).mode, "agent");
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "auto" }).mode, "agent");
-    // Missing project (a direct/importer write) is the same fallback.
-    assert.equal(resolveCardAcceptance({}).mode, "agent");
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "auto" }).source, "fallback");
-  });
-
-  it("falls an unresolved epic back to agent, like every other card", () => {
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "auto", kind: "epic" }).mode, "agent");
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "auto", kind: "epic" }).source, "fallback");
-    // An explicit value still wins — including `off`, which keeps its meaning.
-    assert.equal(
-      resolveCardAcceptance({ projectAcceptance: "auto", kind: "epic", requested: "agent" }).mode,
-      "agent",
-    );
-    assert.equal(
-      resolveCardAcceptance({ projectAcceptance: "auto", kind: "epic", requested: "off" }).mode,
-      "off",
-    );
-  });
-
-  it("keeps human top-level only: a card with a parent never resolves to it", () => {
-    // An explicit human on a child is refused, whichever card kind it is.
-    throwsCode(
-      () => resolveCardAcceptance({ requested: "human", hasParent: true }),
-      "VALIDATION_FAILED",
-    );
-    throwsCode(
-      () => resolveCardAcceptance({ kind: "epic", requested: "human", hasParent: true }),
-      "VALIDATION_FAILED",
-    );
-    // A project-level human is a top-level default: a child falls back to agent.
-    assert.equal(
-      resolveCardAcceptance({ projectAcceptance: "human", hasParent: true }).mode,
-      "agent",
-    );
-    assert.equal(
-      resolveCardAcceptance({ projectAcceptance: "human", kind: "epic", hasParent: true }).mode,
-      "agent",
-    );
-    // Top-level still adopts it.
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "human" }).mode, "human");
-    assert.equal(
-      resolveCardAcceptance({ projectAcceptance: "human", kind: "epic" }).mode,
-      "human",
-    );
-    // Explicit off/agent on a child are untouched.
-    assert.equal(resolveCardAcceptance({ requested: "off", hasParent: true }).mode, "off");
-    assert.equal(resolveCardAcceptance({ projectAcceptance: "off", hasParent: true }).mode, "off");
+  it("falls an unresolved card — task or epic — back to auto", () => {
+    assert.equal(resolveCardAcceptance({}).mode, "auto");
+    assert.equal(resolveCardAcceptance({}).source, "fallback");
+    assert.equal(resolveCardAcceptance({ kind: "epic" }).mode, "auto");
+    assert.equal(resolveCardAcceptance({ kind: "epic" }).source, "fallback");
   });
 
   it("refuses an unknown value instead of guessing", () => {
-    throwsCode(() => resolveCardAcceptance({ requested: "auto" }), "VALIDATION_FAILED");
+    throwsCode(() => resolveCardAcceptance({ requested: "agent" }), "VALIDATION_FAILED");
     throwsCode(() => resolveCardAcceptance({ requested: "sometimes" }), "VALIDATION_FAILED");
-    throwsCode(() => resolveCardAcceptance({ projectAcceptance: "sometimes" }), "VALIDATION_FAILED");
   });
 });
 
@@ -131,13 +76,13 @@ describe("domain/acceptance-mode — acceptanceAllows", () => {
     assert.equal(acceptanceAllows("", "off"), false);
   });
 
-  it("agent is closed by anyone but the actor who wrote the verdict", () => {
+  it("auto is closed by anyone but the actor who wrote the verdict, and a human always", () => {
     // The APPROVE is the authority; the kind only says which platform wrote.
-    assert.equal(acceptanceAllows("human", "agent", { actorId: "r1", verdictAuthorId: "r1" }), true);
-    assert.equal(acceptanceAllows("claude", "agent", { actorId: "w1", verdictAuthorId: "r1" }), true);
-    assert.equal(acceptanceAllows("system", "agent", { actorId: "sys", verdictAuthorId: "r1" }), true);
-    assert.equal(acceptanceAllows("claude", "agent", { actorId: "r1", verdictAuthorId: "r1" }), false);
-    assert.equal(acceptanceAllows("", "agent", { actorId: "w1", verdictAuthorId: "r1" }), false);
+    assert.equal(acceptanceAllows("human", "auto", { actorId: "r1", verdictAuthorId: "r1" }), true);
+    assert.equal(acceptanceAllows("claude", "auto", { actorId: "w1", verdictAuthorId: "r1" }), true);
+    assert.equal(acceptanceAllows("system", "auto", { actorId: "sys", verdictAuthorId: "r1" }), true);
+    assert.equal(acceptanceAllows("claude", "auto", { actorId: "r1", verdictAuthorId: "r1" }), false);
+    assert.equal(acceptanceAllows("", "auto", { actorId: "w1", verdictAuthorId: "r1" }), false);
   });
 
   it("human is closed by a human only", () => {
@@ -167,6 +112,24 @@ describe("domain/acceptance-mode — assertAcceptanceAuthority", () => {
     );
     assert.equal(
       assertAcceptanceAuthority({ kind: "human", id: "terry" }, { mode: "human" }),
+      true,
+    );
+  });
+
+  it("refuses the reviewer that wrote an auto card's verdict", () => {
+    throwsCode(
+      () =>
+        assertAcceptanceAuthority(
+          { kind: "claude", id: "r1" },
+          { mode: "auto", actorId: "r1", verdictAuthorId: "r1" },
+        ),
+      "ACCEPTANCE_FORBIDDEN",
+    );
+    assert.equal(
+      assertAcceptanceAuthority(
+        { kind: "claude", id: "w1" },
+        { mode: "auto", actorId: "w1", verdictAuthorId: "r1" },
+      ),
       true,
     );
   });
@@ -205,9 +168,9 @@ describe("domain/acceptance-mode — acceptanceAuthorityFor", () => {
   });
 
   it("reads the wire spelling", () => {
-    const authority = acceptanceAuthorityFor({ acceptance_mode: "agent", review_of_id: null, meta: {} });
+    const authority = acceptanceAuthorityFor({ acceptance_mode: "auto", review_of_id: null, meta: {} });
     assert.equal(authority.isReview, false);
-    assert.equal(authority.mode, "agent");
+    assert.equal(authority.mode, "auto");
     assert.equal(authority.canAccept("claude", { actorId: "r1", verdictAuthorId: "r1" }), false);
     assert.equal(authority.canAccept("claude", { actorId: "w1", verdictAuthorId: "r1" }), true);
     assert.equal(authority.canAccept("system", { actorId: "sys", verdictAuthorId: "r1" }), true);

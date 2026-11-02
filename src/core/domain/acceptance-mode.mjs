@@ -1,28 +1,21 @@
 /**
- * The single acceptance vocabulary (0038).
+ * The single acceptance vocabulary (post-0002).
  *
- * Two layers, one word:
- *
- *   * `projects.acceptance` — `auto | off | agent | human`. `auto` means "the
- *     creator (in practice the loop) decides per card"; the other three are a
- *     concrete default. `human` here is a **top-level-only** default: a child
- *     that names no mode under it resolves to `agent`.
- *   * `tasks.acceptance_mode` — `off | agent | human`. The resolved snapshot,
- *     frozen at creation. **`auto` is never stored on a card**: an unresolved
- *     card must not sit in a state whose owner is unknown.
- *
- * The three card modes:
+ * A card stores one word that names its closer:
  *
  *   * `off`   — no review; the deliverer (or the board, or a human) closes it.
  *               `in_progress → done` is allowed.
- *   * `agent` — an independent agent review card must APPROVE first; the loop
+ *   * `auto`  — an independent agent review card must APPROVE first; the loop
  *               applies the verdict and closes the card. A human may also close.
  *               **This is the fallback**: a card nobody declared is reviewed.
  *   * `human` — an independent agent review card still runs and records its
- *               verdict; only a human closes the card, with that verdict in
- *               hand. Opt-in only, and only on a **top-level** card: a card with
- *               a parent never resolves here (a person's decision is an
- *               `awaiting` question, not a close of a subtask).
+ *               verdict; the review must finish, and only a human closes the
+ *               card. A human may also close an `auto` card as a fallback.
+ *
+ * There is no project-level default: the creator resolves the card's word at
+ * creation from the card's own context. A project may document its selection
+ * rules in `docs/acceptance-mode.md` for the card-creating skill; that document
+ * is not board data and is never stored or inherited.
  *
  * `deploy` is deliberately **not** a card rule. Whether a card belongs to a
  * release line — and what confirming that means — is the loop's own decision;
@@ -35,34 +28,25 @@ import { HUMAN_KIND } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { reviewIdentityOf } from "../../foundation/review-identity.mjs";
 
-/** The three values a card stores. `auto` is a project word, not a card word. */
-export const CARD_ACCEPTANCE_MODES = Object.freeze(["off", "agent", "human"]);
-
-/** The four values a project may store. */
-export const PROJECT_ACCEPTANCES = Object.freeze(["auto", "off", "agent", "human"]);
-
-/** The project default: let the creator decide per card. */
-export const DEFAULT_PROJECT_ACCEPTANCE = "auto";
+/** The three values a card stores. */
+export const CARD_ACCEPTANCE_MODES = Object.freeze(["off", "auto", "human"]);
 
 /**
  * What an unresolved card falls back to. **Every card — task or epic — is
  * reviewed**: review is the default, `human` is an explicit request and `off`
- * an explicit opt-out. The fallback used to be `human` (and `off` for an epic),
- * which made the one card kind whose job is to aggregate the others the only
- * one nobody audited.
+ * an explicit opt-out.
  */
-export const FALLBACK_CARD_ACCEPTANCE = "agent";
+export const FALLBACK_CARD_ACCEPTANCE = "auto";
 
 /**
- * The card column's own default (`off`), used when a DTO predates the column or
- * a raw write omits it. This is a *storage* default; the create resolver never
- * produces it by omission (it uses {@link FALLBACK_CARD_ACCEPTANCE}).
+ * The card column's own default (`auto`), used when a DTO predates the column or
+ * a raw write omits it.
  */
-export const DEFAULT_CARD_ACCEPTANCE = "off";
+export const DEFAULT_CARD_ACCEPTANCE = "auto";
 
 /**
  * @param {unknown} value
- * @returns {"off"|"agent"|"human"|null}
+ * @returns {"off"|"auto"|"human"|null}
  */
 export function normalizeCardAcceptance(value) {
   const text = String(value ?? "").trim().toLowerCase();
@@ -70,20 +54,11 @@ export function normalizeCardAcceptance(value) {
 }
 
 /**
- * @param {unknown} value
- * @returns {"auto"|"off"|"agent"|"human"|null}
- */
-export function normalizeProjectAcceptance(value) {
-  const text = String(value ?? "").trim().toLowerCase();
-  return PROJECT_ACCEPTANCES.includes(text) ? /** @type {any} */ (text) : null;
-}
-
-/**
  * Validate a card-level value.
  *
  * @param {unknown} value
  * @param {string} [field]
- * @returns {"off"|"agent"|"human"}
+ * @returns {"off"|"auto"|"human"}
  */
 export function assertCardAcceptance(value, field = "acceptance_mode") {
   const mode = normalizeCardAcceptance(value);
@@ -99,29 +74,9 @@ export function assertCardAcceptance(value, field = "acceptance_mode") {
 }
 
 /**
- * Validate a project-level value.
- *
- * @param {unknown} value
- * @param {string} [field]
- * @returns {"auto"|"off"|"agent"|"human"}
- */
-export function assertProjectAcceptance(value, field = "acceptance") {
-  const mode = normalizeProjectAcceptance(value);
-  if (mode === null) {
-    throw new DomainError("VALIDATION_FAILED", {
-      message:
-        `project acceptance must be one of ${PROJECT_ACCEPTANCES.join(" | ")} ` +
-        `(got ${JSON.stringify(value)})`,
-      details: { field, received: value, allowed: [...PROJECT_ACCEPTANCES] },
-    });
-  }
-  return mode;
-}
-
-/**
  * Read the stored card mode, defaulting to the column default.
  * @param {unknown} value
- * @returns {"off"|"agent"|"human"}
+ * @returns {"off"|"auto"|"human"}
  */
 export function cardAcceptanceOf(value) {
   return normalizeCardAcceptance(value) ?? DEFAULT_CARD_ACCEPTANCE;
@@ -132,29 +87,26 @@ export function cardAcceptanceOf(value) {
  *
  * Order:
  *   1. a review card is always `off` (flow B is never reviewed again);
- *   2. an explicit card value wins — except `human` on a card that declares a
- *      parent, which is refused (the mode is a top-level closure gate);
- *   3. a concrete project value is the default — except `human`, which is a
- *      **top-level-only** default: a child naming no mode falls through;
- *   4. project `auto` (or no project) falls back to `agent`, for every kind.
+ *   2. an explicit card value wins;
+ *   3. otherwise the unresolved card falls back to `auto`.
  *
- * `kind` is accepted for callers that pass it; the fallback no longer branches
- * on it. A container is reviewed like any other card.
+ * There is no project input: the creator states the card's word, and a project
+ * that wants selection guidance documents it outside the board.
+ *
+ * `kind` is accepted for callers that pass it; the fallback does not branch on
+ * it. A container is reviewed like any other card.
  *
  * @param {{
- *   projectAcceptance?: unknown,
  *   requested?: unknown,
  *   reviewCard?: boolean,
  *   kind?: string,
- *   hasParent?: boolean,
  * }} [input]
- * @returns {{mode: "off"|"agent"|"human", source: "review_card"|"requested"|"project"|"fallback"}}
+ * @returns {{mode: "off"|"auto"|"human", source: "review_card"|"requested"|"fallback"}}
  */
 export function resolveCardAcceptance(input = {}) {
   const requestedGiven = input.requested !== undefined && input.requested !== null;
   const requested = normalizeCardAcceptance(input.requested);
   if (requestedGiven && requested === null) {
-    // `auto` is a project word; a card must state a concrete answer.
     throw new DomainError("VALIDATION_FAILED", {
       message:
         `a card's acceptance mode must be one of ${CARD_ACCEPTANCE_MODES.join(" | ")} ` +
@@ -183,47 +135,7 @@ export function resolveCardAcceptance(input = {}) {
     return { mode: "off", source: "review_card" };
   }
 
-  const hasParent = input.hasParent === true;
-  if (requested === "human" && hasParent) {
-    throw new DomainError("VALIDATION_FAILED", {
-      message:
-        "acceptance mode human is top-level only: a card with a parent is reviewed and closed " +
-        "by its own mode, never handed to a person",
-      details: {
-        field: "acceptance_mode",
-        received: requested,
-        hasParent: true,
-        allowed: ["off", "agent"],
-      },
-      hint: {
-        fix: "create the child with --acceptance-mode off or agent, or with no mode at all",
-      },
-    });
-  }
   if (requested !== null) return { mode: requested, source: "requested" };
-
-  const projectGiven =
-    input.projectAcceptance !== undefined && input.projectAcceptance !== null;
-  const project = normalizeProjectAcceptance(input.projectAcceptance);
-  if (projectGiven && project === null) {
-    throw new DomainError("VALIDATION_FAILED", {
-      message:
-        `project acceptance must be one of ${PROJECT_ACCEPTANCES.join(" | ")} ` +
-        `(got ${JSON.stringify(input.projectAcceptance)})`,
-      details: {
-        field: "acceptance",
-        received: input.projectAcceptance,
-        allowed: [...PROJECT_ACCEPTANCES],
-      },
-    });
-  }
-  // A project-level `human` is a top-level default only: a card that declares a
-  // parent (or already has one, at the update boundary) must state its own mode
-  // rather than inherit a person's closure gate.
-  if (project === "human" && !hasParent) return { mode: "human", source: "project" };
-  if (project !== null && project !== "auto" && project !== "human") {
-    return { mode: project, source: "project" };
-  }
   return { mode: FALLBACK_CARD_ACCEPTANCE, source: "fallback" };
 }
 
@@ -231,16 +143,16 @@ export function resolveCardAcceptance(input = {}) {
  * May this actor close a card in `mode`?
  *
  * The question is answered by the **evidence**, not by who claims to be the
- * board: `agent` mode needs a current-round APPROVE (checked by the caller), and
+ * board: `auto` mode needs a current-round APPROVE (checked by the caller), and
  * the one actor it excludes is the agent that wrote that verdict. So "the loop
  * closes it" is no longer a privilege a caller can claim by declaring a kind —
- * any writer that did not review the card may apply the approval, and the
- * reviewer never closes its own finding.
+ * any writer that did not review the card may apply the approval, and a human
+ * may always close. The reviewer never closes its own finding.
  *
  * `human` mode still admits exactly one kind. `off` trusts the deliverer.
  *
  * @param {string|null|undefined} actorKind
- * @param {"off"|"agent"|"human"} mode
+ * @param {"off"|"auto"|"human"} mode
  * @param {{reviewCard?: boolean, actorId?: string|null, verdictAuthorId?: string|null}} [options]
  *   `actorId` and `verdictAuthorId` are **actor-row ids** (`actors.id`), not
  *   `--agent` names: the caller normalises before asking.
@@ -258,7 +170,7 @@ export function acceptanceAllows(actorKind, mode, options = {}) {
     case "off":
       // Trust mode: the deliverer itself may close the card.
       return true;
-    case "agent":
+    case "auto":
       // An independent APPROVE is the authority; the verdict's author is not.
       return who === HUMAN_KIND || !wroteTheVerdict;
     case "human":
@@ -291,7 +203,7 @@ function sameActorId(actorId, verdictAuthorId) {
  * @param {object|null|undefined} task a Task DTO or a wire task
  * @returns {{
  *   isReview: boolean,
- *   mode: "off"|"agent"|"human",
+ *   mode: "off"|"auto"|"human",
  *   canAccept: (actorKind: string|null|undefined, options?: {actorId?: string|null, verdictAuthorId?: string|null}) => boolean,
  * }}
  */
@@ -309,12 +221,12 @@ export function acceptanceAuthorityFor(task) {
 /**
  * The error's `allowed` field: which kinds are **never** refused.
  *
- * `agent` and review-card closure are no longer a kind allow-list — anyone who
+ * `auto` and review-card closure are no longer a kind allow-list — anyone who
  * did not write the verdict may close — so a human is the only kind that is
  * always admitted. The refusal names `verdictAuthorId`, which is the identity
  * that actually mattered.
  *
- * @param {"off"|"agent"|"human"} mode
+ * @param {"off"|"auto"|"human"} mode
  * @param {boolean} reviewCard
  * @returns {string|string[]}
  */
@@ -323,7 +235,7 @@ function allowedFor(mode, reviewCard) {
   switch (cardAcceptanceOf(mode)) {
     case "off":
       return "any non-blank actor kind";
-    case "agent":
+    case "auto":
       return [HUMAN_KIND];
     case "human":
       return [HUMAN_KIND];
@@ -336,8 +248,7 @@ function allowedFor(mode, reviewCard) {
  * Assert that this writer may move a card into `done`.
  *
  * A service-layer invariant: the actor is not a `tasks` column, so no trigger
- * can see it. The check reads the actor's **declared** kind, exactly as the old
- * acceptance policy did.
+ * can see it. The check reads the actor's **declared** kind, exactly as before.
  *
  * @param {{kind?: string, id?: string}|null|undefined} actor
  * @param {{mode?: unknown, reviewCard?: boolean, actorId?: string|null, verdictAuthorId?: string|null}} [options]
@@ -361,7 +272,7 @@ export function assertAcceptanceAuthority(actor, options = {}) {
       : "a review card needs an actor to close it"
     : mode === "human"
       ? "this card is human-accepted: only a human may move it to done"
-      : mode === "agent"
+      : mode === "auto"
         ? wroteTheVerdict
           ? "a card is never accepted by the agent that reviewed it"
           : "this card needs an independent review; it is closed after APPROVE"

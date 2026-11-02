@@ -113,14 +113,16 @@ function boardWith(db, from, to, suffix = "", kind = "task", mode = "off", revie
   if (canTransition(from, to, kind, mode, reviewCard) && (to === "in_review" || needsEpicRollup)) {
     insertReport(db, { task_id: id, round: 1, is_rollup: needsEpicRollup ? 1 : 0 });
   }
-  // 0038 — an `agent` card reaching done owes a current-round review. The
+  // 0038/0002 — a reviewed card reaching done owes a current-round review. The
   // trigger is coarse (the row must exist and have reached the reviewer); the
-  // APPROVE verdict is the service layer's rule.
-  if (mode === "agent" && from === "in_review" && to === "done") {
+  // APPROVE verdict is the service layer's rule. `auto` admits an open review
+  // (the loop moves the original first); `human` needs it finished.
+  if ((mode === "auto" || mode === "human") && from === "in_review" && to === "done") {
     insertTask(db, {
       id: `${id}_rev`,
       identifier: `PROJ-${from}-${to}${suffix}-${kind}-${mode}-REV`.toUpperCase(),
-      status: "in_review",
+      status: mode === "human" ? "done" : "in_review",
+      acceptance_mode: "off",
       review_of_id: id,
       review_round: 1,
     });
@@ -270,7 +272,7 @@ describe("contract/state-machine — every pair, two paths", () => {
 
   it("makes done reachable only from in_review — except the off direct edge", async () => {
     await withBoard(({ db }) => {
-      const expected = { off: ["in_progress", "in_review"], agent: ["in_review"], human: ["in_review"] };
+      const expected = { off: ["in_progress", "in_review"], auto: ["in_review"], human: ["in_review"] };
       for (const kind of TASK_KINDS) {
         for (const mode of ACCEPTANCE_MODES) {
           const viaSql = [];
@@ -322,7 +324,8 @@ describe("contract/state-machine — delivery rounds (F3)", () => {
   it("bumps the round when a delivery comes back, and not when it is accepted", async () => {
     await withBoard(({ db }) => {
       insertProject(db);
-      insertTask(db, { id: "t", identifier: "PROJ-0001", status: "in_progress" });
+      // `off` so the walk measures the round, not the review gate.
+      insertTask(db, { id: "t", identifier: "PROJ-0001", status: "in_progress", acceptance_mode: "off" });
       const round = () => db.prepare("SELECT delivery_round AS r FROM tasks WHERE id='t'").get().r;
 
       assert.equal(round(), 1, "a task starts on its first delivery attempt");
@@ -358,7 +361,7 @@ describe("contract/state-machine — the review-required done gate (0038)", () =
    * current-round review *exists and has been entered*; whether that review
    * approved is the JS rule (`REVIEW_PENDING`), stated as such.
    */
-  function reviewable(db, { acceptanceMode = "agent", reviews = [] } = {}) {
+  function reviewable(db, { acceptanceMode = "auto", reviews = [] } = {}) {
     insertProject(db);
     insertTask(db, {
       id: "orig",
@@ -371,6 +374,7 @@ describe("contract/state-machine — the review-required done gate (0038)", () =
         id: `rev-${index}`,
         identifier: `PROJ-REV-${index + 1}`,
         status: review.status ?? "in_review",
+        acceptance_mode: "off",
         review_of_id: "orig",
         review_round: review.round ?? 1,
       });
@@ -409,6 +413,22 @@ describe("contract/state-machine — the review-required done gate (0038)", () =
     });
   });
 
+  it("makes a human card wait for a finished review", async () => {
+    await withBoard(({ db }) => {
+      assert.equal(
+        move(db, reviewable(db, { acceptanceMode: "human", reviews: [{ status: "in_review" }] }), "done"),
+        "REVIEW_REQUIRED",
+        "an open review is not a finished audit",
+      );
+    });
+    await withBoard(({ db }) => {
+      assert.equal(
+        move(db, reviewable(db, { acceptanceMode: "human", reviews: [{ status: "done" }] }), "done"),
+        "NO_ERROR",
+      );
+    });
+  });
+
   it("refuses to let a review card itself require review", async () => {
     await withBoard(({ db }) => {
       insertProject(db);
@@ -421,7 +441,7 @@ describe("contract/state-machine — the review-required done gate (0038)", () =
             status: "in_review",
             review_of_id: "orig2",
             review_round: 1,
-            acceptance_mode: "agent",
+            acceptance_mode: "auto",
           }),
         ),
         "REVIEW_CARD_MARKER_INVALID",
@@ -515,7 +535,7 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
     // adds exactly one direct edge, `in_progress → done`; every other start still
     // has to pass through `in_review`.
     for (const kind of TASK_KINDS) {
-      for (const mode of ["agent", "human"]) {
+      for (const mode of ["auto", "human"]) {
         for (const start of STATUSES) {
           if (start === "in_review") continue;
           assert.equal(
@@ -632,6 +652,9 @@ describe("contract/state-machine — the execution claim follows the work cycle"
               project_id: `p-${from}-${to}-${kind}`,
               status: from,
               kind,
+              // The walk measures the claim, not the review gate; `off` is the
+              // one mode whose direct `in_progress → done` edge is legal.
+              acceptance_mode: "off",
               // A `backlog` card may not hold a claim (the CHECK this card fixes);
               // every other status seeds the claim the move must carry.
               ...(from === "backlog" ? {} : { claimed_by: "linus", claimed_at: TS, heartbeat_at: TS }),

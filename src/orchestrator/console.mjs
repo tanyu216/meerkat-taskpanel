@@ -13,7 +13,7 @@
  *     (a director `note` alone leaves the card open; a human answer is shown
  *     with `answered_pending_release`).
  * `in_review` cards are listed as pending acceptance. The card's own
- * `acceptance_mode` says who closes it — the loop for `off`/`agent`, a person
+ * `acceptance_mode` says who closes it — the loop for `off`/`auto`, a person
  * for `human` — so the list is a reading, not a claim about who owes the act.
  *
  * Node builtins only.

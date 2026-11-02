@@ -66,6 +66,36 @@ const report = (overrides = {}) => ({
   ...overrides,
 });
 
+/**
+ * Record a current-round APPROVE on a delivered card and close the review.
+ * A human close of a `human` card — and a human fallback on an `auto` card —
+ * both require this evidence in the post-0002 model.
+ */
+function approveReview(commands, original) {
+  const review = commands.createTask({
+    projectId: original.projectId,
+    title: `Review ${original.identifier}`,
+    allowDup: true,
+    reviewOf: original.identifier,
+    reviewRound: original.deliveryRound,
+    actor: AGENT,
+  });
+  commands.claim({ id: review.id, actor: AGENT });
+  commands.deliver({
+    taskId: review.id,
+    report: report({
+      conclusion: "VERDICT: APPROVE\nlooks good",
+      evidence: [
+        { kind: "commit", sha: "dcd7d15" },
+        { kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 },
+      ],
+    }),
+    actor: AGENT,
+  });
+  commands.moveStatus({ id: review.id, to: "done", actor: HUMAN });
+  return review;
+}
+
 describe("commands/tasks — create and update", () => {
   it("creates a task, allocates its identifier and writes exactly one activity", async () => {
     await board(async ({ db, commands }) => {
@@ -277,7 +307,7 @@ describe("commands/tasks — create and update", () => {
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       commands.claim({ id: original.id, actor: AGENT });
@@ -324,7 +354,7 @@ describe("commands/tasks — create and update", () => {
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       commands.claim({ id: original.id, actor: AGENT });
@@ -2007,6 +2037,7 @@ describe("commands/tasks — acceptance authority (the card's mode)", () => {
   it("lets a human close a human card, and the board close an off card", async () => {
     await board(async ({ commands }) => {
       const byHuman = delivered(commands, "human");
+      approveReview(commands, byHuman);
       assert.equal(commands.moveStatus({ id: byHuman.id, to: "done", actor: HUMAN }).status, "done");
 
       const bySystem = delivered(commands, "off");
@@ -2041,6 +2072,7 @@ describe("commands/tasks — acceptance authority (the card's mode)", () => {
         (err) => err.code === "ACCEPTANCE_FORBIDDEN",
       );
       assert.equal(commands.getTask({ id: task.id }).status, "in_review");
+      approveReview(commands, commands.getTask({ id: task.id }));
       assert.equal(
         commands.deliver({ taskId: task.id, to: "done", report: report(), actor: HUMAN }).task.status,
         "done",
@@ -2760,6 +2792,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
         actor: AGENT,
       });
       deliverCard(commands, task);
+      approveReview(commands, commands.getTask({ id: task.id }));
       assert.equal(commands.moveStatus({ id: task.id, to: "done", actor: HUMAN }).status, "done");
     });
   });
@@ -2797,7 +2830,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const task = commands.createTask({
         projectId: "proj",
         title: "Reviewed",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, task);
@@ -2820,7 +2853,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -2855,7 +2888,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -2899,7 +2932,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
         const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
         deliverCard(commands, original);
@@ -2946,7 +2979,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -2979,7 +3012,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -2997,7 +3030,8 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       );
     });
 
-    // A review for an old round is history: it does not hold a human card.
+    // A review for an old round is history: the human card still waits for a
+    // current-round review.
     await board(async ({ commands }) => {
       const original = commands.createTask({
         projectId: "proj",
@@ -3015,7 +3049,10 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       });
       commands.moveStatus({ id: original.id, to: "in_progress", actor: AGENT });
       commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
-      assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: HUMAN }).status, "done");
+      assert.equal(
+        refusal(() => commands.moveStatus({ id: original.id, to: "done", actor: HUMAN })),
+        "REVIEW_REQUIRED",
+      );
     });
   });
 
@@ -3024,7 +3061,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -3044,7 +3081,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -3164,7 +3201,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -3197,7 +3234,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -3251,7 +3288,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -3287,7 +3324,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       const plain = commands.createTask({ projectId: "proj", title: "Plain", allowDup: true, actor: AGENT });
@@ -3318,7 +3355,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original); // round 1, in_review
@@ -3368,7 +3405,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       assert.throws(
@@ -3430,7 +3467,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -3451,7 +3488,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -3489,7 +3526,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       deliverCard(commands, original);
@@ -3534,77 +3571,65 @@ describe("commands/tasks — review decision (0031)", () => {
     return commands.deliver({ taskId: task.id, report: report(), actor }).task;
   }
 
-  it("resolves the project default, and lets an explicit card value win", async () => {
+  it("resolves the card's own mode; there is no project default", async () => {
     await board(async ({ commands }) => {
+      // A stale project field is ignored: the card's own value is the decision.
       commands.createProject({ id: "req", name: "Required", acceptance: "agent", actor: HUMAN });
       commands.createProject({ id: "off", name: "Off", acceptance: "off", actor: HUMAN });
 
-      assert.equal(commands.createTask({ projectId: "req", title: "r", actor: AGENT }).acceptanceMode, "agent");
-      assert.equal(commands.createTask({ projectId: "off", title: "o", actor: AGENT }).acceptanceMode, "off");
-      // `proj` carries the column default (`auto`); an unresolved card falls
-      // back to agent — review is the default, never an unanswered human gate.
-      const fallback = commands.createTask({ projectId: "proj", title: "d", actor: AGENT });
-      assert.equal(fallback.acceptanceMode, "agent");
-      // 0038 — the explicit card value wins over the project default.
-      const optIn = commands.createTask({ projectId: "off", title: "yes", actor: AGENT, acceptanceMode: "agent" });
-      assert.equal(optIn.acceptanceMode, "agent");
-      const optOut = commands.createTask({ projectId: "req", title: "no", actor: AGENT, acceptanceMode: "off" });
-      assert.equal(optOut.acceptanceMode, "off");
+      assert.equal(commands.createTask({ projectId: "req", title: "r", actor: AGENT }).acceptanceMode, "auto");
+      assert.equal(commands.createTask({ projectId: "off", title: "o", actor: AGENT }).acceptanceMode, "auto");
+      assert.equal(
+        commands.createTask({ projectId: "off", title: "yes", actor: AGENT, acceptanceMode: "off" }).acceptanceMode,
+        "off",
+      );
+      assert.equal(
+        commands.createTask({ projectId: "req", title: "human", actor: AGENT, acceptanceMode: "human" }).acceptanceMode,
+        "human",
+      );
     });
   });
 
-  it("falls an unresolved card back to agent, whatever created it", async () => {
+  it("falls an unresolved card back to auto, whatever created it", async () => {
     await board(async ({ commands }) => {
-      const agentCard = commands.createTask({ projectId: "proj", title: "decide", actor: AGENT });
-      assert.equal(agentCard.acceptanceMode, "agent");
+      const autoCard = commands.createTask({ projectId: "proj", title: "decide", actor: AGENT });
+      assert.equal(autoCard.acceptanceMode, "auto");
       const humanCard = commands.createTask({ projectId: "proj", title: "human", actor: HUMAN, allowDup: true });
-      assert.equal(humanCard.acceptanceMode, "agent", "human is opt-in, not the fallback");
+      assert.equal(humanCard.acceptanceMode, "auto", "human is opt-in, not the fallback");
     });
   });
 
-  it("falls an unresolved epic back to agent — a container is reviewed too", async () => {
+  it("falls an unresolved epic back to auto — a container is reviewed too", async () => {
     await board(async ({ commands }) => {
       const epic = commands.createTask({ projectId: "proj", title: "epic", kind: "epic", actor: AGENT });
-      assert.equal(epic.acceptanceMode, "agent");
+      assert.equal(epic.acceptanceMode, "auto");
       assert.equal(epic.kind, "epic");
     });
   });
 
-  it("keeps human top-level only at create and at update", async () => {
+  it("accepts human on a child at create and at update", async () => {
     await board(async ({ commands, repos }) => {
       commands.createProject({ id: "hum", name: "Human", acceptance: "human", actor: HUMAN });
       const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
 
-      // A create that declares a parent is a child, so an explicit human is refused.
-      assert.throws(
-        () =>
-          commands.createTask({
-            projectId: "proj",
-            title: "child",
-            parent: epic.identifier,
-            acceptanceMode: "human",
-            actor: HUMAN,
-          }),
-        (err) => {
-          assert.equal(err.code, "VALIDATION_FAILED");
-          assert.equal(err.details.field, "acceptance_mode");
-          return true;
-        },
-      );
-      // Under a project-level `human`, a child that names no mode falls back to
-      // agent: the project value is a top-level default.
       const child = commands.createTask({
+        projectId: "proj",
+        title: "child",
+        parent: epic.identifier,
+        acceptanceMode: "human",
+        actor: HUMAN,
+      });
+      assert.equal(child.acceptanceMode, "human");
+      // The project's stale `human` is not inherited by a quiet child.
+      const quiet = commands.createTask({
         projectId: "hum",
         title: "quiet child",
         parent: epic.identifier,
+        allowDup: true,
         actor: AGENT,
       });
-      assert.equal(child.acceptanceMode, "agent");
-      // No parent declared: the same project value is adopted as before.
-      const topLevel = commands.createTask({ projectId: "hum", title: "top", allowDup: true, actor: AGENT });
-      assert.equal(topLevel.acceptanceMode, "human");
+      assert.equal(quiet.acceptanceMode, "auto");
 
-      // The parent-edge boundary refuses the other direction too.
       const offChild = commands.createTask({
         projectId: "proj",
         title: "off child",
@@ -3613,18 +3638,9 @@ describe("commands/tasks — review decision (0031)", () => {
         actor: AGENT,
       });
       commands.addRelation({ type: "parent", source: epic.id, target: offChild.id, actor: AGENT });
-      // An update to human on a card that already has a parent is refused even
-      // for a human writer, who is otherwise allowed to loosen a mode.
-      assert.throws(
-        () => commands.updateTask({ id: offChild.id, acceptanceMode: "human", actor: HUMAN }),
-        (err) => {
-          assert.equal(err.code, "VALIDATION_FAILED");
-          assert.equal(err.details.field, "acceptance_mode");
-          assert.equal(err.details.parentId, epic.id);
-          return true;
-        },
-      );
-      assert.equal(repos.tasks.get(offChild.id).acceptanceMode, "off");
+      // A card that already has a parent can be tightened to human.
+      commands.updateTask({ id: offChild.id, acceptanceMode: "human", actor: HUMAN });
+      assert.equal(repos.tasks.get(offChild.id).acceptanceMode, "human");
     });
   });
 
@@ -3647,7 +3663,7 @@ describe("commands/tasks — review decision (0031)", () => {
             reviewOf: original.identifier,
             reviewRound: original.deliveryRound,
             actor: AGENT,
-            acceptanceMode: "agent",
+            acceptanceMode: "auto",
             // Bypass the creation idempotency guard (the first review card is
             // non-terminal and already holds the derived key) so the resolver
             // is the thing that refuses.
@@ -3660,9 +3676,9 @@ describe("commands/tasks — review decision (0031)", () => {
 
   it("requires an approved current-round review before done", async () => {
     await board(async ({ commands }) => {
-      commands.createProject({ id: "req", name: "Required", acceptance: "agent", actor: HUMAN });
+      commands.createProject({ id: "req", name: "Required", actor: HUMAN });
       const original = deliverOne(commands, "req", "original");
-      assert.equal(original.acceptanceMode, "agent");
+      assert.equal(original.acceptanceMode, "auto");
 
       assert.throws(
         () => commands.moveStatus({ id: original.id, to: "done", actor: SYSTEM }),
@@ -3697,7 +3713,7 @@ describe("commands/tasks — review decision (0031)", () => {
 
   it("lets a human waive with a reason, and refuses an agent", async () => {
     await board(async ({ db, commands }) => {
-      commands.createProject({ id: "req", name: "Required", acceptance: "agent", actor: HUMAN });
+      commands.createProject({ id: "req", name: "Required", actor: HUMAN });
       const original = deliverOne(commands, "req", "original");
 
       assert.throws(
@@ -3729,7 +3745,7 @@ describe("commands/tasks — review decision (0031)", () => {
 
   it("refuses a waiver while a current-round review is open", async () => {
     await board(async ({ commands }) => {
-      commands.createProject({ id: "req", name: "Required", acceptance: "agent", actor: HUMAN });
+      commands.createProject({ id: "req", name: "Required", actor: HUMAN });
       const original = deliverOne(commands, "req", "original");
       commands.createTask({
         projectId: "req",
@@ -3760,8 +3776,8 @@ describe("commands/tasks — review decision (0031)", () => {
         actor: AGENT,
       });
       assert.equal(
-        commands.updateTask({ id: task.id, acceptanceMode: "agent", actor: AGENT }).acceptanceMode,
-        "agent",
+        commands.updateTask({ id: task.id, acceptanceMode: "auto", actor: AGENT }).acceptanceMode,
+        "auto",
       );
 
       const human = commands.createTask({
@@ -4059,7 +4075,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         projectId: "proj",
         title: "reviewed",
         meta: { acceptance: ["a", "b"] },
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: AGENT,
       });
       commands.claim({ id: original.id, actor: AGENT });
@@ -4110,7 +4126,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         projectId: "proj",
         title: "reviewed",
         meta: { acceptance: ["a", "b"] },
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: HUMAN,
       });
       commands.claim({ id: original.id, actor: AGENT });
@@ -4191,7 +4207,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
     });
   });
 
-  it("leaves an APPROVE on a `human` card alone: a verdict is recorded, not applied", async () => {
+  it("refuses an APPROVE on a human card whose delivery can never close", async () => {
     await board(async ({ commands }) => {
       const original = commands.createTask({
         projectId: "proj",
@@ -4221,14 +4237,60 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         actor: HUMAN,
       });
       commands.claim({ id: review.id, actor: AGENT });
-      // Only `agent` turns an APPROVE into `done`; a `human` verdict is recorded
-      // for the person, so the writer gate judges nothing here.
+      assert.throws(
+        () =>
+          commands.deliver({
+            taskId: review.id,
+            report: report({ conclusion: "VERDICT: APPROVE\n\nA person closes this one." }),
+            actor: AGENT,
+          }),
+        (err) => {
+          assert.equal(err.code, "ACCEPTANCE_INCOMPLETE");
+          assert.equal(err.details.blockedApproval, review.identifier);
+          return true;
+        },
+      );
+    });
+  });
+
+  it("records an APPROVE on a complete human card without applying it", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({
+        projectId: "proj",
+        title: "a person closes this",
+        meta: { acceptance: ["a", "b"] },
+        acceptanceMode: "human",
+        actor: HUMAN,
+      });
+      commands.claim({ id: original.id, actor: AGENT });
+      commands.deliver({
+        taskId: original.id,
+        report: report({
+          acceptance: [
+            { text: "a", status: "met", note: "evidence[1] — the run" },
+            { text: "b", status: "met", note: "evidence[1] — the run" },
+          ],
+        }),
+        actor: AGENT,
+      });
+
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "review",
+        reviewOf: original.identifier,
+        reviewRound: 1,
+        actor: HUMAN,
+      });
+      commands.claim({ id: review.id, actor: AGENT });
       commands.deliver({
         taskId: review.id,
         report: report({ conclusion: "VERDICT: APPROVE\n\nA person closes this one." }),
         actor: AGENT,
       });
       assert.equal(commands.listReports({ taskId: review.id }).length, 1);
+      // The command only records the review; the loop's `record_verdict` action
+      // closes the review and leaves the original for the person.
+      assert.equal(commands.getTask({ id: original.id }).status, "in_review");
     });
   });
 
@@ -4238,7 +4300,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
         projectId: "proj",
         title: "delivered without a report",
         meta: { acceptance: ["a"] },
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: HUMAN,
       });
       commands.claim({ id: original.id, actor: AGENT });
@@ -4285,9 +4347,9 @@ describe("commands/tasks — a claim must point at its evidence", () => {
     author: AGENT_ACTOR,
   });
 
-  it("refuses an agent card's anchorless met at delivery, and lets an off card keep its lighter contract", async () => {
+  it("refuses an auto card's anchorless met at delivery, and lets an off card keep its lighter contract", async () => {
     for (const [mode, expected] of [
-      ["agent", "ACCEPTANCE_INCOMPLETE"],
+      ["auto", "ACCEPTANCE_INCOMPLETE"],
       ["off", null],
     ]) {
       await board(async ({ commands }) => {
@@ -4318,7 +4380,7 @@ describe("commands/tasks — a claim must point at its evidence", () => {
       const task = commands.createTask({
         projectId: "proj",
         title: "Ship it",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         meta: { acceptance: ["domain has no Node I/O"] },
         actor: AGENT_ACTOR,
       });
@@ -4352,7 +4414,7 @@ describe("commands/tasks — a claim must point at its evidence", () => {
       const original = commands.createTask({
         projectId: "proj",
         title: "Original",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         meta: { acceptance: ["domain has no Node I/O"] },
         actor: AGENT_ACTOR,
       });

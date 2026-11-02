@@ -5603,14 +5603,6 @@
           "positionals": [],
           "flags": [
             {
-              "flag": "acceptance",
-              "as": "string",
-              "value": "<auto|off|agent|human>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "id",
               "as": "string",
               "value": "<id>",
@@ -5696,14 +5688,6 @@
             }
           ],
           "flags": [
-            {
-              "flag": "acceptance",
-              "as": "string",
-              "value": "<auto|off|agent|human>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
             {
               "flag": "label",
               "as": "string",
@@ -5844,14 +5828,6 @@
             }
           ],
           "flags": [
-            {
-              "flag": "acceptance",
-              "as": "string",
-              "value": "<auto|off|agent|human>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
             {
               "flag": "label",
               "as": "string",

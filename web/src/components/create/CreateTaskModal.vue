@@ -70,21 +70,16 @@ const relationOptions = taskRoster;
 const canSubmit = computed(() => form.title.trim() !== "" && form.project_id);
 
 /**
- * 0038 — the card's acceptance snapshot. The project's value is the default;
- * `auto` resolves to `agent` here, exactly as the server's resolver does, so
- * the hint and the created card agree. `human` is opt-in and top-level only: a
- * card being given a parent is shown `agent` instead (`lib/acceptance-default.js`).
- * The select stays a native `<select>` like the project field above it, and it
- * is sent only when the creator chose something.
+ * 0038/0002 — the card's acceptance snapshot. There is no project default:
+ * `auto` is the preselect, and the creator states `off` or `human` from the
+ * card's own context. The select stays a native `<select>`, and it is sent only
+ * when the creator chose something.
  */
 const selectedProject = computed(
   () => board.projects.find((project) => project.id === form.project_id) ?? null,
 );
-const projectAcceptance = computed(() => selectedProject.value?.acceptance ?? "auto");
 const acceptanceMode = computed({
-  get: () =>
-    form.acceptance_mode ??
-    defaultAcceptanceMode(projectAcceptance.value, { hasParent: form.parent !== "" }),
+  get: () => form.acceptance_mode ?? defaultAcceptanceMode(),
   set: (value) => {
     form.acceptance_mode = value;
   },
@@ -143,8 +138,8 @@ async function submit() {
     priority: form.priority,
     status: form.status,
     labels: form.labels,
-    // Sent whenever the creator picked one; otherwise the server resolves the
-    // project default (and `auto` falls back to `human` there).
+    // Sent whenever the creator picked one; otherwise the server falls back to
+    // `auto`.
     ...(form.acceptance_mode === null ? {} : { acceptance_mode: form.acceptance_mode }),
   };
   if (form.assignee) payload.assignee = form.assignee;

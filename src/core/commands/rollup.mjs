@@ -14,12 +14,12 @@
  *     container's rollup report and moves it to `in_review` **in the same
  *     transaction as the child's own move**. `canceled` is finished, so it does
  *     not hold the container open; the report lists it with the reason the
- *     card's own trail records, and the human who accepts the container decides
- *     whether that was acceptable. A container with nothing delivered — every
- *     child canceled — is *not* a delivery and stays where it is. A human still
- *     accepts `in_review → done`, so acceptance gates the tree from the bottom
- *     up: a nested epic reaches `in_review`, not `done`, and its parent
- *     therefore keeps waiting.
+ *     card's own trail records, and the container's own acceptance mode names
+ *     the closer that decides whether that was acceptable. A container with
+ *     nothing delivered — every child canceled — is *not* a delivery and stays
+ *     where it is. The card's own mode still gates `in_review → done`, so
+ *     acceptance gates the tree from the bottom up: a nested epic reaches
+ *     `in_review`, not `done`, and its parent therefore keeps waiting.
  *
  * Both moves leave a system-authored `kind=note` comment naming **where the
  * transition came from** (`event` — a child's write; `sweep` — the reconciler),
@@ -145,7 +145,7 @@ export function allChildrenTerminal(children) {
  * delivery.
  *
  * A set made only of `canceled` children is terminal but empty; delivering it
- * to review would hand a human an acceptance with no work behind it, so the
+ * to review would hand the closer an acceptance with no work behind it, so the
  * container stays open at that point.
  *
  * @param {object[]} children
@@ -320,7 +320,7 @@ export function startContainer(ctx, containerId, now, options = {}) {
  * the same plan and writes nothing at all (no report, no note, no activity).
  *
  * `in_review` containers are scanned (they are non-terminal) and reported as
- * `none`: a container already waiting for a human has nothing to reconcile —
+ * `none`: a container already waiting on its closer has nothing to reconcile —
  * re-triggering it writes no second report and bumps no delivery round.
  *
  * A container that is open but not closeable reports *why*, and `blocking`
@@ -383,8 +383,8 @@ export function reconcileContainers(ctx, options = {}) {
 
     if (epic.status === STATUS.IN_REVIEW) {
       // 0033 — a read-only staleness finding. The sweep never moves an
-      // `in_review` epic; it only says whether the rollup a human is about to
-      // accept still describes the children. A stale epic is repaired by
+      // `in_review` epic; it only says whether the rollup its closer is about
+      // to accept still describes the children. A stale epic is repaired by
       // reworking it (a new round rolls up again).
       const rollup = currentRollup(ctx, epic);
       if (rollup === null) {
@@ -403,7 +403,7 @@ export function reconcileContainers(ctx, options = {}) {
     if (epic.status === STATUS.TODO) {
       // Every child is finished but the container cannot close (no evidence, or
       // nothing delivered): starting it would only make it look live while it
-      // waits for a human. Report the close verdict instead.
+      // waits for its closer. Report the close verdict instead.
       if (allChildrenTerminal(children)) {
         record("none", assessment.reason, blockingOf(assessment));
         continue;
@@ -446,7 +446,7 @@ function childrenOf(ctx, containerId) {
   for (const edge of edges) {
     const child = ctx.repos.tasks.get(edge.target);
     // A dangling edge (should be impossible: relations are FK'd) is not a
-    // reason to close anything — leave the container to a human.
+    // reason to close anything — leave the container to its closer.
     if (child === null || child === undefined) return null;
     children.push(child);
   }
@@ -485,7 +485,7 @@ function assessClose(ctx, container) {
   }
   if (!hasDoneChild(children)) {
     // Terminal but empty: every child was canceled. There is no delivery to
-    // hand to acceptance, so the container stays open for a human.
+    // hand to acceptance, so the container stays open for its closer.
     return { ok: false, reason: "no_child_done", blocking: namedChildren(children) };
   }
 
@@ -592,8 +592,8 @@ function appendSystemNote(ctx, taskId, body, now, refs) {
  * The acceptance list is what makes this a *rollup* rather than a summary: one
  * criterion per child, and the only claim each makes about a `done` child —
  * "this child is `done`" — is a fact the board itself holds. It asserts nothing
- * about the children's own acceptance; each of those was accepted by a human
- * already.
+ * about the children's own acceptance; each of those was accepted by its own
+ * mode's closer already.
  *
  * A `canceled` child is listed too, and not as a met criterion: it is
  * `not_applicable`, with the reason the child's own trail records, because the

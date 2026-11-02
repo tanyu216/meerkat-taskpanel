@@ -1437,7 +1437,7 @@ describe("cli/issue — acceptance authority", () => {
 
   it("refuses an agent closing its own delivery, and a human may close it", async () => {
     await board(async ({ run }) => {
-      // Explicit human: an unresolved card is now `agent`, whose close needs a review.
+      // Explicit human: an unresolved card is now `auto`, whose close needs a review.
       const card = createIssue(run, ["--acceptance-mode", "human"]);
       dataOf(run(["issue", "move", card.task.identifier, "in_progress", "--agent", "linus", "--actor-kind", "claude", "--json"]));
       dataOf(
@@ -1460,6 +1460,37 @@ describe("cli/issue — acceptance authority", () => {
         "in_review",
         "the refusal moves nothing",
       );
+
+      // 0002 — the review must finish before the person closes. Record an
+      // APPROVE on a current-round review card, then close the review.
+      const review = dataOf(
+        run([
+          "issue", "create", "--project", "demo", "--title", "Review", "--allow-dup",
+          "--review-of", card.task.identifier, "--review-round", "1", "--json",
+        ]),
+      );
+      dataOf(
+        run([
+          "issue", "move", review.task.identifier, "in_progress",
+          "--agent", "linus", "--actor-kind", "claude", "--json",
+        ]),
+      );
+      dataOf(
+        run([
+          "issue", "deliver", review.task.identifier, "--report-file", "-",
+          "--agent", "linus", "--actor-kind", "claude", "--json",
+        ], {
+          input: JSON.stringify({
+            conclusion: "VERDICT: APPROVE\nlooks good",
+            acceptance: [{ text: "a", status: "met", note: "ran it (evidence[1])" }],
+            evidence: [
+              { kind: "commit", sha: "abc1234" },
+              { kind: "command", cmd: "node --test test/io.test.mjs", exit_code: 0 },
+            ],
+          }),
+        }),
+      );
+      dataOf(run(["issue", "move", review.task.identifier, "done", "--json"]));
 
       const accepted = dataOf(run(["issue", "move", card.task.identifier, "done", "--json"]));
       assert.equal(accepted.task.status, "done");
@@ -1718,8 +1749,8 @@ describe("cli/issue — `issue reopen` (done/canceled → todo)", () => {
 describe("cli/issue — acceptance mode (0038)", () => {
   it("carries --acceptance-mode on create, and refuses the retired --review alias", async () => {
     await board(async ({ run }) => {
-      const agent = createIssue(run, ["--acceptance-mode", "agent"]);
-      assert.equal(agent.task.acceptance_mode, "agent");
+      const auto = createIssue(run, ["--acceptance-mode", "auto"]);
+      assert.equal(auto.task.acceptance_mode, "auto");
       const off = createIssue(run, ["--acceptance-mode", "off"]);
       assert.equal(off.task.acceptance_mode, "off");
 
@@ -1734,23 +1765,23 @@ describe("cli/issue — acceptance mode (0038)", () => {
     });
   });
 
-  it("falls an unresolved card back to agent", async () => {
+  it("falls an unresolved card back to auto", async () => {
     await board(async ({ run }) => {
       const result = createIssue(run, ["--title", "decide"]);
-      assert.equal(result.task.acceptance_mode, "agent");
+      assert.equal(result.task.acceptance_mode, "auto");
       const epic = createIssue(run, ["--title", "container", "--kind", "epic", "--allow-dup"]);
-      assert.equal(epic.task.acceptance_mode, "agent", "a container is reviewed too");
+      assert.equal(epic.task.acceptance_mode, "auto", "a container is reviewed too");
     });
   });
 
-  it("changes the mode through issue update, with a reason when leaving agent", async () => {
+  it("changes the mode through issue update, with a reason when leaving auto", async () => {
     await board(async ({ run }) => {
       const created = createIssue(run, ["--acceptance-mode", "off"]);
 
       const escalated = dataOf(
-        run(["issue", "update", created.task.identifier, "--acceptance-mode", "agent", "--json"]),
+        run(["issue", "update", created.task.identifier, "--acceptance-mode", "auto", "--json"]),
       );
-      assert.equal(escalated.task.acceptance_mode, "agent");
+      assert.equal(escalated.task.acceptance_mode, "auto");
 
       const missingReason = run([
         "issue", "update", created.task.identifier, "--acceptance-mode", "off", "--json",
@@ -1768,10 +1799,9 @@ describe("cli/issue — acceptance mode (0038)", () => {
     });
   });
 
-  it("lets an explicit card value win over the project default", async () => {
-    await withCli(async ({ run }) => {
-      run(["project", "create", "--id", "req", "--name", "Required", "--acceptance", "agent", "--json"]);
-      const result = createIssue(run, ["--project", "req", "--title", "no", "--acceptance-mode", "off"]);
+  it("uses the explicit card value; there is no project default to inherit", async () => {
+    await board(async ({ run }) => {
+      const result = createIssue(run, ["--acceptance-mode", "off"]);
       assert.equal(result.task.acceptance_mode, "off");
     });
   });

@@ -105,7 +105,7 @@ work only of deciding; only a human comment resumes, and an incomplete answer is
 
 ## 10. Reviewer catches an omission
 
-> Review card T-2 (round 1) audits delivered card T-1, acceptance_mode agent, project gate
+> Review card T-2 (round 1) audits delivered card T-1, acceptance_mode auto, project gate
 > `npm run verify:docker`. T-1's description asks for five things: a retry with backoff, a
 > timeout, a metric, a CLI flag and a regression test. Its delivery report lists four
 > acceptance items and marks them met; the fifth (the CLI flag) appears in no acceptance

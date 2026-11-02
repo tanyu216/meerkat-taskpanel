@@ -99,9 +99,10 @@ describe("handoffs without a role stay byte-identical", () => {
     // Re-pinned for the bounded `issue wait` hold: a worker that asks now waits
     // for the answer in the same turn (and re-claims if the director released
     // the card) instead of ending the turn immediately.
+    // Re-pinned for 0002: the card vocabulary is `off | auto | human`.
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "371f25aa2945da79856f4b8c970a0ce7c7db76b1d045a34d2725e0a69ed31d61",
+      "2a6747c66416aca8f7b44faee07e5820c44b0c67fbe575c9eb8851a8999547e8",
     );
   });
 

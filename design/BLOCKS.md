@@ -568,7 +568,7 @@ the distinction.
 | Scrim | `[data-detail-overlay][data-state]` |
 | Head | `[data-detail-identifier]` (**R12**: the whole id, carrying `.td-id-full`) · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · `[data-detail-close]` |
 | Save state (R10) | `[data-detail-save][data-save-state="idle \| saving \| saved \| error"]` (attribute carrier, `hidden`, no copy of its own) · `[data-detail-save-error][role="alert"]` (its only visible half) |
-| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **acceptance** `[data-detail-acceptance-mode]` (`data-acceptance-mode="off\|agent\|human"`, read-only — 0038: the card's acceptance mode, set at creation and changed only through the audited `--acceptance-mode` override) · **labels** `[data-detail-labels]` (editable label combo — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
+| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **acceptance** `[data-detail-acceptance-mode]` (`data-acceptance-mode="off\|auto\|human"`, read-only — 0038: the card's acceptance mode, set at creation and changed only through the audited `--acceptance-mode` override) · **labels** `[data-detail-labels]` (editable label combo — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
 | Tabs | `[data-detail-tabs][role="tablist"]` → `[data-detail-tab]` ×6 (`details` · `activity` · `reports` · `acceptance` · `leftovers` · `sessions`) → `[data-detail-panel]` ×6. Details holds Properties / Description / Relations / Attachments; Activity holds Comments + Activity; Sessions holds the Agent-session trail; Reports / Acceptance / Leftovers read `task_reports`. `sessions` is hidden when the card has no session rows; the other five are always present |
 | Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` (**inside the Sessions panel**) · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
@@ -790,9 +790,11 @@ drawer veil deepens with the modal's — one token, every veil.
 
 `dialog[data-create-project]` → `form[data-create-project-form]` →
 `[data-create-project-name]` · `[data-create-project-prefix]` ·
-`[data-create-project-review-policy]` (auto / off / agent / human — the hook name predates the
-one acceptance vocabulary) ·
 `[data-create-project-reviewer]` (optional project override) · `[data-modal-close]`.
+
+> **0002 removes the project acceptance control.** A project carries no acceptance default;
+> each card states its own `off | auto | human` mode at creation. The old
+> `[data-create-project-review-policy]` hook is retired.
 
 > **前缀绑定（口径 = `design/contracts/project-prefix-binding.md`）**：`[data-create-project-prefix]`
 > 是**该项目卡号前缀**的 oracle——原型把它 `required` + `maxlength="4"`，提交时存入

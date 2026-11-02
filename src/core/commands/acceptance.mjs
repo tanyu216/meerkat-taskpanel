@@ -7,11 +7,14 @@
  *   1. **May this writer accept?** `assertAcceptanceAuthority` reads the card's
  *      acceptance mode; a review card is the one structural override. See
  *      `domain/acceptance-mode.mjs`.
- *   2. **Is the card ready to be accepted?** A human closing an `agent` card
- *      needs the review cards for the **current** delivery round to be resolved
- *      (`done` or `canceled`). The loop is deliberately not held to
- *      this: its protocol is "move the original first, close the review card
- *      last", and a reverse gate would deadlock it.
+ *   2. **Is the card ready to be accepted?** Every reviewed card (`auto` or
+ *      `human`) owes a **current-round** `APPROVE`. A `human` card additionally
+ *      needs its current-round review finished, because the loop records the
+ *      verdict and closes the review before the person closes. An `auto` card's
+ *      human fallback may apply the `APPROVE` while the review card is still
+ *      open; the loop's later `already_approved` pass closes it. The loop is
+ *      deliberately not held to the pending check: its protocol is "move the
+ *      original first, close the review card last".
  *
  * The children-terminal gate is the third, and applies to `in_review` as well as
  * `done` — it is not part of "acceptance" (a delivery to review is not an
@@ -175,7 +178,7 @@ export function assertDeliveryCommitAnchor(task, report) {
 export function assertDeliveryEvidenceAnchors(task, report) {
   if (task?.reviewOfId !== null && task?.reviewOfId !== undefined) return true;
   if (task?.kind === TASK_KIND.EPIC) return true;
-  if (cardAcceptanceOf(task?.acceptanceMode) !== "agent") return true;
+  if (cardAcceptanceOf(task?.acceptanceMode) === "off") return true;
 
   const evidence = evidenceFromJson(report?.evidence).items;
   const unsupported = unsupportedClaimsOf({ reportItems: report?.acceptance ?? [], evidence });
@@ -228,7 +231,7 @@ export function assertOriginalDeliverable(ctx, reviewCard, report) {
   if (verdict.ok !== true || verdict.verdict !== "APPROVE") return true;
 
   const original = ctx.repos.tasks.requireAnyRef(reviewCard.reviewOfId);
-  if (cardAcceptanceOf(original.acceptanceMode) !== "agent") return true;
+  if (cardAcceptanceOf(original.acceptanceMode) === "off") return true;
 
   try {
     assertAcceptanceCoverage(ctx, original);
@@ -319,9 +322,9 @@ export function assertAcceptanceCoverage(ctx, task, options = {}) {
     reportItems: report.acceptance,
     source: "delivery",
     evidence: evidenceFromJson(report.evidence).items,
-    // An `agent` card is the one whose report is checked by a second pair of
-    // eyes; `off`/`human` cards keep their lighter contract.
-    requireEvidence: cardAcceptanceOf(task.acceptanceMode) === "agent",
+    // Every reviewed card (`auto` or `human`) is checked by a second pair of
+    // eyes; only `off` keeps the lighter contract.
+    requireEvidence: cardAcceptanceOf(task.acceptanceMode) !== "off",
   });
   return true;
 }
@@ -407,7 +410,7 @@ export function approvedReview(ctx, task) {
 }
 
 /**
- * Does an `agent` card have the evidence its mode promised?
+ * Does a reviewed card have the evidence its mode promised?
  *
  * The evidence is a **current-round** review card with an `APPROVE` verdict.
  * An open review that already carries the verdict passes here: the loop's
@@ -507,7 +510,7 @@ export function assertReviewEvidence(ctx, task) {
       taskId: task.id,
       identifier: task.identifier,
       round: task.deliveryRound,
-      acceptanceMode: "agent",
+      acceptanceMode: cardAcceptanceOf(task.acceptanceMode),
     },
     hint: {
       fix:
@@ -518,24 +521,27 @@ export function assertReviewEvidence(ctx, task) {
 }
 
 /**
- * Refuse a human closing an `agent` card whose current-round review cards are
- * still open.
+ * Require the review evidence each mode promises.
  *
- * Only a human is checked. A `system`/agent acceptance means the loop (or an
- * operator's own automation), whose write order is original-then-review; gating
- * it here would refuse the very sequence it is designed to perform.
+ * `off` owes nothing. `auto` owes a current-round APPROVE; a human may close it
+ * as a fallback even while the loop has not yet closed the review card, because
+ * the loop's later `already_approved` pass closes that card. `human` owes the
+ * APPROVE *and* a finished review card: `record_verdict` records the verdict and
+ * closes the review before the person closes.
+ *
+ * Only a human closer is pending-checked for `human` mode. A `system`/agent
+ * `auto` acceptance is the loop's own sequence (original-then-review); gating it
+ * here would refuse the sequence it is designed to perform.
  *
  * @param {object} ctx
  * @param {object} task
  * @param {{kind?: string, id?: string}} actor
  */
 export function assertReviewReady(ctx, task, actor) {
-  // 0038 — the card's own mode. `agent` owes a current-round APPROVE; `off` and
-  // `human` owe no review evidence. The human pending check below is a second,
-  // independent rule about an open review a human is about to close.
-  if (cardAcceptanceOf(task.acceptanceMode) !== "agent") return true;
+  const mode = cardAcceptanceOf(task.acceptanceMode);
+  if (mode === "off") return true;
   assertReviewEvidence(ctx, task);
-
+  if (mode !== "human") return true;
   if (String(actor?.kind ?? "") !== "human") return true;
 
   const reviews = currentRoundReviews(ctx, task);

@@ -636,15 +636,15 @@ export function buildHandoff(input) {
   const declaredMode = String(card.acceptance_mode ?? card.acceptanceMode ?? "")
     .trim()
     .toLowerCase();
-  const acceptanceMode = ["off", "agent", "human"].includes(declaredMode)
+  const acceptanceMode = ["off", "auto", "human"].includes(declaredMode)
     ? declaredMode
-    : "agent";
+    : "auto";
   const acceptanceRule =
     acceptanceMode === "off"
       ? "stop at in_review — the loop auto-accepts an off card."
-      : acceptanceMode === "agent"
-        ? "stop at in_review — the loop dispatches an independent reviewer; do not move it to done yourself."
-        : "stop at in_review — the loop dispatches an independent reviewer and a human accepts to done.";
+      : acceptanceMode === "auto"
+        ? "stop at in_review — the loop dispatches an independent reviewer; after APPROVE it closes the card."
+        : "stop at in_review — the loop dispatches an independent reviewer; a human accepts after APPROVE.";
   const brief = cardFileRel(ref);
   const processDir = cardDirRel(ref);
   const lines = [

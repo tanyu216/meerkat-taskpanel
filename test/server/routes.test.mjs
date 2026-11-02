@@ -344,7 +344,7 @@ describe("server/routes — the workflow plan on reconcile", () => {
         title: "Work awaiting review",
         assignee: "ada",
         assignee_kind: "agent",
-        acceptance_mode: "agent",
+        acceptance_mode: "auto",
       }),
     );
     originalRef = original.task.identifier;
@@ -1671,10 +1671,10 @@ describe("server/requests — query-string coercions", () => {
 // 0031 — project review policy, reviewer override, task decision
 // ---------------------------------------------------------------------------
 
-describe("server/routes — project acceptance (0038)", () => {
+describe("server/routes — project reviewer, no project acceptance (0002)", () => {
   const AGENT = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "agent-a" }) };
 
-  it("round-trips a project's acceptance default and reviewer", async () => {
+  it("round-trips a project's reviewer and drops the retired acceptance field", async () => {
     const created = dataOf(
       await call("POST", "/api/v1/projects", {
         id: "frq",
@@ -1683,7 +1683,7 @@ describe("server/routes — project acceptance (0038)", () => {
         reviewer: "jobs",
       }),
     );
-    assert.equal(created.project.acceptance, "agent");
+    assert.equal(created.project.acceptance, undefined);
     assert.equal(created.project.reviewer, "jobs");
 
     const updated = dataOf(
@@ -1692,75 +1692,36 @@ describe("server/routes — project acceptance (0038)", () => {
         reviewer: "",
       }),
     );
-    assert.equal(updated.project.acceptance, "off");
+    assert.equal(updated.project.acceptance, undefined);
     assert.equal(updated.project.reviewer, null);
   });
 
-  it("refuses an unknown acceptance value", async () => {
-    const result = await call("POST", "/api/v1/projects", {
-      id: "fbd",
-      name: "Bad",
-      acceptance: "sometimes",
-    });
-    assert.equal(result.status, 400);
-    assert.equal(result.body.error.code, "VALIDATION_FAILED");
-  });
-
-  it("derives the card mode from the project, and lets an explicit value win", async () => {
-    dataOf(
-      await call("POST", "/api/v1/projects", {
-        id: "frd",
-        name: "Required",
-        acceptance: "agent",
-      }),
-    );
-    const required = dataOf(
-      await call("POST", "/api/v1/tasks", {
-        project_id: "frd",
-        title: "required card",
-      }),
-    );
-    assert.equal(required.task.acceptance_mode, "agent");
-
-    dataOf(
-      await call("POST", "/api/v1/projects", {
-        id: "fop",
-        name: "Optional",
-        acceptance: "auto",
-      }),
-    );
-    // 0038 — an unresolved card under an `auto` project falls back to agent.
+  it("defaults the card to auto and lets an explicit value win", async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "frd", name: "Required" }));
     const omitted = dataOf(
-      await call(
-        "POST",
-        "/api/v1/tasks",
-        { project_id: "fop", title: "agent omitted" },
-        AGENT,
-      ),
+      await call("POST", "/api/v1/tasks", { project_id: "frd", title: "omitted" }, AGENT),
     );
-    assert.equal(omitted.task.acceptance_mode, "agent");
+    assert.equal(omitted.task.acceptance_mode, "auto");
 
     const stated = dataOf(
       await call(
         "POST",
         "/api/v1/tasks",
-        { project_id: "fop", title: "agent stated", acceptance_mode: "off" },
+        { project_id: "frd", title: "stated", acceptance_mode: "off" },
         AGENT,
       ),
     );
     assert.equal(stated.task.acceptance_mode, "off");
   });
 
-  it("plans an auto_accept for a delivered card in an off project", async () => {
-    dataOf(
-      await call("POST", "/api/v1/projects", {
-        id: "fof",
-        name: "Off",
-        acceptance: "off",
-      }),
-    );
+  it("plans an auto_accept for a delivered off card", async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "fof", name: "Off" }));
     const created = dataOf(
-      await call("POST", "/api/v1/tasks", { project_id: "fof", title: "no review" }),
+      await call("POST", "/api/v1/tasks", {
+        project_id: "fof",
+        title: "no review",
+        acceptance_mode: "off",
+      }),
     );
     assert.equal(created.task.acceptance_mode, "off");
     const delivered = await deliverCard(created.task.identifier);

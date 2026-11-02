@@ -13,11 +13,11 @@
 
 - A flow-A card that reaches `in_review` is dispatched to the configured reviewer as a
   review card **unless its `acceptance_mode` is `off`** — review is mode-independent, so
-  `agent` and `human` are dispatched exactly the same way. The mode decides only **who
-  closes the original**: the loop for `agent`, a person for `human`. There is no kind filter:
+  `auto` and `human` are dispatched exactly the same way. The mode decides only **who
+  closes the original**: the loop for `auto`, a person for `human`. There is no kind filter:
   an **epic** is dispatched on the same terms, and its reviewer reads the child cards and the
-  rollup report. The mode is resolved at creation (an explicit `--acceptance-mode` wins, else
-  the project's `acceptance` default, else `agent`) and is never re-derived later.
+  rollup report. The mode is resolved at creation (an explicit `--acceptance-mode` wins,
+  otherwise the unresolved card falls back to `auto`) and is never re-derived later.
 - A flow-B card is **never dispatched for review again**. A delivery on a review card is the
   end of the chain, not a new review target.
 - `meta.flow` is a loop convention, not the review-card predicate: an absent value is A
@@ -175,7 +175,7 @@ is racing the acceptor.
 
 ### An APPROVE the board refuses
 
-On an `agent` card the board checks, when the verdict is **written**, that the original's
+On an `auto` or `human` card the board checks, when the verdict is **written**, that the original's
 current-round delivery report can still close the card. If it cannot — a criterion left
 `partial`/`not_met`, or a `met` naming no evidence anchor — the delivery is refused with
 `ACCEPTANCE_INCOMPLETE`, naming the items. That is not a transient error and re-delivering the
@@ -185,22 +185,19 @@ so the board will not let you create one.
 
 ## 4. Acceptance mode
 
-The card's own `acceptance_mode` is the whole rule; there is no policy and no scope. It
-selects the closer, not the review: `agent` and `human` both produce a review card, and only
-`off` does not. The reviewer for a dispatched card is
+The card's own `acceptance_mode` is the whole rule; there is no policy, no project default
+and no scope. It selects the closer, not the review: `auto` and `human` both produce a review
+card, and only `off` does not. The reviewer for a dispatched card is
 `project.reviewer ?? the deployment reviewer` (the loop's `--reviewer` /
 `MEERKAT_TASKPANEL_REVIEWER` / per-kind config), and the review card's assignee records the one
 actually used.
 
-**The fallback is `agent`.** An unresolved card — task or epic — is reviewed; `human` appears
-only when explicitly set, and `off` only when explicitly set. **`human` is top-level only**: a
-card with a parent is never human-accepted, because the mode is a closure gate a person
-exercises on a card they own, not on a subtask (a subtask's decision is an `awaiting`
-question). The invariant is enforced at the parent edge (attaching a parent to a `human` card
-is refused, `--force` included) and at
-`issue update --acceptance-mode human` (refused on a card that already has a parent). A
-project-level `human` is a top-level default: a child that names no mode under it resolves to
-`agent`.
+**The fallback is `auto`.** An unresolved card — task or epic — is reviewed; `human` and `off`
+appear only when explicitly set. Any card, at any depth, may be `human`; a person's decision on
+a subtask is a close like any other. The creator chooses the word from the card's own context;
+a project may document its selection guidance in `docs/acceptance-mode.md` under its working
+directory, which the `meerkat` skill discovers when it creates a card. That document is not
+board data and is never inherited.
 
 `done` is the board's acceptance act, and the mode decides who may perform it:
 
@@ -208,19 +205,19 @@ project-level `human` is a top-level default: a child that names no mode under i
 | Card mode | Review card | Who may move it to `done` |
 |---|---|---|
 | `off` | none | the deliverer (any actor kind), or a human; `in_progress → done` is allowed |
-| `agent` | yes — an agent reviewer | anyone but the reviewer, after a current-round `APPROVE`; a human may always |
-| `human` | yes — an agent reviewer | a human only |
+| `auto` | yes — an agent reviewer | the loop after a current-round `APPROVE`; anyone but the reviewer; a human may always |
+| `human` | yes — an agent reviewer | a human only, after the current-round review is finished |
 | a review card | — | a human, or any actor but its reviewer — never the one who wrote the verdict |
 <!-- acceptance-matrix:end -->
 
-In agent terms: on an `agent` card the reviewer's current-round `APPROVE` is what makes the
+In agent terms: on an `auto` card the reviewer's current-round `APPROVE` is what makes the
 card closable — the loop applies it, and so may any actor except the one who wrote the
 verdict; a human may close either card. The authority is the evidence, not who is asking,
 so the board's own `system` writes carry no extra right. On an `off` card nobody has to
 review it — the deliverer may close it, or deliver straight to `done`. A `human` card is
-reviewed like an `agent` one: the reviewer records the round-scoped verdict and another
-actor closes the review card, and only a person closes the original. A reviewer never
-closes the card it reviewed.
+reviewed like an `auto` one: the reviewer records the round-scoped verdict and another
+actor closes the review card, and only a person closes the original — after that review is
+finished. A reviewer never closes the card it reviewed.
 
 The board enforces the mode; `ACCEPTANCE_FORBIDDEN` carries `mode` and `reviewCard` in its
 `details`. What the matrix means for the loop is in
@@ -228,11 +225,12 @@ The board enforces the mode; `ACCEPTANCE_FORBIDDEN` carries `mode` and `reviewCa
 
 ## 5. The human's side
 
-- **`REVIEW_PENDING`** — a human closing an **`agent`** card while a **current-round** review
+- **`REVIEW_PENDING`** — a human closing a **`human`** card while a **current-round** review
   card is still open. Let the review finish (or cancel an abandoned review card) first.
-- **An `agent` card after `APPROVE`** — the loop accepts it; a human may also close it. A
-  `human` card is never auto-accepted, whatever the loop records: its review runs like any
-  other, the verdict is recorded, and the close is the person's.
+- **An `auto` card after `APPROVE`** — the loop accepts it; a human may also close it, even
+  while the review card is still open (the loop's `already_approved` pass closes it later).
+  A `human` card is never auto-accepted: its review runs like any other, the verdict is
+  recorded, and the close is the person's.
 - **Cancel an abandoned review card** — a review card in `in_review` cannot go directly to
   `canceled`; the move is two hops: `in_review → in_progress → canceled`.
 - **Reopen the original, never the review card.** A review card is a loop artefact and cannot
@@ -244,7 +242,7 @@ The board enforces the mode; `ACCEPTANCE_FORBIDDEN` carries `mode` and `reviewCa
 worker delivers            original in_review (round N)
 board dispatches           review card created, review_round = N
 reviewer wakes             the loop already claimed it; reads, delivers VERDICT
-loop applies               APPROVE → accept (agent) / record (human); REJECT → rework round N+1
+loop applies               APPROVE → accept (auto) / record (human); REJECT → rework round N+1
 loop closes last           review card → done (or canceled if the original was canceled)
 ```
 
@@ -255,7 +253,7 @@ so it follows the review path and only the final close is the person's; nothing 
 for that state, because silence is the implemented behaviour. An `off` card may also skip
 `in_review` entirely: `issue deliver --to done`.
 
-- **APPROVE** — on an `agent` card the loop writes `meta.accepted_by=loop-review` and moves
+- **APPROVE** — on an `auto` card the loop writes `meta.accepted_by=loop-review` and moves
   the original `in_review → done`, then closes the review card. On a `human` card the loop
   writes `meta.review_verdict=approve` with `meta.review_verdict_round`, comments the
   verdict, closes the review card, and leaves the original in `in_review`; the person then

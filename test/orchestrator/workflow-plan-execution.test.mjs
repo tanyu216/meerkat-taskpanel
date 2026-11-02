@@ -34,7 +34,7 @@ function card(overrides = {}) {
     title: "A card",
     status: "in_review",
     kind: "task",
-    acceptance_mode: "agent",
+    acceptance_mode: "auto",
     delivery_round: 1,
     meta: {},
     acceptance: [],

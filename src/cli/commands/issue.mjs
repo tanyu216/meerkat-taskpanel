@@ -140,7 +140,7 @@ function taskHuman(task, extra) {
     ["claimed_by", task.claimed_by_actor === null ? "-" : `${task.claimed_by_actor.display_name}#${task.claimed_by_actor.id}`],
     ["heartbeat_at", task.heartbeat_at ?? "-"],
     ["delivery_round", task.delivery_round],
-    ["acceptance_mode", task.acceptance_mode ?? "off"],
+    ["acceptance_mode", task.acceptance_mode ?? "auto"],
     // The column is an internal id; the human read wants the identifier the
     // worker can pass back. `meta.review_of` is the readable mirror (0025).
     ["review_of", task.review_of ?? task.review_of_id ?? "-"],
@@ -166,7 +166,7 @@ export const COMMANDS = [
     name: "create",
     summary: "Create a task.",
     op: TASK_OPS.create,
-    usage: "issue create --project <id> --title <text> [--acceptance-mode off|agent|human] [--assignee <name>]",
+    usage: "issue create --project <id> --title <text> [--acceptance-mode off|auto|human] [--assignee <name>]",
     positionals: [],
     // The flags and the body are both projected from the command's input
     // declaration (`core/commands/tasks-input.mjs`), so neither is a second
@@ -410,7 +410,7 @@ export const COMMANDS = [
     usage:
       'issue update <id|identifier> [--title <text>] [--acceptance <text>]… ' +
       '[--drop-acceptance <text> --reason "<why>" --acceptance-revision <n>] ' +
-      '[--acceptance-mode off|agent|human [--reason "<why>"]]',
+      '[--acceptance-mode off|auto|human [--reason "<why>"]]',
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: projectFlags(TASK_OPS.update),
     async run(ctx) {

@@ -36,7 +36,6 @@ import {
   isValidProjectPrefix,
   projectPrefix,
 } from "../../foundation/ids.mjs";
-import { assertProjectAcceptance } from "../domain/acceptance-mode.mjs";
 import { normalizeReviewer } from "../domain/reviewer.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
@@ -237,11 +236,6 @@ function withoutPrefix(meta) {
  */
 export function createProject(ctx, input) {
   const actor = actorOf(input.actor ?? { kind: "human", id: "local" });
-  // An explicit acceptance wins; otherwise the column default (`auto`) applies.
-  const acceptance =
-    input.acceptance === undefined
-      ? undefined
-      : assertProjectAcceptance(input.acceptance, "acceptance");
   const reviewer = normalizeReviewer(input.reviewer);
   return transaction(
     ctx.db,
@@ -276,7 +270,6 @@ export function createProject(ctx, input) {
       const project = ctx.repos.projects.create({
         ...input,
         meta,
-        acceptance,
         reviewer,
         now: ctx.now(),
       });
@@ -287,7 +280,6 @@ export function createProject(ctx, input) {
         event: "project_created",
         changes: {
           project: project.id,
-          acceptance: project.acceptance,
           ...(reviewer === null ? {} : { reviewer }),
         },
         createdAt: ctx.now(),
@@ -303,14 +295,14 @@ export function createProject(ctx, input) {
  *
  * "Ensure" is the idempotent form of `createProject`: the second call is a
  * read, not an update. Nothing about an existing project changes — its name,
- * labels, meta, readme, acceptance default and reviewer are the caller's
- * earlier decisions, not this call's. A race that reaches `createProject`
+ * labels, meta, readme and reviewer are the caller's earlier decisions, not
+ * this call's. A race that reaches `createProject`
  * after another writer created the same id surfaces as `ID_CONFLICT`; it is
  * read back as "already existed" rather than leaking a conflict to an
  * idempotent caller.
  *
  * @param {object} ctx
- * @param {{id: string, name: string, labels?: string[], meta?: object, readme?: string|null, acceptance?: string, reviewer?: string|null, actor?: object}} input
+ * @param {{id: string, name: string, labels?: string[], meta?: object, readme?: string|null, reviewer?: string|null, actor?: object}} input
  * @returns {{project: object, created: boolean}}
  */
 export function ensureProject(ctx, input) {
@@ -333,9 +325,6 @@ export function ensureProject(ctx, input) {
  */
 export function updateProject(ctx, input) {
   const patch = { ...input.patch };
-  if (patch.acceptance !== undefined) {
-    patch.acceptance = assertProjectAcceptance(patch.acceptance, "acceptance");
-  }
   if (patch.reviewer !== undefined) {
     patch.reviewer = normalizeReviewer(patch.reviewer);
   }

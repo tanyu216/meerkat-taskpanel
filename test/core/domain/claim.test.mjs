@@ -153,7 +153,7 @@ describe("domain/claim — decide", () => {
   it("withholds only the epic from the poll's read (0038 retired deploy)", () => {
     // The claim gate refuses an epic outright (above); the candidate read also
     // withholds it. `deploy` is no longer a kind at all — a card that needs an
-    // independent gate says `acceptance_mode: agent` instead.
+    // independent gate says `acceptance_mode: auto` instead.
     assert.deepEqual(AUTO_CLAIM_EXCLUDED_KINDS, ["epic"]);
     assert.equal(isAutoClaimableKind("epic"), false);
     assert.equal(isAutoClaimableKind("task"), true);

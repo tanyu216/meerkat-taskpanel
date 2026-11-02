@@ -11,7 +11,6 @@ import { RELATION_TYPE } from "../domain/enums.mjs";
 import {
   assertBlockEdgeAllowed,
   assertParentEdgeAllowed,
-  assertParentEdgeHasNoHumanChild,
   assertParentEdgeHasNoReviewCard,
   normalizeRelation,
   parentChainOf,
@@ -45,9 +44,6 @@ export function addRelation(ctx, input) {
       // graph-shape check, never the meaning of the card.
       if (edge.type === "parent") {
         assertParentEdgeHasNoReviewCard({ source, target });
-        // Round 2 — `human` is a top-level closure gate. Also outside `--force`:
-        // the edge changes what the child's mode means, not just the graph shape.
-        assertParentEdgeHasNoHumanChild(target);
       }
 
       // The `blocks` graph is read here as well, and for the same reason the

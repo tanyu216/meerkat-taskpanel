@@ -221,22 +221,16 @@ export function createTask(ctx, input) {
       candidate.reviewRound = marker.reviewRound;
       if (marker.reviewOfId !== null) candidate.meta = mirrorReviewMeta(candidate.meta, marker);
 
-      // 0038 — one acceptance decision. The project is the default, an explicit
-      // card value wins, a review card is always `off`, and an unresolved
-      // `auto` project falls back to `agent`. `human` is top-level only: a create
-      // that names a parent is a child, so it can neither request human nor
-      // inherit a project-level human default (round 2). The parent *relation* is
-      // added later (`relation add`), which re-checks the same invariant.
-      const parentRef = input.parent ?? input.meta?.parent;
-      const hasParent = parentRef !== undefined && parentRef !== null && String(parentRef).trim() !== "";
+      // 0038/0002 — one acceptance decision, owned by the card. An explicit
+      // value wins, a review card is always `off`, and an unresolved card falls
+      // back to `auto`. There is no project default to inherit; a project's
+      // selection guidance lives outside the board.
       const resolvedAcceptance = resolveCardAcceptance({
-        projectAcceptance: project.acceptance,
         requested: input.acceptanceMode,
         // The reader owns "is this a review card"; `marker.reviewOfId` is the
         // structural result it reads, so the two cannot drift.
         reviewCard: reviewIdentityOf(candidate).isReview,
         kind: candidate.kind,
-        hasParent,
       });
       candidate.acceptanceMode = resolvedAcceptance.mode;
 
@@ -513,7 +507,7 @@ function assertReviewOverrideReason(reason) {
  *
  * Asymmetric on purpose:
  *
- *   * `off → agent|human` — any writer may tighten; it only adds a gate.
+ *   * `off → auto|human` — any writer may tighten; it only adds a gate.
  *   * every other change — a human only. An agent must not be able to remove a
  *     human gate or waive the review on its own work.
  *   * leaving `agent` — needs a reason, and only when no current-round review
@@ -546,34 +540,11 @@ function applyAcceptanceOverride(ctx, input) {
   const current = cardAcceptanceOf(task.acceptanceMode);
   if (next === current) return task;
 
-  // Round 2 — the mode is a top-level closure gate. A card that already has a
-  // parent can never be `human`, whichever writer asks; the parent *edge* guard
-  // (`commands/relations.mjs`) refuses the other direction. Structural, so it is
-  // not softened by the actor's permissions below.
-  if (next === "human") {
-    const parentEdge = ctx.repos.relations.getParent(task.id);
-    if (parentEdge !== null && parentEdge !== undefined) {
-      throw new DomainError("VALIDATION_FAILED", {
-        message:
-          `${task.identifier} has a parent; acceptance mode human is top-level only — ` +
-          "a nontop-level card is reviewed and closed by its own mode",
-        details: {
-          field: "acceptance_mode",
-          taskId: task.id,
-          identifier: task.identifier,
-          parentId: parentEdge.source,
-          mode: "human",
-        },
-        hint: { fix: "keep the child on off or agent; a person's decision is an awaiting question" },
-      });
-    }
-  }
-
   const human = String(actor.kind ?? "") === "human";
-  const tightening = current === "off" && (next === "agent" || next === "human");
+  const tightening = current === "off" && (next === "auto" || next === "human");
   if (!human && !tightening) {
     throw new DomainError("ACCEPTANCE_FORBIDDEN", {
-      message: "an agent may only tighten a card's acceptance mode (off → agent|human)",
+      message: "an agent may only tighten a card's acceptance mode (off → auto|human)",
       details: {
         field: "acceptance_mode",
         from: current,
@@ -585,7 +556,7 @@ function applyAcceptanceOverride(ctx, input) {
     });
   }
 
-  const leavesReview = current === "agent" && next !== "agent";
+  const leavesReview = current === "auto" && next !== "auto";
   const overrideReason = leavesReview ? assertReviewOverrideReason(reason) : null;
   if (leavesReview) {
     const open = currentRoundReviews(ctx, task).filter((review) => !isTerminalStatus(review.status));
@@ -1412,7 +1383,7 @@ export function moveStatus(ctx, input) {
         });
       }
 
-      // Last, after the delivery gate: a human accepting an `agent` card needs
+      // Last, after the delivery gate: a human accepting an `auto` card needs
       // the review cards of the current round resolved. The loop's own write
       // order is original-first, review-last, so system/agent acceptances are
       // deliberately exempt (the function checks the actor).

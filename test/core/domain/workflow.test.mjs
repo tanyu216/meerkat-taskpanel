@@ -61,7 +61,7 @@ function card(fields = {}) {
     delivery_round: 1,
     status_changed_at: "2026-10-19T09:00:00.000Z",
     created_at: "2026-10-18T09:00:00.000Z",
-    acceptance_mode: fields.acceptance_mode ?? "agent",
+    acceptance_mode: fields.acceptance_mode ?? "auto",
     parent_id: null,
     meta: {},
     ...fields,
@@ -1044,7 +1044,7 @@ describe("acceptance modes (the card decides who closes)", () => {
   });
 
   it("approves an agent original and closes the review card", () => {
-    const result = plan({ acceptance_mode: "agent" });
+    const result = plan({ acceptance_mode: "auto" });
     assert.deepEqual(types(result), ["approve"]);
     const action = result.actions[0];
     assert.equal(action.originalRef, "T-1");
@@ -1057,7 +1057,7 @@ describe("acceptance modes (the card decides who closes)", () => {
 
   it("recovers an agent acceptance already written to the original (held)", () => {
     const result = plan({
-      acceptance_mode: "agent",
+      acceptance_mode: "auto",
       meta: { accepted_by: LOOP_ACCEPTOR, accepted_round: "1" },
     });
     assert.deepEqual(types(result), ["approve"]);
@@ -1070,7 +1070,7 @@ describe("acceptance modes (the card decides who closes)", () => {
 
   it("does not treat another round's acceptance marker as held", () => {
     const result = plan({
-      acceptance_mode: "agent",
+      acceptance_mode: "auto",
       meta: { accepted_by: LOOP_ACCEPTOR, accepted_round: "0" },
     });
     assert.equal(result.actions[0].held, undefined);
@@ -1147,7 +1147,7 @@ describe("epics are reviewed like any other card", () => {
   });
 
   it("dispatches an agent-mode epic exactly as a task", () => {
-    const result = planReviewDispatch({ tasks: [epicCard({ acceptance_mode: "agent" })], config: CONFIG });
+    const result = planReviewDispatch({ tasks: [epicCard({ acceptance_mode: "auto" })], config: CONFIG });
     assert.deepEqual(types(result), ["create_review"]);
     assert.equal(result.actions[0].originalRef, "E-1");
     const task = planReviewDispatch({ tasks: [card()], config: CONFIG });
@@ -1156,7 +1156,7 @@ describe("epics are reviewed like any other card", () => {
 
   it("dispatches a human-mode epic exactly as an agent-mode one", () => {
     const human = planReviewDispatch({ tasks: [epicCard({ acceptance_mode: "human" })], config: CONFIG });
-    const agent = planReviewDispatch({ tasks: [epicCard({ acceptance_mode: "agent" })], config: CONFIG });
+    const agent = planReviewDispatch({ tasks: [epicCard({ acceptance_mode: "auto" })], config: CONFIG });
     assert.deepEqual(types(human), ["create_review"]);
     assert.deepEqual(human.actions, agent.actions);
   });
@@ -1167,7 +1167,7 @@ describe("epics are reviewed like any other card", () => {
   });
 
   it("approves an epic only on a faithful current-round rollup", () => {
-    const epic = epicCard({ acceptance_mode: "agent" });
+    const epic = epicCard({ acceptance_mode: "auto" });
     const child = doneChild(epic);
     const plan = (reportsByRef) =>
       planReviewOutcomes({
@@ -1204,7 +1204,7 @@ describe("epics are reviewed like any other card", () => {
   });
 
   it("rejects an epic onto the fix-child path", () => {
-    const epic = epicCard({ acceptance_mode: "agent" });
+    const epic = epicCard({ acceptance_mode: "auto" });
     const child = doneChild(epic);
     const result = planReviewOutcomes({
       tasks: [epic, child, epicReview()],
@@ -1295,7 +1295,7 @@ describe("planReviewDispatch — acceptance mode and project reviewers", () => {
       config: CONFIG,
     });
     const agent = planReviewDispatch({
-      tasks: [card({ acceptance_mode: "agent" })],
+      tasks: [card({ acceptance_mode: "auto" })],
       config: CONFIG,
     });
     assert.deepEqual(types(human), ["create_review"]);
@@ -1386,7 +1386,7 @@ describe("planAutoAccept — no review required", () => {
 
   it("never auto-accepts a card that requires review", () => {
     const result = planAutoAccept({
-      tasks: [card({ acceptance_mode: "agent" })],
+      tasks: [card({ acceptance_mode: "auto" })],
       config: { ...CONFIG },
     });
     assert.deepEqual(result.actions, []);
@@ -1460,7 +1460,7 @@ describe("planAutoAccept — no review required", () => {
   it("plans exactly the cards the write gate will accept", () => {
     // One rule, not a matrix: the planner releases an `off` card and the board
     // accepts it; agent/human cards are never released.
-    for (const mode of ["off", "agent", "human"]) {
+    for (const mode of ["off", "auto", "human"]) {
       const task = autoCard({ acceptance_mode: mode });
       const planned = planAutoAccept({ tasks: [task], config: CONFIG });
       assert.equal(

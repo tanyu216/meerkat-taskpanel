@@ -308,38 +308,32 @@ describe("cli/project — the identifier prefix (C-PREFIX-1)", () => {
   });
 });
 
-describe("cli/project — acceptance default and reviewer (0038)", () => {
-  it("creates and updates the acceptance default and reviewer", async () => {
+describe("cli/project — reviewer, and no project-level acceptance (0002)", () => {
+  it("creates and updates the reviewer", async () => {
     await withCli(async ({ run }) => {
       const created = dataOf(
         run([
           "project", "create", "--id", "flow", "--name", "Flow",
-          "--acceptance", "agent", "--reviewer", "jobs", "--json",
+          "--reviewer", "jobs", "--json",
         ]),
       );
-      assert.equal(created.project.acceptance, "agent");
       assert.equal(created.project.reviewer, "jobs");
 
-      const updated = dataOf(
-        run(["project", "update", "flow", "--acceptance", "off", "--reviewer", "", "--json"]),
-      );
-      assert.equal(updated.project.acceptance, "off");
+      const updated = dataOf(run(["project", "update", "flow", "--reviewer", "", "--json"]));
       assert.equal(updated.project.reviewer, null);
+    });
+  });
 
-      const invalid = run([
-        "project", "create", "--id", "bad", "--name", "Bad",
-        "--acceptance", "sometimes", "--json",
-      ]);
-      assert.equal(invalid.status, 1);
-      assert.equal(JSON.parse(invalid.stdout).error.code, "VALIDATION_FAILED");
-
-      // The compatibility spelling is gone: an unknown flag is a usage error.
-      const retired = run([
-        "project", "create", "--id", "legacy", "--name", "Legacy",
-        "--review-policy", "required", "--json",
-      ]);
-      assert.equal(retired.status, 2);
-      assert.equal(JSON.parse(retired.stdout).error.code, "CLI_USAGE");
+  it("relies on the card for acceptance: the project flags are usage errors", async () => {
+    await withCli(async ({ run }) => {
+      for (const flag of ["--acceptance", "--review-policy"]) {
+        const retired = run([
+          "project", "create", "--id", "legacy", "--name", "Legacy",
+          flag, "sometimes", "--json",
+        ]);
+        assert.equal(retired.status, 2, `${flag} is gone`);
+        assert.equal(JSON.parse(retired.stdout).error.code, "CLI_USAGE");
+      }
     });
   });
 });

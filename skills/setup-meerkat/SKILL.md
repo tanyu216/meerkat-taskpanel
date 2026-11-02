@@ -229,7 +229,8 @@ in the same turn. Without an init step, write the requirements yourself.
   created, claimed, kept alive with a heartbeat and delivered through that skill, never
   through a side-channel queue (a TODO file, a chat list, a private plan).
 - A card stops at `in_review`; the card's `acceptance_mode` names who moves it to `done` —
-  `human`: a person; `agent`: the loop after a current-round `APPROVE`; `off`: the deliverer.
+  `human`: a person, after the review finishes; `auto`: the loop after a current-round
+  `APPROVE`; `off`: the deliverer.
 - The card scope: what work becomes a card here, and what stays out — a question, a lookup or
   a one-off command has no owner, so it is not a card; the recommended default is the work a
   role owns (the setup interview's answer).

@@ -125,10 +125,9 @@ const CREATE = Object.freeze([
   both("idem"),
   both("allow_dup", { type: BOOLEAN }),
   sugar("target", "meta.target"),
-  // 0038 — the per-card acceptance decision. `auto` is a project word, so a
-  // card states a concrete mode; an omitted value falls back to the project (or
-  // `agent` when the project is `auto`). `human` is top-level only, so a create
-  // that names a parent refuses it.
+  // 0038/0002 — the per-card acceptance decision. The card states one of
+  // `off | auto | human`; an omitted value falls back to `auto`. There is no
+  // project default to inherit.
   both("acceptance_mode", { vocab: CARD_ACCEPTANCE_MODES }),
   both("review_of"),
   both("review_round", { type: INTEGER }),

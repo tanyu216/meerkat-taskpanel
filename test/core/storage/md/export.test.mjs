@@ -233,39 +233,35 @@ describe("md/export — rendering", () => {
 
 
 describe("md/export — 0038 acceptance mode", () => {
-  it("emits acceptance_mode only when the card is not the default off", async () => {
+  it("emits acceptance_mode only when the card is not the default auto", async () => {
     const board = await createTempBoard();
     const repos = createRepositories(board.db);
     try {
       const ctx = createContext({ db: board.db, repos, clock: () => TS });
       const commands = createCommands(ctx);
-      commands.createProject({
-        id: "req",
-        name: "Required",
-        acceptance: "agent",
-        actor: { kind: "human", id: "T" },
-      });
-      const required = commands.createTask({
-        projectId: "req",
-        title: "Reviewed",
-        actor: { kind: "agent", id: "linus" },
-      });
-      // 0038 — an `auto` project falls back to `human` per card; `off` is the
-      // state that writes no key.
-      commands.createProject({ id: "proj", name: "P", acceptance: "off", actor: { kind: "human", id: "T" } });
+      commands.createProject({ id: "proj", name: "P", actor: { kind: "human", id: "T" } });
       const plain = commands.createTask({
         projectId: "proj",
         title: "Plain",
         actor: { kind: "agent", id: "linus" },
       });
 
-      // `off` is the default and stays absent; `agent` and `human` state themselves.
-      assert.match(renderCard(required, { repos }), /^acceptance_mode: agent$/m);
+      // `auto` is the default and stays absent; `off` and `human` state themselves.
       assert.doesNotMatch(renderCard(plain, { repos }), /^acceptance_mode:/m);
+
+      const off = commands.createTask({
+        projectId: "proj",
+        title: "Off",
+        allowDup: true,
+        acceptanceMode: "off",
+        actor: { kind: "agent", id: "linus" },
+      });
+      assert.match(renderCard(off, { repos }), /^acceptance_mode: off$/m);
 
       const human = commands.createTask({
         projectId: "proj",
         title: "Human",
+        allowDup: true,
         acceptanceMode: "human",
         actor: { kind: "human", id: "T" },
       });

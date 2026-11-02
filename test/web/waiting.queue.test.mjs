@@ -254,7 +254,7 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
 
   it("lists only a human-accepted delivered card", () => {
     assert.deepEqual(waitIds([delivered("1")]), ["1"]);
-    assert.deepEqual(waitIds([delivered("2", { acceptance_mode: "agent" })]), []);
+    assert.deepEqual(waitIds([delivered("2", { acceptance_mode: "auto" })]), []);
     assert.deepEqual(waitIds([delivered("3", { acceptance_mode: "off" })]), []);
   });
 

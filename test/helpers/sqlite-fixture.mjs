@@ -249,10 +249,10 @@ export function insertTask(db, overrides = {}) {
     // schema is asked first (the same rule the columns above follow).
     ["review_of_id", row.review_of_id ?? null],
     ["review_round", row.review_round ?? null],
-    // 0038 — the single acceptance decision. A pre-0038 board has no such
-    // column, so it is schema-probed like the rest. `off` is the column default,
-    // which is what a fixture that says nothing about acceptance means.
-    ["acceptance_mode", row.acceptance_mode ?? "off"],
+    // 0038/0002 — the single acceptance decision. A pre-0038 board has no such
+    // column, so it is schema-probed like the rest. `auto` is the column
+    // default, which is what a fixture that says nothing about acceptance means.
+    ["acceptance_mode", row.acceptance_mode ?? "auto"],
     // 0005 — carried explicitly so a migration test can seed the JSON a
     // backfill reads. Absent before 0005, hence the schema probe.
     ["meta_json", row.meta_json ?? "{}"],

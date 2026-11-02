@@ -1166,36 +1166,12 @@ export async function runWorkflowOnce(opts, env = process.env) {
     return 0;
   }
 
-  // A project whose default is `agent` promises a review for every card it
-  // creates, and its cards cannot be closed without one, so it must have an
-  // effective reviewer. A `human` default is reviewed too, but it is not
-  // checked here: an unconfigured reviewer is the documented manual opt-out
-  // (`docs/ops/install.md`) — the board reports `reviewer_not_configured` per card
-  // and the person can still close it. The board resolves
-  // `project.reviewer ?? global`; this start-up read is the only place the loop
-  // can see the project rows before the reconcile plan.
+  // The loop reads the project rows for the reviewer merge and the worker/reviewer
+  // warning below. There is no project-level acceptance default to validate:
+  // every card states its own mode, and a missing effective reviewer is reported
+  // per card (`reviewer_not_configured` / `dispatch_skipped`).
   const projectRead = readProjectReviewers(opts, log);
   const projects = projectRead.ok ? projectRead.projects : [];
-  if (projectRead.ok) {
-    const effectiveReviewer = (project) => {
-      const override = typeof project.reviewer === "string" ? project.reviewer.trim() : "";
-      return override !== "" ? override : config.reviewer;
-    };
-    const missing = projects.filter(
-      (project) => project.acceptance === "agent" && effectiveReviewer(project) === null,
-    );
-    if (missing.length > 0) {
-      log(
-        `error: ${missing.map((project) => project.id).join(", ")} require review but have no effective ` +
-          "reviewer. Configure a deployment reviewer (--reviewer / MEERKAT_TASKPANEL_REVIEWER / " +
-          "install.sh --reviewer), set the project's --reviewer, or change --acceptance-mode per card. " +
-          "Dispatch is skipped for these projects; outcomes and auto-accept still run.",
-      );
-      // The decision is the board's: it plans no dispatch for a project with no
-      // effective reviewer (`dispatch_skipped`). A deployment that removed its
-      // reviewer must still be able to finish the reviews already in flight.
-    }
-  }
 
   // Warn once per reviewer that is also a worker — the review lane and the work
   // lane share one identity. This covers the deployment reviewer and every

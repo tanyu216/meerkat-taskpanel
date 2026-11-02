@@ -416,7 +416,7 @@ describe("web/board — the move menu's direct-done edge (0038)", () => {
   it("offers `done` from in_progress only for an `off` card", async () => {
     const { allowedTargets } = await freshBoard();
     assert.ok(allowedTargets("in_progress", { acceptance_mode: "off" }).includes("done"));
-    assert.ok(!allowedTargets("in_progress", { acceptance_mode: "agent" }).includes("done"));
+    assert.ok(!allowedTargets("in_progress", { acceptance_mode: "auto" }).includes("done"));
     assert.ok(!allowedTargets("in_progress", { acceptance_mode: "human" }).includes("done"));
     // No card in hand is the conservative reading: the base row only.
     assert.ok(!allowedTargets("in_progress").includes("done"));
@@ -1393,7 +1393,7 @@ describe("board store — the acceptance half of the waiting queue", () => {
     assert.equal(mod.visibleTasks.value.length, 0);
     assert.deepEqual(mod.acceptanceTasks.value.map((task) => task.id), ["o1"]);
 
-    mod.board.tasks = [original({ acceptance_mode: "agent" }), original({ id: "o2", identifier: "TD-2", acceptance_mode: "off" })];
+    mod.board.tasks = [original({ acceptance_mode: "auto" }), original({ id: "o2", identifier: "TD-2", acceptance_mode: "off" })];
     assert.deepEqual(mod.acceptanceTasks.value, [], "agent and off cards ask the human for nothing");
     assert.equal(mod.waitingCount.value, 0);
     mod.writeStatusFilter(["all"]);

@@ -66,11 +66,14 @@ describe("contract/sql-parity — migration files", () => {
     assert.equal(created.length, new Set(created).size, "a table is created twice");
   });
 
-  it("declares the whole schema in place, with no ALTER/rename history", () => {
-    assert.deepEqual(files.map((f) => f.file), ["0001_init.sql"]);
-    assert.deepEqual(addedColumns(allSql), [], "the baseline declares every column in its CREATE TABLE");
-    assert.equal(/DROP\s+TABLE/i.test(allSql), false, "the baseline drops no table");
-    assert.equal(/ALTER\s+TABLE\s+\S+\s+RENAME\s+TO/i.test(allSql), false, "the baseline renames no table");
+  it("keeps the baseline in place; a later migration may rebuild", () => {
+    assert.deepEqual(files.map((f) => f.file), ["0001_init.sql", "0002_card_acceptance_model.sql"]);
+    const baseline = files.find((f) => f.file === "0001_init.sql");
+    assert.deepEqual(addedColumns(baseline.sql), [], "the baseline declares every column in its CREATE TABLE");
+    assert.equal(/DROP\s+TABLE/i.test(baseline.sql), false, "the baseline drops no table");
+    assert.equal(/ALTER\s+TABLE\s+\S+\s+RENAME\s+TO/i.test(baseline.sql), false, "the baseline renames no table");
+    // 0002 is the first post-baseline rebuild; it must say so on its face.
+    assert.match(files.find((f) => f.file === "0002_card_acceptance_model.sql").sql, /^-- @foreign-keys: off$/m);
     assert.match(allSql, /report_latest_id/);
     assert.match(allSql, /delivery_round/);
   });

@@ -433,7 +433,7 @@ Origin: `status_changed_at`. The wait closes for an **open** review card whose `
 names this card and whose `review_round` is `null` or equals this card's `delivery_round`.
 The "open" half matters: a `done` review means the verdict landed but the original is still
 `in_review` — the designed `human` acceptance waiting for its person, or a crash before an
-`agent` original moved. That state does not close the wait; it becomes the acceptance
+`auto` original moved. That state does not close the wait; it becomes the acceptance
 reminder and the action says so. A `canceled` review is ignored.
 
 A review card from an earlier round does not suppress a fresh delivery: a rejected,

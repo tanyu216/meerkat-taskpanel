@@ -8,10 +8,10 @@
  * This module is pure: no `node:` specifiers.
  */
 
-// The 0.1.0 baseline declares both acceptance CHECKs in its CREATE TABLE bodies,
-// so the SQL-parity reader sees them and the vocabulary must be declared below.
+// 0002 rebuilds the card table and drops the project-level acceptance column;
+// the surviving CHECK is the card's three-word vocabulary below.
 // `acceptance-mode.mjs` is pure and imports nothing from here.
-import { CARD_ACCEPTANCE_MODES, PROJECT_ACCEPTANCES } from "./acceptance-mode.mjs";
+import { CARD_ACCEPTANCE_MODES } from "./acceptance-mode.mjs";
 
 /**
  * Canonical task statuses (F2 — the card's seven stage statuses, plus M1's
@@ -123,7 +123,7 @@ export const PRIORITY = Object.freeze({
  *
  * 0038 retired `deploy` from the card model. Whether a card belongs to a
  * release line — and what confirming that means — is the loop's own decision;
- * a card that needs an independent gate says so with `acceptance_mode: agent`.
+ * a card that needs an independent gate says so with `acceptance_mode: auto`.
  */
 export const TASK_KINDS = Object.freeze(["task", "epic"]);
 
@@ -307,7 +307,6 @@ export const SQL_ENUM_SETS = Object.freeze({
   "tasks.kind": TASK_KINDS,
   "tasks.blocked_reason": BLOCKED_REASONS,
   "tasks.acceptance_mode": CARD_ACCEPTANCE_MODES,
-  "projects.acceptance": PROJECT_ACCEPTANCES,
   "task_relations.relation_type": RELATION_TYPES,
   "comments.kind": COMMENT_KINDS,
   "attachments.kind": ATTACHMENT_KINDS,

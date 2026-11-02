@@ -128,9 +128,8 @@ export function taskToWire(task, options = {}) {
   // optimistic lock a prune sends back.
   out.acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];
   out.acceptance_revision = Number(task.acceptanceRevision ?? 0);
-  // 0038 — the single acceptance decision. `auto` never appears here: the card
-  // stores a concrete mode.
-  out.acceptance_mode = task.acceptanceMode ?? "off";
+  // 0038/0002 — the single acceptance decision. The card stores a concrete mode.
+  out.acceptance_mode = task.acceptanceMode ?? "auto";
   out.assignee = actorRef(task.assigneeId, task.assigneeKind, lookup);
   out.reporter = actorRef(task.reporterId, task.reporterKind, lookup);
   // `claimed_by` is an actor **id** since 0020 (the execution lock's holder),
@@ -199,8 +198,8 @@ export function projectToWire(project) {
     labels: Array.isArray(project.labels) ? project.labels : [],
     meta: project.meta ?? {},
     readme: project.readme ?? null,
-    // 0038 — the single project default and its optional reviewer override.
-    acceptance: project.acceptance ?? "auto",
+    // The project supplies an optional reviewer override; acceptance is the
+    // card's own decision and is not a project field any more.
     reviewer: project.reviewer ?? null,
     // The sidebar badge's number (design/BLOCKS.md §Projects): the project's
     // **total** task count, served with the list and independent of the order.

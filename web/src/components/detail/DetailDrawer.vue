@@ -1489,8 +1489,8 @@ function copyId() {
                resolved at creation and changed through the audited
                `--acceptance-mode` override, not by a drawer edit. -->
           <span class="td-prop-label" data-i18n="review.label">{{ $t("review.label") }}</span>
-          <span class="td-prop-value" data-detail-acceptance-mode :data-acceptance-mode="task?.acceptance_mode ?? 'off'">
-            {{ $t(`review.mode.${task?.acceptance_mode ?? 'off'}`) }}
+          <span class="td-prop-value" data-detail-acceptance-mode :data-acceptance-mode="task?.acceptance_mode ?? 'auto'">
+            {{ $t(`review.mode.${task?.acceptance_mode ?? 'auto'}`) }}
           </span>
 
           <span class="td-prop-label" data-i18n="prop.labels">{{ $t("prop.labels") }}</span>

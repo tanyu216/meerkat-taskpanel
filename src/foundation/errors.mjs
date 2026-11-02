@@ -100,10 +100,10 @@ export const ERROR_CODES = Object.freeze({
     409,
     "This card still has an open review for its current delivery round; close or cancel it first.",
   ),
-  // The card's own acceptance mode (`agent`) promises an independent review,
-  // but no approving review exists for the current round. Raised by the service
-  // layer *and* (coarsely, as "a current-round review card exists") by the
-  // `tr_tasks_acceptance_agent_done` trigger.
+  // The card's own acceptance mode (`auto`/`human`) promises an independent
+  // review, but no approving review exists for the current round. Raised by the
+  // service layer *and* (coarsely, as "a current-round review card exists") by
+  // the `tr_tasks_acceptance_review_done` trigger.
   REVIEW_REQUIRED: spec(409, "This card requires an approved review for its current delivery round.", {
     fix:
       "let the loop dispatch a review, or a human may waive the requirement: " +

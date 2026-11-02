@@ -95,7 +95,7 @@ export function portFromEnv(env) {
 export async function main(env = process.env, options = {}) {
   const { register = true, exit } = options;
 
-  // `.env` is a *server* input too: host/port/data dir/allow-list/acceptance.
+  // `.env` is a *server* input too: host/port/data dir/allow-list.
   // The process environment wins key by key, so an operator's override is
   // unchanged. The raw `env` is kept separately for the two readers whose
   // `source` the Access panel shows.

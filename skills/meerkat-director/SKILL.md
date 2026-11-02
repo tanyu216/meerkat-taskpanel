@@ -53,7 +53,9 @@ is the board's; configuration and the project map are the human's; E1–E5 are t
 An accepted card that owes follow-up work carries a required handoff. Read the current
 delivery's `## Handoff`, create one card per deliverable with its accountable role, seed each
 card's acceptance from the handoff's `Acceptance source`, and copy the handoff paths into the
-description. Link an epic's children with a parent relation; a task's follow-up card records
+description. When the create needs its acceptance mode, follow the board skill's create rule:
+read the project's `docs/acceptance-mode.md` when it exists, use the human's explicit word when
+one was given, and fall back to `auto` otherwise. Link an epic's children with a parent relation; a task's follow-up card records
 the producer as its origin. Record the consumed delivery on the producer, or record that no
 downstream card is needed. A proposed child that expands scope is E1: escalate, do not create
 it.

@@ -50,15 +50,14 @@ export { DEFAULT_REVIEW_AGING_MS, DEFAULT_WORKFLOW_MAX_ACTIONS };
 /**
  * The card's acceptance mode — the **only** input to dispatch/auto-accept.
  *
- * `auto` never appears on a card: the create resolver stores a concrete
- * `off | agent | human`, so an unreadable card falls back to `off` (the column
- * default) rather than being guessed into a review.
+ * The create resolver stores a concrete `off | auto | human`. An unreadable
+ * card falls back to `auto` (the column default): review is the safe guess.
  *
  * @param {object} task a wire task
- * @returns {"off"|"agent"|"human"}
+ * @returns {"off"|"auto"|"human"}
  */
 export function acceptanceModeOf(task) {
-  return normalizeCardAcceptance(task?.acceptance_mode ?? task?.acceptanceMode) ?? "off";
+  return normalizeCardAcceptance(task?.acceptance_mode ?? task?.acceptanceMode) ?? "auto";
 }
 
 /**
@@ -625,9 +624,9 @@ export function classifyReconcileActions(actions, input = {}) {
 /**
  * Decide which `in_review` cards need a review card created.
  *
- * Review is mode-independent: an `agent` and a `human` card are dispatched
+ * Review is mode-independent: an `auto` and a `human` card are dispatched
  * exactly the same way. The mode selects only who closes the original after an
- * `APPROVE` (the loop for `agent`, a person for `human`); `off` is the one mode
+ * `APPROVE` (the loop for `auto`, a person for `human`); `off` is the one mode
  * with no review — the loop auto-accepts it at delivery.
  *
  * The guards, in the order they save the most work:
@@ -637,7 +636,7 @@ export function classifyReconcileActions(actions, input = {}) {
  *   * a review card of its own is never reviewed again (`flow=B`);
  *   * an active review card for the same **round** covers the card; a `done`
  *     review card whose original is still `in_review` is a finding for an
- *     `agent` original (the loop closes it) and the designed waiting state for a
+ *     `auto` original (the loop closes it) and the designed waiting state for a
  *     `human` one (the person closes) — either way, not a reason to create a
  *     second one; a `canceled` one releases the key (the board's idempotency key
  *     is released by a terminal card, so recreation is the consistent move);
@@ -683,11 +682,11 @@ export function planReviewDispatch(input = {}) {
     // `meta.flow` is a loop display convention, not a policy input: the
     // structural marker is the predicate. A malformed `flow=B` on an ordinary
     // card is treated as flow A (fail-safe: it is still reviewable).
-    // The card's own decision is the gate. A project's default is not
-    // consulted here: a card created before the default changed keeps its
-    // snapshot, and a manual review card on an `off` card is handled by its own
-    // review card's outcome, not by dispatch.
-    // Review is mode-independent: `agent` and `human` both get an independent
+    // The card's own decision is the gate. Nothing at the project level is
+    // consulted here — the snapshot was frozen at creation — and a manual
+    // review card on an `off` card is handled by its own review card's
+    // outcome, not by dispatch.
+    // Review is mode-independent: `auto` and `human` both get an independent
     // reviewer; the mode only selects who closes the original afterwards. `off`
     // is the one mode with no review — the loop auto-accepts it at delivery.
     const mode = acceptanceModeOf(task);
@@ -721,7 +720,7 @@ export function planReviewDispatch(input = {}) {
     if (covering.some((review) => !TERMINAL_STATUSES.has(review?.status))) continue;
     const done = covering.find((review) => review?.status === "done");
     if (done !== undefined) {
-      // A completed review over an `agent` original that is still open is a
+      // A completed review over an `auto` original that is still open is a
       // finding: the loop owns that close. Over a `human` original it is the
       // designed end of the review — the person now closes the card — so it is
       // a log-only standing state, not a finding.
@@ -1264,7 +1263,7 @@ export function planReviewOutcomes(input = {}) {
           continue;
         }
         // The verdict is recorded the same way in both reviewed modes; only the
-        // close differs. `agent` — the loop accepts the original and closes the
+        // close differs. `auto` — the loop accepts the original and closes the
         // review card. `human` — the loop records the round-scoped verdict on
         // the original and closes the review card, leaving the original in
         // `in_review` for a person. `off` keeps its own path: an ad-hoc review
@@ -1274,12 +1273,12 @@ export function planReviewOutcomes(input = {}) {
         // The marker is written with the round the original is on now; a crash
         // after it but before the close is recovered on the next pass (`held`).
         const mode = acceptanceModeOf(original);
-        if (mode === "agent" || mode === "human") {
+        if (mode === "auto" || mode === "human") {
           // Each executor writes a different marker before its note:
-          //   * agent  — `approve` writes accepted_by / accepted_round;
-          //   * human  — `record_verdict` writes review_verdict / review_verdict_round.
+          //   * auto  — `approve` writes accepted_by / accepted_round;
+          //   * human — `record_verdict` writes review_verdict / review_verdict_round.
           // A marker from an earlier round is history, not a half-applied action.
-          if (mode === "agent") {
+          if (mode === "auto") {
             const held =
               nonEmpty(original.meta?.accepted_by) !== null &&
               String(original.meta?.accepted_round ?? "") === String(originalRound);

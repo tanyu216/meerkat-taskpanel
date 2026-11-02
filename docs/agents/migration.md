@@ -1,9 +1,25 @@
 # Migrations
 
-The board's SQL schema is one baseline, `src/core/storage/migrations/0001_init.sql`,
+The board's SQL schema starts with one baseline, `src/core/storage/migrations/0001_init.sql`,
 applied once by `src/core/storage/migrations-runner.mjs` when a database is opened
 read-write. From 0.1.0 the history is **append-only**: add the next
 `NNNN_lower_snake_name.sql` file and never edit or delete a committed one.
+`0002_card_acceptance_model.sql` is the first post-baseline file.
+
+## A table rebuild
+
+SQLite cannot change a `CHECK` in place. A migration that widens one (0002 widens
+`tasks.acceptance_mode`) rebuilds the table: create `<table>_new`, copy with an explicit
+column list, `DROP TABLE`, `ALTER TABLE … RENAME TO`, then recreate **every** index and
+trigger the dropped table had. Two traps:
+
+- the file must declare `-- @foreign-keys: off` on a line of its own; the runner issues the
+  pragma before its transaction and restores it afterwards;
+- a scratch table's self-reference must name the **final** table, and triggers on *other*
+  tables whose bodies read the rebuilt table must be dropped first and recreated afterwards.
+
+`test/core/storage/migrations.test.mjs` carries the upgrade test and a schema-diff guard
+that proves every index and trigger came back.
 
 Each file's SHA-256 (line endings normalised) is recorded in the `schema_migrations`
 table; at startup the runner refuses a database whose applied file has since changed

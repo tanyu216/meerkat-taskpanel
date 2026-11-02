@@ -178,10 +178,10 @@ export function renderCard(task, context) {
     heartbeat_at: task.heartbeatAt ?? "",
     blocked_at: task.blockedAt ?? "",
   };
-  // 0038 — the acceptance mode the card carries. The default (`off`) stays
-  // absent: writing it on every card would grow every golden by a line for the
-  // default state.
-  if (task.acceptanceMode !== undefined && task.acceptanceMode !== null && task.acceptanceMode !== "off") {
+  // 0038/0002 — the acceptance mode the card carries. The default (`auto`) stays
+  // absent; `off` and `human` are written because an omitted key now reads as
+  // `auto`, not `off`.
+  if (task.acceptanceMode !== undefined && task.acceptanceMode !== null && task.acceptanceMode !== "auto") {
     data.acceptance_mode = task.acceptanceMode;
   }
   // 0023 — the three reference kinds, each written **only when it says something**

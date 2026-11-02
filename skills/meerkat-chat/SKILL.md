@@ -97,7 +97,7 @@ derived, not a field: combine the uncovered `acceptance[]` items, the current re
 - **An `awaiting` card is the human's rung.** Show its `awaiting_reason` (`E1`–`E5`), the
   question body, its age, and what stays blocked until it is answered.
 - **A pending acceptance is not always the human's.** Read `acceptance_mode`: `human` is the
-  human's; `agent` closes on the loop's `APPROVE`; `off` is the deliverer's. Say which and why.
+  human's; `auto` closes on the loop's `APPROVE`; `off` is the deliverer's. Say which and why.
 - Do not re-raise an item the human already handled. Re-read and confirm it left the list.
 
 This register is what makes the skill *proactive*: when the conversation turns to the board and
@@ -152,7 +152,7 @@ Acceptance is an act, not a status read. Before offering it:
    item with `met`/`not_applicable`. A missing item, a `partial`/`not_met`, or a missing report
    is a reason not to accept.
 3. For a reviewed card, read the review card's current verdict. An `APPROVE` is the evidence;
-   an open review on an `agent` card is `REVIEW_PENDING`.
+   an open review on a `human` card is `REVIEW_PENDING`.
 4. Show what they are accepting: title, round, report summary, coverage, verdict. Then show the
    exact close:
 
@@ -160,14 +160,15 @@ Acceptance is an act, not a status read. Before offering it:
 taskctl --as-human issue move <ref> done
 ```
 
-A `human` card is the human's to close. On an `agent` card the loop normally closes it after an
-`APPROVE`; a human may still close it, but say so and confirm the verdict first. A review card
+A `human` card is the human's to close after its review finishes. On an `auto` card the loop
+normally closes it after an `APPROVE`; a human may still close it, but say so and confirm the
+verdict first. A review card
 is closed by a human or any actor but its own verdict author — never by the one who wrote it.
 `canceled` is abandonment: never cancel a card to close it.
 
 On a refusal, read `error.code`: `ACCEPTANCE_FORBIDDEN` (wrong closer for the mode),
 `ACCEPTANCE_UNVERIFIED` / `ACCEPTANCE_INCOMPLETE` (the gate or the evidence),
-`REVIEW_PENDING` (open review on an `agent` card), `ROLLUP_REQUIRED` / `ROLLUP_STALE` (epic).
+`REVIEW_PENDING` (open review on a `human` card), `ROLLUP_REQUIRED` / `ROLLUP_STALE` (epic).
 Translate it, say what would make it pass, and stop. Never force it, never touch the database.
 
 Details: [`references/acceptance.md`](references/acceptance.md).

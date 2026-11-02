@@ -65,6 +65,16 @@ Attempt the move and read the refusal; the whitelist names the allowed targets. 
 `issue create` is the whole handoff: the card lands in `todo` — the queue the loop's poll reads — in the same call, addressed to whoever it is assigned to. The queue is per assignee, not global; an unassigned card is the public pool. Only `--status backlog` keeps it out of a queue. The INSERT gate:
 [`references/status-lifecycle.md#8-creating-a-card-in-a-status`](references/status-lifecycle.md#8-creating-a-card-in-a-status).
 
+**Resolve the acceptance mode from the card.** The mode is decided at creation, not by a
+project default. `off` means no review and the deliverer may close; `auto` means an independent
+review, then the loop closes on `APPROVE` (the fallback when the mode is omitted); `human`
+means an independent review, then a person closes after it finishes. Before passing
+`--acceptance-mode`, look for the project's own selection rules: resolve the project working
+directory with `taskctl project dir <id> --json`, then read
+`<project-dir>/docs/acceptance-mode.md` when it exists. An explicit instruction from the human
+wins over that document. If the file, the directory or the map is absent, use the three
+meanings above; never invent a project default or store one on the project row.
+
 **Route the card at creation.** The create *is* the routing decision, not a step after it. When a role skill fits the card's work shape (each role's `SKILL.md` lists its shapes), name that one accountable role in the same call:
 
 ```bash
@@ -152,7 +162,13 @@ The report must **cover the snapshot**: every item appears by text; `met` or `no
 
 `issue deliver` writes the report and moves to `in_review` in one transaction; the gate reads the **current** delivery round's report — an earlier round is history, so re-deliver rather than reuse it. A waiver (`--no-report --reason "<why>"`, ≥ 8 characters) excuses the report for one round, not acceptance.
 
-The mode is resolved once, at creation: `--acceptance-mode off|agent|human`; omitted, it follows the project's `acceptance` default. `human` is opt-in and **top-level only**; an `off` card may go straight from `in_progress` to `done`; an `agent` and a `human` card are both reviewed; the loop accepts an `agent` card on `APPROVE`, a person closes a `human` card. An epic is reviewed against its children and rollup and closed only after an `APPROVE`. An agent may only tighten a mode (`off → agent|human`); a review card is always `off`. Gate, rounds and the board's matrix:
+The mode is resolved once, at creation: `--acceptance-mode off|auto|human`; omitted, it falls
+back to `auto`. There is no project default — the create section explains the project's
+`docs/acceptance-mode.md`. An `off` card may go straight from `in_progress` to `done`; `auto`
+and `human` are both reviewed; the loop accepts an `auto` card on `APPROVE`, and a person
+closes a `human` card after its review finishes. An epic is reviewed against its children and
+rollup and closed only after an `APPROVE`. An agent may only tighten a mode
+(`off → auto|human`); a review card is always `off`. Gate, rounds and the board's matrix:
 [`references/status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round`](references/status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round), [`references/status-lifecycle.md#4a-the-acceptance-baseline`](references/status-lifecycle.md#4a-the-acceptance-baseline), [`references/status-lifecycle.md#5-claims-and-heartbeats`](references/status-lifecycle.md#5-claims-and-heartbeats), [`references/status-lifecycle.md#7-acceptance-one-mode-per-card`](references/status-lifecycle.md#7-acceptance-one-mode-per-card), [`references/status-lifecycle.md#9-refusals`](references/status-lifecycle.md#9-refusals).
 
 ## Containers: when the card is an epic

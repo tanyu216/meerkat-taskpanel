@@ -214,11 +214,12 @@ perform it. The rules, the three modes and the enforcement layers are
 
 - From `in_review`, `done` is the ordinary exit. From `in_progress`, it exists only in `off`
   mode.
-- An `agent` card's `done` needs a current-round review card that has itself reached
-  `in_review` or `done` (`REVIEW_REQUIRED`), and the service layer additionally requires that
-  review's `APPROVE` to cover the baseline. A human closing it while a current-round review is
-  still open gets `REVIEW_PENDING`. The `human` mode deliberately does not have the latter
-  guard — a person may close while the review is open.
+- An `auto` card's `done` needs a current-round review card that has itself reached
+  `in_review` or `done` (`REVIEW_REQUIRED`); a `human` card's needs it **done** (the loop has
+  recorded the verdict and closed the review). The service layer additionally requires that
+  review's `APPROVE` to cover the baseline. A person closing a `human` card while its review is
+  still open gets `REVIEW_PENDING`; an `auto` card's human fallback is allowed once the
+  current-round `APPROVE` exists.
 - A non-empty acceptance baseline must be covered by the current round's delivery report
   (`ACCEPTANCE_UNVERIFIED` / `ACCEPTANCE_INCOMPLETE`). A waiver excuses the delivery gate, not
   this.
@@ -321,14 +322,14 @@ The workflow pass dispatches **one review card per `(original, delivery round)`*
 deterministic idempotency key `loop-review|<ref>|r<round>`. The dispatch predicate is:
 
 - flow A (not a review card), status `in_review`;
-- `acceptance_mode` is `agent` or `human` — review is mode-independent; `off` is the one mode
+- `acceptance_mode` is `auto` or `human` — review is mode-independent; `off` is the one mode
   with no review;
 - no non-terminal review card already covers this round (a `done` one is the
   "review finished, original still open" finding; a `canceled` one no longer blocks);
 - an effective reviewer exists: `project.reviewer ??` the deployment reviewer;
 - the reviewer is not the card's own assignee/holder (`self_review_not_independent`).
 
-The review card is assigned to the reviewer actually used. A deployment with `agent` cards and
+The review card is assigned to the reviewer actually used. A deployment with `auto` or `human` cards and
 no effective reviewer reports `dispatch_skipped` per project — not silently.
 
 Candidates are ordered by `status_changed_at`, then ref, and sliced by the pass cap. A
@@ -366,7 +367,7 @@ The board's plan is a function of the **original's mode** and the verdict:
 
 | Original | APPROVE | REJECT |
 |---|---|---|
-| `agent` | `approve`: close the original, close the review | `reject_task` / `reject_epic`, then close the review |
+| `auto` | `approve`: close the original, close the review | `reject_task` / `reject_epic`, then close the review |
 | `human` | `record_verdict`: record the round-scoped verdict, close the review, leave the original `in_review` | same rejection path; a later `APPROVE` is recorded, never applied |
 | `off` | `close_review` only (an ad-hoc review card; the mode owns acceptance) | same |
 
@@ -423,7 +424,7 @@ Landing already happened by then, so the work is not rolled back — the new rou
 not a rebuild. The `meta.accepted_by` marker written before the refused move stays; the round
 bump makes it a mark from an earlier round, which is how `held` already reads one.
 
-The reviewer's half of the same rule runs earlier, at the writer: on an `agent` card a
+The reviewer's half of the same rule runs earlier, at the writer: on an `auto` or `human` card a
 `VERDICT: APPROVE` is refused when the original's current-round report cannot close it, with a
 hint to `REJECT` instead (`assertOriginalDeliverable` in `src/core/commands/acceptance.mjs`).
 The loop's routing is the recovery for verdicts written before that check existed.
@@ -452,9 +453,9 @@ reviewer after a crash.
 
 ```text
 worker      todo ──claim──▶ in_progress ──report──▶ in_review              (round N)
-board       in_review + agent|human ──dispatch──▶ review card              (audits round N)
+board       in_review + auto|human ──dispatch──▶ review card              (audits round N)
 reviewer    todo ──claim──▶ in_progress ──VERDICT report──▶ in_review
-loop        APPROVE · agent  original → done, review card → done
+loop        APPROVE · auto   original → done, review card → done
             APPROVE · human  verdict recorded, review card → done, original stays in_review
             REJECT           original → in_progress (round N+1) → todo, review card → done
 ```
@@ -550,7 +551,7 @@ The triggers that carry the lifecycle:
 | `tr_tasks_terminal` | a terminal card may leave only to `todo` |
 | `tr_tasks_round_bump` | the two round-bumping families |
 | `tr_deliver_gate` / `tr_deliver_gate_done` | current-round evidence for `in_review` / `off`-direct `done` |
-| `tr_tasks_acceptance_agent_done` | `REVIEW_REQUIRED` on an `agent` card |
+| `tr_tasks_acceptance_review_done` | `REVIEW_REQUIRED` on an `auto`/`human` card |
 | `tr_tasks_children_terminal` | `CHILDREN_OPEN` |
 | `tr_tasks_epic_rollup_done` | `ROLLUP_REQUIRED` |
 | `tr_tasks_acceptance_mode_ins` / `tr_tasks_acceptance_mode_upd` | a review card is always `off` |
@@ -581,7 +582,7 @@ others are findings an operator can act on:
 | State | Meaning |
 |---|---|
 | a current-round review is open | normal, in flight |
-| the review is finished, an `agent` card is still `in_review` | the loop has not applied the verdict — a finding |
+| the review is finished, an `auto` card is still `in_review` | the loop has not applied the verdict — a finding |
 | the review is finished, a `human` card is still `in_review` | the designed wait for its person; recorded, not alerted |
 | `awaiting`, with a question on the card | normal, in flight; the SLA row is the watcher |
 | `in_review` with no effective reviewer | the deployment is unconfigured; `dispatch_skipped` names the project |
@@ -679,7 +680,7 @@ Rejected alternatives:
 - [`../GLOSSARY.md`](../GLOSSARY.md) — the canonical vocabulary: status, claim, delivery round,
   review card.
 - [`../skills/meerkat/SKILL.md`](../skills/meerkat/SKILL.md) — the board rules an agent follows.
-- [acceptance.md](acceptance.md) — who closes a card, and the two deliberate gaps.
+- [acceptance.md](acceptance.md) — who closes a card, and the known limits.
 - [scheduling.md](scheduling.md) — the clocks and passes that run this channel.
 - [sla.md](sla.md) — the wait-time inspector and the acceptance row.
 - [events.md](events.md) — the activity log, the revision cursor and the consumers.

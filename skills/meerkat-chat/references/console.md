@@ -44,7 +44,7 @@ The human-owned queue, already filtered to what is actually unanswered.
   exists but the card is still `in_progress` — the **director owes the release**; do not
   answer the human's reply again.
 - `pending_acceptance` is a reading, not a claim about who owes the act. Cross-check each card's
-  `acceptance_mode`: `human` is the human's; `agent` and `off` are normally the loop's or the
+  `acceptance_mode`: `human` is the human's; `auto` and `off` are normally the loop's or the
   deliverer's.
 - `errors[]` is non-empty when a board read failed. Say that; do not fill the gap with a guess.
 

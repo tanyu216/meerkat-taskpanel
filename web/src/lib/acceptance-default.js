@@ -1,34 +1,21 @@
 /**
- * The create dialog's acceptance preselect — the client's copy of the server's
- * resolution (`src/core/domain/acceptance-mode.mjs`; the web cannot import
- * `src/`, so `test/web/acceptance-default.test.mjs` holds the two in step).
+ * The create dialog's acceptance preselect.
  *
- * The rules, in the server's order:
- *
- *   * a concrete project value is the default;
- *   * project `auto` (or an unreadable value) falls back to **agent** — a card
- *     nobody declared is reviewed;
- *   * `human` is opt-in, and **top-level only**: a card being given a parent is
- *     never preselected human, because the mode is a closure gate a person
- *     exercises on a card they own, not on a subtask.
+ * There is no project-level default any more: a new card starts on `auto`, and
+ * the creator states `off` or `human` from the card's own context. The web
+ * cannot import `src/`, so the fallback word is repeated here;
+ * `test/web/acceptance-default.test.mjs` holds it in step with the domain.
  */
 
 /** The three values a card stores — declared once in `board-enums.js`. */
 export { ACCEPTANCE_MODES } from "./board-enums.js";
 
 /** What an unresolved card falls back to. */
-export const FALLBACK_ACCEPTANCE = "agent";
+export const FALLBACK_ACCEPTANCE = "auto";
 
 /**
- * @param {unknown} projectAcceptance the selected project's `acceptance`
- * @param {{hasParent?: boolean}} [options] whether the card is being given a parent
- * @returns {"off"|"agent"|"human"}
+ * @returns {"off"|"auto"|"human"}
  */
-export function defaultAcceptanceMode(projectAcceptance, options = {}) {
-  const project = String(projectAcceptance ?? "").trim().toLowerCase();
-  if (project === "off") return "off";
-  if (project === "agent") return "agent";
-  if (project === "human") return options.hasParent === true ? FALLBACK_ACCEPTANCE : "human";
-  // `auto`, empty, and anything the board would not accept.
+export function defaultAcceptanceMode() {
   return FALLBACK_ACCEPTANCE;
 }

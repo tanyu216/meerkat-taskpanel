@@ -30,6 +30,7 @@ import {
   cleanupTempDirs,
   createTempBoard,
   makeTempDir,
+  reasonCode,
 } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
@@ -50,8 +51,8 @@ const TINY = {
 describe("storage/migrations — the shipped set", () => {
   it("reads the shipped migrations in version order with stable checksums", () => {
     const migrations = listMigrations();
-    assert.deepEqual(migrations.map((m) => m.version), ["0001"]);
-    assert.deepEqual(migrations.map((m) => m.name), ["init"]);
+    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002"]);
+    assert.deepEqual(migrations.map((m) => m.name), ["init", "card_acceptance_model"]);
     for (const migration of migrations) {
       assert.match(migration.checksum, /^[0-9a-f]{64}$/);
       assert.equal(migration.checksum, checksumFor(migration.sql));
@@ -64,17 +65,17 @@ describe("storage/migrations — the shipped set", () => {
     const board = await createTempBoard({ migrate: false });
     try {
       const first = applyMigrations(board.db);
-      assert.deepEqual(first.applied.map((a) => a.version), ["0001"]);
+      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002"]);
       assert.deepEqual(first.skipped, []);
       for (const entry of first.applied) assert.equal(typeof entry.ms, "number");
 
       const second = applyMigrations(board.db);
       assert.deepEqual(second.applied, [], "re-apply must be a no-op");
-      assert.deepEqual(second.skipped, ["0001"]);
+      assert.deepEqual(second.skipped, ["0001", "0002"]);
 
       const rows = board.db.prepare("SELECT version, checksum FROM schema_migrations ORDER BY version").all();
       assert.equal(rows.length, listMigrations().length, "one bookkeeping row per shipped file");
-      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001"]);
+      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002"]);
     } finally {
       board.close();
     }
@@ -350,6 +351,168 @@ describe("storage/migrations — the `-- @foreign-keys: off` request (a table re
     try {
       applyMigrations(board.db, { dir });
       assert.equal(Number(board.db.prepare("PRAGMA foreign_keys").get().foreign_keys), 1);
+    } finally {
+      board.close();
+    }
+  });
+});
+
+describe("storage/migrations — the 0002 card-acceptance upgrade", () => {
+  const shipped = listMigrations();
+  const one = shipped.find((m) => m.version === "0001");
+  const two = shipped.find((m) => m.version === "0002");
+  const fileName = (m) => `${m.version}_${m.name}.sql`;
+
+  it("drops the project default, rewrites agent to auto, and keeps every guard", async () => {
+    const dir = stageMigrations({ [fileName(one)]: one.sql });
+    const board = await createTempBoard({ migrate: false });
+    try {
+      applyMigrations(board.db, { dir });
+      const now = TS;
+      board.db
+        .prepare("INSERT INTO projects (id, name, created_at, updated_at, acceptance) VALUES (?, ?, ?, ?, ?)")
+        .run("p1", "P", now, now, "human");
+      board.db
+        .prepare(
+          "INSERT INTO actors (id, display_name, normalized_name, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run("a1", "A", "a", now, now);
+      const insertTask = board.db.prepare(
+        "INSERT INTO tasks (id, identifier, project_id, title, status, created_at, updated_at, acceptance_mode, review_of_id, review_round) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      );
+      insertTask.run("auto1", "P-1", "p1", "auto card", "in_review", now, now, "agent", null, null);
+      insertTask.run("human1", "P-2", "p1", "human card", "in_review", now, now, "human", null, null);
+      insertTask.run("off1", "P-3", "p1", "off card", "in_review", now, now, "off", null, null);
+      insertTask.run("autoRev", "P-4", "p1", "review auto", "in_review", now, now, "off", "auto1", 1);
+      insertTask.run("humanRev", "P-5", "p1", "review human", "in_review", now, now, "off", "human1", 1);
+
+      writeFileSync(join(dir, fileName(two)), two.sql, "utf8");
+      const upgraded = applyMigrations(board.db, { dir });
+      assert.deepEqual(upgraded.applied.map((m) => m.version), ["0002"]);
+      assert.deepEqual(applyMigrations(board.db, { dir }).applied, [], "the second apply is a no-op");
+
+      const projectColumns = board.db.prepare("PRAGMA table_info(projects)").all().map((row) => row.name);
+      assert.equal(projectColumns.includes("acceptance"), false, "the project default is gone");
+
+      const modes = Object.fromEntries(
+        board.db.prepare("SELECT id, acceptance_mode FROM tasks ORDER BY id").all().map((row) => [row.id, row.acceptance_mode]),
+      );
+      assert.equal(modes.auto1, "auto", "agent becomes auto");
+      assert.equal(modes.human1, "human");
+      assert.equal(modes.off1, "off");
+      assert.equal(modes.autoRev, "off", "a review card stays off");
+      assert.equal(
+        board.db.prepare("SELECT review_of_id FROM tasks WHERE id = 'autoRev'").get().review_of_id,
+        "auto1",
+        "the review marker survived the rebuild",
+      );
+      assert.deepEqual(board.db.prepare("PRAGMA foreign_key_check").all(), []);
+
+      // The human rule is now structural: an open review is not a finished audit.
+      assert.equal(
+        reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'done' WHERE id = 'human1'").run()),
+        "REVIEW_REQUIRED",
+      );
+      board.db.prepare("UPDATE tasks SET status = 'done' WHERE id = 'humanRev'").run();
+      assert.equal(reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'done' WHERE id = 'human1'").run()), "NO_ERROR");
+      // `auto` keeps the loop's original-then-review order: an open review is enough.
+      assert.equal(reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'done' WHERE id = 'auto1'").run()), "NO_ERROR");
+
+      const taskIndexes = board.db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'tasks' AND name LIKE 'ix_%'")
+        .all()
+        .map((row) => row.name);
+      const uniqueIndexes = board.db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'tasks' AND name LIKE 'ux_%'")
+        .all()
+        .map((row) => row.name);
+      assert.deepEqual(taskIndexes.sort(), [
+        "ix_tasks_assignee",
+        "ix_tasks_board",
+        "ix_tasks_heartbeat",
+        "ix_tasks_review_of",
+        "ix_tasks_source",
+      ]);
+      assert.deepEqual(uniqueIndexes.sort(), ["ux_tasks_idem_active", "ux_tasks_identifier", "ux_tasks_source"]);
+
+      const taskTriggers = board.db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tasks'")
+        .all()
+        .map((row) => row.name);
+      assert.equal(taskTriggers.length, 22, "every task trigger came back");
+      assert.ok(taskTriggers.includes("tr_tasks_acceptance_review_done"));
+      assert.equal(taskTriggers.includes("tr_tasks_acceptance_agent_done"), false, "the old trigger is gone");
+
+      for (const name of [
+        "tr_dict_actors_delete",
+        "tr_rel_block_chain",
+        "tr_rel_block_cycle",
+        "tr_rel_cross_project",
+        "tr_rel_parent_block_pair",
+        "tr_rel_parent_epic",
+        "tr_rel_parent_guard",
+        "tr_reports_rollup_valid",
+        "tr_rel_review_no_parent",
+      ]) {
+        assert.equal(
+          Number(board.db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(name).n),
+          1,
+          `${name} was recreated`,
+        );
+      }
+      assert.deepEqual(
+        board.db.prepare("PRAGMA foreign_key_list(tasks)").all().map((row) => `${row.table}(${row.from})`).sort(),
+        ["actors(assignee_id)", "actors(claimed_by)", "actors(reporter_id)", "projects(project_id)", "tasks(review_of_id)"],
+      );
+    } finally {
+      board.close();
+    }
+  });
+
+  it("rebuilds the schema without drifting any other trigger or index", async () => {
+    const dir = stageMigrations({ [fileName(one)]: one.sql });
+    const board = await createTempBoard({ migrate: false });
+    // Definitions are compared with comments and whitespace gone: the point is
+    // the logic, not the prose. A dropped index or a retyped trigger body fails.
+    const definition = (sql) =>
+      String(sql)
+        .replace(/--[^\n]*/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const snapshot = () =>
+      new Map(
+        board.db
+          .prepare("SELECT type, name, sql FROM sqlite_master WHERE type IN ('trigger','index') AND sql IS NOT NULL")
+          .all()
+          .map((row) => [`${row.type}:${row.name}`, definition(row.sql)]),
+      );
+    try {
+      applyMigrations(board.db, { dir });
+      const before = snapshot();
+      writeFileSync(join(dir, fileName(two)), two.sql, "utf8");
+      applyMigrations(board.db, { dir });
+      const after = snapshot();
+
+      const removed = "trigger:tr_tasks_acceptance_agent_done";
+      const added = "trigger:tr_tasks_acceptance_review_done";
+      assert.equal(before.has(removed), true);
+      assert.equal(after.has(removed), false, "the old acceptance trigger is gone");
+      assert.equal(before.has(added), false);
+      assert.equal(after.has(added), true, "the review-done trigger replaces it");
+
+      for (const [key, sql] of before) {
+        if (key === removed || key === "trigger:tr_rev_projects_upd") continue;
+        assert.equal(after.get(key), sql, `${key} kept its definition`);
+      }
+      assert.equal(after.size, before.size, "one trigger out, one in");
+      assert.deepEqual(
+        [...after.keys()].filter((key) => !before.has(key)),
+        [added],
+        "nothing else was added",
+      );
+      // The project revision trigger is the second intended change: the retired
+      // `acceptance` column leaves its `AFTER UPDATE OF` list.
+      assert.doesNotMatch(after.get("trigger:tr_rev_projects_upd"), /acceptance/);
     } finally {
       board.close();
     }

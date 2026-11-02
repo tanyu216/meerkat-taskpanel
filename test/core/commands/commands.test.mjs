@@ -298,7 +298,7 @@ describe("commands/relations", () => {
     });
   });
 
-  it("refuses a parent edge whose child is human-accepted — the mode is top-level only", async () => {
+  it("attaches a human-accepted child like any other card", async () => {
     await board(({ commands }) => {
       const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
       const child = commands.createTask({
@@ -307,28 +307,11 @@ describe("commands/relations", () => {
         acceptanceMode: "human",
         actor: HUMAN,
       });
-      for (const force of [false, true]) {
-        assert.throws(
-          () =>
-            commands.addRelation({
-              type: "parent",
-              source: epic.id,
-              target: child.id,
-              actor: AGENT,
-              ...(force ? { force: true } : {}),
-            }),
-          (err) => {
-            assert.equal(err.code, "VALIDATION_FAILED");
-            assert.equal(err.details.field, "acceptance_mode");
-            assert.equal(err.details.mode, "human");
-            assert.equal(err.details.identifier, child.identifier);
-            return true;
-          },
-          force ? "--force skips graph shape, never the card's meaning" : "a human child is never legal",
-        );
-      }
-      // ...and no edge landed, so the card is still top-level.
-      assert.deepEqual(commands.listRelations({ taskId: child.id }).ancestors, []);
+      commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
+      assert.deepEqual(
+        commands.listRelations({ taskId: child.id }).ancestors.map((task) => task.identifier),
+        [epic.identifier],
+      );
     });
   });
 
@@ -345,8 +328,8 @@ describe("commands/relations", () => {
       const card = commands.createTask({ projectId: "proj", title: "Card", allowDup: true, actor: AGENT });
       commands.addRelation({ type: "parent", source: outer.id, target: inner.id, actor: AGENT });
       commands.addRelation({ type: "parent", source: inner.id, target: card.id, actor: AGENT });
-      assert.equal(commands.getTask({ id: inner.id }).acceptanceMode, "agent");
-      assert.equal(commands.getTask({ id: outer.id }).acceptanceMode, "agent");
+      assert.equal(commands.getTask({ id: inner.id }).acceptanceMode, "auto");
+      assert.equal(commands.getTask({ id: outer.id }).acceptanceMode, "auto");
     });
   });
 
@@ -709,29 +692,20 @@ describe("commands — timestamps come from the context clock", () => {
   });
 });
 
-describe("commands/projects — the acceptance default (0038)", () => {
-  it("stores an explicit acceptance and refuses a value outside the vocabulary", async () => {
+describe("commands/projects — no project-level acceptance (0002)", () => {
+  it("ignores a stale acceptance field: the card states its own mode", async () => {
     await board(({ commands }) => {
       const project = commands.createProject({ id: "acc", name: "Acc", acceptance: "human", actor: HUMAN });
-      assert.equal(project.acceptance, "human");
-      assert.throws(
-        () => commands.createProject({ id: "bad", name: "Bad", acceptance: "sometimes", actor: HUMAN }),
-        (err) => err.code === "VALIDATION_FAILED",
-      );
+      assert.equal(project.acceptance, undefined);
+      const card = commands.createTask({ projectId: "acc", title: "T", actor: AGENT });
+      assert.equal(card.acceptanceMode, "auto");
     });
   });
 
-  it("defaults to `auto` when no acceptance is given", async () => {
+  it("refuses a patch that only carries the stale acceptance field", async () => {
     await board(({ commands }) => {
-      assert.equal(commands.createProject({ id: "r1", name: "R", actor: HUMAN }).acceptance, "auto");
-    });
-  });
-
-  it("updates the acceptance default, and refuses an unknown one", async () => {
-    await board(({ commands }) => {
-      assert.equal(commands.updateProject({ id: "proj", patch: { acceptance: "off" }, actor: HUMAN }).acceptance, "off");
       assert.throws(
-        () => commands.updateProject({ id: "proj", patch: { acceptance: "never" }, actor: HUMAN }),
+        () => commands.updateProject({ id: "proj", patch: { acceptance: "off" }, actor: HUMAN }),
         (err) => err.code === "VALIDATION_FAILED",
       );
     });

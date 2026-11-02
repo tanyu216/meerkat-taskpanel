@@ -54,7 +54,7 @@ function seed(commands) {
     assignee: "linus",
     // 0038 — the project defaults to `auto`, so a creator must say what this
     // card needs. This fixture is the reviewed path.
-    acceptanceMode: "agent",
+    acceptanceMode: "auto",
     actor: HUMAN,
   });
   commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
@@ -96,7 +96,7 @@ describe("commands/workflowTick — the board's plan", () => {
         projectId: "proj",
         title: "Do the thing again",
         assignee: "linus",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         actor: HUMAN,
       });
       commands.moveStatus({ id: original.id, to: "in_progress", actor: WORKER });
@@ -134,7 +134,7 @@ describe("commands/workflowTick — the board's plan", () => {
       const { original } = seed(commands);
       const result = commands.workflowTick({ reviewer: "jobs" });
       assert.equal(result.workflow.actions[0].type, "approve");
-      assert.equal(commands.getTask({ id: original.id }).acceptanceMode, "agent");
+      assert.equal(commands.getTask({ id: original.id }).acceptanceMode, "auto");
       assert.equal(result.workflow.summary.held, 0);
     });
   });
@@ -188,7 +188,6 @@ describe("commands/workflowTick — 0031", () => {
       commands.createProject({
         id: "p2",
         name: "P2",
-        acceptance: "agent",
         reviewer: "bob",
         actor: HUMAN,
       });
@@ -198,7 +197,7 @@ describe("commands/workflowTick — 0031", () => {
         assignee: "linus",
         actor: HUMAN,
       });
-      assert.equal(task.acceptanceMode, "agent");
+      assert.equal(task.acceptanceMode, "auto");
       commands.moveStatus({ id: task.id, to: "in_progress", actor: WORKER });
       commands.deliver({ taskId: task.id, report: DELIVERY, actor: WORKER });
 
@@ -214,7 +213,6 @@ describe("commands/workflowTick — 0031", () => {
       commands.createProject({
         id: "p2",
         name: "P2",
-        acceptance: "agent",
         reviewer: "bob",
         actor: HUMAN,
       });
@@ -264,7 +262,7 @@ describe("commands/workflowTick — 0031", () => {
         projectId: "proj",
         title: "Do the thing",
         assignee: "linus",
-        acceptanceMode: "agent",
+        acceptanceMode: "auto",
         meta: { acceptance: ["the thing works"] },
         actor: HUMAN,
       });
@@ -388,7 +386,6 @@ describe("commands/workflowTick — 0031", () => {
       commands.createProject({
         id: "p2",
         name: "P2",
-        acceptance: "agent",
         reviewer: "bob",
         actor: HUMAN,
       });
@@ -480,7 +477,7 @@ describe("commands/workflowTick — containers are reviewed too (round 2)", () =
     await board(({ commands }) => {
       const child = doneChild(commands, "Child");
       const epic = lateEpic(commands, child);
-      assert.equal(commands.getTask({ id: epic.id }).acceptanceMode, "agent");
+      assert.equal(commands.getTask({ id: epic.id }).acceptanceMode, "auto");
 
       const result = commands.workflowTick({ reviewer: "jobs" });
 

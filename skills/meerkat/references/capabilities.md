@@ -31,13 +31,13 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `taskctl --json … project list` | `data.projects[].id`, `.name`, `.reviewer`, `.acceptance`, `.meta.review_gate` | poll's reviewer merge and the workflow pass's reviewer check |
+| `taskctl --json … project list` | `data.projects[].id`, `.name`, `.reviewer`, `.meta.review_gate` | poll's reviewer merge and the workflow pass's reviewer check |
 
-`reviewer` is the project's override; `acceptance` (`auto` / `off` / `agent` /
-`human`) is the default a new card inherits. The board resolves the effective
-reviewer per card (`project.reviewer ?? deployment reviewer`). `meta.review_gate`
-names the one command the reviewer re-runs; it is copied into the review card's
-description (or `n/a — none declared`), never validated or executed by the board.
+`reviewer` is the project's override. There is no project-level acceptance default:
+the card states its own mode. The board resolves the effective reviewer per card
+(`project.reviewer ?? deployment reviewer`). `meta.review_gate` names the one command
+the reviewer re-runs; it is copied into the review card's description (or
+`n/a — none declared`), never validated or executed by the board.
 
 ## 3. Candidate scan and atomic claim
 
@@ -129,7 +129,7 @@ The plan is snake_case (`workflowToWire`). Action `type`s the loop executes:
 |---|---|
 | `create_review` | create the review card (`original_ref`, `project_id`, `reviewer`, `round`, `idem`, `target`, `title`, `description`, `acceptance[]`). `acceptance[]` is the original's frozen baseline followed by the generic review items (4 for a card, 6 for an epic), and becomes the review card's own frozen baseline |
 | `auto_accept` | close a no-review original (`original_ref`, `accepted_by`, `round`) |
-| `approve` | apply an APPROVE verdict to an `agent` original and close its review card (`close_review` follows last) |
+| `approve` | apply an APPROVE verdict to an `auto` original and close its review card (`close_review` follows last) |
 | `record_verdict` | record an APPROVE verdict on a `human` original (`review_verdict` / `review_verdict_round`) and close its review card, without moving the original; a person closes it later |
 | `reject_task` / `reject_epic` / `reject_task_finish` | apply a REJECT verdict; the epic form also creates a fix child. `must_fix[]` is the reviewer's numbered list (or one pointer item when the findings are prose); the loop appends each item to the original's frozen baseline after the rework move, so the next round's report template and the next review card both carry it |
 | `close_review` / `cancel_review` | close the review card last |
@@ -152,7 +152,7 @@ An **epic's** only delivery report is its rollup: `report.is_rollup` is `true` o
 its acceptance items carry `ref: <child identifier>`, and `done` / an `APPROVE` refuse a
 missing or stale one (`ROLLUP_REQUIRED` / `ROLLUP_STALE`). The loop never writes a non-rollup
 report on an epic. An epic is otherwise a card like any other: its default `acceptance_mode`
-is `agent`, so a finished container is dispatched a `create_review` in the same tick that
+is `auto`, so a finished container is dispatched a `create_review` in the same tick that
 rolls it up; its review reads the children and the rollup, an `APPROVE` yields the ordinary
 `approve` action, and a `REJECT` yields `reject_epic`.
 
