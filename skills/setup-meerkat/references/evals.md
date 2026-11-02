@@ -39,8 +39,7 @@ a retired `meerkat-loop` tree is reported as legacy and not deleted.
 > I already have `docs/agents/issue-tracker.md` for GitHub. Set up the Matt integration.
 
 Assert: the skill detects an unrelated tracker and asks before overwriting; a tracker
-that already mentions taskpanel is skipped; the Matt skill is not called through the
-Skill tool.
+that already mentions taskpanel is skipped; the Matt skill is not invoked by this skill.
 
 ## 5. Decision ladder
 

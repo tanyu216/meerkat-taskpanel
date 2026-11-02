@@ -1,7 +1,7 @@
 # Linus — self-check before delivery
 
-Run this after the branch work and before delivery. Refresh the card brief through the
-`meerkat` board skill, then audit against the current card. The Shared checks and the Mandatory
+Run this after the branch work and before delivery. Call the `meerkat` board skill to
+refresh the card brief, then audit against the current card. The Shared checks and the Mandatory
 gates apply to **every branch**; then run the section for the branch you took. The evidence
 table lives in `plan.md` and grows while you work — this check audits it, it does not write it
 from memory. A no-card run skips the brief and board state: its evidence lives in the artifacts
@@ -160,7 +160,7 @@ Confirm the report gives every baseline item its status and falsifiable evidence
 leftover its owner and follow-up. The report is `plan.md`'s table projected onto the card's
 acceptance — not a narrative rewritten at delivery. A card with an open omission, a red gate or
 an unanswered question is not delivered: close it and re-run, or ask and keep the card open.
-The delivered tree is committed on the card's branch and the report carries the `commit` anchor; nothing was merged, rebased or pushed from this card. Deliver at `in_review` through the
-`meerkat` board skill. Do not accept your own work.
+The delivered tree is committed on the card's branch and the report carries the `commit` anchor; nothing was merged, rebased or pushed from this card. Call the `meerkat` board skill to deliver at
+`in_review`. Do not accept your own work.
 
 A no-card run stops here: it records `E5 pending` and writes no board state.

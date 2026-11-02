@@ -6,7 +6,7 @@ domain docs for Matt Pocock's engineering skills. Meerkat TaskPanel can be the t
 ## Invocation policy
 
 That skill sets `disable-model-invocation: true`: it is user-invoked only and no other
-skill can fire it through the Skill tool. Two honest routes:
+skill can invoke it. Two honest routes:
 
 1. **Print the command** and let the user run it:
    `/setup-matt-pocock-skills  — integrate meerkat-taskpanel as this repository's issue tracker`

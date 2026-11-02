@@ -108,7 +108,7 @@ disposition per row.
 carries a committed regression test; Turing's verification is a follow-up card, not delivery
 evidence.
 
-**Essentials.** Commit the delivered tree; deliver through the `meerkat` board skill at
+**Essentials.** Commit the delivered tree; call the `meerkat` board skill to deliver at
 `in_review` with what changed, the tests and gates, the evidence anchors, the acceptance
 mapping, the `## Handoff` when the card has one, and the leftovers.
 

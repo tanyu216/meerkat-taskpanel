@@ -411,8 +411,8 @@ gate (`DELIVERY_NEEDS_COMMIT`) refuses one that does not. Do not merge, rebase o
 card; the supervisor's acceptance pass lands it and cleans up. Do not create the implementation
 card; the director's triage creates it.
 
-**Essentials.** Commit the delivered tree on the card's branch. Deliver through the `meerkat`
-board skill at `in_review`. In the delivery report's `conclusion`, write the architecture
+**Essentials.** Commit the delivered tree on the card's branch. Call the `meerkat` board skill
+to deliver at `in_review`. In the delivery report's `conclusion`, write the architecture
 `## Handoff`: the standard path, the architecture document, the card-local delta, the style and
 ADR paths, the contract artifact, the configuration surface, the directory tree, the document
 set, the gate path, the release and deploy paths (or their recorded `n/a`), the

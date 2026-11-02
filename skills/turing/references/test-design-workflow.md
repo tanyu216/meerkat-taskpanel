@@ -24,8 +24,8 @@ architecture document and ADRs when they exist.
 ### 1. Plan (adopt and audit)
 
 Purpose: settle what the tests must prove. Leave behind `plan.md` and `test-plan.md`.
-This card's plan already exists: extend it; otherwise adopt the plan `attachments` through the
-`meerkat` board skill (a text `plan.md`, or a transcribed `plan.pdf` with its source);
+This card's plan already exists: extend it; otherwise call the `meerkat` board skill to adopt
+the plan `attachments` (a text `plan.md`, or a transcribed `plan.pdf` with its source);
 no plan attached: write it from the card and the acceptance. Settle the branch `frontier` in
 one decision round and record the answers in `test-plan.md`. **Audit the plan** before
 starting: every requirement and frozen acceptance item maps to a scenario and its evidence; order,

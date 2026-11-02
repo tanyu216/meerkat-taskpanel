@@ -132,7 +132,7 @@ and the gates are green.
 
 **Watch for.** The tree is committed and the report carries the `commit` anchor; the board's delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses a report that does not. Do not merge, rebase or push from this card; the supervisor's acceptance pass lands it and cleans up.
 
-**Essentials.** Commit the delivered tree; deliver through the `meerkat` board skill at
+**Essentials.** Commit the delivered tree; call the `meerkat` board skill to deliver at
 `in_review` with the before/after map, the pinning tests, the gates, the acceptance mapping, the
 `## Handoff` when the card has one, and the leftovers. State what did not change — that is the
 claim being reviewed.

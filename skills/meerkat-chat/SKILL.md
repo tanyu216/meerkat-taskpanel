@@ -11,8 +11,8 @@ conversation the human has with the board: you read it, tell them what needs the
 after showing the exact write — record what they say.
 
 The board skill [`meerkat`](../meerkat/SKILL.md) is the contract for every command and flag.
-Load it before the first write; this skill decides *what to ask and when to write*, never how
-the board works.
+Call the `meerkat` board skill before the first write; this skill decides *what to ask and when
+to write*, never how the board works.
 
 ## What you are not
 

@@ -2,7 +2,7 @@
 
 This pre-delivery audit runs against the current `.meerkat/<id>/card.md` and `plan.md`; it is
 not the delivery and not the `## Handoff` block.
-Refresh the brief through the `meerkat` board skill before you start.
+Call the `meerkat` board skill to refresh the brief before you start.
 
 ## Every branch
 

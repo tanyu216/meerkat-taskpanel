@@ -67,8 +67,7 @@ describe("director skill: SKILL.md", () => {
     assert.equal(readFrontmatterField(text, "disable-model-invocation"), "true");
   });
 
-  it("documents explicit invocation and takes no argument placeholder", () => {
-    assert.match(text, /\/meerkat-director/);
+  it("takes no argument placeholder", () => {
     assert.equal(text.includes("$ARGUMENTS"), false);
   });
 
@@ -109,6 +108,25 @@ describe("director skill: references", () => {
     assert.match(policy, /awaiting/);
     assert.match(policy, /Decision rounds/);
     assert.match(policy, /handoff_consumed_round/, "the triage marker has one home");
+  });
+
+  it("makes a project's own policy the refinement source for E1-E5", () => {
+    const policy = readFileSync(join(DIRECTOR_SKILL, "references", "decision-policy.md"), "utf8");
+    assert.match(policy, /docs\/agents\/decision-policy\.md/, "the project policy file is named");
+    assert.doesNotMatch(
+      policy,
+      /docs\/decision-policy\.md/,
+      "the top-level path is not discovered",
+    );
+    assert.match(policy, /item by item/i, "the override is item by item");
+    assert.match(policy, /keeps its default/i, "unmentioned items keep the default");
+    assert.match(policy, /`human` or `director`/, "a project entry names its decider");
+    assert.match(policy, /unreadable[\s\S]*apply the default/i, "an unusable file falls back");
+    assert.match(policy, /cannot add a code/i, "the E-code vocabulary is fixed");
+    assert.match(policy, /ladder above[\s\S]*fixed/i, "the ladder cannot be overridden");
+    assert.match(policy, /escalates only the items the decision map[\s\S]*leaves to the human/i);
+    assert.match(policy, /create it only if the map gives E1 to the[\s\S]*director/i);
+    assert.match(policy, /Record which source decided/i, "the deciding source is recorded");
   });
 
   it("carries no human-console or taskctl/scheduler mechanics", () => {

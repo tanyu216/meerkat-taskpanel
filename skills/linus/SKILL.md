@@ -23,7 +23,7 @@ source.
 
 ## Before work — the plan
 
-Read the card, its brief and the frozen acceptance through the `meerkat` board skill.
+Call the `meerkat` board skill to read the card, its brief and the frozen acceptance.
 
 **Triage.** `meta.design_stage` means a feature or behaviour change: read the `## Handoff` block
 in the description. If the block is missing or a named path does not exist, stop and ask.
@@ -33,9 +33,9 @@ follow-up (for example a regression or cleanup card) sets `meta.stage_handoff=re
 names it in the report's `## Handoff`; the director's triage creates it.
 
 **Take the plan.** A `.meerkat/<id>/plan.md` that already exists is **this card's plan**; a
-rework extends it, folding in an attached plan rather than replacing it. Otherwise the
-`meerkat` board skill lists and downloads the card's **attachments**; adopt (**fold**) the
-attached plan. **No plan attached:** write `.meerkat/<id>/plan.md` from the requirements and
+rework extends it, folding in an attached plan rather than replacing it. Otherwise
+call the `meerkat` board skill to list and download the card's **attachments**; adopt
+(**fold**) the attached plan. **No plan attached:** write `.meerkat/<id>/plan.md` from the requirements and
 the frozen acceptance.
 
 Record `Stack: inherited — docs/tech-spec.md` (or the card-local standard path). A missing
@@ -104,8 +104,8 @@ constrains how, never adds machinery; a boundary is not traded for speed.
 
 ## Delivery
 
-Run `references/self-check.md` (the handoff names it). Deliver through the `meerkat` board skill: the board
-requires a committed tree and a report with the `commit` anchor. A producer card (architecture)
+Run `references/self-check.md` (the handoff names it). Call the `meerkat` board skill to
+deliver: the board requires a committed tree and a report with the `commit` anchor. A producer card (architecture)
 also writes the `## Handoff` block; the supervisor's acceptance pass lands the delivered tree
 and cleans up.
 

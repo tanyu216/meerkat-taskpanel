@@ -206,8 +206,8 @@ Tracker candidates, in order: `docs/agents/issue-tracker.md` (canonical),
   2. with the user's agreement, read that skill's `SKILL.md` and follow its process
      manually (Section A = Other, describing the `taskctl` board workflow).
 
-The Matt skill is `disable-model-invocation: true`; this skill cannot call it through
-the Skill tool. Say which route was taken; never claim a skill ran when it did not.
+The Matt skill is `disable-model-invocation: true`; it is user-invoked only, so this skill
+cannot invoke it. Say which route was taken; never claim a skill ran when it did not.
 Write only the per-repository outputs (`docs/agents/issue-tracker.md`,
 `docs/agents/domain.md`, optionally `docs/agents/triage-labels.md`, and the
 `## Agent skills` block in the existing `CLAUDE.md`/`AGENTS.md`). The `## Agent skills` block
