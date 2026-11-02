@@ -299,7 +299,7 @@ describe("skill frontmatter and assets", () => {
     assert.deepEqual([...LOOP_KINDS].sort(), Object.keys(AGENT_DIRS).sort());
   });
 
-  it("keeps the generated entry free of repository-only design pages", () => {
+  it("keeps the generated entry free of repository-only pages", () => {
     const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
     const stage4 = skill.slice(skill.indexOf("## 4."), skill.indexOf("## 5."));
     for (const name of [
@@ -310,6 +310,11 @@ describe("skill frontmatter and assets", () => {
       "docs/projects.md",
       "docs/access.md",
       "docs/events.md",
+      "docs/README.md",
+      "docs/im-integration.md",
+      "docs/ops/install.md",
+      "docs/ops/observability.md",
+      "docs/ops/publishing.md",
       "ARCHITECTURE.md",
     ]) {
       assert.ok(!stage4.includes(name), `stage 4 must not point at ${name}`);

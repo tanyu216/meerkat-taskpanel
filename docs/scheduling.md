@@ -1015,14 +1015,17 @@ resumed worker judges from its content whether it is a complete decision.
 
 A director row is not a card handoff: it is never claimed, never opens a reviewer lane, and
 does not consume a worker slot. The read is bounded by `--board-limit` and costs one
-`comment list` per `in_progress` card per poll. The ladder is the director skill's
-`references/decision-policy.md` — the single decision-authority source; a role skill or
-`--roles-dir` cannot override it.
+`comment list` per `in_progress` card per poll. The ladder is stated here: worker → director →
+human. A worker asks and waits; the director decides the collaboration questions and the
+handoff triage, records the decision and releases the card; the human owns E1–E5 and the
+reserved matters. The director skill ships that ladder as its **deployed contract**
+(`references/decision-policy.md`); a role skill or `--roles-dir` cannot override it.
 
 Questions are asked as one **decision round**: the frontier of decisions whose prerequisites
 are settled, numbered Q1..Qn with a recommendation each, one question string per card, with
-the asker looking up the facts. The complete protocol lives in the director skill's
-`references/decision-policy.md` §Decision rounds.
+the asker looking up the facts. The director skill ships the full round method as its
+**deployed contract** (`references/decision-policy.md` §Decision rounds); the frontier rule
+above is the design requirement.
 
 **The scan set.** `MEERKAT_TASKPANEL_AGENTS` is the union of the configured names and every
 discovered role's board name (plus the reviewer and `Worker`). The installed units carry no
@@ -2517,8 +2520,8 @@ this boundary: every agent kind gets one — see `docs/ops/install.md`.)
 - [`install.md`](ops/install.md) — the installer flags, including `--claim-unassigned` and the
   opt-in `--supervisor=enable|disable|status`.
 - [`../skills/meerkat-director/SKILL.md`](../skills/meerkat-director/SKILL.md) — the decision
-  hub and its protocol; its `references/decision-policy.md` is the single decision-authority
-  source.
+  hub; its `references/decision-policy.md` is the director's **deployed contract** for the
+  ladder and decision rounds this page designs.
 - [`../skills/meerkat-chat/SKILL.md`](../skills/meerkat-chat/SKILL.md) — the human's live
   console: progress, awaiting questions, acceptance, `loop doctor` and abnormal cards.
 - [`../skills/jobs/SKILL.md`](../skills/jobs/SKILL.md) and its four siblings — the role

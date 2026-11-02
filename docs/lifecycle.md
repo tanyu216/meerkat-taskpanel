@@ -6,12 +6,13 @@ Two flows share that machinery: a **flow-A** card is the work; a **flow-B** card
 independent review of one delivery of it. This page is the design of both flows and of the
 workflow channel that joins them.
 
-It is a design page, not a procedure. The agent-facing contract is
-[`status-lifecycle.md`](../skills/meerkat/references/status-lifecycle.md) (the state model) and
-[`review-workflow.md`](../skills/meerkat/references/review-workflow.md) (the reviewer's
-protocol); the acceptance model is [acceptance.md](acceptance.md); when the passes run is
-[scheduling.md](scheduling.md); the wait-time watcher is [sla.md](sla.md). This page states
-what each mechanism guarantees, where the guarantee lives, and why it is shaped that way.
+It is a design page, not a procedure. The state model and the reviewer's protocol are stated
+here; the installed board skill ships them as its **deployed contracts**
+([`status-lifecycle.md`](../skills/meerkat/references/status-lifecycle.md) and
+[`review-workflow.md`](../skills/meerkat/references/review-workflow.md)). The acceptance model
+is [acceptance.md](acceptance.md); when the passes run is [scheduling.md](scheduling.md); the
+wait-time watcher is [sla.md](sla.md). This page states what each mechanism guarantees, where
+the guarantee lives, and why it is shaped that way.
 
 The design stance, in four sentences:
 
@@ -566,8 +567,9 @@ reason and the review-card refusal → 4. acceptance authority → 5. children t
 5a. acceptance coverage → 6. the claim gate → 7. the delivery gate → 8. review evidence →
 9. the compare-and-swap (`VERSION_CONFLICT`).
 
-The full refusal table, with the HTTP status of each code, is
-[`status-lifecycle.md` §9](../skills/meerkat/references/status-lifecycle.md#9-refusals). The
+The installed board skill publishes the refusal table, with the HTTP status of each code, as
+its **deployed contract**
+([`status-lifecycle.md` §9](../skills/meerkat/references/status-lifecycle.md#9-refusals)). The
 point of the order is not the list but the property: the first refusal wins, so a caller gets
 the same actionable answer for the same state every time.
 
@@ -670,7 +672,7 @@ Rejected alternatives:
 | What happens after a delivery? | `src/core/domain/workflow.mjs` |
 | Who performs the writes? | `src/orchestrator/runners.mjs` |
 | When do the passes run? | [scheduling.md](scheduling.md) |
-| What does the agent do? | [`status-lifecycle.md`](../skills/meerkat/references/status-lifecycle.md), [`review-workflow.md`](../skills/meerkat/references/review-workflow.md), [`cli.md`](../skills/meerkat/references/cli.md) |
+| What does the agent do? | Its **deployed contracts**: [`status-lifecycle.md`](../skills/meerkat/references/status-lifecycle.md), [`review-workflow.md`](../skills/meerkat/references/review-workflow.md), [`cli.md`](../skills/meerkat/references/cli.md) |
 
 ## See also
 
