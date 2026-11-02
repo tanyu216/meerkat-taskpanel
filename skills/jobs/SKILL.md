@@ -199,6 +199,9 @@ links it, per the `meerkat` board skill's card and plan lifecycle.
 ## Hard limits
 
 - The frozen acceptance is the contract; scope or acceptance changes are questions.
+- An out-of-scope defect is reported, never fixed on your own initiative: a `kind=defect`
+  comment plus a question to the director, and hold for the answer (`issue wait`). The director
+  decides whether this card fixes it in passing or a fix card is created.
 - Keep artifacts inside the project with relative `design/...` paths; a filename never carries
   the task id. A prototype is not a delivery and never production code.
 - The root `GLOSSARY.md` and `docs/adr/` belong to Linus; product terms and ADRs live under

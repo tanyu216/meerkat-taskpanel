@@ -22,7 +22,7 @@
     "Do not accept your own work or move a card to `done`.",
     "Do not merge, rebase or push from the card.",
     "Do not widen the scope; a scope expansion is an E1 question.",
-    "An out-of-scope defect is a `kind=defect` comment plus a question to the director; the director creates the fix card."
+    "An out-of-scope defect is reported, never fixed on your own initiative: a `kind=defect` comment plus a question to the director, who decides whether this card fixes it in passing or a fix card is created."
   ],
   "self_check": "references/self-check.md",
   "reviewer_prompt": null

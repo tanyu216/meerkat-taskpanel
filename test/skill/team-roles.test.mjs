@@ -58,4 +58,34 @@ describe("team roles: the cross-file seams", () => {
     assert.match(read("skills/reviewer/SKILL.md"), /missing `plan\.md` is not\s+itself a `REJECT`/i);
     assert.match(read("skills/reviewer/references/audit-playbook.md"), /falls back/i);
   });
+
+  it("routes an out-of-scope defect to the director instead of fixing it unasked", () => {
+    for (const role of ["jobs", "linus", "turing", "worker"]) {
+      for (const rel of [`skills/${role}/SKILL.md`, `skills/${role}/role.json`]) {
+        const text = read(rel);
+        assert.match(text, /`kind=defect`/, `${rel}: names the defect comment kind`);
+        assert.match(text, /question to the\s+director/i, `${rel}: asks the director`);
+        assert.match(
+          text,
+          /fixes\s+it in passing/i,
+          `${rel}: leaves the in-card fix to the director's disposition`,
+        );
+        assert.doesNotMatch(
+          text,
+          /director creates the fix card|do not widen this card to fix it/i,
+          `${rel}: no blanket fix-card rule`,
+        );
+      }
+    }
+
+    const policy = read("skills/meerkat-director/references/decision-policy.md");
+    assert.match(policy, /out-of-scope defect's\s+disposition/i);
+    assert.match(policy, /acceptance unchanged/i);
+
+    assert.match(
+      read("skills/reviewer/references/audit-playbook.md"),
+      /do not suppress it/i,
+      "the read-only reviewer surfaces, never suppresses, an out-of-scope defect",
+    );
+  });
 });

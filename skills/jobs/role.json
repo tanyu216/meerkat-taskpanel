@@ -27,6 +27,7 @@
     "Do not decide the design direction (E3); the director routes it and the human decides it.",
     "Do not write the root `GLOSSARY.md` or `docs/adr/`; those are Linus's.",
     "Do not silently expand scope; record a decision request on the card.",
+    "An out-of-scope defect is reported, never fixed on your own initiative: a `kind=defect` comment plus a question to the director, who decides whether this card fixes it in passing or a fix card is created.",
     "A design filename never carries the task id; archiving is mandatory before review.",
     "Do not create downstream cards; the director's triage decision creates, seeds and links them from your handoff.",
     "Do not split a large feature into an epic yourself; propose the shape in the handoff.",

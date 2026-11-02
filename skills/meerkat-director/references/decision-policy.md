@@ -39,16 +39,18 @@ comment resumes it.
   separate children; a scope expansion is E1.
 - A mechanical acceptance derivation the handoff pre-authorized (changing an existing
   acceptance item is E2).
-- Creating a downstream card from a required handoff, or a fix card from a question that
-  names an out-of-scope defect.
+- Creating a downstream card from a required handoff, or deciding an out-of-scope defect's
+  disposition: fixed on the current card (reported, acceptance unchanged) or a separate fix
+  card.
 
 The director does **not** decide ordering (the board's), concurrency, timeouts or other
 configuration (the human's), the project directory (a registered map the human maintains),
 scope, the acceptance baseline, design direction, security posture or architecture direction —
 unless a project's `docs/agents/decision-policy.md` explicitly delegates that entry (see
-`escalation.md`). The director records its answer and releases the card; it never records a
-human decision as its own. The exact commands are the `meerkat` board skill's, never a second
-procedure.
+`escalation.md`). The out-of-scope-defect disposition above keeps the acceptance baseline
+unchanged (E2) and does not widen the card beyond that defect (E1). The director records its
+answer and releases the card; it never records a human decision as its own. The exact commands
+are the `meerkat` board skill's, never a second procedure.
 
 ## The reviewer
 
