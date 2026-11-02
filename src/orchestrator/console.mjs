@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * One read-only console cycle for a live `/meerkat-director` session.
+ * One read-only console cycle for a live `meerkat-chat` session.
  *
  * The live session is a manual operator view. This entry gives it the facts it
  * needs between ticks: who is driving the loop, and which

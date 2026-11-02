@@ -1,10 +1,12 @@
 # Decision policy — who may decide what
 
 This is the director's decision policy and the **single decision-authority source** for every
-deployment. A role skill routes work by its `shapes`; it cannot override this policy. The
-policy is guidance, not a board gate: the board enforces the one invariant that matters —
-only a human-authored comment resumes an `awaiting` card. Whether an answer is complete is
-judged from its content by the worker, not by the board.
+deployment. A role skill routes work by its `shapes`; it cannot override this policy. A project
+may refine only the E1–E5 map, through its own `docs/agents/decision-policy.md`, under the rules
+in *The human decides* below; nothing else can. The policy is guidance, not a board gate: the
+board enforces the one invariant that matters — only a human-authored comment resumes an
+`awaiting` card. Whether an answer is complete is judged from its content by the worker, not
+by the board.
 
 ## The ladder
 
@@ -41,7 +43,8 @@ derivation or change, and scope change — is a question to the director.
 
 The director does **not** decide ordering (the board's), concurrency, timeouts or other
 configuration (the human's), the project directory (a registered map the human maintains),
-scope, the acceptance baseline, design direction, security posture or architecture direction.
+scope, the acceptance baseline, design direction, security posture or architecture direction —
+unless a project's `docs/agents/decision-policy.md` explicitly delegates that entry (see below).
 The director records its answer and releases the card; it never records a human decision as
 its own. The exact commands are the `meerkat` board skill's, never a second procedure.
 
@@ -51,11 +54,43 @@ An accepted card that carries a required handoff owes follow-up work. The direct
 current delivery's `## Handoff`, creates one accountable card per deliverable, seeds each
 card's acceptance from the `Acceptance source`, and records `handoff_consumed_round` on the
 producer — or `handoff_declined_round` when no downstream card is needed. A proposed child
-that expands scope is E1: escalate, do not create it.
+that expands scope is E1: create it only if the map gives E1 to the director; otherwise
+escalate.
 
 ### The human decides — E1-E5
 
-| Code | Question is about |
+The table and the reserved matters below are the **default** decision map for every project.
+A project may refine them with its own policy file. The ladder above, the worker/director
+boundary, the round protocol and the recording rules are fixed: no project file, role skill,
+handoff or card may change them.
+
+**The project's policy file.** Before applying the defaults to a decision, resolve the project
+the card belongs to through the project map the `meerkat` board skill owns — never guess a
+directory — and read `<project directory>/docs/agents/decision-policy.md`.
+
+No such file: the defaults apply unchanged, and nothing is reported. The file may be a short
+pointer to the project's real rules; follow it. A file that exists but is unreadable, states no
+recognizable rule, or contradicts itself: apply the default for each affected item and record
+that the project policy was unusable, with the reason.
+
+The project file refines the defaults **item by item**, never wholesale:
+
+- An entry keyed by an E-code replaces that code's subject and, optionally, its decider
+  (`human` by default; `director` makes the code director-decided instead of escalated).
+- An entry keyed by a matter replaces that matter and names `human` or `director` as the
+  decider. `director` takes the matter out of the human's list; `worker` is never a decider.
+- A matter the file adds joins the human's list unless its entry names `director`.
+- Every item the file does not mention keeps its default.
+- The codes stay `E1`–`E5`: the project may change what a code means, but it cannot add a code,
+  and only a human-decided item enters `awaiting`.
+- The project file wins for the item it names. No other document's summary of the defaults
+  changes the director's reading; the project file is the one that does.
+
+Record which source decided: the default, or the project policy and its path. A reserved
+matter with no code of its own takes the code the project file assigns it; otherwise the
+closest default code.
+
+| Code | Question is about (default) |
 |---|---|
 | `E1` | scope |
 | `E2` | the acceptance baseline |
@@ -63,7 +98,7 @@ that expands scope is E1: escalate, do not create it.
 | `E4` | security / data safety |
 | `E5` | architecture direction |
 
-The director escalates anything it cannot decide, plus the reserved matters: public
+**Default reserved matters.** The director escalates anything it cannot decide, plus public
 contracts/API/CLI/schema/migrations, dependencies/licenses, destructive or irreversible
 operations, release/deploy, cross-project/cross-team changes, budget/time/concurrency policy,
 team/role changes, conflicting requirements, or missing information. When in doubt, escalate.
@@ -115,9 +150,9 @@ only when a defined role owns that shape.
 ### Asking through the ladder
 
 One round is one question per card. The worker records the whole round in one question and
-waits. The director answers every decidable item and escalates only the E1-E5 items; the human
-answers. The worker judges whether the round is complete and asks the next round as a new
-question. Never spread one round across several questions.
+waits. The director answers every decidable item and escalates only the items the decision map
+leaves to the human; the human answers. The worker judges whether the round is complete and
+asks the next round as a new question. Never spread one round across several questions.
 
 A single item (or each Qn inside a round) uses this shape:
 

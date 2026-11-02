@@ -15,9 +15,11 @@ only:
 - **Project documentation — the target project's own `docs/` and root files.** `docs/tech-spec.md`,
   `docs/architecture.md`, `docs/adr/`, `docs/agents/`, `docs/ops/`, `README.md`,
   `CONTRIBUTING.md`, `CHANGELOG.md`, `CLAUDE.md`, `AGENTS.md` and `GLOSSARY.md` are supplied by
-  the project and may be read at runtime. They are the authority for that project's facts, not
-  for this repository's design. Installed skills may discover `docs/agents/` and `docs/ops/`,
-  but they must not name this repository's maintainer-only files in them.
+  the project and may be read at runtime. A project may also supply
+  `docs/agents/decision-policy.md` to refine the director's default E1–E5 mapping. They are the
+  authority for that project's facts, not for this repository's design. Installed skills may
+  discover `docs/agents/` and `docs/ops/`, but they must not name this repository's
+  maintainer-only files in them.
 - **Deployed artifacts — `skills/**`, `src/**` and the installer scripts.** Copied to agent homes
   and run. A skill is self-contained after install: it may point at another installed skill or
   at the target project's own documents, never back into this repository's design docs.

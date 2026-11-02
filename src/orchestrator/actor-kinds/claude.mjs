@@ -8,7 +8,7 @@
  * inherit the project directory.
  *
  * The adapter never uses `--bare`: it would skip skill discovery, including the
- * command-only `meerkat-director` skill a human can invoke.
+ * model-invocable `meerkat-chat` console a human uses.
  */
 
 import { spawn } from "node:child_process";

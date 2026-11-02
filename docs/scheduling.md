@@ -1020,7 +1020,10 @@ does not consume a worker slot. The read is bounded by `--board-limit` and costs
 human. A worker asks and waits; the director decides the collaboration questions and the
 handoff triage, records the decision and releases the card; the human owns E1–E5 and the
 reserved matters. The director skill ships that ladder as its **deployed contract**
-(`references/decision-policy.md`); a role skill or `--roles-dir` cannot override it.
+(`references/decision-policy.md`); a role skill or `--roles-dir` cannot override it. The
+contract's E1–E5 mapping and reserved-matters list are defaults: a project's own
+`docs/agents/decision-policy.md` may refine them item by item, but the ladder itself is not
+refinable.
 
 Questions are asked as one **decision round**: the frontier of decisions whose prerequisites
 are settled, numbered Q1..Qn with a recommendation each, one question string per card, with
