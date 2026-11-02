@@ -71,7 +71,7 @@ review, then the loop closes on `APPROVE` (the fallback when the mode is omitted
 means an independent review, then a person closes after it finishes. Before passing
 `--acceptance-mode`, look for the project's own selection rules: resolve the project working
 directory with `taskctl project dir <id> --json`, then read
-`<project-dir>/docs/acceptance-mode.md` when it exists. An explicit instruction from the human
+`<project-dir>/docs/agents/acceptance-mode.md` when it exists. An explicit instruction from the human
 wins over that document. If the file, the directory or the map is absent, use the three
 meanings above; never invent a project default or store one on the project row.
 
@@ -170,7 +170,7 @@ The report must **cover the snapshot**: every item appears by text; `met` or `no
 
 The mode is resolved once, at creation: `--acceptance-mode off|auto|human`; omitted, it falls
 back to `auto`. There is no project default — the create section explains the project's
-`docs/acceptance-mode.md`. An `off` card may go straight from `in_progress` to `done`; `auto`
+`docs/agents/acceptance-mode.md`. An `off` card may go straight from `in_progress` to `done`; `auto`
 and `human` are both reviewed; the loop accepts an `auto` card on `APPROVE`, and a person
 closes a `human` card after its review finishes. An epic is reviewed against its children and
 rollup and closed only after an `APPROVE`. An agent may only tighten a mode
@@ -180,6 +180,8 @@ rollup and closed only after an `APPROVE`. An agent may only tighten a mode
 ## Containers: when the card is an epic
 
 An epic exists only where someone named one. Splitting is a scope decision: it belongs to the `meerkat-director` (an out-of-scope expansion to the human, `E1`), so a worker that finds several deliverables writes an agent `question` comment describing the pieces, keeps the card `in_progress`, and **holds** with `issue wait`. A title and description naming the **sum** of the work is the container; naming **one deliverable** makes it a child.
+
+**Resolve the project's splitting rule first.** Before deciding the container, resolve the project working directory with `taskctl project dir <id> --json`, then read `<project-dir>/docs/agents/epic-cards.md` when it exists. An explicit instruction from the human wins over that document; if it does not exist, these board rules are the whole answer.
 
 **A child is a deliverable, not a layer.** Ask four questions of every proposed child:
 

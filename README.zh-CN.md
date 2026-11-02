@@ -97,7 +97,7 @@ meerkat-taskpanel/
 ├── skills/                       # meerkat（看板）、meerkat-director（决策）、
 │                                 #   meerkat-chat（人的实时对话台）、
 │                                 #   jobs/linus/turing/reviewer/worker（角色）、
-│                                 #   setup-meerkat（安装/修复 + 迁移；复制给主 kind）
+│                                 #   setup-meerkat（六个轮次；复制给主 kind）
 ├── .claude-plugin/               # marketplace + board 插件清单（插件根 = 仓根）
 ├── .pi/                          # Pi 扩展（由 package.json 的 `pi` 字段声明）
 ├── design/                       # 设计文档：DESIGN / BLOCKS、prototype/、brand/、assets/
@@ -172,7 +172,7 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 `meerkat-director`、`meerkat-chat`、`setup-meerkat` 与角色 skill 不走 marketplace 分发。`install.sh` 把它们装到**主 kind**——显式 `--supervisor=enable` 指定的 kind（若指定），否则是 `--target` 顺序里第一个 `claude|codex|pi`（`all` → claude）；升级时角色会在已承载它的 kind 上刷新。`--target openclaw` 目前只装看板 skill；OpenClaw 的 supervisor 支持列在[路线图](#路线图)里。见 [supervisor 与 director](#supervisor-与-director)。
 
-**`setup-meerkat`** 就是 `/setup-meerkat` 命令。它会探测已安装的部分、补齐缺失、提供 Matt Pocock issue-tracker 集成、按请求把角色 skill 从一个 agent 平台迁到另一个，并把项目的决策权指针初始化到 director。`install.sh` 把它复制到主 kind 的 skill 目录（例如 codex 为主时是 `~/.codex/skills/setup-meerkat`）。其他 agent kind（包括 OpenClaw）可以从共享 bundle 就地读到；为 OpenClaw 提供专门支持列在[路线图](#路线图)里。
+**`setup-meerkat`** 就是 `/setup-meerkat` 命令。它把六种能力做成六个按序执行的轮次：安装与升级（`taskctl`、本地 `taskd` 与 agent 包）、配置冲突修复与参数优化、director 在 `docs/agents/` 下的项目规则、meerkat 的项目规则与由 `init` 写出的项目指令入口、角色在 agent 平台间的放置与迁移、以及从自带模板创建一个新角色。`install.sh` 把它复制到主 kind 的 skill 目录（例如 codex 为主时是 `~/.codex/skills/setup-meerkat`）。其他 agent kind（包括 OpenClaw）可以从共享 bundle 就地读到；为 OpenClaw 提供专门支持列在[路线图](#路线图)里。
 
 角色 skill 没有 roles root：每个角色从承载它的 agent kind 的 `skills/` 树里被发现，**安装位置就是路由**。`/setup-meerkat` 只在用户要求时把角色复制到另一个 kind，且绝不删除用户没点名的角色。
 

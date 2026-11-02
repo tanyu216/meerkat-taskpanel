@@ -80,7 +80,7 @@ function tree(dir) {
   return files.sort();
 }
 
-describe("skill frontmatter and assets", () => {
+describe("skill frontmatter and the six-round shape", () => {
   it("is a command-only skill with a substantial description", () => {
     const text = readFileSync(join(SKILL, "SKILL.md"), "utf8");
     assert.match(text, /^---\r?\n/);
@@ -90,192 +90,143 @@ describe("skill frontmatter and assets", () => {
     assert.ok(description.length >= 20);
   });
 
-  it("leaves the /meerkat task entry in the project's instruction file", () => {
+  it("runs six rounds in the fixed order, each with its own reference", () => {
     const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    const evals = JSON.parse(readFileSync(join(SKILL, "evals", "evals.json"), "utf8"));
-
-    assert.match(skill, /^## 4\. The project's task entry$/m, "the task entry is its own stage");
-    assert.match(skill, /\/init/, "the stage runs the host's init step before writing");
-    assert.match(
-      skill,
-      /init step[\s\S]{0,300}(never|does not)[\s\S]{0,120}task entry/i,
-      "the stage says an init draft does not carry the entry",
-    );
-    assert.match(skill, /CLAUDE\.md[\s\S]{0,200}AGENTS\.md/, "the entry lands in the host's file");
-    assert.doesNotMatch(
-      skill,
-      /<!--\s*\/?meerkat:task-entry\s*-->/,
-      "the skill ships requirements, not a managed block",
-    );
-
-    const stage4 = skill.slice(skill.indexOf("## 4."), skill.indexOf("## 5."));
-    for (const keyword of ["/meerkat", "card", "claim", "heartbeat", "deliver", "in_review", "done"]) {
-      assert.ok(stage4.includes(keyword), `the stage keeps the keyword ${keyword}`);
+    assert.match(skill, /## How a run is structured/);
+    const headings = [
+      "## 1. Install and upgrade",
+      "## 2. Configuration",
+      "## 3. The director's project rules",
+      "## 4. The board skill's project rules",
+      "## 5. Roles across agent platforms",
+      "## 6. Create a role",
+    ];
+    let previous = -1;
+    for (const heading of headings) {
+      const at = skill.indexOf(heading);
+      assert.notEqual(at, -1, `missing ${heading}`);
+      assert.ok(at > previous, `${heading} is out of order`);
+      previous = at;
     }
-    assert.match(stage4, /card scope/i, "the stage requires the card scope");
-    assert.match(stage4, /a role owns|role owns/i, "its default is the roles' remit");
-    assert.match(stage4, /question|lookup|one-off/i, "it names what stays out");
-    assert.doesNotMatch(
-      stage4,
-      /docs\/agents\/(?!decision-policy\.md)/,
-      "the stage stands alone — no tracker-integration artifact is required",
-    );
-    assert.match(stage4, /skills\/<role>\//, "the stage names the role-skill discovery path");
-    assert.match(stage4, /skill\.md/i, "it sends that session to the role's SKILL.md");
-    assert.match(stage4, /supervisor injects the handoff/i, "the handoff is the supervisor's");
-    assert.match(
-      stage4,
-      /installed[^.]{0,40}authoritative/i,
-      "the installed copy wins over the template it was seeded from",
-    );
-    assert.match(stage4, /decision rights/i, "the entry carries the decision-rights section");
-    assert.match(stage4, /worker\s*→\s*director\s*→\s*human/, "the ladder is stated");
-    assert.match(stage4, /E1[–-]E5/, "the escalation classes are named");
-    assert.match(stage4, /decision-policy\.md/, "it points at the installed policy");
-    assert.match(
-      stage4,
-      /never copy|pointer, never a copy|not a copy/i,
-      "it writes a pointer, not a second copy of the policy",
-    );
-
-    assert.match(stage4, /team contract/i, "the entry carries the team contract");
-    for (const marker of [
-      "stage_handoff=required",
-      "design_stage",
-      "product_change=none",
-      "review_gate",
-      "handoff_consumed_round",
-      "handoff_declined_round",
+    for (const reference of [
+      "references/install-upgrade.md",
+      "references/config.md",
+      "references/director-project.md",
+      "references/board-project.md",
+      "references/roles-platforms.md",
+      "references/new-role.md",
     ]) {
-      assert.ok(stage4.includes(marker), `the contract names the marker ${marker}`);
+      assert.ok(skill.includes(reference), `the skill points at ${reference}`);
+      assert.ok(existsSync(join(SKILL, reference)), `${reference} exists`);
     }
-    assert.match(stage4, /supervisor[^.]{0,80}(land|merge|clean)/i, "landing is the supervisor's");
-    assert.match(stage4, /reviewer is never routed/i, "the reviewer takes no ordinary card");
-    assert.match(
-      stage4,
-      /index, not a copy|not a copy/i,
-      "the contract is an index, not a second copy of the role workflows",
-    );
-    assert.doesNotMatch(
-      stage4,
-      /team-roles\.md/,
-      "the contract points at the installed role skills, not a removed repository document",
-    );
-
-    assert.match(
-      skill,
-      /second run|re-run|idempoten/i,
-      "the entry is stated once, not appended on every run",
-    );
-    const verify = skill.slice(skill.indexOf("## 7. Verify"));
-    assert.match(verify, /task entry/i, "the verify stage checks the entry is stated once");
-    assert.match(verify, /team contract/i, "it verifies the team contract landed");
-    assert.match(verify, /decision policy|decision-policy/i, "it verifies the director policy exists");
-
-    const team = evals.evals.find((entry) => entry.name === "standard-team");
-    assert.ok(
-      team.assertions.some((line) => line.includes("/meerkat")),
-      "the standard-team eval expects the task entry",
-    );
-    assert.ok(
-      team.assertions.some((line) => line.includes("role.json")),
-      "the standard-team eval expects a role.json per installed role skill",
-    );
+    assert.match(skill, /detection runs once|Detection runs once|Run detection once/i, "detection is once");
   });
 
-
-  it("runs the setup interview as one adversarial frontier round", () => {
+  it("treats the question list as a mandatory floor, not a ceiling", () => {
     const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    assert.match(skill, /## The setup interview/);
-    assert.match(skill, /frontier/);
-    assert.match(skill, /numbered round/i);
-    assert.match(skill, /"yes" accepts/);
-    assert.match(skill, /counterexample/i);
-    assert.match(skill, /shape none describes goes to \*\*Worker\*\*/i);
-    assert.match(skill, /frontier is empty[\s\S]*install/i);
-    assert.match(skill, /--yes.*never authorizes/);
+    assert.match(skill, /floor, not a ceiling/i);
+    assert.match(skill, /every\s+listed question is mandatory/i);
+    assert.match(skill, /follow-up/i, "unlisted follow-ups are required");
+    assert.match(skill, /frontier is empty/i, "the round closes on its own frontier");
+    assert.match(skill, /skipping is always\s+valid|skipping is always valid|skipped/i);
   });
 
-  it("asks which work becomes a card and writes the answer into the baseline", () => {
-    // A board that accepts every request stops being a signal, and a card costs a claim, a
-    // heartbeat, an acceptance and a report. The scope is a setup decision, so the interview
-    // must ask it and the baseline must carry the answer.
+  it("delegates the instruction entry to the init skill once and names no host file", () => {
     const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    const interview = skill.slice(skill.indexOf("## The setup interview"), skill.indexOf("## 2. Install"));
-
-    assert.match(interview, /card scope/i, "the frontier carries the card scope");
-    assert.match(interview, /recommended/i, "it is a question with a recommended answer");
-    assert.match(interview, /a role owns|role owns/i, "the default is the roles' remit");
-    assert.match(interview, /role skills'?\s+shapes|shapes assign/i, "the scope follows the role shapes");
-    assert.match(interview, /product design/i, "the default names product design");
-    assert.match(interview, /bug fix/i, "the default names bug fixes");
-    assert.match(interview, /not every|not everything|does not become|is not a card/i, "routine work stays out");
-
-    const stage4 = skill.slice(skill.indexOf("## 4."), skill.indexOf("## 5."));
-    assert.match(stage4, /card scope/i, "the stage requires the scope");
-    assert.match(stage4, /a role owns|role owns/i, "the default scopes cards to what a role owns");
-    assert.match(stage4, /question|lookup|one-off/i, "the stage names what stays out");
-    assert.match(
-      skill,
-      /rewrite[^\n]*scope|scope[^\n]*rewrite|answer[^\n]*block/i,
-      "a non-default answer rewrites the scope, it is not ignored",
-    );
-    assert.doesNotMatch(
-      skill,
-      /<!--\s*\/?meerkat:task-entry\s*-->/,
-      "no managed block backs the scope",
-    );
+    assert.match(skill, /Call the `init` skill for/, "the delegation is the direct instruction");
+    assert.match(skill, /\/meerkat/, "the entry points card work at the board skill");
+    assert.match(skill, /docs\/agents\//, "the entry points board rules at docs/agents");
+    assert.match(skill, /card scope/i, "the entry carries the card scope");
+    assert.match(skill, /call `init` once|call the `init` skill once/i, "one call, not per kind");
+    assert.match(skill, /never write an entry yourself|never write an entry/i, "setup never writes it");
+    assert.match(skill, /no `init` skill|has no `init` skill/i, "the missing-init path is named");
+    assert.match(skill, /report `skip`|reports? `skip`/i, "the missing-init outcome is skip");
   });
 
-  it("co-designs a custom team against card shapes", () => {
-    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    assert.match(skill, /counterexample/i);
-    assert.match(skill, /card shape/i);
-    assert.match(skill, /exactly one\s+accountable role/i);
-    assert.match(skill, /reviewer must be\s+independent/i);
-    assert.match(skill, /only a human comment resumes/i);
+  it("keeps the setup prose free of host instruction filenames", () => {
+    const files = ["SKILL.md", ...readdirSync(join(SKILL, "references")).map((name) => join("references", name))];
+    for (const file of files) {
+      if (!file.endsWith(".md")) continue;
+      const text = readFileSync(join(SKILL, file), "utf8");
+      assert.doesNotMatch(text, /CLAUDE\.md|AGENTS\.md/, `${file} names a host instruction file`);
+    }
   });
 
-  it("seeds an unassigned card to Worker instead of racing a role", () => {
-    // With routing at creation, an unassigned card has no role; claiming it as whichever
-    // role scans first would hide the gap. Worker is the default assignee for that card.
-    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    assert.match(skill, /MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes/, "the documented default is Worker");
-    assert.match(skill, /claimed as\s+`Worker`|claimed as `Worker`/i, "the policy is stated, not just the key");
-  });
-
-  it("keeps board verbs in the meerkat skill, not in the setup reference", () => {
+  it("keeps the board verbs in the meerkat skill and names the board skill", () => {
     const boardVerb = /\bissue (?:create|move|get|update|deliver|heartbeat|assign)\b|\bcomment add\b|\brelation add\b|\battachment (?:download|list)\b/;
     const text = readFileSync(join(SKILL, "SKILL.md"), "utf8");
     assert.doesNotMatch(text, boardVerb, "SKILL.md must not restate a board verb");
-    assert.match(
-      text,
-      /`meerkat`[^\n]*(board skill|card operation)/i,
-      "SKILL.md must point at the meerkat board skill",
-    );
-  });
-
-  it("distinguishes copying the policy from a project refinement", () => {
-    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    assert.match(skill, /never copy the policy into the project instruction file/i);
-    assert.match(skill, /docs\/agents\/decision-policy\.md/, "the refinement path is named");
-    assert.match(skill, /refinement/i, "a refinement is not a copy");
-  });
-
-  it("ships the role skills as standalone skills, never a team copy", () => {
-    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    assert.match(skill, /five \*\*standalone role skills\*\*|standalone\s+skills/i);
-    assert.match(skill, /Installation location is the routing/i);
-    assert.match(skill, /no roles\s+root, no manifest/i);
-    assert.doesNotMatch(skill, /assets\/team/, "the setup skill ships no team template");
-    for (const role of ["jobs", "linus", "turing", "reviewer", "worker"]) {
-      assert.ok(existsSync(join(ROOT, "skills", role, "SKILL.md")), `${role} is a standalone skill`);
+    assert.match(text, /`meerkat`[^\n]*(board skill|card operation)/i, "it points at the board skill");
+    for (const keyword of ["/meerkat", "card", "claim", "heartbeat", "deliver", "in_review", "done"]) {
+      assert.ok(text.includes(keyword), `the skill keeps the keyword ${keyword}`);
     }
+    assert.doesNotMatch(text, /<!--\s*\/?meerkat:task-entry\s*-->/, "no managed block");
   });
 
-  it("does not ship a roles/ directory inside the director skill", () => {
-    assert.equal(existsSync(join(ROOT, "skills", "meerkat-director", "roles")), false);
-    assert.equal(existsSync(join(ROOT, "skills", "meerkat-loop")), false);
+  it("writes the board project rules under docs/agents and no card-scope file", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const reference = readFileSync(join(SKILL, "references/board-project.md"), "utf8");
+    for (const name of [
+      "acceptance-mode.md",
+      "epic-cards.md",
+      "issue-tracker.md",
+      "triage-labels.md",
+      "domain.md",
+      "decision-policy.md",
+    ]) {
+      assert.ok(reference.includes(name), `board-project.md names ${name}`);
+    }
+    assert.match(reference, /no project default/i, "acceptance has no project default");
+    assert.match(reference, /outside the roles is outside the board/i, "the card scope has a rule");
+    assert.doesNotMatch(reference, /card-scope\.md/, "card scope is not a separate document");
+    assert.match(skill, /docs\/agents\//);
+  });
+
+  it("keeps the director policy a pointer, never a copy", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const reference = readFileSync(join(SKILL, "references/director-project.md"), "utf8");
+    assert.match(skill, /docs\/agents\/decision-policy\.md/);
+    assert.match(skill, /never copy it|never copy/i, "the policy is a pointer");
+    assert.match(reference, /E1[–-]E5/);
+    assert.match(reference, /only the items the user changed/i, "only changed items are written");
+    assert.match(reference, /never the full default table|never a wholesale copy/i);
+    assert.match(reference, /never copy the installed/i, "the installed policy is not copied");
+  });
+
+  it("routes every work shape to exactly one accountable role", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    assert.match(skill, /exactly one\s+accountable role/i, "one accountable role per shape");
+    assert.match(skill, /shape none describes goes to \*\*Worker\*\*/i, "Worker is the fallback");
+    assert.match(skill, /reviewer must be\s+independent/i, "the reviewer is independent");
+    assert.match(skill, /Outside the roles is outside the board/i, "outside work stays out");
+    assert.match(skill, /Installation location is the routing/i, "location is routing");
+    assert.match(skill, /no copy of their content/i, "the skill ships no role prose");
+  });
+
+  it("documents the platform question, its cost, and the explicit multi-kind command", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    assert.match(skill, /which kinds carry which role skills/i);
+    assert.match(skill, /one supervisor per machine/i);
+    assert.match(skill, /--supervisor-actor-kinds/);
+    assert.match(skill, /not\s+claimed at all/i, "the cost of a moved role is named");
+    assert.match(skill, /decline and keep one\s+platform/i);
+  });
+
+  it("ships a role template and keeps new roles in installed trees", () => {
+    const template = join(SKILL, "assets/role-template");
+    const roleJson = JSON.parse(readFileSync(join(template, "role.json"), "utf8"));
+    assert.equal(roleJson.schema, "meerkat-role");
+    assert.match(roleJson.id, /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/);
+    assert.ok(Array.isArray(roleJson.shapes) && roleJson.shapes.length > 0);
+    assert.match(roleJson.self_check, /^references\/.+\.md$/);
+    const templateSkill = readFileSync(join(template, "SKILL.md"), "utf8");
+    assert.match(templateSkill, /\nname: example\n/);
+    assert.doesNotMatch(templateSkill, /disable-model-invocation/);
+    const reference = readFileSync(join(SKILL, "references/new-role.md"), "utf8");
+    assert.match(reference, /--skills-dir/);
+    assert.match(reference, /only into an installed kind's skills tree|installed kind's skills tree/i);
+    assert.match(reference, /never the repository's `skills\/`|never the repository/i);
+    assert.ok(existsSync(join(SKILL, "scripts/scaffold-role.mjs")));
   });
 
   it("keeps the skill-creator eval prompts parseable", () => {
@@ -296,36 +247,46 @@ describe("skill frontmatter and assets", () => {
       "reviewer-catches-omission",
       "card-scope",
       "security-toolchain-belongs-to-linus",
+      "init-writes-requirements",
     ]) {
       assert.ok(names.has(name), `eval ${name} must exist`);
     }
+    const init = evals.evals.find((entry) => entry.name === "init-writes-requirements");
+    const text = init.assertions.join("\n");
+    assert.match(text, /CLAUDE\.md|AGENTS\.md/, "the eval names the host instruction file");
+    assert.match(text, /\/meerkat/);
+    assert.match(text, /docs\/agents\//);
+    assert.match(text, /card scope/i);
+    assert.match(text, /init/i);
   });
-
 
   it("mirrors the loop's actor-kind table", () => {
     assert.deepEqual([...LOOP_KINDS].sort(), Object.keys(AGENT_DIRS).sort());
   });
 
-  it("keeps the generated entry free of repository-only pages", () => {
-    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    const stage4 = skill.slice(skill.indexOf("## 4."), skill.indexOf("## 5."));
-    for (const name of [
-      "docs/scheduling.md",
-      "docs/lifecycle.md",
-      "docs/acceptance.md",
-      "docs/sla.md",
-      "docs/projects.md",
-      "docs/access.md",
-      "docs/events.md",
-      "docs/README.md",
-      "docs/im-integration.md",
-      "docs/maintenance/",
-      "docs/ops/install.md",
-      "docs/ops/observability.md",
-      "docs/ops/publishing.md",
-      "ARCHITECTURE.md",
-    ]) {
-      assert.ok(!stage4.includes(name), `stage 4 must not point at ${name}`);
+  it("keeps every reference free of repository-only pages", () => {
+    const files = ["SKILL.md", ...readdirSync(join(SKILL, "references")).map((name) => join("references", name))];
+    for (const file of files) {
+      if (!file.endsWith(".md")) continue;
+      const text = readFileSync(join(SKILL, file), "utf8");
+      for (const name of [
+        "docs/scheduling.md",
+        "docs/lifecycle.md",
+        "docs/acceptance.md",
+        "docs/sla.md",
+        "docs/projects.md",
+        "docs/access.md",
+        "docs/events.md",
+        "docs/README.md",
+        "docs/im-integration.md",
+        "docs/maintenance/",
+        "docs/ops/install.md",
+        "docs/ops/observability.md",
+        "docs/ops/publishing.md",
+        "ARCHITECTURE.md",
+      ]) {
+        assert.ok(!text.includes(name), `${file} must not point at ${name}`);
+      }
     }
   });
 });
@@ -789,5 +750,209 @@ describe("configure-env.mjs", () => {
     const forced = runJson(t, CONFIGURE, ["--file", file, "--key", "MEERKAT_TASKPANEL_CUSTOM", "--value", "Alice", "--force"]);
     assert.equal(forced.status, 0);
     assert.match(readFileSync(file, "utf8"), /MEERKAT_TASKPANEL_CUSTOM=Alice/);
+  });
+
+  it("removes every line for a key and preserves the rest", (t) => {
+    const dir = temp(t);
+    const file = join(dir, ".env.claude");
+    writeFileSync(file, "# keep me\nTASKCTL_HUMAN=Terry\nTASKD_URL=http://wrong\nTASKCTL_HUMAN=Sam\n");
+    const dry = runJson(t, CONFIGURE, ["--file", file, "--key", "TASKCTL_HUMAN", "--remove", "--dry-run"]);
+    assert.equal(dry.status, 0, dry.stderr);
+    assert.equal(dry.body.action, "removed");
+    assert.equal(dry.body.removed, 2);
+    assert.equal(dry.body.dry_run, true);
+    assert.match(readFileSync(file, "utf8"), /TASKCTL_HUMAN=Sam/, "a dry run writes nothing");
+
+    const removed = runJson(t, CONFIGURE, ["--file", file, "--key", "TASKCTL_HUMAN", "--remove"]);
+    assert.equal(removed.status, 0, removed.stderr);
+    assert.equal(removed.body.action, "removed");
+    const text = readFileSync(file, "utf8");
+    assert.doesNotMatch(text, /TASKCTL_HUMAN/, "every line for the key is gone");
+    assert.match(text, /# keep me/);
+    assert.match(text, /TASKD_URL=http:\/\/wrong/);
+
+    const again = runJson(t, CONFIGURE, ["--file", file, "--key", "TASKCTL_HUMAN", "--remove"]);
+    assert.equal(again.status, 0);
+    assert.equal(again.body.action, "unchanged");
+
+    const withValue = runJson(t, CONFIGURE, ["--file", file, "--key", "TASKCTL_HUMAN", "--remove", "--value", "Terry"]);
+    assert.equal(withValue.status, 2);
+
+    const set = runJson(t, CONFIGURE, ["--file", file, "--key", "TASKCTL_HUMAN", "--value", "Terry"]);
+    assert.equal(set.status, 0);
+    assert.equal((readFileSync(file, "utf8").match(/TASKCTL_HUMAN/g) ?? []).length, 1);
+  });
+});
+
+describe("audit-config.mjs — read-only conflict audit", () => {
+  const AUDIT = join(SKILL, "scripts", "audit-config.mjs");
+  const auditEnv = (home, root) => ({
+    HOME: home,
+    MEERKAT_TASKPANEL_CONFIG_DIR: root,
+    MEERKAT_TASKPANEL_ENV_FILE: join(root, ".env"),
+  });
+
+  it("reports mislaid loop keys, silent duplicates and the token pair without leaking a value", (t) => {
+    const home = temp(t);
+    const root = join(home, ".meerkat-taskpanel");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(
+      join(root, ".env"),
+      "TASKD_URL=http://localhost:9527\nMEERKAT_TASKPANEL_CONTINUE=yes\nTASKD_TOKEN=secret-value\nTASKD_TOKEN_FILE=/nope\n",
+    );
+    writeFileSync(
+      join(root, ".env.claude"),
+      "TASKD_URL=http://remote:9527\nTASKCTL_HUMAN=Terry\nTASKCTL_HUMAN=Sam\n",
+    );
+    const result = runJson(t, AUDIT, ["--home", home, "--actor-kind", "claude"], {
+      cwd: temp(t),
+      env: auditEnv(home, root),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(result.body, "JSON output");
+    const keys = result.body.conflicts.map((entry) => entry.key);
+    assert.ok(keys.includes("MEERKAT_TASKPANEL_CONTINUE"), "a loop key in the shared file");
+    assert.ok(keys.includes("TASKD_URL"), "a TASKD_ key in the per-kind file");
+    assert.ok(keys.includes("TASKCTL_HUMAN"), "the per-kind duplicate");
+    assert.ok(keys.includes("TASKD_TOKEN"), "the token pair");
+    assert.ok(!result.stdout.includes("secret-value"), "a secret value is never printed");
+    assert.ok(result.stdout.includes("<set>") === false, "the conflict report does not echo the value at all");
+  });
+
+  it("fails on conflict only when asked", (t) => {
+    const home = temp(t);
+    const root = join(home, ".meerkat-taskpanel");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, ".env"), "MEERKAT_TASKPANEL_CONTINUE=yes\n");
+    const plain = run(t, AUDIT, ["--home", home, "--json"], { cwd: temp(t), env: auditEnv(home, root) });
+    assert.equal(plain.status, 0);
+    const strict = run(t, AUDIT, ["--home", home, "--json", "--fail-on-conflict"], { cwd: temp(t), env: auditEnv(home, root) });
+    assert.equal(strict.status, 1);
+  });
+
+  it("reports a clean layered config as OK", (t) => {
+    const home = temp(t);
+    const root = join(home, ".meerkat-taskpanel");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, ".env"), "TASKD_URL=http://localhost:9527\n");
+    writeFileSync(join(root, ".env.claude"), "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\n");
+    const result = runJson(t, AUDIT, ["--home", home, "--actor-kind", "claude"], {
+      cwd: temp(t),
+      env: auditEnv(home, root),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.body.conflicts, []);
+  });
+
+  it("never writes", (t) => {
+    const home = temp(t);
+    const root = join(home, ".meerkat-taskpanel");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, ".env"), "TASKD_URL=http://localhost:9527\n");
+    const before = tree(home);
+    runJson(t, AUDIT, ["--home", home, "--actor-kind", "claude"], { cwd: temp(t), env: auditEnv(home, root) });
+    assert.deepEqual(tree(home), before);
+  });
+});
+
+describe("scaffold-role.mjs — render and validate a role skill", () => {
+  const SCAFFOLD = join(SKILL, "scripts", "scaffold-role.mjs");
+  const spec = (overrides = {}) => ({
+    id: "ops",
+    agent: "Ops",
+    lane: "worker",
+    title: "Operations",
+    summary: "Owns operations on a running system.",
+    shapes: ["operations on a running system", "release execution after a human decision"],
+    responsibilities: ["Run the deployment", "Report the outcome"],
+    boundaries: ["Do not accept your own work", "Do not merge"],
+    workflow: [{ title: "Prepare", body: "Read the card." }],
+    self_check: ["The gate is green"],
+    ...overrides,
+  });
+
+  function writeSpec(t, value) {
+    const path = join(temp(t), "spec.json");
+    writeFileSync(path, JSON.stringify(value));
+    return path;
+  }
+
+  it("writes a valid role into an installed skills tree, then reports unchanged", (t) => {
+    const home = temp(t);
+    const skills = join(home, ".claude", "skills");
+    mkdirSync(skills, { recursive: true });
+    const file = writeSpec(t, spec());
+    const first = runJson(t, SCAFFOLD, ["--spec", file, "--skills-dir", skills, "--json"], { cwd: temp(t), env: { HOME: home } });
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(first.body.status, "written");
+    const dir = join(skills, "ops");
+    const identity = JSON.parse(readFileSync(join(dir, "role.json"), "utf8"));
+    assert.equal(identity.schema, "meerkat-role");
+    assert.equal(identity.id, "ops");
+    assert.deepEqual(identity.lanes, ["worker"]);
+    assert.equal(identity.reviewer_prompt, null);
+    assert.ok(existsSync(join(dir, identity.self_check)));
+    assert.match(readFileSync(join(dir, "SKILL.md"), "utf8"), /\nname: ops\n/);
+    assert.doesNotMatch(readFileSync(join(dir, "SKILL.md"), "utf8"), /disable-model-invocation/);
+    const second = runJson(t, SCAFFOLD, ["--spec", file, "--skills-dir", skills, "--json"], { cwd: temp(t), env: { HOME: home } });
+    assert.equal(second.status, 0);
+    assert.equal(second.body.status, "unchanged");
+  });
+
+  it("refuses different content without --force and replaces with it", (t) => {
+    const home = temp(t);
+    const skills = join(home, ".claude", "skills");
+    mkdirSync(skills, { recursive: true });
+    runJson(t, SCAFFOLD, ["--spec", writeSpec(t, spec()), "--skills-dir", skills, "--json"], { cwd: temp(t), env: { HOME: home } });
+    const changed = writeSpec(t, spec({ summary: "A different summary." }));
+    const conflict = runJson(t, SCAFFOLD, ["--spec", changed, "--skills-dir", skills, "--json"], { cwd: temp(t), env: { HOME: home } });
+    assert.equal(conflict.status, 3);
+    assert.equal(conflict.body.status, "conflict");
+    const forced = runJson(t, SCAFFOLD, ["--spec", changed, "--skills-dir", skills, "--force", "--json"], { cwd: temp(t), env: { HOME: home } });
+    assert.equal(forced.status, 0);
+    assert.equal(forced.body.status, "written");
+  });
+
+  it("writes a reviewer prompt and the default-reviewer flag for a reviewer lane", (t) => {
+    const home = temp(t);
+    const skills = join(home, ".agents", "skills");
+    mkdirSync(skills, { recursive: true });
+    const file = writeSpec(t, spec({ id: "grace", agent: "Grace", lane: "reviewer", default_reviewer: true }));
+    const result = runJson(t, SCAFFOLD, ["--spec", file, "--skills-dir", skills, "--json"], { cwd: temp(t), env: { HOME: home } });
+    assert.equal(result.status, 0, result.stderr);
+    const identity = JSON.parse(readFileSync(join(skills, "grace", "role.json"), "utf8"));
+    assert.equal(identity.reviewer_prompt, "references/reviewer-prompt.md");
+    assert.equal(identity.default_reviewer, true);
+    assert.ok(existsSync(join(skills, "grace", "references", "reviewer-prompt.md")));
+  });
+
+  it("rejects a traversal id and a non-reviewer default reviewer", (t) => {
+    const home = temp(t);
+    const skills = join(home, ".claude", "skills");
+    mkdirSync(skills, { recursive: true });
+    const traversal = runJson(t, SCAFFOLD, ["--spec", writeSpec(t, spec({ id: "../escape" })), "--skills-dir", skills, "--json"], {
+      cwd: temp(t),
+      env: { HOME: home },
+    });
+    assert.equal(traversal.status, 2);
+    assert.equal(existsSync(join(home, ".claude", "escape")), false);
+    const badReviewer = runJson(t, SCAFFOLD, ["--spec", writeSpec(t, spec({ default_reviewer: true })), "--skills-dir", skills, "--json"], {
+      cwd: temp(t),
+      env: { HOME: home },
+    });
+    assert.equal(badReviewer.status, 2);
+  });
+
+  it("writes nothing in a dry run", (t) => {
+    const home = temp(t);
+    const skills = join(home, ".claude", "skills");
+    mkdirSync(skills, { recursive: true });
+    const result = runJson(t, SCAFFOLD, ["--spec", writeSpec(t, spec()), "--skills-dir", skills, "--dry-run", "--json"], {
+      cwd: temp(t),
+      env: { HOME: home },
+    });
+    assert.equal(result.status, 0);
+    assert.equal(result.body.status, "would-write");
+    assert.deepEqual(tree(skills), []);
   });
 });

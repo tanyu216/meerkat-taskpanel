@@ -1,6 +1,6 @@
 # Card acceptance mode for this project
 
-The board's three card modes and their guarantees are in [acceptance.md](acceptance.md).
+The board's three card modes and their guarantees are in [acceptance.md](../acceptance.md).
 This page is the **project-level selection guidance** the `meerkat` skill reads when it
 creates a card in this repository. It is not board data: nothing stores it, no card inherits
 it, and `taskd` never reads it.

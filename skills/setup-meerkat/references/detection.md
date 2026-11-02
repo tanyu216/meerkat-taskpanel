@@ -4,6 +4,18 @@
 `taskctl` only with `--version` (`--help`/`--version` are answered before identity and
 board resolution). All other probes use `TASKD_NO_AUTOSTART=1`.
 
+`scripts/audit-config.mjs` is the other read-only probe: it reads the env layers, the shim
+and the host kind's identity settings, and reports conflicts. It never writes and never
+prints a secret value. Its contract is in `config.md`.
+
+## Versions
+
+`checkout.version` is the source `package.json`; `taskctl.version` is the installed CLI;
+`server.health.version` is a local board's `/health`. Compare them as
+`major.minor.patch` numbers. `taskctl.source` says where the CLI came from (`path`, `server`,
+`shim`, `checkout`); a shim or checkout source with a local server tree is a stale-shim
+candidate, not an upgrade by itself.
+
 ## The board URL ladder
 
 1. `--url` — a pin; never probed or rewritten.

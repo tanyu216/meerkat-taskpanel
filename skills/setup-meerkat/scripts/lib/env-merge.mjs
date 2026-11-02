@@ -36,6 +36,42 @@ export function formatEnvValue(value) {
 }
 
 /**
+ * Remove every line for one key, preserving comments, blank lines and other keys.
+ *
+ * A mislaid key or a duplicated key is repaired by removal, not by `--force`: replacing
+ * every matching line with the same value would leave the duplicate in place.
+ *
+ * @param {string} text
+ * @param {string} key
+ * @returns {{action: "removed"|"unchanged", text: string, removed: number}}
+ */
+export function removeEnvKey(text, key) {
+  const target = String(key ?? "").trim();
+  if (target === "" || target.includes("=")) {
+    throw new Error("removeEnvKey needs a non-empty key without '='");
+  }
+  const source = String(text ?? "");
+  const lines = source === "" ? [] : source.split(/\r?\n/);
+  if (lines.length > 0 && lines.at(-1) === "") lines.pop();
+  let removed = 0;
+  const next = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) return true;
+    const equals = trimmed.indexOf("=");
+    if (equals <= 0) return true;
+    const lineKey = trimmed.slice(0, equals).trim().replace(/^export\s+/, "");
+    if (lineKey !== target) return true;
+    removed += 1;
+    return false;
+  });
+  return {
+    action: removed > 0 ? "removed" : "unchanged",
+    text: next.length === 0 ? "" : `${next.join("\n")}\n`,
+    removed,
+  };
+}
+
+/**
  * @param {string} text
  * @param {string} key
  * @param {string} value

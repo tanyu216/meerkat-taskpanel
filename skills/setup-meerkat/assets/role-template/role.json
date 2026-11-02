@@ -1,0 +1,26 @@
+{
+  "schema": "meerkat-role",
+  "id": "example",
+  "agent": "Example",
+  "native_agent": "example",
+  "lanes": ["worker"],
+  "title": "Example role",
+  "summary": "A sample role directory: copy its shape, not its name, when creating a custom role.",
+  "shapes": [
+    "example work: replace this line with the work shape the new role owns"
+  ],
+  "responsibilities": [
+    "Read the card and its brief; the frozen acceptance is the contract.",
+    "Write or adopt the plan, then audit it against the acceptance.",
+    "Execute the smallest correct change and run the self-check.",
+    "Deliver at in_review with the commit anchor, the acceptance mapping and the evidence."
+  ],
+  "boundaries": [
+    "Do not accept your own work or move a card to done.",
+    "Do not merge, rebase or push from the card.",
+    "Do not widen the scope; a scope expansion is an E1 question.",
+    "Do not create downstream or fix cards; the director's triage does."
+  ],
+  "self_check": "references/self-check.md",
+  "reviewer_prompt": null
+}
