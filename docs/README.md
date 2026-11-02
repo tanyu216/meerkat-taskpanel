@@ -19,7 +19,6 @@ operating procedure.
 | [contract.md](agents/contract.md) | The contract snapshots — the HTTP API (routes, error codes, wire fields) and the CLI surface (`taskctl` commands, flags, envelope keys): what each freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
 | [migration.md](agents/migration.md) | The append-only SQL schema gate, and the note recording the MCP integration's removal. |
 | [issue-tracker.md](agents/issue-tracker.md) | How this repository's work is tracked as cards: the `taskctl` workflow, the commands the engineering skills expect, and the conventions that differ from a hosted tracker. |
-| [team-roles.md](agents/team-roles.md) | The ownership matrix: the four layers (human, director, supervisor, roles), one accountable role per work shape, the decision authority, the handoff markers, the lifecycle seams and the known limits. |
 | [domain.md](agents/domain.md) | How the engineering skills consume this repository's domain documentation (`GLOSSARY.md`, ADRs, `design/`). |
 | [triage-labels.md](agents/triage-labels.md) | The five canonical triage roles and the label strings this repository uses for them. |
 
