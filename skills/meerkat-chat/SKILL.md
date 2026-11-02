@@ -114,18 +114,33 @@ watch` (that refreshes one card's brief).
 
 - **Scope is this register only.** `questions[]` and `pending_acceptance[]`; `loop doctor` stays
   a one-shot read or an answer to a direct question.
-- **The tick.** Read `taskctl loop console --json`, then wait on
-  `taskctl events follow --after <rev> --idle 10000`. The idle bound must stay below the hub's
-  15-second heartbeat — a larger value never fires. Give the command a wall-clock cap of about
-  75 seconds; a cap is a tick, not a failure. An event means re-read now; idle ticks re-read at
-  least every sixth one (about 60 seconds).
-- **Notify only.** List a card when it enters or changes, then wait. Never write, accept, claim,
-  move, heartbeat, deliver or comment on your own.
+- **The tick.** Wait on `taskctl events follow --after <rev> --idle 10000`; read
+  `taskctl loop console --json` for the baseline, on a signal, on the sixth idle tick or about
+  every 60 seconds (whichever comes first), and after a degraded read. The idle bound must stay
+  below the hub's 15-second heartbeat — a larger value never fires. Cap the call at about
+  30 seconds with the runtime's command timeout (`events follow` has no timeout flag); a cap is
+  a tick, not a failure.
+- **Notify only.** Announce only the changed set (new, changed, resolved); never reprint the
+  whole queue on a tick, and announce nothing on a quiet one. Never write, accept, claim, move,
+  heartbeat, deliver or comment on your own.
+- **One session.** Prefer a dedicated session for a long watch, and never run the watch beside
+  another task. If the human asks for another task, suspend the watch first and resume it after,
+  from a fresh read, only if they still want it. A quick question about the queue is answered
+  inline and the watch continues.
+- **Never talk over the human.** If their message arrives while a tick is out, answer them
+  first; announce the change after that answer is complete, never in the middle of it.
+- **No delegation, no background.** Never delegate the watch to a subagent or a background
+  script: a subagent cannot receive the human's reply or record it, and a second follower is a
+  second poller. A subagent may take one one-shot read, not `events follow`. Unattended
+  notification is the supervisor's `loop patrol` / `loop subscribe` / SLA path, never this
+  skill's; never start one of those.
 - **Identity.** `loop console` is local; `events follow` needs the session's actor identity
   (`--actor-kind` or `TASKCTL_ACTOR_KIND`). It is a read: never `--as-human`.
-- **Dedupe, and fail honestly.** Do not re-raise a shown item. A failed console read (`ok:false`
-  or non-empty `errors[]`) resolves nothing. If `events follow` cannot open, say the watch is
-  degraded and fall back to the console re-read.
+- **Dedupe, and fail honestly.** Do not re-raise a shown item. The snapshot lives in the
+  conversation, not a state file: after a compaction or a lost snapshot, re-read the console and
+  announce the current queue once, saying the watch lost its place. A failed console read
+  (`ok:false` or non-empty `errors[]`) resolves nothing. If `events follow` cannot open, say the
+  watch is degraded and fall back to the console re-read.
 - **The human's answer is §3 / §4.** When they reply, stop watching, apply the existing
   show-then-write flow unchanged, then resume from a fresh read if they still want it.
 

@@ -250,6 +250,34 @@ describe("chat skill: watch mode on the waiting queue", () => {
     assert.match(watch, /acceptance\.md/);
     assert.match(watch, /show-then-write/i);
   });
+
+  it("caps a busy stream at about 30 seconds while keeping the 60-second safety read", () => {
+    const watch = watchText();
+    // `events follow` has no timeout flag; the cap is the runtime's, not a wrapper.
+    assert.match(watch, /wall-clock cap of about 30 seconds/i);
+    assert.match(watch, /no timeout flag|runtime's command timeout/i);
+    assert.match(watch, /60[- ]?(s|sec|seconds?)/i);
+    assert.match(text, /30 seconds/i);
+  });
+
+  it("owns one session, answers first, and never delegates or keeps state", () => {
+    const watch = watchText();
+    assert.match(watch, /dedicated session/i);
+    assert.match(watch, /suspend the watch/i);
+    assert.match(watch, /never talk over the human/i);
+    assert.match(watch, /answer them first/i);
+    assert.match(watch, /never delegate the watch to a subagent or a background script/i);
+    assert.match(watch, /one-shot\s+read/i);
+    assert.match(watch, /loop patrol/);
+    assert.match(watch, /loop subscribe/);
+    assert.match(watch, /never start one of those/i);
+    assert.match(watch, /lost its place/i);
+    assert.match(watch, /announce the current queue once/i);
+    assert.match(watch, /never add a state file/i);
+    assert.match(text, /dedicated session/i);
+    assert.match(text, /never delegate the watch/i);
+    assert.match(text, /lost its place/i);
+  });
 });
 
 describe("chat skill: boundaries", () => {

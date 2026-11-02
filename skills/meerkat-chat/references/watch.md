@@ -26,19 +26,52 @@ identity (`--actor-kind`, or `TASKCTL_ACTOR_KIND` from the session). It is a rea
 `--as-human`. If no identity resolves, skip the event clock, keep reading the console, and say
 the watch has no live clock.
 
+## The session
+
+A watch is foreground and belongs to one conversation. Prefer a dedicated session for a long
+watch; while it runs, the watch owns the session.
+
+- If the human asks for another task, suspend the watch first: let the tick in flight finish or
+  time out, then start no new tick. Do the task, then resume from a fresh console read only if
+  they still want the watch. A quick question about the queue is not another task: answer it and
+  keep watching.
+- Never talk over the human. If their message lands while a tick is in flight, finish the answer
+  they are waiting for first; announce the changed set at the turn boundary afterwards. Do not
+  prefix, splice or interrupt a reply with an announcement. Answer them first; the announcement
+  waits.
+- The watch ends with the turn or the session. It never survives as a background process.
+
+## No delegation
+
+Never delegate the watch to a subagent or a background script. A subagent may take one one-shot
+read (`taskctl loop console --json` or `taskctl issue get <ref> --json`) and return it, but it
+cannot hold the watch: it never receives the human's reply and cannot record it. `events follow`
+is not a one-shot read.
+
+Unattended notification is the supervisor's existing path: `loop patrol`, `loop subscribe` and
+the SLA detectors, not this skill. Never start one of those, a daemon or a second follower: the
+repository forbids a second poller.
+
 ## The tick
 
+The tick is one `events follow` call. The console read is the baseline and the periodic safety
+read, not part of every tick.
+
 ```bash
+# baseline; repeat on a signal, the sixth idle tick, ~60 seconds, or a degraded read
 taskctl loop console --json
+# the tick: one follow per turn, capped at about 30 seconds by the runtime
 taskctl events follow --after <rev> --idle 10000
 ```
 
 - The idle bound must be below the hub's 15-second heartbeat: a larger value (the 45-second
   default, or 60000) never fires, because every heartbeat resets it.
-- Give the command a wall-clock cap of about 75 seconds. A busy stream can otherwise hold the
-  turn forever; a cap is an idle tick, not a failure.
+- Give the command a wall-clock cap of about 30 seconds. `events follow` takes no timeout flag;
+  use the runtime's command timeout, never a wrapper script. A cap is an idle tick, not a
+  failure.
 - `event`: debounce one beat, then re-read the console.
-- `idle`: count it; re-read at least every sixth idle tick (about 60 seconds).
+- `idle`: count it; re-read at least every sixth idle tick or about every 60 seconds, whichever
+  comes first. A capped call counts as an idle tick.
 - `shutdown` / `eof`: re-read, then restart with the last `event.id`.
 - `error`, no `open`, or an unreachable hub: say the watch is degraded, fall back to the console
   re-read, and do not claim a live stream.
@@ -60,6 +93,15 @@ announce:
 Announce each item once, oldest first, with its ref, state and next act. Announce an empty set
 once and then stay silent; do not exit because the queue emptied. One card is worked at a time
 after the announcement.
+
+**Cost.** Announce only the changed set. Never reprint the whole queue on a tick; a quiet tick
+announces nothing. Keep the snapshot to the three keys, not the payloads. Each tick still costs
+a tool call, so wait on the clock instead of looping the console.
+
+**A lost snapshot.** The snapshot lives in the conversation, not a state file. After a
+compaction, a new session, or any time you cannot see the last snapshot, re-read the console and
+announce the current queue once, prefixed with "the watch lost its place". Rebuild the snapshot
+from that read. Do not claim a resolution you did not observe, and never add a state file.
 
 ## The identities
 
@@ -89,10 +131,11 @@ When `asked_at` is absent, key on the question text itself; do not compute a has
 - A console read with `ok:false` or a non-empty `errors[]` is a failed read: report it, resolve
   nothing, and keep the last good snapshot.
 - Three consecutive failed reads: say the watch is degraded and stop claiming it is live.
-- Stop when the human says stop, changes topic, or asks a direct question. Resume only on a
-  fresh request.
+- Stop when the human says stop or changes topic, or asks for another task. Suspend before
+  starting that task; resume from a fresh read only when they still want the watch. A quick
+  question about the queue is answered inline and the watch continues.
 - The watch is foreground: it ends when the runtime ends the turn or the session. It is not a
-  daemon, and it must not be backgrounded.
+  daemon, it must not be backgrounded, and it is never delegated.
 
 ## Handoff
 
@@ -109,8 +152,10 @@ the human still wants it.
 ## Never
 
 Never write, accept, claim, move, heartbeat, deliver, cancel or comment on your own. Never
-manage, stop or restart a daemon or the hub. Never run `loop tick` / `loop poll` / `loop run`.
-Never present a failed or degraded read as a live queue.
+delegate the watch to a subagent or a background script, and never start `loop patrol`,
+`loop subscribe`, a daemon or a second follower. Never manage, stop or restart a daemon or the
+hub. Never run `loop tick` / `loop poll` / `loop run`. Never present a failed or degraded read
+as a live queue.
 
 ## More
 
