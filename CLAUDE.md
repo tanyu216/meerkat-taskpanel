@@ -2,325 +2,158 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Project guidance for Claude Code. Auto-loaded; keep it accurate and non-duplicative —
-`README.md`, `CONTRIBUTING.md` and `docs/` remain the single source of truth for prose.
+Auto-loaded. Keep it accurate and non-duplicative: `README.md`, `CONTRIBUTING.md` and `docs/`
+own the prose.
 
 ## Overview
 
-Meerkat TaskPanel is a **local-first task board for AI-agent teams**: agents claim work, send
-heartbeats, report progress and roll results up a dependency tree, while humans watch the
-same state on a kanban board (deliberately read-only). Persistence is a single SQLite
-database (Node's built-in `node:sqlite`) — no external services. Node **>= 22**,
-**zero runtime dependencies**, MIT, public repo.
+Meerkat TaskPanel is a local-first task board for AI-agent teams: agents claim work, send
+heartbeats, report progress and roll results up a dependency tree, while humans watch the same
+state on a read-only kanban board. Persistence is one SQLite database (`node:sqlite`); there are
+no external services. Node >= 22, zero runtime dependencies, MIT.
 
 ## Design principles
 
-Six principles bind every agent here, not only the architect. A change that violates one is
-recorded as an explicit decision with its cost, never a silent drift.
+Six principles bind every agent, not only the architect:
 
-- **Simple** — one obvious way to do each thing; no abstraction before a second caller. A
-  newcomer follows one primary use case end to end without a diagram.
-- **Reliable** — every dependency's failure mode is named: fail-fast configuration, timeouts,
-  idempotency, health and observability.
+- **Simple** — one obvious way per task; no abstraction before a second caller.
+- **Reliable** — every dependency's failure mode is named: fail-fast config, timeouts,
+  idempotency, health.
 - **Efficient** — no optimization without a measured number and a stated bound.
-- **Elegant** — one source of truth, consistent naming, boring technology, least surprise: the
-  tree, the contract and the names tell one story.
-- **Not over-engineered** — every abstraction and dependency names its forcing function (what
-  breaks if you delete it); the smallest skeleton that proves the architecture.
+- **Elegant** — one source of truth, consistent naming, boring technology, least surprise.
+- **Not over-engineered** — every abstraction names what breaks if you delete it.
 - **High cohesion, low coupling** — one owner and one reason to change per module; dependencies
-  point one way; no reach-through or shared mutable state.
+  point one way.
 
-When they conflict: **simplicity and reliability win; efficiency needs a measurement; elegance
-constrains how, it never adds machinery.** A boundary is not traded for speed — crossing one is
-a recorded decision.
+When they conflict: simplicity and reliability win; efficiency needs a measurement; elegance
+constrains how and never adds machinery. A violated principle is a recorded decision with its
+cost, never a silent drift.
 
 ## How to work here
 
-**Work by the role skill the card names.** A role is a standalone skill under `skills/<role>/`
-(`jobs`, `linus`, `turing`, `reviewer`, `worker`), discovered from each installed agent kind's
-skills tree. Before starting work a role owns, read that role's `SKILL.md` and follow its
-workflow: Jobs takes product design and UI, Linus architecture, implementation, refactors,
-bugs and the security toolchain, Turing test design, regression and performance, Reviewer
-independent review, and Worker the fallback work no role owns. The installed copy is
-authoritative. Decisions are the `meerkat-director` skill's: assignment, worker questions,
-handoff triage, downstream/fix card creation and E1–E5 escalation; no separate project session
-handles them. A human's live conversation about
-the board — progress, awaiting questions, acceptance, `loop doctor` — is the `meerkat-chat`
-skill's. The card is still created and delivered through `/meerkat`. Role workflows name the card's branch but not where it lives:
-isolate before the first edit per **Branch & worktree workflow** below — a parallel task
-works in `.worktrees/<slug>`, never in the primary checkout.
-
-**Decompose before executing.** Any request that is more than a couple of tool calls gets a
-todo list first (TodoWrite): one item per independently verifiable step — a test that must go
-green, a file to change, a gate to run — kept current while you work (exactly one
-`in_progress`). Write the list before editing; if the decomposition changes, rewrite the list
-rather than drifting along with a stale plan. A step is done when its own check is green, not
-when the edit lands.
-
-**Default to TDD.** Failing test first (red), smallest change that makes it pass (green),
-then refactor. Prefer extending the test file that already owns the behaviour — `test/contract/**`
-for invariants, `test/core/**`, `test/server/**`, `test/concurrency/**`, `test/web/**`,
-`test/install/**` — over adding a parallel file; for the browser/DOM layer add legs to
-`test/web/blocks.dom.test.mjs` rather than a second browser file, which flakes the shared
-harness. Turn a reported bug into a red test before fixing it.
-
-**Then verify in the right place.** The host-static checks below are the iteration loop. The
-authoritative gate is `npm run verify:docker`, and it runs from `.githooks/pre-push` on every
-branch push (and again in CI), so a merge is not a container-gate moment any more — push the
-result and the hook bakes it. The gate bakes the **working tree** at build start, so **commit
-before you push**; a dirty tracked tree is announced and included. Run it by hand only when you
-want the verdict before committing or the hook is not installed; `SKIP_CONTAINER_VERIFY=1 git
-push …` skips it for one push.
-
-**Finish by confirming with the user.** Do not declare a task complete, integrate it, or
-delete anything on your own initiative. Confirm first, then integrate and clean up per the
-section below.
+- Work the card by the role skill it names: read that role's `SKILL.md` and follow it, the
+  installed copy is authoritative. Card operations go through `/meerkat`.
+- Decompose first when a request is more than a couple of tool calls; a step is done when its own
+  check is green, not when the edit lands.
+- TDD by default: failing test first, then the smallest change. Extend the test file that already
+  owns the behaviour — `test/contract/**` for invariants, `test/core/**`, `test/server/**`,
+  `test/concurrency/**`, `test/web/**`, `test/install/**`. Add browser legs to
+  `test/web/blocks.dom.test.mjs`; a second browser file flakes the shared harness.
+- Iterate with the host-static checks (`npm run check`); `npm run verify:docker` is the
+  authoritative gate and runs from `.githooks/pre-push` on every branch push. It bakes the
+  **working tree** at build start, so **commit before you push**; `SKIP_CONTAINER_VERIFY=1`
+  skips it for one push.
+- Report, then wait: do not call the task complete, integrate it or delete anything without the
+  user's confirmation.
 
 ## Branch & worktree workflow
 
-**`dev` is the only development branch** — never invent a second long-lived development
-branch, and branch parallel work off `dev`. `main` is the release line: it advances by
-merging `dev`, and only after the user has confirmed.
+`dev` is the only development branch; branch parallel work off it. `main` is the release line and
+advances only by merging `dev`, after the user confirms.
 
-- **A parallel task gets a worktree, not another branch in this checkout:**
-  `git worktree add .worktrees/<slug> -b <branch> dev`. One worktree per task; the primary
-  checkout stays where it is, and the tree lives under the checkout's gitignored
-  `.worktrees/` (also dockerignored, so it never enters the image's build context). Before
-  creating one, follow the `using-git-worktrees` skill's Step 0 (isolation detection);
-  `.worktrees/` here is the declared preference that skill honors over its own default.
-  (The loop creates this pair itself for every card in a git project, per round:
-  `.worktrees/<ref>[-r<round>]` on `lane/<ref>[-r<round>]`, based on the project's declared
-  `base_ref` (else its current branch). Acceptance merges the lane branch back into the
-  project's current branch before the card reaches `done`; cleanup removes the worktree,
-  then the merged branch. Older `lane/<ref>-segN` worktrees live beside the checkout and you
-  will find them in `git worktree list`.)
-- **Report, confirm, then integrate.** When the work is done, say so and wait — the user
-  decides whether it lands. Nothing here is self-closing.
-- **On confirmation, land it into `dev` and clean up** (a worktree *and* any branch that is
-  not `dev`):
-  1. commit every path you touched first (`git commit -- <path>`): a worktree with
-     uncommitted changes cannot be removed without `--force`, and the container gate at
-     `pre-push` bakes the working tree — commit first;
-  2. merge into `dev` — `git checkout dev && git merge --no-ff <branch>` — and resolve
-     conflicts against `dev`; **do not edit `CHANGELOG.md` here** — it is written later, at
-     the `dev` → `main` merge;
-  3. remove the worktree, *then* delete the branch — `git worktree remove <path>` followed by
-     `git branch -d <branch>` from the primary checkout. The order is load-bearing: git
-     refuses to delete a branch that is still checked out in a worktree. Use `-d`, not `-D`
-     (which would silently discard an unmerged branch); if `-d` refuses, the merge did not
-     land and that is the finding;
-  4. re-run the host-static gate on the integration result (`npm run check`) — a merge produces
-     a new tree, and green on the branch does not transfer to it. The container gate is no
-     longer part of the merge step: it runs at `pre-push` when the result is pushed.
-
-The log contains `lane/… → main` merges from before this rule; treat the section above as the
-policy going forward.
+- **Isolate a parallel task in a worktree**, never a second branch in the primary checkout:
+  `git worktree add .worktrees/<slug> -b <branch> dev` (`.worktrees/` is gitignored and
+  dockerignored). Follow the `using-git-worktrees` skill's Step 0 first.
+- **Land only after confirmation**: commit every path you touched (`git commit -- <path>`), then
+  `git checkout dev && git merge --no-ff <branch>`, then `git worktree remove <path>` **before**
+  `git branch -d <branch>` (git refuses to delete a branch still checked out; use `-d`, never
+  `-D`), and re-run `npm run check` on the merged tree.
+- **Never edit `CHANGELOG.md` here.**
 
 ### CHANGELOG.md is written only on the release branch
 
-`CHANGELOG.md` is the release line's record, not a work log. Write it **only** on the
-release branch (`release/vX.Y.Z`, the PR `workflow_dispatch release-prep` opens to `main`)
-after the user has confirmed the release — that branch *is* the `dev` → `main` integration —
-and derive the entries from what that merge actually contains:
+`CHANGELOG.md` is the release line's record. Write it only on `release/vX.Y.Z` (the PR
+`workflow_dispatch release-prep` opens to `main`), after the user confirms the release, from what
+the merge contains: `git log --no-merges --reverse <last-release-tag>..dev` (first release:
+`main..dev`). `[Unreleased]` stays empty between releases; a version section on `main` is frozen
+(typo fixes only). `npm run release:bump <version> --changelog` creates an empty scaffold.
 
-```sh
-git log --no-merges --reverse <last-release-tag>..dev   # first release: main..dev
-git diff --stat <last-release-tag>..dev
-```
+## Non-obvious commands
 
-- Never add entries on a feature branch, in a worktree, or on `dev` itself. `[Unreleased]`
-  stays empty between releases.
-- A release merge writes (or updates) the `## [X.Y.Z] - YYYY-MM-DD` section from that diff.
-  Group the user-visible outcomes under Keep a Changelog's `Added` / `Changed` / `Removed` /
-  `Fixed`; no commit hashes, no card ids. Internal-only changes may be omitted.
-- Bump the version carriers in the same merge, then tag. The tag gate
-  (`scripts/verify/changelog.mjs`) still requires the matching section before a `vX.Y.Z`
-  tag is cut — the timing rule above is what makes that section exist.
-- Once a version section is on `main`, treat it as frozen (the same spirit as migrations);
-  only typo fixes are allowed.
-- `npm run release:bump <version> --changelog` creates an **empty** scaffold; filling it from
-  the diff is part of that same release merge.
-
-## Commands
+The ordinary scripts live in `package.json`. Only these invocations cannot be inferred:
 
 ```bash
-node --test test/core/index.test.mjs         # one file
-node --test "test/contract/**/*.test.mjs"    # one directory (a bare dir arg does NOT work here)
-node scripts/verify/contract.mjs             # API contract snapshot; --update refreshes it, drift exits 1
-node scripts/verify/cli-contract.mjs         # CLI surface snapshot (commands/flags/envelope); --update
-node scripts/verify/route-request.mjs        # declared request schema vs what the handler reads; --print
-node src/server/main.mjs                     # start taskd directly (taskctl also auto-starts it)
-bash install.sh --target claude|openclaw|codex|pi|server|all   # --prefix --link --force --dry-run --skip-web-build
-npx meerkat-taskpanel [install] [--target …] [--no-server] [--prefix <home>]   # defaults to all: server + every agent
+node --test test/core/index.test.mjs        # one file
+node --test "test/contract/**/*.test.mjs"   # quoted glob; a bare directory arg does not work
+node scripts/verify/contract.mjs --update   # refresh the API contract snapshot
+node scripts/verify/cli-contract.mjs --update
+node scripts/verify/route-request.mjs       # declared request schema vs what the handler reads
 ```
 
 `test:coverage` gates `src/core/**`, `src/foundation/**`, `src/cli/**` and `src/server/**` at
-**80 % line, branch and function**; the floors live once, in `package.json`. Other checkers:
-`verify:migrations`, `verify:changelog`. Security is three arms plus an inventory — dependency
-audit (`osv-scanner` + `npm audit`), secret scan (`gitleaks`), SAST (CodeQL) and an SBOM
-(`syft`) — and the block threshold, waiver caps, strict switch and exit codes are
-`docs/tech-spec.md` § Security toolchain (`security-success` in CI is the one required check).
+80 % line, branch and function; the floors live once in `package.json`.
 
 ## Repository layout
 
-The canonical tree, one line of purpose per directory, is `docs/architecture.md` § Directory
-tree. What follows is only what a session needs before its first command.
+The canonical tree is `docs/architecture.md` § Directory tree. Before the first command, only
+these matter:
 
-`dist/`, `.data/`, `node_modules/`, `coverage/` and `.meerkat/` are build/runtime output —
-gitignored, never committed. `.meerkat/<identifier>/` is the loop's per-task process
-directory under a project's working directory: `card.md` (kept fresh by the hub watch,
-never hand-edited), the subagent's notes/evidence, and downloaded attachments. Mind the two
-different `dist` trees: `dist/` is the **npm release tree**
-that `scripts/build.mjs` writes (and a stale M0 `dist/web/.gitkeep` placeholder lives there);
-the **hosted frontend root** is `web/dist`, the static build of `web/` that `taskd` serves
-(`STATIC_DIR_REL`). They are not the same directory. `web/dist` is gitignored yet **in the
-npm `files` whitelist** — the published tarball is a runnable board, not a source drop, and
-the release workflow stages the image's build there before `npm pack`.
+- `src/` is layered `cli|server -> core -> foundation`; `src/core/domain/` imports no Node
+  builtins.
+- `web/` builds to `web/dist`, the static root `taskd` serves (`STATIC_DIR_REL`). `dist/` is a
+  different tree: the npm release tree written by `scripts/build.mjs`, never served. `web/dist`
+  is gitignored yet in the npm `files` whitelist.
+- `.meerkat/<identifier>/` is the loop's per-task process directory under a project's working
+  directory (`card.md` is hub-maintained, never hand-edited). `dist/`, `.data/`,
+  `node_modules/`, `coverage/` and `.meerkat/` are build/runtime output, never committed.
 
-## Constraints / MUST-follow rules
+## Constraints
 
-- **Verification runs inside Docker, not on the host.** Everything that *runs* — tests,
-  starting or serving the app, the CLI, agent skill installs, plugin installs, migration
-  rehearsals — runs in the container (`npm run verify:docker`, `docker/verify-in-container.sh`).
-  `.githooks/pre-push` runs that gate on every branch push, so the push itself is the merge-time
-  container check. Host-allowed (static/pure only, per `docs/maintenance/docker.md` §Host-allowed checks):
-  `node --test`, `node --check`, the `scripts/verify/*` checkers, `git` and file inspection,
-  prototype screenshots, and the browser-rendered `web/` DOM/selector checks (the image has no
-  Chromium).
-- **Runtime zero-dependency, no network.** The engine and every script and test use Node
-  builtins only and work fully offline. Do not run `npm install` for them: there is no root
-  lockfile and no root `node_modules/`.
-- **`web/` is the one exception, and it is build-time only.** Its committed
-  `web/package-lock.json` + committed npm cache at `web/.vendor/npm-cache` let the image's
-  `webbuild` stage run `npm ci --offline`, so the image builds with no network. The cache is a
-  **generated artefact** (linux/arm64) — after a dependency bump, re-vendor per `docs/maintenance/docker.md`
-  and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
-- **The skills are authored source, never generated.** `skills/meerkat/`,
-  `skills/meerkat-director/`, `skills/meerkat-chat/`, the five role skills
-  (`skills/{jobs,linus,turing,reviewer,worker}/`)
-  and `skills/setup-meerkat/` (standalone) are edited in place; there is no payload generator
-  and no `manifest.txt`. The supervisor is `src/orchestrator/` (the workflow decisions live
-  in `src/core/domain/workflow.mjs`; it gets them from `issue reconcile --workflow`).
-  There are **no committed copies of a skill** anywhere: `skills/` is the only `skills`
-  tree in the repository, and `test/scaffold.test.mjs` asserts it.
+- **Verification runs inside Docker, not the host.** Everything that *runs* — tests, serving the
+  app, the CLI, skill/plugin installs, migration rehearsals — runs in the container
+  (`npm run verify:docker`). The host-allowed static checks are listed in
+  `docs/maintenance/docker.md` §Host-allowed checks.
+- **Runtime zero-dependency, no network.** The engine and every script/test use Node builtins and
+  work offline. Never run `npm install` at the root; there is no root lockfile or `node_modules/`.
+- **`web/` is the build-time exception.** Its committed `web/package-lock.json` and
+  `web/.vendor/npm-cache` let the image run `npm ci --offline`; re-vendor the cache
+  (linux/arm64) after a dependency bump and commit it with the lockfile.
+- **Skills are authored source.** `skills/` is the only skills tree: no generator, no manifest,
+  no committed copies (`test/scaffold.test.mjs`).
 - **Migrations are append-only.** Never edit or delete a committed
-  `src/core/storage/migrations/*.sql`; add a new numbered file. The DB runner refuses a database
-  whose applied file changed, and adding a migration reds several hand-kept version lists — see
-  `npm run verify:migrations` and `docs/maintenance/migration.md`.
-- **The contracts are explicit.** A route, error code or wire-field change must update
-  `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` —
-  never let it drift. Adding a new `DomainError` code touches `ERROR_CODES`, its bucket and that
-  snapshot. A command, positional or flag change must update
-  `test/fixtures/contract/cli.snapshot.json` via `node scripts/verify/cli-contract.mjs
-  --update`, and `skills/meerkat/references/cli.md` must name every frozen command
-  and flag — the loop and user scripts bind to that surface.
-- **Commit with explicit paths:** `git commit -- <path>` (never a bare `git commit -a`).
-- **Code style / layering:** `src/core/domain/` imports **no Node builtins**; dependency
-  direction is `cli|server -> core -> foundation` (nothing imports from `cli`/`server`;
-  `foundation` imports nothing from `src/`); every failure is a domain error with a code,
-  never a bare `Error`.
+  `src/core/storage/migrations/*.sql`; add a new numbered file (`npm run verify:migrations`).
+- **Contracts are explicit.** A route, error code or wire-field change updates
+  `test/fixtures/contract/api.snapshot.json` via `scripts/verify/contract.mjs --update` (a new
+  `DomainError` code also touches `ERROR_CODES` and its bucket). A CLI change updates the CLI
+  snapshot via `cli-contract.mjs --update`, and `skills/meerkat/references/cli.md` must name the
+  frozen surface.
+- **Commit with explicit paths:** `git commit -- <path>`, never `git commit -a`.
+- **Layering and errors:** `cli|server -> core -> foundation` (nothing imports from `cli`/`server`;
+  `foundation` imports nothing from `src/`); every failure is a domain error with a code, never a
+  bare `Error`.
 - **`design/` is a live oracle.** Prototype pages under `design/prototype/` are read by tests
-  (`test/design/`, `test/web/blocks.*`, `test/web/i18n.catalogue.test.mjs`), so editing them
-  changes what green means. `design/` is excluded from the image by `.dockerignore`, so
-  design-derived tests self-skip inside Docker — do not read that skip as a pass.
-- **Cite the live document, never `ARCHITECTURE.md`.** That file is not in this tree (and never
-  has been), yet `src/**`, `scripts/**`, `test/**`, `docs/**` and `design/**` cite it by section
-  (`ARCHITECTURE §4.6`, `§7.1`, …) — historical orientation only, none resolves. The system
-  record is `docs/architecture.md`; project ordering is `design/DESIGN.md` §20. Do not add a new
-  citation. See `docs/README.md`.
-- **Configuration has one inventory:** `.env.example` at the root, held to
-  `src/foundation/constants.mjs` by `test/contract/config-keys.test.mjs`. A key the application
-  reads but the file omits is a defect; a key it lists that nothing reads is dead configuration.
+  (`test/design/`, `test/web/blocks.*`, `test/web/i18n.catalogue.test.mjs`). `.dockerignore` drops
+  `design/`, so design-derived tests self-skip in the image — do not read that as a pass.
+- **Cite the live document, never `ARCHITECTURE.md`.** That file is not in this tree and never has
+  been; its section citations are historical orientation only. The system record is
+  `docs/architecture.md`; project ordering is `design/DESIGN.md` §20. Add no new citation.
+- **Configuration has one inventory:** `.env.example`, held to `src/foundation/constants.mjs` by
+  `test/contract/config-keys.test.mjs`.
+- **Security is four arms plus an inventory** (dependency audit, secret scan, SAST, SBOM); the
+  block threshold, waivers and strict switch are in `docs/tech-spec.md` § Security toolchain.
 
-## Git hooks (gates, run on the host)
+## Git hooks
 
-A fresh clone has none until `git config core.hooksPath .githooks` (do **not** run `npm install`
-to get them). Hook and CI run the same checkers:
+A fresh clone has none: `git config core.hooksPath .githooks` (do not run `npm install`).
+`pre-push` runs the static checkers and then the container gate; what each hook enforces is in
+`.githooks/README.md`.
 
-| Hook | Enforces |
-|---|---|
-| `pre-commit` | migrations append-only, contiguous from `0001`, none edited or deleted (`verify/migrations.mjs`) |
-| `pre-push` | contract snapshot matches the live surface; declared request schema equals what the handler reads; no tracked file carries a host-absolute path (`verify/paths.mjs`) or a signpost out of the repository (`verify/signposts.mjs`); the four version carriers agree (`verify/version.mjs`); every pushed `refs/tags/vX.Y.Z` names that version, is on `main` (`verify/tag-version.mjs`), and has a **filled** `## [X.Y.Z] - YYYY-MM-DD` section (`verify/changelog.mjs --strict`); `main` is not pushed directly; **then the container gate** (`npm run verify:docker`) on a branch push — skipped for a tag-only push or a branch deletion, and by `SKIP_CONTAINER_VERIFY=1` |
-| `pre-tag` | the same API + tag rules, run by hand before `git tag` (git has no native pre-tag hook) |
+## Key invariants
 
-Two jobs in `check.yml` guard the tree itself. `paths`: a host-absolute `/Users/<someone>/…`
-path fails the build — its allowlist (`test/fixtures/host-paths-allowlist.json`) is checked in
-both directions. `signposts`: a walkable path into an external framework's private
-store, or one of its internal mechanism names, fails the build — its allowlist
-(`test/fixtures/framework-signposts-allowlist.json`) is keyed by `{file, rule}` and checked in
-both directions too. The rule behind the second is `design/contracts/naming-boundary.md`
-(which is **retired and narrowed**, not the unexecuted work order it once was); CI is its
-authoritative home, because the container image drops `design/`.
+- **Invariants live in the database first.** A rule for every writer is a trigger under
+  `src/core/storage/migrations/`, mirrored by a domain check and tested in `test/contract/`.
+- **One reader for a review card's identity.** `review_of_id` / `review_round` are authority and
+  `meta.review_of` a mirror; every layer reads them through `src/foundation/review-identity.mjs`.
+- **The supervisor speaks only `taskctl`.** `src/orchestrator/**` never calls the HTTP API; the
+  live stream is `taskctl events follow`, and the supervisor carries no board discovery or token
+  code.
 
-## Key invariants to remember
+## Pointers
 
-Repo-layer rules a change here must respect. **Board usage is the `meerkat` skill's** — how a
-card is claimed, delivered, reviewed or closed, and what `projects.json` means, live in
-`skills/meerkat/`; do not restate them here.
-
-- **Invariants live in the database first.** A rule that must hold for every writer is a trigger
-  under `src/core/storage/migrations/`, mirrored by a domain check and tested against it under
-  `test/contract/`. Shipping only the app-layer half is a bug: a raw writer walks past it.
-- **One reader for a review card's identity.** The `review_of_id` / `review_round` columns are
-  authority and `meta.review_of` is a mirror; every layer reads them through
-  `src/foundation/review-identity.mjs`. A second reader forks the workflow planners, the SLA
-  patrol and the CLI. The card rules themselves (cannot be reopened, a parent, a child or
-  reviewed) are the `meerkat` skill's.
-- **The supervisor speaks only `taskctl`.** `src/orchestrator/**` never calls the board's HTTP
-  API — the live stream is `taskctl events follow` (the local hub), not `fetch` — and the
-  supervisor carries no board discovery or token code.
-
-The mechanisms those rules rest on, by home:
-
-- `skills/meerkat/` — every board rule: the claim/heartbeat/deliver cycle, the round-scoped
-  delivery gate, review cards (flow B), `projects.json`, the brief.
-- `skills/meerkat-director/` — the decision hub: assignment, worker questions, handoff triage,
-  downstream/fix card creation, E1–E5; the single decision policy.
-- `skills/meerkat-chat/` — the human's console: progress, awaiting questions, acceptance,
-  `loop doctor` and abnormal-card triage; it records the human's words with `--as-human`.
-- `docs/maintenance/development.md` — one writer per data directory and `DB_BUSY`; auth (`TASKD_ALLOW_CIDRS`
-  and the token, loopback trusted); the bounded `SIGTERM` stop.
-- `docs/ops/install.md` — config topology: `.env` layering, the per-kind `.env.<actor-kind>` at the
-  program root, the install root, and the `taskd` guard unit. The key inventory itself is
-  `.env.example` at the root.
-- `docs/ops/observability.md` — log levels, rotation, and why logger events are not activity events.
-- `docs/events.md` — the event system's design: the activity log and revision cursor, the SSE
-  contract, each consumer's policy, and the local event hub.
-
-## Agent skills
-
-### Issue tracker
-
-Work is tracked as cards on the local Meerkat TaskPanel board; `/meerkat` is the entry for
-every card operation — a card is created, claimed, kept alive with a heartbeat and delivered
-through that skill, never through a side-channel queue. A card stops at `in_review`; the
-card's `acceptance_mode` names who moves it to `done` (`auto`: the supervisor after a
-current-round `APPROVE`; `human`: a person, after the review finishes; `off`: the deliverer). See
-`docs/agents/issue-tracker.md`.
-
-A card is the work a role owns: product design, architecture, implementation, bug fixes,
-refactors, test design, regression, performance and independent review. A question, a lookup,
-a one-off command, a scratch experiment, or the change being made in this conversation right
-now has no owner, so it is not a card.
-
-### Triage labels
-
-The five canonical triage roles keep their default label strings. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/agents/domain.md`.
-
-## Docs to read next (do not re-paste)
-
-- `docs/tech-spec.md` — **this repository's standard, read it before the first code change**: the numbered rules (`TS-NN`) a change must satisfy, each naming its enforcement, plus the stack table and the security toolchain with its decision policy.
-- `docs/architecture.md` — the system record: boundaries, the layered style, the data model, the contract, configuration, security, the canonical directory tree (reconstructed from the tree, accepted 2026-10-30).
-- `docs/adr/` — the recorded decisions and their status vocabulary.
-- `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
-- `CONTRIBUTING.md` — how a change lands: isolation, the gate, the PR flow, cleanup. `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
-- `.env.example` — the configuration inventory (every key the application reads, grouped by the file it lands in).
-- `docs/maintenance/development.md` — the two build layers and the server operations (one writer, bounded stop, lock contention).
-- `docs/maintenance/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
-- `docs/maintenance/contract.md` — the API and CLI contract snapshots + route-request lint.
-- `docs/maintenance/migration.md`, `docs/scheduling.md`, `docs/ops/observability.md` — the named subsystems.
-- `src/core/README.md` — what the core engine owns and the rules it enforces.
+- `docs/tech-spec.md` — the numbered `TS-NN` rules every change must satisfy.
+- `docs/architecture.md` — the system record: boundaries, layers, data model, contract, tree.
+- `docs/adr/` and `GLOSSARY.md` — decisions and canonical vocabulary.
+- `CONTRIBUTING.md` and `README.md` — how a change lands; what the project is.
+- `.env.example` — the configuration inventory.
+- `docs/maintenance/{docker,contract,migration}.md`, `docs/ops/observability.md`,
+  `docs/events.md`, `docs/scheduling.md`, `src/core/README.md`.

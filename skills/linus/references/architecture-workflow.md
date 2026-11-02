@@ -260,53 +260,46 @@ without a decision, or create a second source of truth.
 
 ### 5. Initialize the agent instructions
 
-**Purpose.** Produce the agent-instruction baseline every session and every role reads first.
-It is a requirement for every agent, not an optional nicety. Produce it after the scaffold so it
-observes the real tree: the host's init step writes `CLAUDE.md` or `AGENTS.md` per the host's
-read order; without an init step, produce the same content directly and say so.
+**Purpose.** Produce the agent-instruction baseline every session and every role reads first — a
+requirement for every agent, not an optional nicety. Do it after the scaffold, observing the real
+tree: use the host's init step (it writes `CLAUDE.md` or `AGENTS.md` per the host's read order),
+or produce the same content directly and say so.
 
-**Watch for.** An init step guesses commands and layout. Resolve every line against the tree: a
-fabricated path or an undefined command is the failure this review exists to catch. Apply two
-tests to every remaining line — the **ownership test** (if another document owns the fact, keep
-a one-line pointer and delete the restatement) and the **deletion test** (without it, would a
-fresh session make a mistake?). On an existing project, bind the standard its own documents or
-recorded path already names; improve the baseline that is there and regenerate only when the
-card asks — a rewrite that drops an existing agreement is a regression. Keep one source of
-truth: if the host reads `CLAUDE.md`, write it; if it reads `AGENTS.md`, generate it; make the
-other a pointer. Do not maintain `CLAUDE.md` and `AGENTS.md` as competing copies. The task
-entry — the `/meerkat` keywords and card scope — belongs to the install skill; if the file
-already carries it, leave it untouched.
+**Watch for.** An init step guesses commands and layout: resolve every line against the tree,
+because a fabricated path or undefined command is the failure this review exists to catch. Apply
+the **ownership test** (another document owns the fact → a one-line pointer, delete the
+restatement) and the **deletion test** (without it, would a fresh session make a mistake?) to
+every line. On an existing project, bind the standard its own documents or recorded path already
+name; improve the baseline in place, regenerate only when the card asks, and never drop an
+existing agreement. Keep one source of truth: the file the host reads is the baseline, the other
+a pointer, never a competing copy. The task entry (`/meerkat`, card scope) belongs to the install
+skill; leave an existing one untouched.
 
-**Essentials.** The file points at `docs/tech-spec.md` as the standard; the spec, not the
-baseline, carries the rules. It carries:
+**Essentials.** The standard is `docs/tech-spec.md`; point at it, and carry only what a fresh
+session cannot cheaply discover:
 
-1. **Purpose and boundary** — what the project is, in one paragraph.
-2. **Commands** — the entry commands exactly as the scaffold defines them: build, test
-   (including a single file), run, lint, typecheck and migrate; the non-obvious variant a fresh
-   session cannot guess.
-3. **Layout** — the entry points and top-level directories with one line each, and a pointer to
-   the canonical tree in `docs/architecture.md`; not a copy of the tree.
-4. **Conventions** — a pointer to `docs/tech-spec.md`; the logging contract (key flows log
-   `info`, a caught exception logs one `error` with its code, never a secret).
-5. **Design principles** — all six principles bind every agent, with the conflict ordering; a
-   change that violates one is a recorded decision, never a silent drift.
-6. **Gates** — the gate path, the coverage floor, the security arms with their commands or a
-   recorded `n/a — <reason>`, and the decision policy (block threshold, waivers, strict switch,
-   exit codes).
-7. **Working agreement** — decompose before executing; test-first, or the project's own
-   red/green equivalent; verify in the place the project designates; confirm with the human
-   before landing, closing or deleting.
-8. **Change and integration policy** — where parallel work is isolated, the protected release line, the
-   ref a card starts from and the ref acceptance lands into, what must be confirmed before it
-   lands, the commit rule, and the cleanup order; point at `CONTRIBUTING.md`.
-9. **Operational invariants** — one writer per surface, the identity and configuration roots,
-   and the generated artifacts that are never hand-edited; point at the standard.
-10. **Pointers** — the standard first, then `docs/architecture.md`, `GLOSSARY.md`,
-    `CONTRIBUTING.md`, `docs/adr/`, the contract artifact and the configuration surface.
+1. **Purpose and boundary** — one paragraph; `README.md` owns the rest.
+2. **Commands and layout** — the entry commands and only the non-obvious variant a fresh session
+   cannot guess (single-file test, required glob); entry points and top-level directories, one
+   line each; `docs/architecture.md` owns the tree.
+3. **Conventions and gates** — `docs/tech-spec.md` owns the rules; carry the logging contract
+   (key flows log `info`; a caught exception logs one `error` with its code, never a secret), the
+   gate path, the coverage floor and the security arms (`n/a — <reason>` when absent).
+4. **Design principles** — all six, one line each, with their conflict ordering; every agent is
+   bound by them, and a violation is a recorded decision, never a silent drift.
+5. **Working agreement** — decompose before executing; test-first; verify where the project
+   designates; confirm with the human before landing, closing or deleting.
+6. **Change and integration policy** — isolation, the protected release line, the ref a card
+   starts from and the ref acceptance lands into, what must be confirmed before it lands, the
+   commit rule and the cleanup order; `CONTRIBUTING.md` owns the detail.
+7. **Operational invariants** — one writer per surface, the identity and configuration roots,
+   and generated artifacts never hand-edited; point at the standard.
+8. **Pointers** — the standard first, then `docs/architecture.md`, `GLOSSARY.md`,
+   `CONTRIBUTING.md`, `docs/adr/`, the contract artifact and the configuration surface.
 
-Update the file when a command, a gate or the layout changes; a stale pointer is worse than
-none. Leave out architecture prose, design documents, ADR bodies, directory inventories and
-details that will drift.
+Update it when a command, a gate or the layout changes; a stale pointer is worse than none. Leave
+out architecture prose, design documents, ADR bodies, directory inventories and details that
+drift.
 
 ### 6. Record the gates, the release and the deploy path
 
