@@ -189,6 +189,12 @@ describe("agent bundle: claude", () => {
     const hookText = readFileSync(hook, "utf8");
     assert.match(hookText, /claimable for \$name/);
     assert.match(hookText, /the eight rules/);
+    assert.match(hookText, /do not re-claim/, "a dispatched worker is already claimed");
+    assert.match(
+      hookText,
+      /acceptance_mode.*names the closer/,
+      "the hook does not claim a human always closes",
+    );
     assert.ok(!hookText.includes("{{"), "template tokens must be rendered");
 
     // 4. shim (executable, injects --agent)
@@ -401,6 +407,8 @@ describe("agent bundle: codex", () => {
     assert.match(agents, /You are agent \*\*alice\*\*/);
     assert.ok(agents.includes(`taskctl issue candidates --assignee alice`));
     assert.ok(agents.includes(join(home, ".codex", "bin", "taskctl")), "shim path must be rendered into AGENTS.md");
+    assert.match(agents, /do not re-claim/, "a dispatched worker is already claimed");
+    assert.match(agents, /acceptance_mode.*names the closer/);
     assert.ok(!agents.includes("{{"), "template tokens must be rendered");
 
     // 4. no claim trigger; the scheduling units are the automation

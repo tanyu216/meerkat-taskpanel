@@ -400,6 +400,10 @@ export function renderRoutingTable(roles) {
     "|---|---|---|",
   ];
   for (const role of roles) {
+    // A reviewer-lane role never takes ordinary work: a review card is created
+    // and assigned by the supervisor, not routed by the director.
+    const workerCapable = Array.isArray(role.lanes) ? role.lanes.includes("worker") : true;
+    if (!workerCapable) continue;
     for (const shape of role.shapes) {
       lines.push(`| ${shape} | ${role.agent} | ${role.workflow ?? `${role.skillDir}/SKILL.md`} |`);
     }
@@ -407,6 +411,7 @@ export function renderRoutingTable(roles) {
   lines.push(
     "",
     "One accountable role per work shape. A shape the table does not describe goes to the Worker role.",
+    "Reviewer roles are never routed; review cards are created and assigned by the supervisor.",
     "The card's assignee still selects the executing role; this table routes, it never decides.",
   );
   return lines.join("\n");

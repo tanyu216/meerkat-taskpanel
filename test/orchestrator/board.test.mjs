@@ -18,7 +18,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { boardRefusal, readBoard, readUnownedTodos } from "../../src/orchestrator/board.mjs";
+import {
+  boardRefusal,
+  readBoard,
+  readHandoffTriage,
+  readUnownedTodos,
+} from "../../src/orchestrator/board.mjs";
 import { taskToWire } from "../../src/foundation/wire.mjs";
 
 const dirs = [];
@@ -204,5 +209,53 @@ describe("director lanes — read the wire projection the board actually sends",
     assert.equal(result.ok, true);
     assert.equal(result.rows.length, 1, "a real wire row is routed, not skipped");
     assert.equal(result.rows[0].project, "P");
+  });
+
+  it("reads the triage markers with the wire's numeric delivery round", () => {
+    const dir = tempDir();
+    const doneCard = (identifier, meta, extra = {}) => taskToWire({
+      id: identifier,
+      identifier,
+      projectId: "P",
+      title: identifier,
+      status: "done",
+      kind: "task",
+      priority: "P2",
+      assigneeId: "alice",
+      assigneeKind: "agent",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+      statusChangedAt: "2026-01-01T00:00:00Z",
+      deliveryRound: 2,
+      version: 1,
+      meta,
+      ...extra,
+    });
+    const tasks = [
+      doneCard("T-1", { stage_handoff: "required" }),
+      doneCard("T-2", { stage_handoff: "required", handoff_consumed_round: "2" }),
+      doneCard("T-3", { stage_handoff: "required", handoff_declined_round: 2 }),
+      doneCard("T-4", { stage_handoff: "required", handoff_consumed_round: "1" }),
+      taskToWire({
+        id: "T-5", identifier: "T-5", projectId: "P", title: "old", status: "done",
+        kind: "task", priority: "P2", assigneeId: "alice", assigneeKind: "agent",
+        createdAt: "2020-01-01T00:00:00Z", updatedAt: "2020-01-01T00:00:00Z",
+        statusChangedAt: "2020-01-01T00:00:00Z", deliveryRound: 1, version: 1,
+        meta: { stage_handoff: "required" },
+      }),
+    ];
+    const { script } = sentinel(dir, { tasks });
+    const result = readHandoffTriage(
+      optsFor(script),
+      noopLog,
+      undefined,
+      () => Date.parse("2026-01-02T00:00:00Z"),
+    );
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.rows.map((row) => row.ref), ["T-1", "T-4"]);
+    assert.equal(result.rows[0].project_id, "P");
+    assert.equal(result.rows[0].round, 2);
+    assert.equal(result.truncated, false);
   });
 });

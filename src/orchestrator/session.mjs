@@ -24,7 +24,7 @@ import { loadRoles } from "../foundation/roles.mjs";
 import { buildQuestionPrompt } from "../foundation/scheduling.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
-import { readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, runCli } from "./runtime.mjs";
+import { readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, readTriageOutcome, runCli } from "./runtime.mjs";
 import {
   appendWorkerTurn,
   buildWorkerDispatchPrompt,
@@ -431,6 +431,9 @@ export function createSessionPool(input = {}) {
   // A route row has the same "prove it" rule: the card must be assigned (or
   // have left `todo`), not merely have had a turn.
   const routeOutcome = typeof input.routeOutcome === "function" ? input.routeOutcome : null;
+  // A triage row's producer is already `done`; its decision is the marker, and
+  // a producer that moved on makes the row stale rather than unsettled.
+  const triageOutcome = typeof input.triageOutcome === "function" ? input.triageOutcome : null;
   const stateDir = dirname(String(opts.state));
   // `internal` is the installed supervisor; `external` marks a pool started by a
   // live session (`loop status --take-over`). There is no control turn in either
@@ -922,6 +925,26 @@ export function createSessionPool(input = {}) {
         const settled = [];
         const unsettled = [];
         for (const row of claimed.cards) {
+          if (row.triage === true) {
+            // The producer is `done`: a question-style outcome would settle on
+            // "not in_progress" before the director did anything. The marker is
+            // the only proof, and a stale producer needs no decision at all.
+            if (triageOutcome === null) {
+              settled.push(row);
+              continue;
+            }
+            const live = await triageOutcome({
+              card: row.card,
+              round: row.round ?? row.delivery_round,
+              row,
+            });
+            if (live?.ok === true && live.settled !== true && live.stale !== true) {
+              unsettled.push(row);
+            } else {
+              settled.push(row);
+            }
+            continue;
+          }
           if (row.route === true) {
             // A route turn is settled only when the board shows an assignee (or
             // the card left `todo`). A turn that exits 0 without assigning is
@@ -959,6 +982,16 @@ export function createSessionPool(input = {}) {
           // pass with nobody to act on it.
           for (const row of unsettled) {
             if (!(retried.failedIds ?? []).includes(String(row.id))) continue;
+            if (row.triage === true) {
+              // The producer is terminal: parkCard would try a move the state
+              // machine refuses (and write a `question` nobody can answer).
+              // Record the failed decision on the card and leave it `done`.
+              noteTriageFailed(
+                row.card,
+                "the director did not consume the required handoff",
+              );
+              continue;
+            }
             parkCard(
               row.card,
               row.route === true
@@ -1703,6 +1736,27 @@ export function createSessionPool(input = {}) {
    * recovery — a 30-minute loop. `blocked/resource` is the honest state: the
    * loop could not run it, and a human must clear the cause and move it back.
    */
+  /**
+   * A triage that exhausted its turns. The producer is `done`, so there is no
+   * legal move and no question to answer; record the failure on the card and
+   * let `loop doctor` surface the unconsumed handoff.
+   */
+  function noteTriageFailed(ref, reason) {
+    const card = String(ref ?? "");
+    if (card === "") return;
+    const body = [
+      `The director could not consume this card's required handoff (${reason}).`,
+      "",
+      "The card stays `done`. Create the proposed downstream card, record `handoff_declined_round`, or clear `stage_handoff` if the handoff was withdrawn.",
+    ].join("\n");
+    runCli(
+      opts,
+      ORCHESTRATOR_ACTOR_ID,
+      ["comment", "add", card, "--kind", "note", "--body", body],
+      { actorKind: SYSTEM_KIND },
+    );
+  }
+
   function parkCard(ref, reason, blockedReason = "resource") {
     const card = String(ref ?? "");
     if (card === "") return;
@@ -1953,6 +2007,7 @@ export async function runSession(opts, deps = {}) {
     readQuestionOutcome: (input) =>
       readQuestionOutcome(opts, input.card, input.questionId, log),
     routeOutcome: (input) => readRouteOutcome(opts, input.card, log),
+    triageOutcome: (input) => readTriageOutcome(opts, input.card, input.round, log),
   });
   let started;
   try {

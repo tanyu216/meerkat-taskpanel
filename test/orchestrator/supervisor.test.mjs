@@ -190,6 +190,40 @@ describe("planStrandedTodoAlerts (pure)", () => {
     assert.deepEqual(alerts, []);
   });
 
+  it("flags a todo assigned only to a reviewer-only name when the worker set is known", () => {
+    const alerts = planStrandedTodoAlerts({
+      todoTasks: [card("PROJ-3", { assignee: { display_name: "Reviewer", kind: "claude" } })],
+      workers: ["Jobs", "Linus", "Turing"],
+      agents: ["Jobs", "Linus", "Turing", "Reviewer"],
+      reviewer: "Reviewer",
+      claimUnassigned: true,
+      now: NOW,
+      agingMs: AGING,
+    });
+    assert.deepEqual(
+      alerts.map((a) => [a.type, a.reason, a.original]),
+      [["unowned_todo", "assignee_not_scanned", "PROJ-3"]],
+    );
+  });
+
+  it("never flags a review card, even when its reviewer is not a worker", () => {
+    const alerts = planStrandedTodoAlerts({
+      todoTasks: [
+        card("PROJ-8", {
+          assignee: { display_name: "Reviewer", kind: "claude" },
+          review_of_id: "orig-1",
+        }),
+      ],
+      workers: ["Jobs"],
+      agents: ["Jobs", "Reviewer"],
+      reviewer: "Reviewer",
+      claimUnassigned: true,
+      now: NOW,
+      agingMs: AGING,
+    });
+    assert.deepEqual(alerts, []);
+  });
+
   it("flags an unassigned claimable card only when the loop will not take the pool", () => {
     const pool = [{ identifier: "PROJ-6", reason: "unassigned", created_at: OLD }];
     const on = planStrandedTodoAlerts({

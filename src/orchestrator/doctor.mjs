@@ -760,7 +760,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
       const entry =
         byCard.get(ref) ?? {
           ref,
-          lane: row?.route === true ? "route" : "question",
+          lane: row?.triage === true ? "triage" : row?.route === true ? "route" : "question",
           rows: 0,
           attempts: 0,
           last_error: null,
@@ -775,6 +775,52 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     }
     return [...byCard.values()];
   })();
+
+  // An accepted producer whose required handoff has no decision for its
+  // current round. A triage row that is still pending/processing suppresses the
+  // finding (the decision is in flight); a freshly accepted card gets a grace
+  // window so the next poll can enqueue the row first.
+  const HANDOFF_TRIAGE_GRACE_MS = 10 * 60_000;
+  const openTriage = new Set(
+    queueRows
+      .filter(
+        (row) =>
+          row?.triage === true &&
+          String(row?.status ?? "") !== "done" &&
+          String(row?.status ?? "") !== "failed",
+      )
+      .map((row) => String(row?.card ?? "")),
+  );
+  const handoffUnconsumed =
+    board.error === null
+      ? tasks
+          .filter((task) => {
+            if (String(task?.status ?? "") !== "done") return false;
+            if (String(task?.kind ?? "") === "epic") return false;
+            if (reviewIdentityOf(task).isReview) return false;
+            const meta = task?.meta ?? {};
+            if (String(meta.stage_handoff ?? "") !== "required") return false;
+            const round = Number(task?.delivery_round);
+            if (!Number.isFinite(round)) return false;
+            if (Number(meta.handoff_consumed_round) === round) return false;
+            if (Number(meta.handoff_declined_round) === round) return false;
+            const ref = String(task?.identifier ?? "");
+            if (ref === "" || openTriage.has(ref)) return false;
+            const at = Date.parse(String(task?.status_changed_at ?? ""));
+            if (Number.isFinite(at) && nowMs - at < HANDOFF_TRIAGE_GRACE_MS) return false;
+            return true;
+          })
+          .map((task) => ({
+            ref: task.identifier,
+            title: task.title ?? null,
+            round: Number(task.delivery_round),
+            since: task.status_changed_at ?? null,
+            age_ms: Number.isFinite(Date.parse(String(task.status_changed_at ?? "")))
+              ? Math.max(0, nowMs - Date.parse(String(task.status_changed_at)))
+              : null,
+          }))
+          .sort(byAgeDesc)
+      : [];
 
   const unownedCards =
     board.error === null
@@ -1062,6 +1108,9 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     attentionReasons.push(`worker_worktrees: ${workers.missing_worktree.length}`);
   }
   if (queue.failed > 0) attentionReasons.push(`queue: ${queue.failed} failed`);
+  if (handoffUnconsumed.length > 0) {
+    attentionReasons.push(`handoff_unconsumed: ${handoffUnconsumed.length}`);
+  }
   if (supervisor?.verdict === "absent" || supervisor?.verdict === "partial") {
     attentionReasons.push(`supervisor: ${supervisor.verdict}`);
   }
@@ -1090,6 +1139,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     stuck_cards: stuck,
     looping,
     waiting,
+    handoff_unconsumed: handoffUnconsumed,
     blocked_acceptance: blockedAcceptance,
     unlanded,
     workspaces,

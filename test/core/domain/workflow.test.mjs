@@ -931,6 +931,7 @@ describe("planWorkflowTick", () => {
     assert.deepEqual(result.summary, {
       reconciled: 0,
       approved: 1,
+      held_recovered: 0,
       held: 0,
       rejected: 0,
       dispatched: 0,

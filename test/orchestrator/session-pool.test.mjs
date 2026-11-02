@@ -1718,6 +1718,134 @@ describe("worker session resume", () => {
   });
 });
 
+describe("worker session resume — handoff triage verification", () => {
+  it("completes a triage row only on its marker, never on the done card's status", async (t) => {
+    const f = fixture(t);
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      triageOutcome: async () => ({ ok: true, settled: true, stale: false }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "triage:T-1:r2",
+      queue_kind: "question",
+      role: "triage",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      triage: true,
+      round: 2,
+      question_id: "triage:T-1:r2",
+      dispatch_key: "triage:T-1:r2",
+    });
+    await pool.routeQuestionsNow();
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+    await pool.stop();
+  });
+
+  it("completes a stale triage row without writing to the done card", async (t) => {
+    const f = fixture(t);
+    const calls = join(f.dir, "calls.jsonl");
+    writeFileSync(
+      join(f.dir, "cli.mjs"),
+      [
+        'import { appendFileSync } from "node:fs";',
+        `appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");`,
+        'process.stdout.write(JSON.stringify({ ok: true, data: {} }));',
+      ].join("\n"),
+    );
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      triageOutcome: async () => ({ ok: true, settled: false, stale: true }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "triage:T-2:r1",
+      queue_kind: "question",
+      role: "triage",
+      card: "T-2",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      triage: true,
+      round: 1,
+      question_id: "triage:T-2:r1",
+      dispatch_key: "triage:T-2:r1",
+    });
+    await pool.routeQuestionsNow();
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+    const recorded = existsSync(calls)
+      ? readFileSync(calls, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line))
+      : [];
+    assert.equal(
+      recorded.some((argv) => argv.includes("move")),
+      false,
+      "a stale triage never moves the done producer",
+    );
+    await pool.stop();
+  });
+
+  it("fails the row with a note, never a park, after two unsettled triage turns", async (t) => {
+    const f = fixture(t);
+    const calls = join(f.dir, "calls.jsonl");
+    writeFileSync(
+      join(f.dir, "cli.mjs"),
+      [
+        'import { appendFileSync } from "node:fs";',
+        `appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");`,
+        'process.stdout.write(JSON.stringify({ ok: true, data: {} }));',
+      ].join("\n"),
+    );
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      triageOutcome: async () => ({ ok: true, settled: false, stale: false }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "triage:T-3:r1",
+      queue_kind: "question",
+      role: "triage",
+      card: "T-3",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      triage: true,
+      round: 1,
+      question_id: "triage:T-3:r1",
+      dispatch_key: "triage:T-3:r1",
+    });
+    await pool.routeQuestionsNow();
+    const queueFile = join(f.dir, "cards.queue.json");
+    const raw = JSON.parse(readFileSync(queueFile, "utf8"));
+    raw.cards[0].retry_at = null;
+    writeFileSync(queueFile, `${JSON.stringify(raw, null, 2)}\n`);
+    await pool.routeQuestionsNow();
+
+    const row = readCards(f.dir).value.cards.find((card) => card.id === "triage:T-3:r1");
+    assert.equal(row.status, "failed");
+    const recorded = existsSync(calls)
+      ? readFileSync(calls, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line))
+      : [];
+    assert.equal(
+      recorded.some((argv) => argv.includes("move") && argv.includes("blocked")),
+      false,
+      "a done producer is never parked",
+    );
+    assert.ok(
+      recorded.some((argv) => argv.includes("comment") && argv.includes("add") && argv.includes("note")),
+      "the failure is recorded as a note",
+    );
+    await pool.stop();
+  });
+});
+
 describe("worker session resume — route verification", () => {
   it("retries a route turn, then parks an unowned card when the board never assigns it", async (t) => {
     const f = fixture(t);

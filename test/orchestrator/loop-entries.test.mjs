@@ -577,6 +577,55 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.equal(routeRows().some((row) => row.status === "pending"), false);
   });
 
+  it("enqueues one triage row for an accepted card's required handoff", () => {
+    const dir = tempDir("tp-triage-lane-");
+    const app = join(dir, "app");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(dir, "projects.json"), JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
+    writeLivePool(dir, { version: 2, capabilities: ["question-lane"] });
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "triage-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "const status = argv.includes('--status') ? argv[argv.indexOf('--status') + 1] : null;",
+        "let data = { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } };",
+        "if (argv.includes('list') && status === 'done') {",
+        "  data = { tasks: [{ identifier: 'T-7', project_id: 'P', kind: 'task', status: 'done', title: 'design', delivery_round: 2, status_changed_at: new Date().toISOString(), meta: { stage_handoff: 'required' } }] };",
+        "}",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
+      ].join("\n"),
+    );
+    const args = [
+      "--actor-kind", "claude", "--agent", "alice",
+      "--cli", script, "--repo", dir,
+      "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+    ];
+    const env = { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir };
+    const poll = () => {
+      const run = runEntry("passes.mjs", args, env, "poll");
+      assert.equal(run.status, 0, run.stderr);
+    };
+    const rows = () => readCards(dir).value.cards.filter((row) => row.id === "triage:T-7:r2");
+
+    poll();
+    const [row] = rows();
+    assert.equal(rows().length, 1, "the accepted handoff is offered once");
+    assert.equal(row.queue_kind, "question");
+    assert.equal(row.role, "triage");
+    assert.equal(row.triage, true);
+    assert.equal(row.card, "T-7");
+    assert.equal(row.agent, "alice");
+    assert.equal(row.target_dir, app);
+    assert.equal(row.round, 2);
+
+    poll();
+    assert.equal(rows().length, 1, "a second poll coalesces the same triage row");
+  });
+
   it("does not offer a card whose worker session is still running", () => {
     const dir = tempDir("tp-poll-running-worker-");
     const app = join(dir, "app");

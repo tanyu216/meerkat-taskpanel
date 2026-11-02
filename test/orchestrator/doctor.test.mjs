@@ -144,6 +144,66 @@ function writeLog(dir, count) {
 }
 
 describe("loop doctor — the report", () => {
+  it("reports an accepted producer whose required handoff was never consumed", () => {
+    const dir = tempDir();
+    const tasks = [
+      {
+        identifier: "T-400",
+        title: "Design",
+        status: "done",
+        status_changed_at: at(30 * MIN),
+        delivery_round: 2,
+        meta: { stage_handoff: "required" },
+      },
+      {
+        identifier: "T-401",
+        title: "Fresh",
+        status: "done",
+        status_changed_at: at(1 * MIN),
+        delivery_round: 1,
+        meta: { stage_handoff: "required" },
+      },
+      {
+        identifier: "T-402",
+        title: "Consumed",
+        status: "done",
+        status_changed_at: at(30 * MIN),
+        delivery_round: 1,
+        meta: { stage_handoff: "required", handoff_consumed_round: "1" },
+      },
+    ];
+    const { script } = sentinel(dir, { tasks });
+    seedState(dir, { cards: [] });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(report.handoff_unconsumed.map((entry) => entry.ref), ["T-400"]);
+    assert.ok(
+      report.attention_reasons.some((reason) => /handoff_unconsumed: 1/.test(reason)),
+      "the unconsumed handoff is an attention reason",
+    );
+  });
+
+  it("suppresses the finding while a triage row is still open", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [{
+        identifier: "T-400",
+        title: "Design",
+        status: "done",
+        status_changed_at: at(30 * MIN),
+        delivery_round: 2,
+        meta: { stage_handoff: "required" },
+      }],
+    });
+    seedState(dir, {
+      cards: [{ status: "pending", queue_kind: "question", triage: true, card: "T-400" }],
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+    assert.deepEqual(report.handoff_unconsumed, []);
+  });
+
   it("covers every surface in one pass", () => {
     const dir = tempDir();
     const { script } = sentinel(dir);

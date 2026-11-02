@@ -31,6 +31,7 @@ import {
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
 import { isContainer } from "./task-kind.mjs";
+import { reviewIdentityOf } from "./review-identity.mjs";
 import {
   renderReviewerProtocol,
   renderRoleDecision,
@@ -491,8 +492,12 @@ export function planStrandedTodoAlerts(input = {}) {
   const agingMs = typeof input.agingMs === "number" && input.agingMs >= 0
     ? input.agingMs
     : STRANDED_TODO_AGING_MS;
+  // `workers` is the worker-capable set when the caller can tell it apart from
+  // the scan set (a dedicated reviewer is scanned, but only for review cards).
+  // Without it, keep the historical agents+reviewer behaviour.
+  const workerNames = Array.isArray(input.workers) ? input.workers : [...agents, reviewer];
   const scanned = new Set(
-    [...agents, reviewer]
+    workerNames
       .filter((name) => typeof name === "string" && name.trim() !== "")
       .map((name) => name.trim().toLowerCase()),
   );
@@ -510,6 +515,9 @@ export function planStrandedTodoAlerts(input = {}) {
   const alerts = [];
   for (const task of todoTasks) {
     if (isContainer(task)) continue;
+    // A review card is assigned to the reviewer by design; it is not a
+    // stranded work card.
+    if (reviewIdentityOf(task).isReview) continue;
     const ref = task?.assignee ?? null;
     const name = typeof ref === "string" ? ref : ref?.display_name ?? ref?.id ?? null;
     if (name === null) continue;
@@ -834,6 +842,37 @@ export function buildQuestionPrompt(rows, input = {}) {
   ];
   rows.forEach((row, index) => {
     const flags = `--agent ${row.agent} --actor-kind ${actorKind}`;
+    if (row.triage === true) {
+      const round = Number(row.round ?? row.delivery_round ?? 1);
+      const title = row.title ? ` — ${row.title}` : "";
+      lines.push(
+        `${index + 1}) ${row.card}${title} — accepted producer, required handoff (round ${round}):`,
+        `   The card is done and must not be reopened or moved. Read its current delivery:`,
+        `   taskctl issue get ${row.card} --json --include reports --include relations ${flags}`,
+        `   Read only the report whose round is ${round}; its \`## Handoff\` is the contract.`,
+        `   Existing downstream cards for this handoff:`,
+        `   taskctl issue list --project <project> --meta handoff_of=${row.card}:r${round} --json ${flags}`,
+        "   Reuse those; never create a duplicate. Create one card per deliverable with its",
+        "   accountable role from the routing table:",
+        `   taskctl issue create --project <project> --title "..." --assignee <role>`,
+        `     --target <scope-slug> --meta handoff_of=${row.card}:r${round}`,
+        `     --idem "loop-handoff|${row.card}|r${round}|<n>" --acceptance "..."`,
+        `     --description "<the handoff paths and constraints>" ${flags}`,
+        "   Give each child its own --target (or --allow-dup when a target does not apply).",
+        "   Seed 1-6 checkable acceptance items from the handoff's `Acceptance source`.",
+        `   For an epic, create --kind epic first, then taskctl relation add <epic> --type parent --target <child>.`,
+        "   For a task producer, record meta.origin=<producer> on the follow-up card instead.",
+        `   When done: taskctl issue meta ${row.card} --meta handoff_consumed_round=${round} ${flags}`,
+        `   (record the created refs in the value); if no downstream card is needed:`,
+        `   taskctl issue meta ${row.card} --meta handoff_declined_round=${round} ${flags}`,
+        "   and leave a note saying why. A proposed child that expands scope is E1:",
+        "   escalate instead of creating it.",
+        "   You may create cards; never claim or implement one, never move the producer,",
+        "   and never use --as-human.",
+        "",
+      );
+      return;
+    }
     if (row.route === true) {
       const title = row.title ? ` — ${row.title}` : "";
       const since = row.updated_at ? ` (unowned since ${row.updated_at})` : "";
