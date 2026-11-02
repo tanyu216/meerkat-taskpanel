@@ -76,6 +76,17 @@ describe("project card rules: the docs/agents discovery surface", () => {
     assert.deepEqual(hits, [], "a shipped skill names the removed top-level path");
   });
 
+  it("makes the create and epic scenarios discover the project files", () => {
+    const create = read("skills/meerkat/references/scenarios/create.md");
+    assert.match(create, /docs\/agents\/acceptance-mode\.md/, "create names acceptance-mode");
+    assert.match(create, /docs\/agents\/epic-cards\.md/, "create names epic-cards");
+    assert.match(create, /taskctl project dir <id> --json/, "the project dir is resolved first");
+    assert.match(create, /never invent a project default/i, "absent means the skill default");
+
+    const epic = read("skills/meerkat/references/scenarios/epic.md");
+    assert.match(epic, /docs\/agents\/epic-cards\.md/, "epic names epic-cards");
+  });
+
   it("keeps the acceptance guidance self-contained and the epic guidance project-specific", () => {
     const mode = read("docs/agents/acceptance-mode.md");
     assert.match(mode, /docs\/agents\/acceptance-mode\.md/, "the discovery path is named");

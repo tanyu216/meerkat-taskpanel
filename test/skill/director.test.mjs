@@ -474,8 +474,12 @@ describe("board skill: the acceptance list rule", () => {
   });
 
   it("says an epic's acceptance is its children", () => {
-    assert.match(text, /epic[^\n]*child/i);
-    assert.match(text, /rollup/);
+    const epic = readFileSync(
+      join(ROOT, "skills/meerkat/references/scenarios/epic.md"),
+      "utf8",
+    );
+    assert.match(epic, /epic[^\n]*child/i);
+    assert.match(epic, /rollup/);
   });
 });
 
@@ -521,6 +525,10 @@ describe("board skill: the container decision", () => {
     join(ROOT, "skills/meerkat/references/lifecycle/containers.md"),
     "utf8",
   );
+  const epic = readFileSync(
+    join(ROOT, "skills/meerkat/references/scenarios/epic.md"),
+    "utf8",
+  );
 
   it("does not promote a card that already delivered", () => {
     assert.match(skill, /current-round report/i);
@@ -552,12 +560,15 @@ describe("board skill: the container decision", () => {
     // TP-0002 cut "enforce a 1-4 character prefix on every create path" into core,
     // CLI, web, docs and a fixture sweep. Three children could not land alone and
     // a sixth card existed only to pay the split's debt. The rule names the test.
-    assert.match(skill, /land on the base branch alone/i);
-    assert.match(skill, /leave the tree coherent/i);
-    assert.match(skill, /1-4 character project prefix/i);
-    assert.match(skill, /core, CLI, web, docs and fixtures/);
-    assert.match(skill, /not a technical layer/i);
+    assert.match(epic, /land on the base branch alone/i);
+    assert.match(epic, /leave the tree coherent/i);
+    assert.match(epic, /1-4 character project prefix/i);
+    assert.match(epic, /core, CLI, web, docs and fixtures/);
+    assert.match(epic, /not a technical layer/i);
     assert.match(lifecycle, /not schema-enforced/i);
-    assert.match(lifecycle, /\.\.\/\.\.\/SKILL\.md#containers-when-the-card-is-an-epic/);
+    assert.match(
+      lifecycle,
+      /\.\.\/scenarios\/epic\.md#a-child-is-a-deliverable-not-a-layer/,
+    );
   });
 });

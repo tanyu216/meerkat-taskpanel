@@ -28,7 +28,7 @@ import { readFrontmatterField } from "../../scripts/verify/lib/frontmatter.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SKILL = readFileSync(join(ROOT, "skills/meerkat/SKILL.md"), "utf8");
-const CLI = readFileSync(join(ROOT, "skills/meerkat/references/cli/issue.md"), "utf8");
+const CLI = readFileSync(join(ROOT, "skills/meerkat/references/cli/files.md"), "utf8");
 
 /** The text of one `##` section, up to the next `##` heading. */
 function section(text, heading) {
@@ -39,7 +39,10 @@ function section(text, heading) {
 }
 
 describe("board skill: creating a card", () => {
-  const create = section(SKILL, "Creating a card");
+  const create = readFileSync(
+    join(ROOT, "skills/meerkat/references/scenarios/create.md"),
+    "utf8",
+  );
 
   it("keeps the section ahead of the claim workflow", () => {
     assert.ok(

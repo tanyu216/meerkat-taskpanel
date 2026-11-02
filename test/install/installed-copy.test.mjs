@@ -180,6 +180,20 @@ describe("the installed skill is a copy, not a link", () => {
     }
   });
 
+  it("carries every reference subdirectory a scenario page reads", () => {
+    for (const { kind, dir } of KINDS) {
+      const dest = installedDir(dir);
+      for (const rel of [
+        "references/scenarios/execute.md",
+        "references/cli/issue.md",
+        "references/lifecycle/transitions.md",
+        "references/schema/wire.md",
+      ]) {
+        assert.ok(existsSync(join(dest, rel)), `${kind}: ${rel} must be installed`);
+      }
+    }
+  });
+
   it("writes a taskctl shim for every agent kind — the rung that carries the identity", () => {
     // The shim is what pins `--agent <name> --actor-kind <kind>` on every call, and an agent kind
     // without one records its writes with no kind — which the board reads as a person's.

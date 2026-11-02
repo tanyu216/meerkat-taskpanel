@@ -97,7 +97,7 @@ verbatim:
 Bind scripts to `error.code` and `error.hint.command`, never to the prose.
 
 `events tail`, `events follow` and `export watch` are the exceptions: they write newline-delimited records
-(see [`events`](core.md#events) and [`export watch`](issue.md#export-watch)), not this envelope. Every other
+(see [`events`](core.md#events) and [`export watch`](files.md#export-watch)), not this envelope. Every other
 command, including `sla list` and `events hub --stop`, answers one document.
 
 Everything is local (loopback only); data lives in `<dataDir>/board.sqlite` (default

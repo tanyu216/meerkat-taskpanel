@@ -5,7 +5,8 @@ each group is in the detail pages below; the index stays the frozen surface the 
 contract test reads.
 
 - [cli/core.md](cli/core.md) — configuration, board start, `status`, `project`, `session`, `token`, `sla`, `events`.
-- [cli/issue.md](cli/issue.md) — cards, create, claim, deliver, comments, relations, attachments, reports, export, review.
+- [cli/issue.md](cli/issue.md) — cards, create, claim, deliver, the gate, awaiting/blocked, review.
+- [cli/files.md](cli/files.md) — comments, relations, attachments, reports, export, editing.
 - [cli/ops.md](cli/ops.md) — the loop, the workflow plan, `--json` and what each command returns.
 
 ## Global options
@@ -87,23 +88,23 @@ error · `3` `export md --check` found stale cards.
 
 | Command | Purpose |
 |---|---|
-| `comment list <ref> [--kind <kind>] [--limit <n>]` | See [cli/issue.md](cli/issue.md). |
-| `comment add <ref> (--body <text> \| --file <path\|->) [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect\|question] [--ref <kind:id>]…` | See [cli/issue.md](cli/issue.md). |
+| `comment list <ref> [--kind <kind>] [--limit <n>]` | See [cli/files.md](cli/files.md). |
+| `comment add <ref> (--body <text> \| --file <path\|->) [--kind discuss\|decision\|confirm\|confirm_request\|change\|note\|defect\|question] [--ref <kind:id>]…` | See [cli/files.md](cli/files.md). |
 ### `relation`
 
 | Command | Purpose |
 |---|---|
-| `relation add <ref> --type parent\|blocks\|related --target <ref> [--force]` | See [cli/issue.md](cli/issue.md). |
-| `relation remove <ref> <relation-id>` | See [cli/issue.md](cli/issue.md). |
-| `relation list <ref>` | See [cli/issue.md](cli/issue.md). |
+| `relation add <ref> --type parent\|blocks\|related --target <ref> [--force]` | See [cli/files.md](cli/files.md). |
+| `relation remove <ref> <relation-id>` | See [cli/files.md](cli/files.md). |
+| `relation list <ref>` | See [cli/files.md](cli/files.md). |
 ### `attachment`
 
 | Command | Purpose |
 |---|---|
-| `attachment add <ref> --file <path> [--name <filename>] [--content-type <type>]` | See [cli/issue.md](cli/issue.md). |
-| `attachment list <ref>` | See [cli/issue.md](cli/issue.md). |
-| `attachment download <attachment-id> --out <file>` | See [cli/issue.md](cli/issue.md). |
-| `attachment remove <attachment-id>` | See [cli/issue.md](cli/issue.md). |
+| `attachment add <ref> --file <path> [--name <filename>] [--content-type <type>]` | See [cli/files.md](cli/files.md). |
+| `attachment list <ref>` | See [cli/files.md](cli/files.md). |
+| `attachment download <attachment-id> --out <file>` | See [cli/files.md](cli/files.md). |
+| `attachment remove <attachment-id>` | See [cli/files.md](cli/files.md). |
 ### `session`
 
 | Command | Purpose |
@@ -122,14 +123,14 @@ error · `3` `export md --check` found stale cards.
 
 | Command | Purpose |
 |---|---|
-| `report list <ref> [--round <n>]` | See [cli/issue.md](cli/issue.md). |
-| `report template <ref> [--commit <sha>] [--path <p>]… [--command <cmd:exit>]… [--coverage <pct[@scope]>]…` | See [cli/issue.md](cli/issue.md). |
+| `report list <ref> [--round <n>]` | See [cli/files.md](cli/files.md). |
+| `report template <ref> [--commit <sha>] [--path <p>]… [--command <cmd:exit>]… [--coverage <pct[@scope]>]…` | See [cli/files.md](cli/files.md). |
 ### `export`
 
 | Command | Purpose |
 |---|---|
-| `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md] [--watch]` | See [cli/issue.md](cli/issue.md). |
-| `export watch [<ref>] [--ref <ref>]… [--dir <dir>\|--out <file>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once] [--detach] [--watch-status] [--stop] [--standalone]` | See [cli/issue.md](cli/issue.md). |
+| `export md [<ref>] [--out <dir\|file.md>] [--project <id>] [--check] [--md] [--watch]` | See [cli/files.md](cli/files.md). |
+| `export watch [<ref>] [--ref <ref>]… [--dir <dir>\|--out <file>] [--after <rev>] [--idle <ms>] [--ttl <ms>] [--once] [--detach] [--watch-status] [--stop] [--standalone]` | See [cli/files.md](cli/files.md). |
 ### `token`
 
 | Command | Purpose |
