@@ -26,7 +26,6 @@ import { workerKey } from "../../src/orchestrator/worker-session.mjs";
 import {
   POOL_HEARTBEAT_MS,
   POOL_STALE_MS,
-  buildReviewerBatchPrompt,
   createSessionPool,
   matchEventSession,
   poolStatus,
@@ -161,24 +160,22 @@ function setAttempts(dir, ref, attempts) {
   writeFileSync(file, JSON.stringify(value), "utf8");
 }
 
-/** Seed one live ledger row, as a crashed turn would leave behind. */
-function seedLive(f, { sessionKey, ref, role = "worker" }) {
-  const now = new Date().toISOString();
-  writeLedger(f.dir, {
-    version: 1,
-    subagents: [
-      {
-        sessionKey,
-        actorKind: "claude",
-        subagentId: `live-${ref}`,
-        role,
-        card: ref,
-        status: "running",
-        startedAt: now,
-        lastSeenAt: now,
-      },
-    ],
+/**
+ * Put one enqueued row in `processing`, as another pool's in-flight turn would.
+ * A card session holds its concurrency slot through its queue row.
+ */
+function holdRow(f, ref, role = "worker") {
+  enqueueCard(join(f.dir), card(f, ref, f.app, role));
+  const row = readCards(f.dir).value.cards.find((entry) => entry.card === ref);
+  const claimed = claimCards(join(f.dir), {
+    claimedBy: "other-pool",
+    // A live owner: the recovery pass only requeues a row whose pool is gone.
+    pid: process.pid,
+    limit: 1,
+    ids: [row.id],
   });
+  assert.equal(claimed.ok, true);
+  assert.equal(claimed.cards.length, 1);
 }
 
 describe("session pool", () => {
@@ -232,11 +229,11 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("counts a live subagent against the global concurrency cap", async (t) => {
+  it("counts an in-flight card session against the global concurrency cap", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
-    // A row that outlived a crashed turn still holds its slot until it is reaped.
-    seedLive(f, { sessionKey: f.app, ref: "T-0", role: "reviewer" });
+    // An in-flight turn holds its slot through its processing queue row.
+    holdRow(f, "T-0", "reviewer");
     const pool = createSessionPool({
       opts: optsFor(f, { maxConcurrency: 2 }),
       kindPool: fake,
@@ -247,15 +244,16 @@ describe("session pool", () => {
     enqueueCard(join(f.dir), card(f, "T-2", f.api));
     await pool.tick();
     const cards = readCards(f.dir).value.cards;
+    assert.equal(cards.filter((entry) => entry.status === "processing").length, 1);
     assert.equal(cards.filter((entry) => entry.status === "done").length, 1);
     assert.equal(cards.filter((entry) => entry.status === "pending").length, 1);
     await pool.stop();
   });
 
-  it("shares one budget between workers and reviewers", async (t) => {
+  it("shares one budget between worker and review card sessions", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
-    seedLive(f, { sessionKey: f.app, ref: "R-0", role: "reviewer" });
+    holdRow(f, "R-0", "reviewer");
     const pool = createSessionPool({
       opts: optsFor(f, { maxConcurrency: 2 }),
       kindPool: fake,
@@ -271,16 +269,16 @@ describe("session pool", () => {
     assert.equal(
       cards.filter((entry) => entry.status === "done").length,
       1,
-      "one slot is taken, so workers and reviewers compete for the remaining one",
+      "one slot is taken, so worker and review sessions compete for the remaining one",
     );
     assert.equal(cards.filter((entry) => entry.status === "pending").length, 3);
     await pool.stop();
   });
 
-  it("lets a live reviewer consume the whole cap", async (t) => {
+  it("lets an in-flight review session consume the whole cap", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
-    seedLive(f, { sessionKey: f.app, ref: "R-0", role: "reviewer" });
+    holdRow(f, "R-0", "reviewer");
     const pool = createSessionPool({
       opts: optsFor(f, { maxConcurrency: 1 }),
       kindPool: fake,
@@ -324,10 +322,9 @@ describe("session pool", () => {
     assert.ok(reviewer, "the review card gets its own reviewer conversation");
     assert.match(worker.prompts[0], /work T-1/);
     assert.doesNotMatch(worker.prompts[0], /work R-1/);
-    assert.match(reviewer.prompts[0], /You are the reviewer session/);
-    assert.match(reviewer.prompts[0], /R-1 \(reviewer\) handoff/);
-    assert.doesNotMatch(reviewer.prompts[0], /work T-1/);
-    assert.doesNotMatch(reviewer.prompts[0], /Subagent questions/, "reviewers never answer questions");
+    assert.equal(reviewer.prompts[0], "work R-1", "the review session gets only its own card");
+    assert.equal(reviewer.role, "reviewer", "the review session carries the reviewer tool surface");
+    assert.doesNotMatch(reviewer.prompts[0], /spawn/i, "a review card session spawns nothing");
     await pool.stop();
   });
 
@@ -388,7 +385,7 @@ describe("session pool", () => {
       "the reviewer session opens by loading its role skill",
     );
     assert.match(worker.prompts[1], /work T-1/);
-    assert.match(reviewer.prompts[1], /You are the reviewer session/);
+    assert.equal(reviewer.prompts[1], "work R-1");
     await pool.stop();
   });
 
@@ -438,46 +435,42 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("does not reopen an inline lane merely because its skill was loaded at open", async (t) => {
+  it("does not reopen an inline card session merely because its skill was loaded at open", async (t) => {
     const f = fixture(t);
     installRole(f.dir, { id: "reviewer", agent: "Reviewer", lanes: ["reviewer"], kind: "codex" });
     const fake = fakePool();
     const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
     t.after(() => pool.stop());
+    const enqueueReview = (ref) =>
+      enqueueCard(join(f.dir), {
+        ...card(f, ref, f.app, "reviewer"),
+        agent: "Reviewer",
+        actor_kind: "codex",
+      });
     await pool.start();
-    enqueueCard(join(f.dir), {
-      ...card(f, "R-1", f.app, "reviewer"),
-      agent: "Reviewer",
-      actor_kind: "codex",
-    });
+    enqueueReview("R-1");
     await pool.tick();
-    enqueueCard(join(f.dir), {
-      ...card(f, "R-2", f.app, "reviewer"),
-      agent: "Reviewer",
-      actor_kind: "codex",
-    });
+    // A second handoff for the same card (a retry) resumes the card's own
+    // session; the inline skill was loaded at open and needs no extra turn.
+    enqueueReview("R-1");
     await pool.tick();
     const reviewers = fake.opened.filter(
       (handle) => handle.role === "reviewer" && handle.cwd === f.app,
     );
-    assert.equal(reviewers.length, 1, "the lane keeps its session while the skill is unchanged");
-    assert.equal(reviewers[0].prompts.length, 2, "two batches, no opener turn");
+    assert.equal(reviewers.length, 1, "the card keeps its session while the skill is unchanged");
+    assert.equal(reviewers[0].prompts.length, 2, "two turns, no opener turn");
 
     writeFileSync(
       join(f.dir, ".codex", "skills", "reviewer", "SKILL.md"),
       "---\nname: reviewer\ndescription: changed\n---\n\n# Reviewer changed\n",
       "utf8",
     );
-    enqueueCard(join(f.dir), {
-      ...card(f, "R-3", f.app, "reviewer"),
-      agent: "Reviewer",
-      actor_kind: "codex",
-    });
+    enqueueReview("R-1");
     await pool.tick();
     const reopened = fake.opened.filter(
       (handle) => handle.role === "reviewer" && handle.cwd === f.app,
     );
-    assert.equal(reopened.length, 2, "a changed skill reopens the inline lane");
+    assert.equal(reopened.length, 2, "a changed skill reopens the card session");
     assert.equal(reopened[1].skillPath, join(f.dir, ".codex", "skills", "reviewer", "SKILL.md"));
     await pool.stop();
   });
@@ -1305,11 +1298,9 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("pairs reviewer ids and revalidates only the tail", async (t) => {
+  it("runs each review card in its own session and completes both", async (t) => {
     const f = fixture(t);
-    const fake = fakePool({
-      behavior: () => ({ ids: ["a-one"] }),
-    });
+    const fake = fakePool();
     const pool = createSessionPool({
       opts: optsFor(f),
       kindPool: fake,
@@ -1323,8 +1314,16 @@ describe("session pool", () => {
 
     const rows = readCards(f.dir).value.cards;
     assert.deepEqual(rows.map((row) => row.status), ["done", "done"]);
-    assert.equal(rows[0].lastError, null, "the matched card completes normally");
-    assert.equal(rows[1].lastError, "handoff already in flight", "the tail is revalidated");
+    assert.deepEqual(rows.map((row) => row.lastError), [null, null]);
+    const reviewers = fake.opened.filter(
+      (handle) => handle.role === "reviewer" && handle.cwd === f.app,
+    );
+    assert.equal(reviewers.length, 2, "one top-level session per review card");
+    assert.deepEqual(
+      reviewers.map((handle) => handle.prompts[0]).sort(),
+      ["work R-1", "work R-2"],
+      "no card's handoff crosses into another's session",
+    );
     await pool.stop();
   });
 
@@ -1742,23 +1741,6 @@ describe("session pool", () => {
     assert.equal(disabled.reason, "--resident=no");
   });
 
-  it("builds the reviewer batch prompt with every handoff, in order", () => {
-    const prompt = buildReviewerBatchPrompt([
-      { card: "R-1", role: "reviewer", project: "P", target_dir: "/work/app", handoff: "review one" },
-      { card: "R-2", role: "reviewer", project: "P", target_dir: "/work/app", handoff: "review two" },
-    ]);
-    assert.match(prompt, /You are the reviewer session for P at \/work\/app/);
-    assert.match(prompt, /R-1 \(reviewer\) handoff/);
-    assert.match(prompt, /review one/);
-    assert.match(prompt, /R-2 \(reviewer\) handoff/);
-    assert.match(prompt, /review two/);
-    assert.match(prompt, /Do not work the cards yourself/);
-    assert.match(prompt, /in the exact order listed/, "the id-to-card mapping is positional");
-    assert.doesNotMatch(prompt, /Subagent questions/);
-    assert.match(prompt, /Do not answer questions/);
-    assert.match(prompt, /does not move any card|do not move any card/);
-  });
-
   it("routes an event by session id when two lanes share a cwd", () => {
     const worker = { key: "/work/app", cwd: "/work/app", handle: { sessionId: "w" } };
     const reviewer = { key: "/work/app#reviewer", cwd: "/work/app", handle: { sessionId: "r" } };
@@ -1778,33 +1760,6 @@ describe("session pool", () => {
     assert.equal(matchEventSession([worker, other], { cwd: "/work/api" }), other);
   });
 
-  it("names the reviewer role agent it should spawn", () => {
-    const prompt = buildReviewerBatchPrompt(
-      [
-        {
-          card: "R-1",
-          role: "reviewer",
-          agent_role: "Reviewer",
-          project: "P",
-          target_dir: "/work/app",
-          handoff: "review one",
-        },
-      ],
-      { roles: [{ id: "reviewer", agent: "Reviewer", nativeAgent: "reviewer" }] },
-    );
-    assert.match(prompt, /Named role agents/);
-    assert.match(prompt, /spawn as "reviewer"/);
-    assert.match(prompt, /R-1 \(reviewer\) role Reviewer handoff/);
-    assert.doesNotMatch(prompt, /Subagent questions/);
-  });
-
-  it("does not carry the routing table: that belongs to the director prompt", () => {
-    const prompt = buildReviewerBatchPrompt(
-      [{ card: "R-1", role: "reviewer", project: "P", target_dir: "/work/app", handoff: "review it" }],
-      { roles: [], routing: { text: "| Work shape | Accountable role |\n|---|---|\n" } },
-    );
-    assert.doesNotMatch(prompt, /## Work routing/);
-  });
 });
 
 describe("worker session resume", () => {

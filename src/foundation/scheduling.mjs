@@ -851,6 +851,70 @@ export function buildResidentEnvelope(input) {
 }
 
 /**
+ * The lean envelope for a **review** card's resident session. The reviewer
+ * skill was loaded when the session opened, so this message carries the
+ * review's own moves and nothing of the role layer or the protocol text.
+ *
+ * @param {{card?: object, flags?: string|null}} input
+ * @returns {string}
+ */
+export function buildReviewEnvelope(input) {
+  const card = input.card ?? {};
+  const ref = card.identifier;
+  const reviewed =
+    typeof card.review_of === "string" && card.review_of.trim() !== ""
+      ? card.review_of.trim()
+      : null;
+  const original = reviewed ?? "<card under review>";
+  const round = card.review_round ?? "the round recorded on the review card";
+  const project = card.project ?? "<project id>";
+  const brief = cardFileRel(ref);
+  const originalBrief = reviewed === null ? null : cardFileRel(reviewed);
+  const flags = typeof input.flags === "string" && input.flags !== "" ? input.flags : null;
+  return [
+    `You are the reviewer for the ${project} project — one delivered card.`,
+    `Review card: ${ref}`,
+    `Card under review: ${original} (round ${round})`,
+    `Review brief: ${brief} — exported by the supervisor; read it, it is authoritative.`,
+    ...(originalBrief === null
+      ? []
+      : [`Original brief: ${originalBrief} (when present; also authoritative).`]),
+    "Never edit a card.md: the supervisor overwrites it from the board.",
+    ...(flags === null
+      ? ["Carry the session opener's Flags on every write."]
+      : [`Flags: ${flags}`, "Carry these Flags on every write."]),
+    "",
+    "Step 0 — the review_not_ready check; do it before reading anything else:",
+    `  taskctl issue get ${original} --json <flags>`,
+    "  If its status is not in_review, or its delivery_round is not the round above: leave a",
+    `  note on ${ref} and stop. Do not deliver a verdict; the loop closes this review card.`,
+    "",
+    `Read (start with ${brief}; taskctl is the live view):`,
+    `  taskctl issue get ${ref} --json <flags>`,
+    `  taskctl report list ${original} <flags>`,
+    `  taskctl comment list ${original} --limit 200 --json <flags>`,
+    `  taskctl relation list ${original} <flags>     # an epic's children`,
+    "Audit every acceptance item, this round's delivery report and its evidence, the comment",
+    "trail, and — for an epic — the rollup report and each child's state. The original's",
+    "baseline already carries every earlier round's findings: answer each one.",
+    "Verify what was delivered, not the live tree: take this round's report `commit` anchor and",
+    "read it with `git -C <project dir> show <sha>:<path>`. A claim visible only in the working",
+    "tree is unverified; if the tree has moved, say so in the report.",
+    "",
+    "Deliver one verdict on THIS review card:",
+    `  taskctl report template ${ref}   # fill it in, then:`,
+    `  taskctl issue deliver ${ref} --report-file - <flags>`,
+    "The report's FIRST line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`; put the",
+    "findings after it and in `leftovers`.",
+    "",
+    "Board: heartbeat only this review card, never the card under review. Do not move either",
+    "card: the loop applies the verdict and closes this one. You cannot enter awaiting — a",
+    "review ends in a verdict; if the evidence is insufficient, REJECT with the findings.",
+    "Your role skill is already loaded; read the branch file it names once and follow it.",
+  ].join("\n");
+}
+
+/**
  * The prompt the director lane gets for the **question lane**.
  *
  * A worker that cannot decide writes an agent `question` comment and holds with

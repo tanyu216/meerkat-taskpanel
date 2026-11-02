@@ -13,6 +13,7 @@ import { join } from "node:path";
 import {
   buildHandoff,
   buildResidentEnvelope,
+  buildReviewEnvelope,
   buildReviewHandoff,
   planPatrol,
   planTick,
@@ -1130,30 +1131,34 @@ export function wakeHandoff(opts, config, action, card, resident = false) {
   const decisionPolicyPath = roleSet?.decisionPolicy?.path ?? null;
   // The resident pool loads the role skill when the session opens — a
   // `/<skill>` message on a host that expands it, or inside the adapter
-  // (`developerInstructions`, `--append-system-prompt`). A worker's task
+  // (`developerInstructions`, `--append-system-prompt`). A resident session's
   // envelope then carries the card and the board moves, not the role layer or
-  // the skill paths. A review card keeps the full handoff: the reviewer lane
-  // spawns a subagent per card, and that subagent does not inherit the parent's
-  // loaded skill — its handoff is its first context. A deployment without a
-  // role, or with a role whose SKILL.md is missing, keeps the full handoff too:
-  // there is no skill to load.
+  // the skill paths: a review card gets its own lean envelope, exactly like a
+  // worker. A deployment without a role, or with a role whose SKILL.md is
+  // missing, keeps the full handoff: there is no skill to load.
   const skillMode = skillLoadMode(actorKind);
   const skillReady =
     skillMode === "opener" ||
     (skillMode === "inline" && typeof files?.workflow === "string");
-  const lean = resident === true && role !== null && !isReview && skillReady;
+  const lean = resident === true && role !== null && skillReady;
+  // An inline lane got no opener message, so the envelope carries the
+  // attribution the agent must put on every board write.
+  const flags =
+    skillMode === "inline"
+      ? `${action.agent ? `--agent ${action.agent} ` : ""}--actor-kind=${actorKind}`
+      : null;
 
   const handoff = lean
-    ? buildResidentEnvelope({
-        card: card ?? { identifier: action.identifier },
-        decisionPolicyPath,
-        // An inline lane got no opener message, so the envelope carries the
-        // attribution the agent must put on every board write.
-        flags:
-          skillMode === "inline"
-            ? `${action.agent ? `--agent ${action.agent} ` : ""}--actor-kind=${actorKind}`
-            : null,
-      })
+    ? isReview
+      ? buildReviewEnvelope({
+          card: card ?? { identifier: action.identifier },
+          flags,
+        })
+      : buildResidentEnvelope({
+          card: card ?? { identifier: action.identifier },
+          decisionPolicyPath,
+          flags,
+        })
     : isReview
       ? buildReviewHandoff({
           card: card ?? { identifier: action.identifier },
@@ -1196,8 +1201,8 @@ export function wakeHandoff(opts, config, action, card, resident = false) {
 }
 
 /**
- * The queue row's handoff fields, shared by poll and patrol. A worker row names
- * its own session; a review row keeps the batch/subagent path.
+ * The queue row's handoff fields, shared by poll and patrol. Every row names
+ * its own card session; a review card is no different from a worker card.
  *
  * @param {{opts: object, config: object, action: object, card?: object, projectDir?: string|null, round?: number, resident?: boolean}} input
  */
@@ -1209,7 +1214,7 @@ export function buildHandoffRow(input = {}) {
     // The queue row carries the kind so the pool keys the session by
     // (actor_kind, worker_key) and never resumes a session across kinds.
     actor_kind: result.actorKind,
-    worker_key: result.role === "worker" ? workerKey(action.identifier, round) : null,
+    worker_key: workerKey(action.identifier, round),
   };
 }
 

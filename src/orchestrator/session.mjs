@@ -39,7 +39,6 @@ import {
   buildWorkerDispatchPrompt,
   buildWorkerReplayPrompt,
   buildWorkerResumePrompt,
-  isWorkerHandoff,
   isWorkerKey,
   parseWorkerKey,
   planWorkerOpen,
@@ -328,64 +327,6 @@ export function poolStatus(input = {}) {
     };
   }
   return { ...base, live: true, verdict: "running", reason: null };
-}
-
-/**
- * The prompt a reviewer lane gets for a batch of review cards.
- *
- * Review cards are the only lane that still batches: the lane conversation
- * spawns one subagent per card and pairs returned ids positionally. Worker cards
- * run in their own worker session and never enter this prompt.
- *
- * @param {object[]} cards queue rows in dispatch order
- * @param {{roles?: object[]}|null} [roleSet] discovered roles, for a native agent name
- * @returns {string}
- */
-export function buildReviewerBatchPrompt(cards, roleSet = null) {
-  const first = cards[0] ?? {};
-  const project = String(first.project ?? "the project");
-  const dir = String(first.target_dir ?? "");
-  const roles = Array.isArray(roleSet?.roles) ? roleSet.roles : [];
-  const roleFor = (agent) =>
-    roles.find((role) => role.agent.toLowerCase() === String(agent ?? "").toLowerCase()) ?? null;
-  const named = [];
-  for (const card of cards) {
-    if (!card.agent_role) continue;
-    const role = roleFor(card.agent_role);
-    if (role && !named.some((entry) => entry.agent === role.agent)) named.push(role);
-  }
-
-  const lines = [
-    `You are the reviewer session for ${project} at ${dir}.`,
-    "",
-    "Review cards in this batch:",
-  ];
-  if (named.length > 0) {
-    lines.push("", "Named role agents (when the actor kind supports them):");
-    for (const role of named) {
-      lines.push(`  ${role.agent} — spawn as "${role.nativeAgent}" and pass the handoff verbatim.`);
-    }
-    lines.push(
-      "If a named agent is unavailable, spawn the default subagent; the handoff carries the",
-      "role workflow it must read.",
-    );
-  }
-  cards.forEach((card, index) => {
-    const roleSuffix = card.agent_role ? ` role ${card.agent_role}` : "";
-    lines.push(`  ${index + 1}) ${card.card} (${card.role ?? "reviewer"})${roleSuffix} handoff:`);
-    for (const line of String(card.handoff ?? "").split("\n")) lines.push(`     ${line}`);
-  });
-  lines.push(
-    "",
-    "Spawn exactly one subagent per numbered card, in the exact order listed: the loop pairs",
-    "each returned agent id with the card at the same position. Pass the handoff text verbatim.",
-    "Do not work the cards yourself. Do not move the cards you spawn. Return after spawning;",
-    "record each subagent's agent/session id.",
-    "",
-    "Do not answer questions and do not move any card. A review ends in a verdict on the",
-    "review card; the loop applies it.",
-  );
-  return lines.join("\n");
 }
 
 /** @param {{targetDir: string, subagents: object[]}} input */
@@ -701,23 +642,23 @@ export function createSessionPool(input = {}) {
       }
     }
     const resumeId = plan.mode === "resume" ? plan.sessionId ?? null : null;
+    const laneRole = options.role === "reviewer" ? "reviewer" : "worker";
     const handle = getKindPool(actorKind).openSession({
       cwd: options.cwd,
       sessionId: resumeId,
-      role: "worker",
+      role: laneRole,
       skillPath: options.skillPath ?? null,
     });
     const entry = {
       key,
       cwd: options.cwd,
-      role: "worker",
+      role: laneRole,
       actorKind,
       handle,
       sessionId: resumeId,
       startedAt: nowIso(now),
       lastUsedAt: nowIso(now),
       busy: false,
-      batch: null,
       fresh: plan.mode !== "resume",
       openerFingerprint:
         typeof stored?.openerFingerprint === "string" ? stored.openerFingerprint : null,
@@ -815,7 +756,6 @@ export function createSessionPool(input = {}) {
       startedAt: nowIso(now),
       lastUsedAt: nowIso(now),
       busy: false,
-      batch: null,
       fresh: resumeId === null,
       openerFingerprint:
         typeof stored?.openerFingerprint === "string" ? stored.openerFingerprint : null,
@@ -866,11 +806,11 @@ export function createSessionPool(input = {}) {
         persistState();
       }
       if (event.type === "subagent" && typeof event.subagentId === "string") {
-        if (eventSession.batch !== null) eventSession.batch.ids.push(event.subagentId);
-        else
-          log(
-            `session: ${eventSession.key} reported subagent ${event.subagentId} with no batch — recording it in the ledger`,
-          );
+        // A card session owns its whole card; it spawns nothing. A subagent
+        // event is legacy state from the old reviewer lane, worth a line only.
+        log(
+          `session: ${eventSession.key} reported a subagent ${event.subagentId} — no card session spawns one`,
+        );
       }
     }
     if (event.type === "assistant" && typeof event.text === "string" && event.text !== "") {
@@ -1216,8 +1156,9 @@ export function createSessionPool(input = {}) {
       return { ok: true, dispatched: 0 };
     }
     // Question rows are routed by their own interval (routeQuestionsNow). Here
-    // they only gate handoffs for the same card: a worker whose question is
-    // still unsettled must not be re-prompted by a second handoff.
+    // they only gate handoffs for the same worker card: a worker whose question
+    // is still unsettled must not be re-prompted by a second handoff. A review
+    // card never asks, so it is never gated on one.
     const questionRows = pending.filter(isQuestionRow);
     const handoffRows = pending.filter((row) => !isQuestionRow(row));
     if (handoffRows.length === 0) {
@@ -1232,29 +1173,24 @@ export function createSessionPool(input = {}) {
         log(`session: card ${card.card} has no usable target_dir (${JSON.stringify(card.target_dir)}) — failed`);
         continue;
       }
-      // A review card runs in its own conversation: the reviewer subagent
-      // inherits that session's tool surface, which has no Write.
-      if (String(card.role ?? "worker") === "reviewer") {
-        const key = reviewerKey(dir, card.actor_kind ?? null);
-        let group = groups.get(key);
-        if (group === undefined) {
-          group = { key, dir, lane: "reviewer", cards: [] };
-          groups.set(key, group);
-        }
-        group.cards.push(card);
-        continue;
-      }
-      // A worker card is its own top-level session, keyed by card + round.
-      // While its question row is open, the director lane owns the card; the
-      // handoff waits one tick rather than racing a second writer.
-      if (questionCards.has(String(card.card ?? ""))) {
+      // Every card — review or worker — is its own top-level session, keyed by
+      // card + round; the role skill loads when it opens. While a worker's
+      // question row is open, the director lane owns the card; the handoff
+      // waits one tick rather than racing a second writer.
+      const review = String(card.role ?? "worker") === "reviewer";
+      if (!review && questionCards.has(String(card.card ?? ""))) {
         log(`session: worker ${card.card} has an open question — leaving its handoff pending`);
         continue;
       }
       const key = typeof card.worker_key === "string" && card.worker_key !== ""
         ? card.worker_key
         : workerKey(card.card, roundOf(card));
-      groups.set(key, { key, dir, lane: "worker-session", cards: [card] });
+      groups.set(key, {
+        key,
+        dir,
+        lane: review ? "reviewer" : "worker-session",
+        cards: [card],
+      });
     }
     let dispatched = 0;
     /**
@@ -1296,10 +1232,14 @@ export function createSessionPool(input = {}) {
       return { batch: kept, dropped };
     };
     // The global cap is per tick, not per directory: planning is sequential and
-    // the budget is fixed before any turn starts. `claimedByProject` keeps
-    // `--project-concurrency` honest across a project's worktrees and its two
-    // lanes, whose turns now overlap.
-    let globalBudget = Math.max(0, maxConcurrency - liveSubagents(ledger).length);
+    // the budget is fixed before any turn starts. A card session holds its slot
+    // through its queue row — every turn is one card, so the processing rows
+    // are the live sessions. `claimedByProject` keeps `--project-concurrency`
+    // honest across a project's worktrees, whose turns overlap.
+    const processingRows = read.value.cards.filter(
+      (row) => row.status === "processing" && !isQuestionRow(row),
+    ).length;
+    let globalBudget = Math.max(0, maxConcurrency - processingRows);
     const claimedByProject = new Map();
     const jobs = [];
     for (const { key, dir, lane, cards } of groups.values()) {
@@ -1307,36 +1247,27 @@ export function createSessionPool(input = {}) {
         log(`session: global concurrency cap reached (${maxConcurrency}) — leaving ${cards.length} card(s) pending`);
         break;
       }
-      if (
-        lane !== "worker-session" &&
-        !sessions.has(key) &&
-        [...sessions.keys()].filter((entryKey) => !isWorkerKey(entryKey)).length >=
-          poolMax
-      ) {
-        log(`session: lane session pool is full (${poolMax}) — leaving ${dir} (${lane}) pending`);
-        continue;
-      }
-      // A worker that is still in a turn — including a worker holding on
+      // A session that is still in a turn — including a worker holding on
       // `issue wait` — must not receive a second prompt. The queue row waits;
       // the director's release may have re-claimed the card in the meantime,
       // and `revalidateBatch` drops the row if the worker already moved it.
-      if (lane === "worker-session") {
+      {
         const existing = sessions.get(key);
-        // `busy` is the in-process truth; the persisted `worker.status` can lag
-        // a failed turn and must not be used as a lock.
+        // `busy` is the in-process truth; the persisted status can lag a failed
+        // turn and must not be used as a lock.
         if (existing?.busy === true) {
-          log(`session: worker ${cards[0].card} is still running — leaving its handoff pending`);
+          log(`session: card ${cards[0].card} is still running — leaving its handoff pending`);
           continue;
         }
       }
-      if (lane === "worker-session" && !sessions.has(key)) {
-        const openWorkers = [...sessions.values()].filter((session) => isWorkerKey(session.key));
-        if (openWorkers.length >= maxConcurrency) {
-          const victim = openWorkers
+      if (!sessions.has(key)) {
+        const openCards = [...sessions.values()].filter((session) => isWorkerKey(session.key));
+        if (openCards.length >= maxConcurrency) {
+          const victim = openCards
             .filter((session) => session.busy !== true && session.worker?.status !== "running")
             .sort((a, b) => Date.parse(a.lastUsedAt) - Date.parse(b.lastUsedAt))[0];
           if (victim === undefined) {
-            log(`session: worker session cap reached (${maxConcurrency}) — leaving ${cards[0].card} pending`);
+            log(`session: card session cap reached (${maxConcurrency}) — leaving ${cards[0].card} pending`);
             continue;
           }
           await closeEntry(victim, { dropSession: false });
@@ -1349,12 +1280,12 @@ export function createSessionPool(input = {}) {
             "the reviewer boundary is prompt-only for this actor kind",
         );
       }
-      if (lane === "worker-session") {
+      {
         const parsed = parseWorkerKey(key);
         if (parsed !== null) await closeOlderWorkerGenerations(parsed.card, parsed.round);
-        // A parked worker session must become runnable again once a human has
-        // cleared the hold. Without this the stored `blocked` flag outlives the
-        // board state and every dispatch throws for ever.
+        // A parked session must become runnable again once a human has cleared
+        // the hold. Without this the stored `blocked` flag outlives the board
+        // state and every dispatch throws for ever.
         const stored = state.projects?.[key];
         if (stored?.blocked === true && revalidateCard !== null) {
           const live = await revalidateCard({ card: cards[0].card, row: cards[0] });
@@ -1362,7 +1293,7 @@ export function createSessionPool(input = {}) {
             delete state.projects[key];
             persistState();
             log(
-              `session: worker ${cards[0].card} was parked; the board cleared the hold — opening a fresh session`,
+              `session: card ${cards[0].card} was parked; the board cleared the hold — opening a fresh session`,
             );
           }
         }
@@ -1383,9 +1314,11 @@ export function createSessionPool(input = {}) {
         log(`roles: ${warning}`);
       }
       const row = cards[0];
+      // The card data states the lane; the assignee selects the role within it.
+      // A review card never falls back to a different role.
       const role =
         lane === "reviewer"
-          ? selectReviewerRole(roleSet, row.agent)
+          ? selectRole(roleSet, row.agent, "reviewer")
           : (selectRole(roleSet, row.agent, "worker") ?? selectWorkerRole(roleSet));
       const sessionKind = String(row.actor_kind ?? opts.actorKind ?? "claude");
       const skillMode = skillLoadMode(sessionKind);
@@ -1415,30 +1348,37 @@ export function createSessionPool(input = {}) {
             };
       const openOptions = {
         cwd: dir,
-        role: lane === "reviewer" ? "reviewer" : lane === "worker-session" ? "worker" : "project",
+        role: lane === "reviewer" ? "reviewer" : "worker",
         actorKind: cards[0].actor_kind ?? null,
         skillPath: skill?.skillPath ?? null,
-        ...(lane === "worker-session"
-          ? { worker: { row: cards[0], workspace: cards[0].workspace ?? null } }
-          : {}),
+        worker: { row: cards[0], workspace: cards[0].workspace ?? null },
       };
       let entry;
       try {
         entry = await ensureSession(key, openOptions);
       } catch (err) {
-        completeCards(stateDir, [cards[0].id], { status: "failed", error: err.message });
-        log(`session: worker ${cards[0].card} could not open a session: ${err.message} — failed`);
+        if (String(cards[0].role ?? "worker") === "reviewer") {
+          // A review has no human to wake; a failed open is retried by the queue
+          // on a later tick.
+          requeueCards(stateDir, [cards[0].id], { error: err.message });
+          log(`session: review ${cards[0].card} could not open a session: ${err.message} — requeued`);
+        } else {
+          completeCards(stateDir, [cards[0].id], { status: "failed", error: err.message });
+          log(`session: worker ${cards[0].card} could not open a session: ${err.message} — failed`);
+        }
         continue;
       }
-      const live = liveSubagents(ledger);
       // A project's cards may run in several worktrees; the cap is on the
       // project, not on one directory. A row written before worktrees carries
-      // no project and falls back to its session key (the shared directory).
+      // no project and falls back to the directory it runs in. The processing
+      // rows are the live card sessions (this tick claims after this read).
       const project = String(cards[0]?.project ?? cards[0]?.project_dir ?? dir);
       const projectLive =
-        live.filter(
-          (subagent) =>
-            String(subagent.project ?? subagent.projectDir ?? subagent.sessionKey ?? "") === project,
+        read.value.cards.filter(
+          (row) =>
+            row.status === "processing" &&
+            !isQuestionRow(row) &&
+            String(row.project ?? row.project_dir ?? row.target_dir ?? "") === project,
         ).length + (claimedByProject.get(project) ?? 0);
       const budget = Math.max(0, Math.min(globalBudget, projectConcurrency - projectLive));
       if (budget === 0) {
@@ -1478,11 +1418,11 @@ export function createSessionPool(input = {}) {
       jobs.push({ key, dir, lane, entry, cards: batch, roleSet, skill });
     }
 
-    // Fan out: each job owns a distinct session key, so no two sends share a
+    // Fan out: each job owns a distinct card session, so no two sends share a
     // handle. Planning and claiming finished before the first send, so the
     // per-tick budget is fixed. Results are applied serially — the ledger and
     // the queue are single files.
-    const sendWorkerJob = async (job) => {
+    const sendCardJob = async (job) => {
       const row = job.cards[0];
       const plan = job.entry.worker?.planMode ?? "fresh";
       let answer = null;
@@ -1537,7 +1477,7 @@ export function createSessionPool(input = {}) {
         await closeEntry(entry, { dropSession: false });
         entry = openSession(job.key, {
           cwd: job.dir,
-          role: "worker",
+          role: job.lane === "reviewer" ? "reviewer" : "worker",
           skillPath: job.skill?.skillPath ?? null,
           worker: { row, workspace: row.workspace ?? null, forceReplay: true },
         });
@@ -1547,245 +1487,126 @@ export function createSessionPool(input = {}) {
         entry.worker.resumeState = "resumed_by_replay";
         persistState();
       }
-      return { outcome, ids: [], plan: usedPlan };
+      return { outcome, plan: usedPlan };
     };
-    const settled = await Promise.allSettled(
-      jobs.map(async (job) => {
-        if (job.lane === "worker-session") return sendWorkerJob(job);
-        job.entry.batch = { cards: job.cards, ids: [] };
-        job.entry.busy = true;
-        let outcome;
-        try {
-          const opened = await ensureOpener(
-            job.entry,
-            job.skill?.opener ?? null,
-            job.skill?.fingerprint ?? null,
-          );
-          const fallback =
-            opened.ok !== true && typeof job.skill?.path === "string"
-              ? `Role skill: ${job.skill.path} — read it before acting.\n\n`
-              : "";
-          outcome = await job.entry.handle.send(
-            `${fallback}${buildReviewerBatchPrompt(job.cards, job.roleSet)}`,
-            { timeoutMs: turnTimeoutMs },
-          );
-        } finally {
-          job.entry.busy = false;
-          job.entry.lastUsedAt = nowIso(now);
-        }
-        const ids =
-          job.entry.batch.ids.length > 0
-            ? job.entry.batch.ids.slice()
-            : Array.isArray(outcome?.ids)
-              ? outcome.ids.slice()
-              : [];
-        job.entry.batch = null;
-        return { outcome, ids };
-      }),
-    );
+    const settled = await Promise.allSettled(jobs.map((job) => sendCardJob(job)));
 
     for (let index = 0; index < jobs.length; index += 1) {
       const job = jobs[index];
       const { dir, lane, entry, cards: batch } = job;
+      const row = batch[0];
+      const review = lane === "reviewer";
       const settledJob = settled[index];
       if (settledJob.status === "rejected") {
-        const error = String(settledJob.reason?.message ?? settledJob.reason ?? "project turn failed");
+        const error = String(settledJob.reason?.message ?? settledJob.reason ?? "card turn failed");
         requeueCards(stateDir, batch.map((card) => card.id), { error });
         log(`session: ${lane} turn for ${dir} failed: ${error} — ${batch.length} card(s) requeued`);
-        if (isWorkerKey(entry.key)) {
-          entry.worker.status = "idle";
-          entry.worker.lastError = error;
-          persistState();
-        }
-        if (/closed|exited|spawn error|timed out/.test(error)) {
-          await closeEntry(entry, { dropSession: false });
-        }
-        continue;
-      }
-      const { outcome, ids, plan = null } = settledJob.value;
-      if (lane === "worker-session") {
-        const row = batch[0];
-        if (outcome?.ok === true) {
-          appendWorkerTurn(stateDir, job.key, { kind: "result", text: String(outcome.result ?? "") });
-          ledger = upsertSubagent(ledger, {
-            sessionKey: job.key,
-            lane: "worker",
-            actorKind: opts.actorKind,
-            subagentId: entry.sessionId,
-            role: "worker",
-            card: row.card,
-            type: "worker-session",
-            status: "completed",
-            lastResult: "worker session turn completed",
-            queueId: row.id,
-            project: row.project ?? null,
-            projectDir: row.project_dir ?? job.dir,
-            workspace: row.workspace?.path ?? row.target_dir,
-            round: roundOf(row),
-          });
-          completeCards(stateDir, [row.id]);
-          entry.worker.status = "idle";
-          entry.worker.planMode = "resume";
-          entry.worker.resumeState =
-            plan === "resume" ? "resumed" : plan === "replay" ? "resumed_by_replay" : "fresh";
-          entry.worker.lastResumeAt = nowIso(now);
-          dispatched += 1;
-          persistState();
-          writeLedgerState();
-          continue;
-        }
-        const error = String(outcome?.error ?? "worker turn failed");
-        if (plan === "replay" || outcome?.resumeFailed === true) {
-          entry.worker.status = "stale";
-          entry.worker.blocked = true;
-          entry.worker.lastError = error;
-          completeCards(stateDir, [row.id], {
-            status: "failed",
-            error: `worker session resume/replay failed: ${error}`,
-          });
-          log(`session: worker ${row.card} is blocked after a failed resume: ${error}`, {
-            level: "error",
-          });
-          // Stop the 30-minute re-dispatch loop: the card is parked for a human
-          // instead of leaving the claim `in_progress` for the stale recovery.
-          parkCard(row.card, error);
-          persistState();
-          continue;
-        }
-        let stillWorkable = true;
-        if (revalidateCard !== null) {
-          const live = await revalidateCard({ card: row.card, row });
-          if (
-            live?.ok === true &&
-            typeof live.status === "string" &&
-            live.status !== "todo" &&
-            live.status !== "in_progress"
-          ) {
-            completeCards(stateDir, [row.id], {
-              status: "done",
-              error: `not re-dispatched: card is ${live.status}`,
-            });
-            entry.worker.status = "idle";
-            stillWorkable = false;
-            log(`session: worker ${row.card} is ${live.status} after a failed turn — handoff completed`);
-          }
-        }
-        if (stillWorkable) {
-          requeueCards(stateDir, [row.id], { error });
-          log(`session: worker ${row.card} failed: ${error} — requeued`);
-        }
-        if (/closed|exited|spawn error|timed out/.test(error)) {
-          await closeEntry(entry, { dropSession: false });
-        }
-        // The turn settled; the record must not keep saying `running` (a failed
-        // turn is retried on the next tick, and the guard reads `busy`).
         entry.worker.status = "idle";
         entry.worker.lastError = error;
         persistState();
-        continue;
-      }
-      if (outcome?.ok !== true) {
-        // A failed (often timed-out) turn is not proof the work is unfinished:
-        // the worker may have delivered just before the interrupt. Re-check each
-        // card and only requeue the ones still claimable.
-        const retry = [];
-        for (const card of batch) {
-          if (revalidateCard === null) {
-            retry.push(card);
-            continue;
-          }
-          const live = await revalidateCard({ card: card.card, row: card });
-          if (live?.ok === true && live.status !== "todo" && live.status !== "in_progress") {
-            completeCards(stateDir, [card.id], {
-              status: "done",
-              error: `not re-dispatched: card is ${live.status}`,
-            });
-            log(`session: ${card.card} is ${live.status} after a failed turn — handoff completed`);
-            continue;
-          }
-          retry.push(card);
-        }
-        if (retry.length > 0) {
-          requeueCards(stateDir, retry.map((card) => card.id), {
-            error: outcome?.error ?? "project turn failed",
-          });
-        }
-        log(
-          `session: ${lane} turn for ${dir} failed: ${outcome?.error ?? "unknown error"} — ` +
-            `${retry.length} card(s) requeued`,
-        );
-        if (/closed|exited|spawn error|timed out/.test(String(outcome?.error ?? ""))) {
+        if (/closed|exited|spawn error|timed out/.test(error)) {
           await closeEntry(entry, { dropSession: false });
         }
         continue;
       }
-      let matched = 0;
-      batch.forEach((card, cardIndex) => {
-        const subagentId = ids[cardIndex];
-        if (subagentId === undefined) return;
-        matched += 1;
+      const { outcome, plan = null } = settledJob.value;
+      if (outcome?.ok === true) {
+        appendWorkerTurn(stateDir, job.key, { kind: "result", text: String(outcome.result ?? "") });
+        // One terminal row per card turn. A card session is the whole unit of
+        // work now: the queue's processing row held the slot, so the ledger
+        // records the finished turn and nothing live.
         ledger = upsertSubagent(ledger, {
-          sessionKey: dir,
-          lane,
+          sessionKey: job.key,
+          lane: review ? "reviewer" : "worker",
           actorKind: opts.actorKind,
-          subagentId,
-          role: card.role ?? "worker",
-          agentRole: card.agent_role ?? null,
-          card: card.card,
-          type: "subagent",
+          subagentId: entry.sessionId,
+          role: row.role ?? "worker",
+          agentRole: row.agent_role ?? null,
+          card: row.card,
+          type: "card-session",
           status: "completed",
-          lastResult: `${lane} session turn completed`,
-          queueId: card.id,
-          project: card.project ?? null,
-          projectDir: card.project_dir ?? dir,
-          workspace: card.workspace ?? null,
+          lastResult: `${review ? "review" : "worker"} session turn completed`,
+          queueId: row.id,
+          project: row.project ?? null,
+          projectDir: row.project_dir ?? job.dir,
+          workspace: row.workspace?.path ?? row.target_dir,
+          round: roundOf(row),
         });
-        completeCards(stateDir, [card.id]);
-      });
-      for (const extra of ids.slice(batch.length)) {
-        ledger = upsertSubagent(ledger, {
-          sessionKey: dir,
-          lane,
-          actorKind: opts.actorKind,
-          subagentId: extra,
-          status: "completed",
-        });
+        completeCards(stateDir, [row.id]);
+        entry.worker.status = "idle";
+        entry.worker.planMode = "resume";
+        entry.worker.resumeState =
+          plan === "resume" ? "resumed" : plan === "replay" ? "resumed_by_replay" : "fresh";
+        entry.worker.lastResumeAt = nowIso(now);
+        dispatched += 1;
+        persistState();
+        writeLedgerState();
+        continue;
       }
-      const unmatched = batch.slice(matched);
-      if (unmatched.length > 0) {
-        // A successful turn that reports no id for a card is ambiguous: the
-        // adapter only captures ids from a tool result, and the session may
-        // also stand down when the lane already holds the card. Ask the board,
-        // which owns the fact: a card that left `todo` got its handoff, so
-        // retrying it would put a second worker on the same card.
-        const requeue = [];
-        let inFlight = 0;
-        for (const card of unmatched) {
-          if (revalidateCard === null) {
-            requeue.push(card);
-            continue;
-          }
-          const live = await revalidateCard({ card: card.card, row: card });
-          if (live?.ok === true && typeof live.status === "string" && live.status !== "todo") {
-            completeCards(stateDir, [card.id], { status: "done", error: "handoff already in flight" });
-            inFlight += 1;
-            log(`session: ${card.card} is ${live.status} with no reported subagent id — handoff already in flight`);
-            continue;
-          }
-          requeue.push(card);
-        }
-        if (requeue.length > 0) {
-          requeueCards(stateDir, requeue.map((card) => card.id), {
-            error: `reviewer session reported ${ids.length} subagent(s) for ${batch.length} card(s)`,
+      const error = String(outcome?.error ?? `${review ? "review" : "worker"} turn failed`);
+      if (plan === "replay" || outcome?.resumeFailed === true) {
+        entry.worker.lastError = error;
+        if (review) {
+          // A review must never park: there is no question lane to release it
+          // and no human move to wait for. Drop the dead conversation and let
+          // the next tick open a fresh one; the queue's attempt budget bounds it.
+          requeueCards(stateDir, [row.id], {
+            error: `review session resume/replay failed: ${error}`,
           });
+          entry.worker.status = "idle";
+          log(`session: review ${row.card} is requeued after a failed resume: ${error}`, {
+            level: "error",
+          });
+          await closeEntry(entry, { dropSession: true });
+          persistState();
+          continue;
         }
-        log(
-          `session: ${dir} reported ${ids.length} subagent(s) for ${batch.length} card(s) — ` +
-            `${inFlight} already in flight, ${requeue.length} requeued`,
-        );
+        entry.worker.status = "stale";
+        entry.worker.blocked = true;
+        completeCards(stateDir, [row.id], {
+          status: "failed",
+          error: `worker session resume/replay failed: ${error}`,
+        });
+        log(`session: worker ${row.card} is blocked after a failed resume: ${error}`, {
+          level: "error",
+        });
+        // Stop the 30-minute re-dispatch loop: the card is parked for a human
+        // instead of leaving the claim `in_progress` for the stale recovery.
+        parkCard(row.card, error);
+        persistState();
+        continue;
       }
-      dispatched += matched;
-      writeLedgerState();
+      let stillWorkable = true;
+      if (revalidateCard !== null) {
+        const live = await revalidateCard({ card: row.card, row });
+        if (
+          live?.ok === true &&
+          typeof live.status === "string" &&
+          live.status !== "todo" &&
+          live.status !== "in_progress"
+        ) {
+          completeCards(stateDir, [row.id], {
+            status: "done",
+            error: `not re-dispatched: card is ${live.status}`,
+          });
+          entry.worker.status = "idle";
+          stillWorkable = false;
+          log(
+            `session: ${review ? "review " : "worker "}${row.card} is ${live.status} after a failed turn — handoff completed`,
+          );
+        }
+      }
+      if (stillWorkable) {
+        requeueCards(stateDir, [row.id], { error });
+        log(`session: ${review ? "review " : "worker "}${row.card} failed: ${error} — requeued`);
+      }
+      if (/closed|exited|spawn error|timed out/.test(error)) {
+        await closeEntry(entry, { dropSession: false });
+      }
+      // The turn settled; the record must not keep saying `running` (a failed
+      // turn is retried on the next tick, and the guard reads `busy`).
+      entry.worker.status = "idle";
+      entry.worker.lastError = error;
       persistState();
     }
     ledger = prune(ledger, { now: now() });
@@ -1796,7 +1617,7 @@ export function createSessionPool(input = {}) {
   async function evictIdle() {
     const live = liveSubagents(ledger);
     for (const entry of [...sessions.values()]) {
-      if (entry.busy === true || entry.batch !== null) continue;
+      if (entry.busy === true) continue;
       if (isWorkerKey(entry.key)) {
         if (entry.worker?.status === "running") continue;
         const dir = entry.worker?.worktree ?? entry.cwd;
