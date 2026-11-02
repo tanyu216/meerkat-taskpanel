@@ -74,10 +74,6 @@ export function reviewCreateArgs(action) {
     "--description", action.description,
     "--assignee", action.reviewer,
     "--assignee-kind", "agent",
-    // The configured reviewer is an explicit automation identity, not a role the
-    // card creator routed to, so it is outside the local role catalog by design.
-    // This is the one argv builder that needs the escape.
-    "--force-create",
     "--label", "review",
     // 0038 — a review card is flow B and is never itself reviewed.
     "--acceptance-mode", "off",

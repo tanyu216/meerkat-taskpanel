@@ -1466,19 +1466,20 @@ describe("cli/issue — acceptance authority", () => {
       const review = dataOf(
         run([
           "issue", "create", "--project", "demo", "--title", "Review", "--allow-dup",
-          "--review-of", card.task.identifier, "--review-round", "1", "--json",
+          "--review-of", card.task.identifier, "--review-round", "1",
+          "--assignee", "Reviewer", "--json",
         ]),
       );
       dataOf(
         run([
           "issue", "move", review.task.identifier, "in_progress",
-          "--agent", "linus", "--actor-kind", "claude", "--json",
+          "--agent", "Reviewer", "--actor-kind", "claude", "--json",
         ]),
       );
       dataOf(
         run([
           "issue", "deliver", review.task.identifier, "--report-file", "-",
-          "--agent", "linus", "--actor-kind", "claude", "--json",
+          "--agent", "Reviewer", "--actor-kind", "claude", "--json",
         ], {
           input: JSON.stringify({
             conclusion: "VERDICT: APPROVE\nlooks good",
@@ -2035,6 +2036,51 @@ describe("cli/issue — the assignee range is the local role catalog", () => {
       );
       assert.equal(refused.status, 1);
       assert.equal(errorOf(refused).code, "ASSIGNEE_NOT_IN_CATALOG");
+    });
+  });
+
+  it("defaults a review card to the catalog's reviewer and refuses a worker-lane assignee", async () => {
+    await board(async ({ run }) => {
+      const dir = makeTempDir();
+      seedCatalog(dir, [
+        role("jobs", "Jobs"),
+        role("reviewer", "Reviewer", { lanes: ["reviewer"], default_reviewer: true }),
+      ]);
+      const original = createIssue(run, ["--title", "Original"]);
+      const ref = original.task.identifier;
+      deliverIssue(run, ref);
+
+      const created = dataOf(create(run, ["--review-of", ref, "--review-round", "1"], envFor(dir)));
+      assert.equal(created.task.assignee.display_name, "Reviewer");
+
+      const refused = create(
+        run,
+        ["--review-of", ref, "--review-round", "1", "--assignee", "Jobs"],
+        envFor(dir),
+      );
+      assert.equal(refused.status, 1);
+      assert.equal(errorOf(refused).code, "ASSIGNEE_NOT_REVIEWER");
+      assert.equal(errorOf(refused).details.field, "assignee");
+    });
+  });
+
+  it("refuses the structural escapes on a review card", async () => {
+    await board(async ({ run }) => {
+      const dir = makeTempDir();
+      seedCatalog(dir, [role("reviewer", "Reviewer", { lanes: ["reviewer"], default_reviewer: true })]);
+      const original = createIssue(run, ["--title", "Original"]);
+      const ref = original.task.identifier;
+      deliverIssue(run, ref);
+
+      for (const extra of [
+        ["--assignee", "Terry", "--assignee-kind", "human"],
+        ["--assignee-id", "abc"],
+        ["--assignee", "Reviewer", "--force-create"],
+      ]) {
+        const refused = create(run, ["--review-of", ref, "--review-round", "1", ...extra], envFor(dir));
+        assert.equal(refused.status, 1, `refused: ${extra.join(" ")}`);
+        assert.equal(errorOf(refused).code, "ASSIGNEE_NOT_REVIEWER");
+      }
     });
   });
 });

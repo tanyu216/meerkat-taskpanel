@@ -26,7 +26,6 @@ import {
 import {
   loadRoles,
   roleVariant,
-  selectReviewerRole,
   selectRole,
   selectWorkerRole,
   skillLoadMode,
@@ -1079,23 +1078,13 @@ function describeWorkflowAction(action) {
  * @returns {{isReview: boolean, role: "worker"|"reviewer", agentRole: string|null, roleWarnings: string[], handoff: string}}
  */
 export function resolveRoleTarget(opts, config, action, card) {
-  // A review card takes the reviewer handoff. The candidate projection carries
-  // `review_of`, so the decision needs no second read; the agent-name fallback
-  // keeps an older projection (one written before those fields existed) working
-  // for a dedicated reviewer.
-  // 0031 — the reviewer set is the deployment reviewer plus every project
-  // override. `reviewerWorkers` is the subset that is also a worker, so a
-  // reviewer-worker keeps the normal worker lane. An older config that only
-  // carries `reviewer` still works.
-  const reviewers = Array.isArray(config.reviewers) && config.reviewers.length > 0
-    ? config.reviewers
-    : config.reviewer === null || config.reviewer === undefined
-      ? []
-      : [config.reviewer];
-  const reviewerWorkers = Array.isArray(config.reviewerWorkers) ? config.reviewerWorkers : [];
-  const dedicatedReviewer =
-    reviewers.includes(action.agent) && !reviewerWorkers.includes(action.agent);
-  const isReview = (typeof card?.review_of === "string" && card.review_of !== "") || dedicatedReviewer;
+  // The card data states the lane a review needs; the assignee selects the role
+  // within it. A review card whose assignee names no installed reviewer-lane
+  // role is not dispatched (the caller reports it); it is never swapped to a
+  // different role. `config` is still accepted for the supervisor's dispatch
+  // path until the reviewer configuration layer is removed.
+  void config;
+  const review = typeof card?.review_of === "string" && card.review_of !== "";
 
   // The role layer is optional. `opts.roles` is the injected/preloaded form the
   // tests use; production scans the installed role skills each dispatch (the
@@ -1108,8 +1097,8 @@ export function resolveRoleTarget(opts, config, action, card) {
     kindOrder: opts.kindOrder,
     explicitDir: opts.rolesDir ?? null,
   });
-  const role = isReview
-    ? selectReviewerRole(roleSet, action.agent)
+  const role = review
+    ? selectRole(roleSet, action.agent, "reviewer")
     : (selectRole(roleSet, action.agent, "worker") ?? selectWorkerRole(roleSet));
 
   // Installation location is the routing. The chosen kind can fall back to
@@ -1124,7 +1113,8 @@ export function resolveRoleTarget(opts, config, action, card) {
       });
   const actorKind = platform.effective;
   return {
-    isReview,
+    isReview: review,
+    executorReady: !review || role !== null,
     roleSet,
     role,
     primaryKind,
@@ -1136,7 +1126,7 @@ export function resolveRoleTarget(opts, config, action, card) {
 
 export function wakeHandoff(opts, config, action, card, resident = false) {
   const target = resolveRoleTarget(opts, config, action, card);
-  const { isReview, roleSet, role, actorKind, files } = target;
+  const { isReview, executorReady, roleSet, role, actorKind, files } = target;
   const decisionPolicyPath = roleSet?.decisionPolicy?.path ?? null;
   // The resident pool loads the role skill when the session opens — a
   // `/<skill>` message on a host that expands it, or inside the adapter
@@ -1193,6 +1183,7 @@ export function wakeHandoff(opts, config, action, card, resident = false) {
       : null;
   return {
     isReview,
+    executorReady,
     role: isReview ? "reviewer" : "worker",
     agentRole,
     // `null` means "no kind that carries this role can start": the caller must

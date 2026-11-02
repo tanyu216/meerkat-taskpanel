@@ -45,6 +45,10 @@
       "http": 400
     },
     {
+      "code": "ASSIGNEE_NOT_REVIEWER",
+      "http": 400
+    },
+    {
       "code": "ATTACHMENT_TOO_LARGE",
       "http": 413
     },

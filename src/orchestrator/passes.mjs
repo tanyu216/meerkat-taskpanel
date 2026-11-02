@@ -480,7 +480,13 @@ export function createQueueDispatch(input) {
     const projectDir = context?.projectDir ?? dir;
     const round = card?.delivery_round ?? card?.review_round ?? 1;
     const handoffRow = buildHandoffRow({ opts, config, action, card, projectDir, round, resident: true });
-    const { role, agentRole, actorKind, platformFallback, roleWarnings, handoff, worker_key } = handoffRow;
+    const { role, agentRole, actorKind, platformFallback, roleWarnings, handoff, worker_key, executorReady } = handoffRow;
+    if (!executorReady) {
+      return {
+        ok: false,
+        error: `review card assignee ${action.agent} is not an installed reviewer-lane role; not dispatching ${action.identifier}`,
+      };
+    }
     for (const warning of roleWarnings) {
       if (loggedRoleWarnings.has(warning)) continue;
       loggedRoleWarnings.add(warning);
@@ -1113,7 +1119,7 @@ export async function runPatrolOnce(opts, env = process.env) {
       // Admission is proven: the card is no longer deferred.
       deferrals.clear(alert.identifier);
       const round = task?.delivery_round ?? 1;
-      const { role, agentRole, handoff, worker_key, actorKind } = buildHandoffRow({
+      const { role, agentRole, handoff, worker_key, actorKind, executorReady } = buildHandoffRow({
         opts,
         config,
         action,
@@ -1121,6 +1127,10 @@ export async function runPatrolOnce(opts, env = process.env) {
         projectDir,
         round,
       });
+      if (!executorReady) {
+        log(`patrol: ${alert.identifier} needs a reviewer-lane assignee; ${action.agent} is not one — not dispatching`);
+        return { ok: false };
+      }
       if (actorKind === null) {
         log(`patrol: no available platform carries ${action.agent}'s role — not dispatching ${alert.identifier}`);
         return { ok: false };

@@ -252,6 +252,7 @@ describe("wakeHandoff selects the card's role", () => {
       { identifier: "T-1", title: "x", project: "P1" },
     );
     assert.equal(result.isReview, false);
+    assert.equal(result.executorReady, true);
     assert.equal(result.role, "worker");
     assert.equal(result.agentRole, "Jobs");
     assert.match(result.handoff, /## Team role/);
@@ -273,6 +274,7 @@ describe("wakeHandoff selects the card's role", () => {
         { identifier: "R-1", review_of: "T-1", review_round: 1, project: "P1" },
       );
       assert.equal(result.isReview, true);
+      assert.equal(result.executorReady, true);
       assert.equal(result.role, "reviewer");
       assert.equal(result.agentRole, "Reviewer");
       assert.match(result.handoff, /## Reviewer protocol/);
@@ -282,6 +284,21 @@ describe("wakeHandoff selects the card's role", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("refuses a review card whose assignee is not a reviewer-lane role", () => {
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "R-2", agent: "Jobs" },
+      { identifier: "R-2", review_of: "T-1", review_round: 1, project: "P1" },
+    );
+    assert.equal(result.isReview, true);
+    assert.equal(result.executorReady, false, "the assignee does not select a reviewer role");
+    assert.equal(result.role, "reviewer", "the card still needs the review handoff");
+    assert.equal(result.agentRole, null);
+    assert.match(result.handoff, /^You are the reviewer/);
+    assert.doesNotMatch(result.handoff, /## Role skill/);
   });
 
   it("uses a thin task envelope for a resident worker session", () => {
