@@ -86,7 +86,7 @@ only for what the human asks about or what the reasons name.
 **Stuck (`stuck_cards`).** The holder's heartbeat is older than the stale bound, or unreadable.
 Show the card, the holder, the last heartbeat and what is left. The thresholds (re-claim by the
 holder, the stale pool, takeover) are the board skill's
-[§5](../../meerkat/references/status-lifecycle.md#5-claims-and-heartbeats); quote them rather
+[§5](../../meerkat/references/lifecycle/claims.md#5-claims-and-heartbeats); quote them rather
 than inventing a number. Do not heartbeat, re-claim or steal — the loop owns stale recovery,
 and a chat-side pulse would hide the problem. If the human asks to recover it, the director's
 operational rules apply, not yours.

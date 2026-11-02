@@ -10,7 +10,7 @@ A card has two shapes, and they answer different questions:
 This page documents **any file `taskctl export md` writes, wherever it lands** — `--out` may
 name one file or a directory, and the loop's brief at `.meerkat/<id>/card.md` is one such
 location, not the format's definition. `cli.md` is the command surface;
-`status-lifecycle.md` is the state model.
+`lifecycle/transitions.md` is the state model.
 
 ## Reading a card as JSON
 

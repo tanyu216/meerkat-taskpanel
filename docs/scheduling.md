@@ -710,7 +710,7 @@ human. The **board** now owns those decisions; the supervisor's **workflow pass*
 tick after patrol.
 
 The board computes one plan through `issue reconcile --workflow` (see
-[`status-lifecycle.md`](../skills/meerkat/references/status-lifecycle.md#11-the-boards-workflow-decisions) —
+[`lifecycle/workflow.md`](../skills/meerkat/references/lifecycle/workflow.md#11-the-boards-workflow-decisions) —
 provenance: `src/core/domain/workflow.mjs`; the lifecycle the plan acts on is
 [lifecycle.md](lifecycle.md)). The supervisor never re-derives a decision. The plan has four parts,
 in this order:

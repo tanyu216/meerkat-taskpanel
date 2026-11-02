@@ -120,7 +120,7 @@ validates it and stops to ask rather than guessing; `project map` is the only wr
 ### `issue`
 
 > The status model — every status, transition and guard — is in
-> [`status-lifecycle.md`](status-lifecycle.md). This section is the command surface.
+> [`lifecycle/transitions.md`](lifecycle/transitions.md). This section is the command surface.
 
 | Command | Purpose |
 |---|---|
@@ -160,7 +160,7 @@ taskctl issue create --project <id> --title <t> [flags]
 | `--label <l>` / `--meta k=v` | Repeatable labels and metadata. |
 | `--target <t>` | An opaque per-card value; it is not a directory. |
 | `--parent <ref>` | Fills the idempotency key's source slot; it **links nothing** — use `relation add --type parent`. |
-| `--status <s>` | Initial status; see [`status-lifecycle.md` §8](status-lifecycle.md#8-creating-a-card-in-a-status). |
+| `--status <s>` | Initial status; see [`lifecycle/transitions.md` §8](lifecycle/transitions.md#8-creating-a-card-in-a-status). |
 | `--idem <key>` | Creation idempotency key; a match returns the existing card, keeping its acceptance mode. |
 | `--allow-dup` / `--force-create` | Skip the duplicate guard / the fuzzy dictionary step. |
 | `--review-of <ref> [--review-round <n>]` | Create a review card for that original and round. |
@@ -197,7 +197,7 @@ the **claimer** is who is doing it now.
 
 The holder may re-claim after **10 minutes**; anyone may take over after **6 hours**. The full
 threshold table, including the 30-minute stale pool, is in
-[`status-lifecycle.md` §5](status-lifecycle.md#5-claims-and-heartbeats).
+[`lifecycle/claims.md` §5](lifecycle/claims.md#5-claims-and-heartbeats).
 
 A **rework** (`in_review`/`blocked → in_progress`) is not a claim: it keeps the existing
 executor and their lock. The claim is held in `in_progress`, `awaiting`, `in_review` and
@@ -219,7 +219,7 @@ Neither end of a `parent` edge may be a review card (`VALIDATION_FAILED`,
 edge. The promotion is an ordinary patch — status, claim, heartbeat and delivery round stay
 put — and leaves no comment, so write the split down yourself. An epic that still has children
 cannot be downgraded to `task`. The board starts and closes the container; see
-[`status-lifecycle.md`](status-lifecycle.md#6-containers-epic).
+[`lifecycle/containers.md`](lifecycle/containers.md#6-containers-epic).
 
 ### `comment`
 
@@ -589,7 +589,7 @@ write cannot side-step any of them. `issue update --status` is a usage error (ex
 can still be refused by the service — `INVALID_TRANSITION` (with `details.allowed`),
 `REPORT_REQUIRED` (with the fixing `issue deliver` hint), or a locally refused `awaiting` move
 (exit 2). `issue create --status <s>` sets the initial status; the creation table is in
-[`status-lifecycle.md`](status-lifecycle.md#8-creating-a-card-in-a-status).
+[`lifecycle/transitions.md`](lifecycle/transitions.md#8-creating-a-card-in-a-status).
 
 ### `priority` — one flag, one closed set
 
@@ -655,7 +655,7 @@ unfinished dependency is what keeps a card out of `issue candidates`. On the wir
 and never replaces; a human may remove an item with `--drop-acceptance <text> --reason "<why>"
 --acceptance-revision <n>`. Imported cards carry `meta.acceptance_legacy` (its `checked` state
 is never evidence). The gate, the snapshot rule and the derivation rule:
-[`status-lifecycle.md` §4a](status-lifecycle.md#4a-the-acceptance-baseline).
+[`lifecycle/delivery.md` §4a](lifecycle/delivery.md#4a-the-acceptance-baseline).
 
 ## The delivery gate
 
@@ -672,7 +672,7 @@ try: taskctl issue deliver PROJ-0007 --report-file -
 report `deliver` accepts without editing. The second line is the **audited waiver** (reason
 ≥ 8 characters, stamped on the task row and recorded as a `report_waived` activity). The gate
 rule and the round table:
-[`status-lifecycle.md` §4](status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round).
+[`lifecycle/delivery.md` §4](lifecycle/delivery.md#4-the-delivery-gate-and-the-delivery-round).
 
 On an **`agent`** card each `met` item's `note` must cite an anchor from the report's own
 `evidence[]`, written `evidence[n]` (1-based). The template seeds the note with
@@ -713,7 +713,7 @@ value with `VALIDATION_FAILED` (`details.field` = `awaiting_reason`). The reason
 the card while it is `awaiting` and cleared on exit. An agent must also ask the question
 (`--question`, or an already-unanswered `question` comment) — `QUESTION_REQUIRED` otherwise.
 Read the set with `issue list --status awaiting`; the web board's **waiting** view is the same
-set. Entry, exits and the resume rule: [`status-lifecycle.md` §1](status-lifecycle.md#1-the-vocabulary).
+set. Entry, exits and the resume rule: [`lifecycle/transitions.md` §1](lifecycle/transitions.md#1-the-vocabulary).
 
 ## The `blocked` state — what the card is waiting for
 
@@ -771,7 +771,7 @@ bounds the delivery rounds since the last hold before the plan emits a `hold_car
 is parked as `blocked` with a question; the loop's configured liveness bounds apply).
 The actions are decisions the loop executes, not effects; what each one means, and the
 fail-safe rules behind them, are in
-[`status-lifecycle.md` §11](status-lifecycle.md#11-the-boards-workflow-decisions).
+[`lifecycle/workflow.md` §11](lifecycle/workflow.md#11-the-boards-workflow-decisions).
 
 ## `--json`
 

@@ -15,8 +15,8 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
@@ -190,22 +190,38 @@ describe("board skill: the description covers indirect card operations", () => {
 
 describe("board skill: references resolve where the skill is installed", () => {
   const skillDir = join(ROOT, "skills/meerkat");
-  const references = readdirSync(join(skillDir, "references"))
-    .filter((name) => name.endsWith(".md"))
-    .map((name) => `references/${name}`);
-  const files = ["SKILL.md", ...references];
+
+  /** Every markdown page under `references/`, recursively, relative to the skill root. */
+  function referenceFiles(dir) {
+    const out = [];
+    for (const entry of readdirSync(dir)) {
+      const path = join(dir, entry);
+      if (statSync(path).isDirectory()) out.push(...referenceFiles(path));
+      else if (entry.endsWith(".md")) out.push(relative(skillDir, path));
+    }
+    return out;
+  }
+
+  const files = ["SKILL.md", ...referenceFiles(join(skillDir, "references"))];
   const read = (rel) => readFileSync(join(skillDir, rel), "utf8");
 
-  it("has no link that climbs out of the skill into the repository root", () => {
+  it("has no link that climbs out of the installed skills tree into the repository", () => {
     // `../../../docs/…` resolves in this checkout and dangles everywhere the skill is
-    // actually installed — the plugin bundles carry `skills/<name>/` and nothing above it.
-    // A distributed skill links out by absolute URL or not at all.
+    // actually installed — the plugin bundles carry `skills/` and nothing above it.
+    // A nested page may climb to its own skill root (`../../SKILL.md`) or to a sibling
+    // skill that ships with it (`../meerkat-chat/SKILL.md`); it may not leave `skills/`.
+    const skillsRoot = resolve(ROOT, "skills");
     for (const file of files) {
       const text = read(file);
-      const climbing = [...text.matchAll(/\]\((\.\.\/[^)]*)\)/g)]
-        .map((match) => match[1])
-        .filter((target) => target.startsWith("../.."));
-      assert.deepEqual(climbing, [], `${file}: links must not climb out of the skill`);
+      const targets = [...text.matchAll(/\]\((\.\.\/[^)]*)\)/g)].map((match) =>
+        match[1].split("#")[0],
+      );
+      for (const target of targets) {
+        const resolved = resolve(dirname(join(skillDir, file)), target);
+        const inside =
+          resolved === skillsRoot || resolved.startsWith(`${skillsRoot}/`);
+        assert.ok(inside, `${file}: ${target} climbs out of the installed skills tree`);
+      }
     }
   });
 
@@ -298,7 +314,7 @@ describe("board skill: references resolve where the skill is installed", () => {
 });
 
 describe("board skill: the status whitelist matches the domain", () => {
-  const file = "references/status-lifecycle.md";
+  const file = "references/lifecycle/transitions.md";
 
   function block(text, file) {
     const begin = text.indexOf("<!-- status-whitelist:begin -->");
@@ -342,9 +358,9 @@ describe("board skill: the status whitelist matches the domain", () => {
     assert.equal(
       skill.includes("<!-- status-whitelist:begin -->"),
       false,
-      "the whitelist has exactly one home (status-lifecycle.md §2)",
+      "the whitelist has exactly one home (lifecycle/transitions.md §2)",
     );
-    assert.match(skill, /status-lifecycle\.md#2-the-whitelist/);
+    assert.match(skill, /lifecycle\/transitions\.md#2-the-whitelist/);
 
     const raw = block(readFileSync(join(ROOT, "skills/meerkat", file), "utf8"), file);
     const { table, epic } = parse(raw, file);
@@ -367,7 +383,7 @@ describe("board skill: the acceptance matrix has one home", () => {
   const BEGIN = "<!-- acceptance-matrix:begin -->";
   const END = "<!-- acceptance-matrix:end -->";
   const copies = [
-    ["status-lifecycle.md", join(ROOT, "skills/meerkat/references/status-lifecycle.md")],
+    ["lifecycle/acceptance.md", join(ROOT, "skills/meerkat/references/lifecycle/acceptance.md")],
     ["review-workflow.md", join(ROOT, "skills/meerkat/references/review-workflow.md")],
     ["docs/acceptance.md", join(ROOT, "docs/acceptance.md")],
   ];
@@ -502,7 +518,7 @@ describe("board skill: the language of a card", () => {
 describe("board skill: the container decision", () => {
   const skill = readFileSync(join(ROOT, "skills/meerkat/SKILL.md"), "utf8");
   const lifecycle = readFileSync(
-    join(ROOT, "skills/meerkat/references/status-lifecycle.md"),
+    join(ROOT, "skills/meerkat/references/lifecycle/containers.md"),
     "utf8",
   );
 
@@ -520,7 +536,7 @@ describe("board skill: the container decision", () => {
   it("leaves the board-enforced container codes to the refusal", () => {
     assert.doesNotMatch(skill, /CHILDREN_OPEN/);
     assert.doesNotMatch(skill, /ROLLUP_REQUIRED|ROLLUP_STALE/);
-    assert.match(skill, /status-lifecycle\.md#6-containers-epic/);
+    assert.match(skill, /lifecycle\/containers\.md#6-containers-epic/);
   });
 
   it("names the shape limits where the card schema defines them", () => {
@@ -542,6 +558,6 @@ describe("board skill: the container decision", () => {
     assert.match(skill, /core, CLI, web, docs and fixtures/);
     assert.match(skill, /not a technical layer/i);
     assert.match(lifecycle, /not schema-enforced/i);
-    assert.match(lifecycle, /\.\.\/SKILL\.md#containers-when-the-card-is-an-epic/);
+    assert.match(lifecycle, /\.\.\/\.\.\/SKILL\.md#containers-when-the-card-is-an-epic/);
   });
 });

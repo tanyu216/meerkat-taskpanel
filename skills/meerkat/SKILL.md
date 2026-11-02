@@ -25,7 +25,7 @@ taskctl --help                       # when the shim is on PATH
 Every call returns `{ok:true, data}` or `{ok:false, error}`. Read a refusal in this order: `error.code` (the stable branch point) → `error.hint.command` / `error.hint.fix` / `error.hint.alternative` → `error.details` → the prose `error.message` only last. Never parse the message to decide what to do.
 
 Retry only `VERSION_CONFLICT` (re-read once, retry with the fresh `--if-version`) and `DB_BUSY` (wait `Retry-After`); everything else means "change the request". An omission is not permission. Classification:
-[`references/status-lifecycle.md#10-what-is-enforced-and-what-is-practice`](references/status-lifecycle.md#10-what-is-enforced-and-what-is-practice).
+[`references/lifecycle/refusals.md#10-what-is-enforced-and-what-is-practice`](references/lifecycle/refusals.md#10-what-is-enforced-and-what-is-practice).
 
 ## Finding the data you need
 
@@ -54,16 +54,16 @@ A human asking in a live session — progress, what is open, a lookup, a move �
 Seven stages — `backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled` — plus `awaiting`, an attention overlay for a card parked on a human question. `done` and `canceled` are terminal; `issue reopen <ref> --reason "<why>"` returns a card to `todo` and starts a new delivery round. A review card cannot be reopened — reopen the card it reviews.
 
 Attempt the move and read the refusal; the whitelist names the allowed targets. Vocabulary, whitelist and reopen:
-[`references/status-lifecycle.md#1-the-vocabulary`](references/status-lifecycle.md#1-the-vocabulary),
-[`references/status-lifecycle.md#2-the-whitelist`](references/status-lifecycle.md#2-the-whitelist),
-[`references/status-lifecycle.md#2a-reopen`](references/status-lifecycle.md#2a-reopen).
+[`references/lifecycle/transitions.md#1-the-vocabulary`](references/lifecycle/transitions.md#1-the-vocabulary),
+[`references/lifecycle/transitions.md#2-the-whitelist`](references/lifecycle/transitions.md#2-the-whitelist),
+[`references/lifecycle/transitions.md#2a-reopen`](references/lifecycle/transitions.md#2a-reopen).
 
 **`done` is acceptance; `canceled` is abandonment.** Deliver, then stop at `in_review`. Do **not** close a card — especially a container — by canceling it: canceling has no child guard and leaves the work orphaned.
 
 ## Creating a card
 
 `issue create` is the whole handoff: the card lands in `todo` — the queue the loop's poll reads — in the same call, addressed to whoever it is assigned to. The queue is per assignee, not global; an unassigned card is the public pool. Only `--status backlog` keeps it out of a queue. The INSERT gate:
-[`references/status-lifecycle.md#8-creating-a-card-in-a-status`](references/status-lifecycle.md#8-creating-a-card-in-a-status).
+[`references/lifecycle/transitions.md#8-creating-a-card-in-a-status`](references/lifecycle/transitions.md#8-creating-a-card-in-a-status).
 
 **Resolve the acceptance mode from the card.** The mode is decided at creation, not by a
 project default. `off` means no review and the deliverer may close; `auto` means an independent
@@ -120,7 +120,7 @@ Decide it from evidence, in this order:
 **What never translates:** identifiers, command lines, flags, error codes and status literals (`in_progress`, `E2`), field names, paths, code and log excerpts, and a quoted sentence. A review card's first line stays exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.
 
 **A frozen acceptance item is a matching key, not prose.** Write it in the card's language at creation; afterwards each entry's `text` in the report repeats the item character for character, because the gate matches by normalised text. Translate the `note`, `conclusion` and `leftovers` around it, never the item. Anything another author wrote or the board froze stays as it is. Baseline and reviewer contract:
-[`references/status-lifecycle.md#4a-the-acceptance-baseline`](references/status-lifecycle.md#4a-the-acceptance-baseline), [`references/review-workflow.md#3-the-reviewers-protocol`](references/review-workflow.md#3-the-reviewers-protocol).
+[`references/lifecycle/delivery.md#4a-the-acceptance-baseline`](references/lifecycle/delivery.md#4a-the-acceptance-baseline), [`references/review-workflow.md#3-the-reviewers-protocol`](references/review-workflow.md#3-the-reviewers-protocol).
 
 ## Claim one card, deliver it, stop
 
@@ -169,7 +169,7 @@ and `human` are both reviewed; the loop accepts an `auto` card on `APPROVE`, and
 closes a `human` card after its review finishes. An epic is reviewed against its children and
 rollup and closed only after an `APPROVE`. An agent may only tighten a mode
 (`off → auto|human`); a review card is always `off`. Gate, rounds and the board's matrix:
-[`references/status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round`](references/status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round), [`references/status-lifecycle.md#4a-the-acceptance-baseline`](references/status-lifecycle.md#4a-the-acceptance-baseline), [`references/status-lifecycle.md#5-claims-and-heartbeats`](references/status-lifecycle.md#5-claims-and-heartbeats), [`references/status-lifecycle.md#7-acceptance-one-mode-per-card`](references/status-lifecycle.md#7-acceptance-one-mode-per-card), [`references/status-lifecycle.md#9-refusals`](references/status-lifecycle.md#9-refusals).
+[`references/lifecycle/delivery.md#4-the-delivery-gate-and-the-delivery-round`](references/lifecycle/delivery.md#4-the-delivery-gate-and-the-delivery-round), [`references/lifecycle/delivery.md#4a-the-acceptance-baseline`](references/lifecycle/delivery.md#4a-the-acceptance-baseline), [`references/lifecycle/claims.md#5-claims-and-heartbeats`](references/lifecycle/claims.md#5-claims-and-heartbeats), [`references/lifecycle/acceptance.md#7-acceptance-one-mode-per-card`](references/lifecycle/acceptance.md#7-acceptance-one-mode-per-card), [`references/lifecycle/refusals.md#9-refusals`](references/lifecycle/refusals.md#9-refusals).
 
 ## Containers: when the card is an epic
 
@@ -212,7 +212,7 @@ Three rules that fail **silently**:
 - **A child attached after the rollup makes it stale**; rework the epic to start a new round.
 
 Claim exactly **one** leaf child; the container holds no work of its own. Full rules:
-[`references/status-lifecycle.md#6-containers-epic`](references/status-lifecycle.md#6-containers-epic), [`references/cli.md#promoting-an-existing-card-to-an-epic`](references/cli.md#promoting-an-existing-card-to-an-epic).
+[`references/lifecycle/containers.md#6-containers-epic`](references/lifecycle/containers.md#6-containers-epic), [`references/cli.md#promoting-an-existing-card-to-an-epic`](references/cli.md#promoting-an-existing-card-to-an-epic).
 
 ## Review cards (flow B)
 
@@ -270,13 +270,14 @@ A card exported into a project directory is a **snapshot**. Register it once wit
 
 | Topic | Read |
 |---|---|
-| statuses, whitelist, reopen, guards | [§1–§3](references/status-lifecycle.md#1-the-vocabulary) |
-| delivery gate, round, acceptance baseline | [§4–§4a](references/status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round) |
-| claims, heartbeats, stale takeover | [§5](references/status-lifecycle.md#5-claims-and-heartbeats) |
-| containers, rollup, promotion | [§6](references/status-lifecycle.md#6-containers-epic) |
-| acceptance modes | [§7](references/status-lifecycle.md#7-acceptance-one-mode-per-card) |
-| creating in a status | [§8](references/status-lifecycle.md#8-creating-a-card-in-a-status) |
-| refusal codes, enforced vs practice, workflow plan | [§9–§11](references/status-lifecycle.md#9-refusals) |
+| statuses, whitelist, reopen, guards | [§1–§3](references/lifecycle/transitions.md#1-the-vocabulary) |
+| delivery gate, round, acceptance baseline | [§4–§4a](references/lifecycle/delivery.md#4-the-delivery-gate-and-the-delivery-round) |
+| claims, heartbeats, stale takeover | [§5](references/lifecycle/claims.md#5-claims-and-heartbeats) |
+| containers, rollup, promotion | [§6](references/lifecycle/containers.md#6-containers-epic) |
+| acceptance modes | [§7](references/lifecycle/acceptance.md#7-acceptance-one-mode-per-card) |
+| creating in a status | [§8](references/lifecycle/transitions.md#8-creating-a-card-in-a-status) |
+| refusal codes, enforced vs practice | [§9–§10](references/lifecycle/refusals.md#9-refusals) |
+| the board's workflow plan | [§11](references/lifecycle/workflow.md#11-the-boards-workflow-decisions) |
 | commands, flags, exit codes, JSON envelope | [Commands](references/cli.md#commands), [`--json`](references/cli.md#--json), [returns](references/cli.md#what-each-command-returns) |
 | `issue create`, attachments, `export watch` | [create](references/cli.md#issue-create), [attachment](references/cli.md#attachment), [export watch](references/cli.md#export-watch) |
 | awaiting / blocked | [awaiting](references/cli.md#the-awaiting-state--asking-a-human-a-question), [blocked](references/cli.md#the-blocked-state--what-the-card-is-waiting-for) |

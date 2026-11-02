@@ -5,7 +5,7 @@ kindness: it says the current round's evidence covers the frozen contract. The c
 `acceptance_mode` names who may perform it.
 
 The one home of the matrix and the gate is
-[`../../meerkat/references/status-lifecycle.md`](../../meerkat/references/status-lifecycle.md)
+[`../../meerkat/references/lifecycle/acceptance.md`](../../meerkat/references/lifecycle/acceptance.md)
 §7; the rules below are what chat needs to decide whether to offer the close.
 
 ## Who may close
