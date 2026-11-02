@@ -845,16 +845,17 @@ export function buildQuestionPrompt(rows, input = {}) {
     if (row.triage === true) {
       const round = Number(row.round ?? row.delivery_round ?? 1);
       const title = row.title ? ` — ${row.title}` : "";
+      const projectId = String(row.project ?? project);
       lines.push(
         `${index + 1}) ${row.card}${title} — accepted producer, required handoff (round ${round}):`,
         `   The card is done and must not be reopened or moved. Read its current delivery:`,
         `   taskctl issue get ${row.card} --json --include reports --include relations ${flags}`,
         `   Read only the report whose round is ${round}; its \`## Handoff\` is the contract.`,
         `   Existing downstream cards for this handoff:`,
-        `   taskctl issue list --project <project> --meta handoff_of=${row.card}:r${round} --json ${flags}`,
+        `   taskctl issue list --project ${projectId} --meta handoff_of=${row.card}:r${round} --json ${flags}`,
         "   Reuse those; never create a duplicate. Create one card per deliverable with its",
         "   accountable role from the routing table:",
-        `   taskctl issue create --project <project> --title "..." --assignee <role>`,
+        `   taskctl issue create --project ${projectId} --title "..." --assignee <role>`,
         `     --target <scope-slug> --meta handoff_of=${row.card}:r${round}`,
         `     --idem "loop-handoff|${row.card}|r${round}|<n>" --acceptance "..."`,
         `     --description "<the handoff paths and constraints>" ${flags}`,
@@ -862,9 +863,9 @@ export function buildQuestionPrompt(rows, input = {}) {
         "   Seed 1-6 checkable acceptance items from the handoff's `Acceptance source`.",
         `   For an epic, create --kind epic first, then taskctl relation add <epic> --type parent --target <child>.`,
         "   For a task producer, record meta.origin=<producer> on the follow-up card instead.",
-        `   When done: taskctl issue meta ${row.card} --meta handoff_consumed_round=${round} ${flags}`,
+        `   When done: taskctl issue meta ${row.card} --if-version <v> --meta handoff_consumed_round=${round} ${flags}`,
         `   (record the created refs in the value); if no downstream card is needed:`,
-        `   taskctl issue meta ${row.card} --meta handoff_declined_round=${round} ${flags}`,
+        `   taskctl issue meta ${row.card} --if-version <v> --meta handoff_declined_round=${round} ${flags}`,
         "   and leave a note saying why. A proposed child that expands scope is E1:",
         "   escalate instead of creating it.",
         "   You may create cards; never claim or implement one, never move the producer,",

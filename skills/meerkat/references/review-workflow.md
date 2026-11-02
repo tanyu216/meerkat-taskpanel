@@ -78,7 +78,8 @@ What the loop does next depends on why the target moved:
 
 - **The original was canceled** — the loop cancels the review card (`cancel_review`).
 - **The original is on a later round** — the verdict is history; the loop closes the review
-  card (`round_mismatch`) without touching the original.
+  card (`round_mismatch`) without touching the original. A review card that is not `in_review`
+  is canceled rather than closed, because `done` is reachable only from `in_review`.
 - **The original is `done` at the same round** — the loop raises `verdict_unreadable` and
   leaves the review card open. A human must cancel it with the two-hop
   `in_review → in_progress → canceled`.
