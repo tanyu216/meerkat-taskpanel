@@ -1304,7 +1304,8 @@ describe("session pool", () => {
     const pool = createSessionPool({
       opts: optsFor(f),
       kindPool: fake,
-      revalidateCard: () => ({ ok: true, status: "in_progress", error: null }),
+      // A successful review delivers: the review card leaves in_progress.
+      revalidateCard: () => ({ ok: true, status: "in_review", error: null }),
     });
     t.after(() => pool.stop());
     await pool.start();
@@ -1324,6 +1325,27 @@ describe("session pool", () => {
       ["work R-1", "work R-2"],
       "no card's handoff crosses into another's session",
     );
+    await pool.stop();
+  });
+
+  it("requeues a review turn that ended without a verdict", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      // The reviewer spoke, but the card is still in_progress: no delivery.
+      revalidateCard: () => ({ ok: true, status: "in_progress", error: null }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "R-1", f.app, "reviewer"));
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "pending", "the handoff stays open for another turn");
+    assert.equal(row.attempts, 1);
+    assert.match(row.lastError, /without delivering a verdict/);
     await pool.stop();
   });
 

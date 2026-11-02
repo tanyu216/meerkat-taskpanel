@@ -356,9 +356,20 @@ function humanReport(report) {
     `cron:block=${report.units.cron.any ? "present" : "absent"}`,
   ].join(", ");
   const workerRecords = Object.values(report.pool.workers ?? {});
+  const runningCount = workerRecords.filter((record) => String(record?.status) === "running").length;
+  // A card session is a worker or a reviewer; the split says which lane is
+  // actually running, without a second command.
+  const reviewerRecords = workerRecords.filter(
+    (record) => String(record?.role ?? "worker") === "reviewer",
+  );
+  const reviewerRunning = reviewerRecords.filter(
+    (record) => String(record?.status) === "running",
+  ).length;
   const workerLine =
-    `${workerRecords.filter((record) => String(record?.status) === "running").length} running / ` +
-    `${workerRecords.length} total` +
+    `${runningCount} running / ${workerRecords.length} total` +
+    (reviewerRecords.length > 0
+      ? ` · reviewer ${reviewerRunning}/${reviewerRecords.length}`
+      : "") +
     (workerRecords.some((record) => record?.blocked === true)
       ? ` (blocked ${workerRecords.filter((record) => record?.blocked === true).length})`
       : "");
@@ -368,7 +379,7 @@ function humanReport(report) {
     `  scan set:  ${report.agents.length > 0 ? report.agents.join(",") : "(none)"}`,
     ...(Array.isArray(report.roles) ? report.roles.map((line) => `  ${line}`) : []),
     `  pool:      ${pool}`,
-    ...(workerRecords.length > 0 ? [`  workers:   ${workerLine}`] : []),
+    ...(workerRecords.length > 0 ? [`  sessions:  ${workerLine}`] : []),
     `  continue:  ${report.continue.oneShot ? `one-shot pid ${report.continue.oneShot.pid}` : "idle"}`,
     `  subscribe: ${report.subscribe.live ? `running (pid ${report.subscribe.pid})` : "not running"}`,
     `  units:     ${units}`,

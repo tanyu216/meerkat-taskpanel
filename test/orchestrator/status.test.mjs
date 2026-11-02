@@ -239,6 +239,32 @@ describe("supervisor status", () => {
     assert.match(text, /^ {2}scan set: {2}Jobs$/m);
   });
 
+  it("splits card sessions by lane in the human report", async () => {
+    const dir = tempDir();
+    writePool(dir, {
+      projects: {
+        "worker:T-1:r1": { kind: "worker-session", role: "worker", status: "running" },
+        "worker:R-1:r1": { kind: "worker-session", role: "reviewer", status: "idle" },
+      },
+    });
+    const out = [];
+    const code = await main(
+      [
+        "--state", join(dir, "state.json"),
+        "--config", join(dir, "config.env"),
+        "--actor-kind", "claude",
+        "--home", dir,
+      ],
+      { HOME: dir },
+      { isAlive: (pid) => pid === 4242, now: () => NOW, run: noUnits() },
+      { out: (text) => out.push(text), err: () => {} },
+    );
+
+    assert.equal(code, 0);
+    const text = out.join("");
+    assert.match(text, /^ {2}sessions: {2}1 running \/ 2 total · reviewer 0\/1$/m);
+  });
+
   it("reports each discovered role with where it is installed and where it runs", async () => {
     const dir = tempDir();
     // A role skill on the primary kind; detection reports it without a pool.

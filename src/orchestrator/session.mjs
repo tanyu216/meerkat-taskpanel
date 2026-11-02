@@ -454,7 +454,9 @@ export function createSessionPool(input = {}) {
       ...previous,
       kind: "worker-session",
       actorKind: entry.actorKind ?? opts.actorKind ?? "claude",
-      role: "worker",
+      // The card's lane. A card session is a worker or a reviewer; the status
+      // probe splits its report on this field.
+      role: entry.role === "reviewer" ? "reviewer" : "worker",
       cwd: entry.cwd,
       worktree: worker.worktree ?? entry.cwd,
       workspace_created_at: worker.workspace_created_at ?? previous.workspace_created_at ?? null,
@@ -665,6 +667,7 @@ export function createSessionPool(input = {}) {
       worker: {
         ...(stored ?? {}),
         kind: "worker-session",
+        role: laneRole,
         worktree: options.cwd,
         workspace_created_at:
           worker.workspace?.created_at ?? stored?.workspace_created_at ?? null,
@@ -1511,6 +1514,22 @@ export function createSessionPool(input = {}) {
       }
       const { outcome, plan = null } = settledJob.value;
       if (outcome?.ok === true) {
+        // A review turn's whole deliverable is the verdict, so a "successful"
+        // turn that left the card in_progress did not do its job. Keep the row
+        // for another turn instead of closing the handoff in silence.
+        if (review && revalidateCard !== null) {
+          const live = await revalidateCard({ card: row.card, row });
+          if (live?.ok === true && live.status === "in_progress") {
+            requeueCards(stateDir, [row.id], {
+              error: "review turn ended without delivering a verdict",
+            });
+            entry.worker.status = "idle";
+            entry.worker.lastError = "review turn ended without delivering a verdict";
+            log(`session: review ${row.card} ended without a verdict — requeued`);
+            persistState();
+            continue;
+          }
+        }
         appendWorkerTurn(stateDir, job.key, { kind: "result", text: String(outcome.result ?? "") });
         // One terminal row per card turn. A card session is the whole unit of
         // work now: the queue's processing row held the slot, so the ledger
@@ -1901,7 +1920,14 @@ export function createSessionPool(input = {}) {
     if (resumed.failed > 0) {
       for (const id of resumed.failedIds ?? []) {
         const row = read.value.cards.find((entry) => String(entry.id) === id);
-        if (row !== undefined) parkCard(row.card, "repeated crash recoveries");
+        if (row === undefined) continue;
+        if (String(row.role ?? "worker") === "reviewer") {
+          // A review is never parked: with no handoff it simply falls back to
+          // the board's stale-claim recovery, and the next poll re-enqueues it.
+          log(`session: review ${row.card} stopped after repeated crash recoveries — not parked`);
+          continue;
+        }
+        parkCard(row.card, "repeated crash recoveries");
       }
       log(
         `session: ${resumed.failed} worker row(s) stopped after repeated crash recoveries — ` +
@@ -2018,11 +2044,14 @@ export function createSessionPool(input = {}) {
         paused: 0,
         stale: 0,
         blocked: 0,
+        byRole: { worker: 0, reviewer: 0 },
         byResumeState: { fresh: 0, resumed: 0, resumed_by_replay: 0, stale: 0 },
       };
       for (const entry of workerEntries) {
         const status = String(entry.worker?.status ?? "idle");
         if (Object.hasOwn(workerState, status)) workerState[status] += 1;
+        const role = entry.role === "reviewer" ? "reviewer" : "worker";
+        workerState.byRole[role] += 1;
         const resumeState = String(entry.worker?.resumeState ?? "fresh");
         if (Object.hasOwn(workerState.byResumeState, resumeState)) {
           workerState.byResumeState[resumeState] += 1;

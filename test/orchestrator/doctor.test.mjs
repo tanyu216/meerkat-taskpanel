@@ -1262,6 +1262,7 @@ describe("loop doctor — the human queue and the loop's dead ends", () => {
         created_at: at(45 * MIN),
       },
       { identifier: "T-402", title: "Fine", status: "in_review", status_changed_at: at(5 * MIN) },
+      { identifier: "R-403", title: "Review", status: "in_review", status_changed_at: at(5 * MIN) },
     ];
     const { script } = sentinel(dir, { tasks });
     writeJson(join(dir, "cards.queue.json"), {
@@ -1286,6 +1287,15 @@ describe("loop doctor — the human queue and the loop's dead ends", () => {
           target_dir: app,
           enqueuedAt: at(180 * MIN),
         },
+        {
+          id: "R-403-reviewer",
+          card: "R-403",
+          role: "reviewer",
+          queue_kind: "handoff",
+          status: "processing",
+          target_dir: app,
+          enqueuedAt: at(180 * MIN),
+        },
       ],
     });
     writeJson(join(dir, "subagents.state.json"), { version: 1, subagents: [] });
@@ -1295,6 +1305,15 @@ describe("loop doctor — the human queue and the loop's dead ends", () => {
         "worker:T-402:r1": {
           kind: "worker-session",
           card: "T-402",
+          cwd: app,
+          pid: process.pid,
+          startedAt: at(180 * MIN),
+          status: "running",
+        },
+        "worker:R-403:r1": {
+          kind: "worker-session",
+          role: "reviewer",
+          card: "R-403",
           cwd: app,
           pid: process.pid,
           startedAt: at(180 * MIN),
@@ -1316,9 +1335,14 @@ describe("loop doctor — the human queue and the loop's dead ends", () => {
     assert.equal(report.looping.question_lane[0].ref, "T-402");
     assert.equal(report.looping.question_lane[0].lane, "question");
     assert.equal(report.looping.question_lane[0].rows, 1);
-    assert.equal(report.looping.orphaned[0].ref, "T-402");
-    assert.equal(report.looping.orphaned[0].pid, process.pid);
-    assert.equal(report.looping.orphaned[0].bound_ms, 2 * 30 * MIN);
-    assert.equal(report.looping.total, 3, "T-402 is one card even in two lists");
+    const staleWorker = report.looping.orphaned.find((row) => row.ref === "T-402");
+    assert.ok(staleWorker);
+    assert.equal(staleWorker.pid, process.pid);
+    assert.equal(staleWorker.bound_ms, 2 * 30 * MIN);
+    assert.ok(
+      report.looping.orphaned.some((row) => row.ref === "R-403"),
+      "a stale review handoff is the same finding as a stale worker one",
+    );
+    assert.equal(report.looping.total, 4, "T-402 is one card even in two lists");
   });
 });
