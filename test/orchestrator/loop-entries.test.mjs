@@ -410,8 +410,10 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       "--home", home,
       "--cli", script, "--repo", dir,
       "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      // Keep a developer's installed per-kind config out of the test's scan set.
+      "--config", join(dir, ".env.claude"),
       ...extra,
-    ], { TP_SENTINEL: record }, pass);
+    ], { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir }, pass);
     return { run, record, dir };
   }
 
@@ -492,8 +494,11 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
         "--home", home,
         "--cli", script, "--repo", dir,
         "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+        // Pin the config root: a developer's installed `.env.<kind>` (with a
+        // reviewer) must not become part of this test's scan set.
+        "--config", join(dir, ".env.claude"),
       ],
-      { TP_SENTINEL: record },
+      { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
       "poll",
     );
     assert.equal(run.status, 0, run.stderr);
@@ -1611,6 +1616,7 @@ describe("the tick runs the passes in-process", () => {
       "--home", home,
       "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       "--continue-state", join(dir, "continue.state.json"),
+      "--config", join(dir, ".env.claude"),
       ...extra,
     ];
   }

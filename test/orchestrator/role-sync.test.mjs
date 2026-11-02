@@ -56,9 +56,9 @@ const roleSet = {
       boundaries: [],
       installedOn: ["claude"],
       defaultReviewer: false,
-      skillDir: "/home/me/.claude/skills/jobs",
-      workflow: "/home/me/.claude/skills/jobs/SKILL.md",
-      variants: { claude: { skillDir: "/home/me/.claude/skills/jobs" } },
+      skillDir: "/home/tester/.claude/skills/jobs",
+      workflow: "/home/tester/.claude/skills/jobs/SKILL.md",
+      variants: { claude: { skillDir: "/home/tester/.claude/skills/jobs" } },
     },
   ],
 };
@@ -71,7 +71,7 @@ describe("role-sync — the published payload", () => {
     assert.equal(payload.primary_kind, "claude");
     assert.equal(payload.updated_at, "2026-01-01T00:00:00.000Z");
     assert.deepEqual(payload.roles.map((role) => role.id), ["jobs"]);
-    assert.equal(JSON.stringify(payload).includes("/home/me"), false);
+    assert.equal(JSON.stringify(payload).includes("/home/tester"), false);
   });
 });
 

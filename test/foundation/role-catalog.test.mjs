@@ -32,11 +32,11 @@ const role = (overrides = {}) => ({
   installedOn: ["claude"],
   defaultReviewer: false,
   // Host-only fields the projection must drop.
-  skillDir: "/home/me/.claude/skills/jobs",
-  workflow: "/home/me/.claude/skills/jobs/SKILL.md",
+  skillDir: "/home/tester/.claude/skills/jobs",
+  workflow: "/home/tester/.claude/skills/jobs/SKILL.md",
   selfCheck: null,
   reviewerPrompt: null,
-  variants: { claude: { skillDir: "/home/me/.claude/skills/jobs" } },
+  variants: { claude: { skillDir: "/home/tester/.claude/skills/jobs" } },
   ...overrides,
 });
 
@@ -159,7 +159,7 @@ describe("role-catalog — projection", () => {
       "default_reviewer",
     ]);
     assert.equal(projected.skill_dir, undefined);
-    assert.equal(JSON.stringify(projected).includes("/home/me"), false);
+    assert.equal(JSON.stringify(projected).includes("/home/tester"), false);
   });
 
   it("sorts roles by id when building a payload", () => {
