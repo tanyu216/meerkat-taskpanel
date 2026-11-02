@@ -38,9 +38,11 @@ repository-only, as are `docs/ops/install.md`, `docs/ops/observability.md` and
 `docs/ops/publishing.md`; a target project may supply a file at the same path, but this
 repository's copy is not its documentation. The project-generated tracker files
 (`docs/agents/issue-tracker.md`, `issue-tracer.md`, `domain.md`, `triage-labels.md`) are project
-documentation and remain addressable. The same path can be a design record here and project
-documentation in another repository (`docs/architecture.md`, `docs/agents/*`); the guard asks
-whether a target project is guaranteed to have the file, not which layer the path belongs to.
+documentation and remain addressable, as are the card-rule files (`acceptance-mode.md`,
+`epic-cards.md`) and the discovery contract (`docs/agents/README.md`). The same path can be a
+design record here and project documentation in another repository (`docs/architecture.md`,
+`docs/agents/*`); the guard asks whether a target project is guaranteed to have the file, not
+which layer the path belongs to.
 
 ## Agent execution
 
@@ -98,8 +100,9 @@ Installing, releasing and watching a deployment.
 | [observability.md](ops/observability.md) | The metrics sidecar (`/metrics`, the SLO `/health` verdict, Prometheus rules, OTLP export) and the processes' own structured logs: levels, the text line, request correlation, redaction, `taskd.log` ownership and rotation, and the `TASKD_LOG_*` keys. |
 
 The agent-facing skill definitions live beside the skills themselves:
-[`../skills/meerkat/SKILL.md`](../skills/meerkat/SKILL.md) and
-[`../skills/meerkat/references/cli.md`](../skills/meerkat/references/cli.md).
+[`../skills/meerkat/SKILL.md`](../skills/meerkat/SKILL.md), its
+[`references/scenarios/`](../skills/meerkat/references/scenarios/) runbooks, and the
+[`references/cli.md`](../skills/meerkat/references/cli.md) contract index.
 
 Start with the [README](../README.md) for what the project is and its current status. `design/`
 is a live oracle for tests and a record of past rounds, not documentation: its citations of

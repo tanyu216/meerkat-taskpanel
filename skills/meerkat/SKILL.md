@@ -260,8 +260,9 @@ Read only the section a scenario page names.
 | refusals, enforced vs practice | `references/lifecycle/refusals.md` |
 | the board's workflow plan | `references/lifecycle/workflow.md` |
 | commands, flags, exit codes | `references/cli.md` |
-| command semantics, JSON envelope, returns | `references/cli/{core,issue,ops}.md` |
-| wire object, records, identifiers, blocked reasons | `references/schema/{wire,records,identifiers,blocked-reason}.md` |
+| command semantics, JSON envelope, returns | `references/cli/` |
+| the state model, delivery, acceptance, containers, refusals | `references/lifecycle/` |
+| the wire object, records, identifiers, blocked reasons | `references/schema/` |
 | the review protocol and verdict | `references/review-workflow.md` |
 | the project ↔ directory map | `references/projects-json.md` |
 | supervisor bindings and live events | `references/capabilities.md` |

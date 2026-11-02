@@ -1,9 +1,10 @@
 # Board capabilities a supervisor binds to
 
-[`cli.md`](cli.md) is the complete `taskctl` reference. This page is the **subset a
-supervisor uses**, with the exact invocation and the JSON keys it reads. The loop decides
-*when*; these are the *how*. The loop never calls the board's HTTP API directly — every
-operation below, including the live event stream, is a `taskctl` command.
+[`cli.md`](cli.md) is the contract index — every command and flag; the prose is in
+[`cli/`](cli/). This page is the **subset a supervisor uses**, with the exact invocation and
+the JSON keys it reads. The loop decides *when*; these are the *how*. The loop never calls
+the board's HTTP API directly — every operation below, including the live event stream, is a
+`taskctl` command.
 
 ## The invocation rule
 

@@ -51,3 +51,7 @@ The card vocabulary — statuses, transitions, the acceptance baseline, the wire
 `meerkat` skill (`skills/meerkat/SKILL.md` and its `references/`). A human's live conversation
 about the board — progress, awaiting questions, acceptance, `loop doctor` — is the
 `meerkat-chat` skill (`skills/meerkat-chat/SKILL.md`).
+
+Project-level card rules are discovered at the fixed paths in
+[`docs/agents/README.md`](README.md); the `meerkat` skill reads `acceptance-mode.md` and
+`epic-cards.md` when they exist.

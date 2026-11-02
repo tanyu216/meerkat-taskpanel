@@ -154,6 +154,22 @@ describe("board skill: the scenario layout", () => {
     }
   });
 
+  it("names every deep-reference directory in the SKILL index", () => {
+    const start = skill.indexOf("## Deep references");
+    assert.ok(start >= 0, "SKILL.md has a ## Deep references section");
+    const table = skill.slice(start);
+    for (const dir of ["references/cli/", "references/lifecycle/", "references/schema/"]) {
+      assert.ok(table.includes(dir), `the deep references table names ${dir}`);
+    }
+    for (const file of [
+      "references/review-workflow.md",
+      "references/projects-json.md",
+      "references/capabilities.md",
+    ]) {
+      assert.ok(table.includes(file), `the deep references table names ${file}`);
+    }
+  });
+
   it("does not let a scenario invent a flag the CLI index does not carry", () => {
     const cli = read(CLI_MD);
     const misses = [];

@@ -22,9 +22,10 @@ Never claim the skill ran when it did not.
 ## Files and the overwrite guard
 
 The canonical output is `docs/agents/issue-tracker.md` (not `issue-tracer.md`), plus
-`docs/agents/domain.md`, optionally `docs/agents/triage-labels.md`, and an
-`## Agent skills` block in the existing `CLAUDE.md` (else `AGENTS.md`; never create one
-when the other exists).
+`docs/agents/domain.md`, optionally `docs/agents/triage-labels.md`, optionally
+`docs/agents/acceptance-mode.md` and `docs/agents/epic-cards.md` when the project has a
+non-default card rule, and an `## Agent skills` block in the existing `CLAUDE.md` (else
+`AGENTS.md`; never create one when the other exists).
 
 Existing tracker candidates, in order:
 
