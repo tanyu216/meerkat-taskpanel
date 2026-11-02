@@ -313,8 +313,9 @@ config root — `MEERKAT_TASKPANEL_CONFIG_DIR` (resolved against the current dir
 else the program root. It is never sent to
 `taskd`, never stored in the database, and two machines may legitimately hold different maps.
 
-The schema, the failure codes and the operating rules are the `meerkat` skill's
-([projects-json.md](../skills/meerkat/references/projects-json.md)); the design points are:
+The design points are stated below; the installed `meerkat` board skill publishes the schema,
+the failure codes and the operating rules as its **deployed contract**
+([projects-json.md](../skills/meerkat/references/projects-json.md)).
 
 - **Two keys may name the directory**, in one order: `dir = local_path ?? run_dir`. `??`, not
   `||`: a key that is *given* but blank is a failure to report, never a reason to fall through
@@ -373,9 +374,9 @@ Recorded because they are behaviour, not intent:
 
 ## What this page does not own
 
-Task lifecycle, claims, heartbeats, delivery and review cards are the
-[`meerkat`](../skills/meerkat/SKILL.md) skill's. Who may close a card is
-[acceptance.md](acceptance.md). Dispatch and the loop are [scheduling.md](scheduling.md). The
-directory map's operating procedure is
-[projects-json.md](../skills/meerkat/references/projects-json.md). This page describes the
+Task lifecycle, claims, heartbeats, delivery and review cards are designed in
+[lifecycle.md](lifecycle.md). Who may close a card is [acceptance.md](acceptance.md). Dispatch
+and the loop are [scheduling.md](scheduling.md). The installed `meerkat` board skill publishes
+the directory map's operating procedure as its **deployed contract**
+([projects-json.md](../skills/meerkat/references/projects-json.md)). This page describes the
 project as the board stores it and the surfaces that read it.

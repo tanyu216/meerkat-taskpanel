@@ -8,7 +8,11 @@
  *
  * Target-project documents are allowed: every project a role runs in supplies
  * its own `docs/tech-spec.md`, `docs/architecture.md`, `docs/adr/`,
- * `docs/agents/`, `CLAUDE.md`, `AGENTS.md` and `GLOSSARY.md`.
+ * `docs/agents/`, `docs/ops/`, `CLAUDE.md`, `AGENTS.md` and `GLOSSARY.md`.
+ *
+ * `docs/agents/` and `docs/ops/` are project-discovery surfaces, not denied
+ * prefixes. This repository's maintainer-only files inside them are denied by
+ * exact filename.
  *
  * Run with: node --test
  */
@@ -22,7 +26,11 @@ import { describe, it } from "node:test";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SKILLS = join(ROOT, "skills");
 
-/** Design-record pages that exist only in this repository, never in an install. */
+/**
+ * Pages and project docs that exist only in the Meerkat source repository,
+ * never in a target project's install. `docs/agents/` and `docs/ops/` are
+ * project-discovery surfaces, so only their Meerkat-specific files belong here.
+ */
 const REPOSITORY_ONLY = [
   "docs/scheduling.md",
   "docs/lifecycle.md",
@@ -33,10 +41,21 @@ const REPOSITORY_ONLY = [
   "docs/events.md",
   "docs/im-integration.md",
   "docs/README.md",
+  "docs/agents/development.md",
+  "docs/agents/docker.md",
+  "docs/agents/contract.md",
+  "docs/agents/migration.md",
+  "docs/ops/install.md",
+  "docs/ops/observability.md",
+  "docs/ops/publishing.md",
   "ARCHITECTURE.md",
 ];
 
-const SCANNED = new Set([".md", ".json", ".mjs", ".sh"]);
+const SCANNED = new Set([".md", ".json", ".mjs", ".sh", ".yml", ".yaml"]);
+
+function findRepositoryOnlyRefs(text) {
+  return REPOSITORY_ONLY.filter((name) => text.includes(name));
+}
 
 function filesUnder(dir) {
   const out = [];
@@ -49,19 +68,47 @@ function filesUnder(dir) {
 }
 
 describe("installed skills: self-contained references", () => {
-  it("does not cite a repository-only design page", () => {
+  it("does not cite a page only the Meerkat source repository has", () => {
     const hits = [];
     for (const file of filesUnder(SKILLS)) {
       const text = readFileSync(file, "utf8");
-      for (const name of REPOSITORY_ONLY) {
-        if (text.includes(name)) hits.push(`${relative(ROOT, file)}: ${name}`);
+      for (const name of findRepositoryOnlyRefs(text)) {
+        hits.push(`${relative(ROOT, file)}: ${name}`);
       }
     }
     assert.deepEqual(
       hits,
       [],
-      "an installed skill points at this repository's design record; " +
+      "an installed skill points at a page only the Meerkat source repository has; " +
         "state the rule in the skill or point at an installed artifact instead",
     );
+  });
+
+  it("separates project documents from repository-only pages", () => {
+    for (const allowed of [
+      "docs/agents/issue-tracker.md",
+      "docs/agents/issue-tracer.md",
+      "docs/agents/domain.md",
+      "docs/agents/triage-labels.md",
+      "docs/tech-spec.md",
+      "docs/architecture.md",
+      "docs/adr/0001-architecture-style.md",
+      "Discover docs/agents/ and docs/ops/",
+    ]) {
+      assert.deepEqual(findRepositoryOnlyRefs(allowed), [], `${allowed} is a project document`);
+    }
+
+    assert.deepEqual(findRepositoryOnlyRefs("docs/agents/development.md"), [
+      "docs/agents/development.md",
+    ]);
+    assert.deepEqual(findRepositoryOnlyRefs("docs/scheduling.md"), ["docs/scheduling.md"]);
+    assert.deepEqual(findRepositoryOnlyRefs("docs/ops/install.md"), ["docs/ops/install.md"]);
+  });
+
+  it("scans YAML assets as well as prose and code", () => {
+    assert.ok(SCANNED.has(".yml"));
+    assert.ok(SCANNED.has(".yaml"));
+    const scanned = filesUnder(SKILLS).map((file) => relative(ROOT, file));
+    assert.ok(scanned.includes("skills/linus/assets/security/github/sbom.yml"));
   });
 });
