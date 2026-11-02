@@ -92,7 +92,10 @@ Each shape has **Floor** and **Beyond**. Beyond is not exhaustive.
 **Floor.** Every child has a conclusion; scope coverage; the rollup is current; fix-child linkage; no orphan; dependency-order risk.
 **Beyond.** Cross-epic dependency risk.
 
-## This repository's concrete instances (examples, not a closed list)
+## Meerkat source-repository examples (apply only when reviewing that repository)
+
+These are concrete instances from the Meerkat TaskPanel source repository; a different project
+supplies its own equivalents.
 
 - Contracts: `node scripts/verify/contract.mjs`, `node scripts/verify/route-request.mjs`, `node scripts/verify/cli-contract.mjs`; `skills/meerkat/references/cli.md` names every frozen command/flag; a new error code touches `ERROR_CODES`, its bucket and the API snapshot.
 - Data: migrations are append-only (`node scripts/verify/migrations.mjs`); a DB-first invariant is a trigger/CHECK mirrored by a domain check and tested under `test/contract/**`.
@@ -100,7 +103,8 @@ Each shape has **Floor** and **Beyond**. Beyond is not exhaustive.
 - Security: `node scripts/security/scan-gate.mjs --input <report.json> --waivers scripts/security/waivers.json` (no input exits 2); thresholds live in `docs/tech-spec.md` §Security toolchain and `security-checklist.md`.
 - Evidence: `git -C <targetDir> show <sha>:<path>`; `git diff <sha>^ <sha>`; `node --test`.
 - Host-static checks vs the pre-push container gate: say which actually ran.
-- `ARCHITECTURE.md` is not in the tree; the live records are `docs/architecture.md` and `docs/tech-spec.md`; a new citation of it is a finding.
+- A cited document that is absent from the tree at the delivered sha is a finding; cite the
+  live records the project actually has.
 - Coverage floor: 80% line/branch/function over `src/core`, `src/foundation`, `src/cli`, `src/server`; the number must come from a reproducible report.
 
 ## Verdict rule, precedence and classification

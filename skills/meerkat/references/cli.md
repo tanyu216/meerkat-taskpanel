@@ -416,7 +416,7 @@ Prints `td_****` and the token file; `--show` prints the value and says what it 
 
 ### `sla`
 
-The board's computed SLA rows (`docs/sla.md`): one alert tuple per open wait, with its
+The board's computed SLA rows: one alert tuple per open wait, with its
 tier (`warn` / `overdue` / `escalate`), elapsed working minutes and threshold. Read-only;
 it moves no card.
 
@@ -507,7 +507,7 @@ board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `session`); the
 | `loop poll` | Scan, admit, claim and enqueue ready cards; writes the queue. |
 | `loop tick [--passes <list>]` | Run `patrol,workflow,poll` (or `--passes` order) in one command — the cron/unit entry. |
 | `loop console` | One read-only question / frontier cycle. |
-| `loop doctor` | One read-only daily-inspection report: supervisor verdict, the resolved scan set, the patrol's last-successful-run marker, the log tail, queue and ledger depth, the cards whose heartbeat is stale or unreadable, the `in_review` cards waiting on a human (age only — review aging stays the workflow pass's judgement), and the cards carrying an acceptance marker for their current round while still `in_review` (`blocked_acceptance` — the board refused the close), and the `done` cards whose lane branch is not in the project's current branch (`unlanded`), and the cards that keep going round the same loop (`looping`: rework rounds, review reopens, dispatch retries, subagent failures — read-only facts, with the queue/ledger windows named in `docs/scheduling.md`). Writes nothing and exits 0 whenever it produced a report — read `attention` from `--json`. |
+| `loop doctor` | One read-only daily-inspection report: supervisor verdict, the resolved scan set, the patrol's last-successful-run marker, the log tail, queue and ledger depth, the cards whose heartbeat is stale or unreadable, the `in_review` cards waiting on a human (age only — review aging stays the workflow pass's judgement), and the cards carrying an acceptance marker for their current round while still `in_review` (`blocked_acceptance` — the board refused the close), and the `done` cards whose lane branch is not in the project's current branch (`unlanded`), and the cards that keep going round the same loop (`looping`: rework rounds, review reopens, dispatch retries, subagent failures — read-only facts, with the loop's own queue/ledger windows). Writes nothing and exits 0 whenever it produced a report — read `attention` from `--json`. |
 | `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict, the agent platform (`--actor-kind`), the discovered role platforms and the scan set it resolved; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
 | `loop run [--ping-once] [--continue-once]` | The two clocks as a daemon; either `--*-once` runs one pass and exits. |
 | `loop subscribe` | The event subscriber daemon; it requests an early tick. |
@@ -768,8 +768,7 @@ taskctl issue reconcile --workflow --reviewer jobs \
 `{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the snapshot; a
 truncated snapshot still applies outcomes but dispatches nothing. `--rework-max-rounds`
 bounds the delivery rounds since the last hold before the plan emits a `hold_card` (the card
-is parked as `blocked` with a question; the liveness bounds are the repository's
-`docs/scheduling.md` §Liveness bounds).
+is parked as `blocked` with a question; the loop's configured liveness bounds apply).
 The actions are decisions the loop executes, not effects; what each one means, and the
 fail-safe rules behind them, are in
 [`status-lifecycle.md` §11](status-lifecycle.md#11-the-boards-workflow-decisions).
