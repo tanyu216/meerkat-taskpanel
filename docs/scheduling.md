@@ -2503,9 +2503,8 @@ this boundary: every agent kind gets one — see `docs/ops/install.md`.)
 - [`install.md`](ops/install.md) — the installer flags, including `--claim-unassigned` and the
   opt-in `--supervisor=enable|disable|status`.
 - [`../skills/meerkat-director/SKILL.md`](../skills/meerkat-director/SKILL.md) — the decision
-  hub and its protocol;
-  [`references/operation.md`](../skills/meerkat-director/references/operation.md) is the
-  operator's view.
+  hub and its protocol; its `references/decision-policy.md` is the single decision-authority
+  source.
 - [`../skills/meerkat-chat/SKILL.md`](../skills/meerkat-chat/SKILL.md) — the human's live
   console: progress, awaiting questions, acceptance, `loop doctor` and abnormal cards.
 - [`../skills/jobs/SKILL.md`](../skills/jobs/SKILL.md) and its four siblings — the role

@@ -325,7 +325,15 @@ describe("install.sh: the director and role skills' distribution", () => {
 
       const dest = join(home, agentDir, "skills", "meerkat-director");
       assert.ok(existsSync(join(dest, "SKILL.md")), `${kind}: the director's SKILL.md must land`);
-      assert.ok(existsSync(join(dest, "references", "operation.md")), `${kind}: its references must land`);
+      assert.ok(
+        existsSync(join(dest, "references", "decision-policy.md")),
+        `${kind}: its decision policy must land`,
+      );
+      assert.equal(
+        existsSync(join(dest, "references", "operation.md")),
+        false,
+        `${kind}: the operator mechanics are not the director's`,
+      );
 
       const chat = join(home, agentDir, "skills", "meerkat-chat");
       assert.ok(existsSync(join(chat, "SKILL.md")), `${kind}: the human console's SKILL.md must land`);

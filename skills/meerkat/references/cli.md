@@ -768,8 +768,8 @@ taskctl issue reconcile --workflow --reviewer jobs \
 `{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the snapshot; a
 truncated snapshot still applies outcomes but dispatches nothing. `--rework-max-rounds`
 bounds the delivery rounds since the last hold before the plan emits a `hold_card` (the card
-is parked as `blocked` with a question; see
-[`../scheduling.md` §Liveness bounds](../../../docs/scheduling.md#liveness-bounds-every-cycle-has-a-stop)).
+is parked as `blocked` with a question; the liveness bounds are the repository's
+`docs/scheduling.md` §Liveness bounds).
 The actions are decisions the loop executes, not effects; what each one means, and the
 fail-safe rules behind them, are in
 [`status-lifecycle.md` §11](status-lifecycle.md#11-the-boards-workflow-decisions).
