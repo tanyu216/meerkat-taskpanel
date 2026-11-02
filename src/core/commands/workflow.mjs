@@ -26,7 +26,7 @@ import { reconcileContainers } from "./rollup.mjs";
  *
  * @param {object} ctx
  * @param {{
- *   reviewer?: string|null,
+ *   assignee?: string|null,
  *   reviewAgingMs?: number,
  *   reworkMaxRounds?: number,
  *   maxActions?: number,
@@ -94,18 +94,14 @@ export function workflowTick(ctx, input = {}) {
     verdicts[ref] = parseReviewVerdict(reports, roundOf(card));
   }
 
-  const reviewer =
-    typeof input.reviewer === "string" && input.reviewer.trim() !== ""
-      ? input.reviewer.trim()
+  const assignee =
+    typeof input.assignee === "string" && input.assignee.trim() !== ""
+      ? input.assignee.trim()
       : null;
 
-  // 0031 — a project may override the deployment-level reviewer. Read every
-  // project (archived included: it can still own in-flight cards) so dispatch
-  // can resolve `project.reviewer ?? global` from the snapshot alone.
+  // Read every project (archived included: it can still own in-flight cards) so
+  // dispatch can see their gates from the snapshot alone.
   const projects = ctx.repos.projects.list({ includeArchived: true });
-  const projectReviewers = Object.fromEntries(
-    projects.map((project) => [project.id, project.reviewer ?? null]),
-  );
   // `project.meta.review_gate` — the one command the reviewer re-runs. The
   // board does not validate it; the reviewer's lane allowlist is what can run it.
   const projectGates = Object.fromEntries(
@@ -121,8 +117,7 @@ export function workflowTick(ctx, input = {}) {
     reportsByRef,
     reconcileActions: reconcile.actions,
     config: {
-      reviewer,
-      projectReviewers,
+      assignee,
       projectGates,
       reviewAgingMs: input.reviewAgingMs,
       reworkMaxRounds: input.reworkMaxRounds,

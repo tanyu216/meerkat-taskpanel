@@ -16,7 +16,6 @@
  * Node builtins only; no network, no dependencies.
  */
 
-import { LEDGER_STALE_MS } from "../foundation/scheduling.mjs";
 import { QUEUE_FILES, readJsonFile, writeJsonFile } from "./queue.mjs";
 import { join } from "node:path";
 
@@ -121,99 +120,6 @@ export function upsertSubagent(ledger, record) {
   if (index === -1) next.subagents.push(merged);
   else next.subagents[index] = merged;
   return next;
-}
-
-/**
- * Mark one subagent terminal (or refresh its status). `identity` may be the
- * agent handle, or `{sessionKey, card, role}` for a row that never got one.
- *
- * @param {{subagents: object[]}} ledger
- * @param {string|{sessionKey?: string, card?: string, role?: string}} identity
- * @param {{status: string, lastResult?: string|null, artifacts?: string[]}} change
- * @returns {object} the updated ledger
- */
-export function markSubagent(ledger, identity, change) {
-  const next = normalise(ledger);
-  const matches = (entry) => {
-    if (typeof identity === "string") return String(entry.subagentId ?? "") === identity;
-    return (
-      String(entry.sessionKey ?? "") === String(identity.sessionKey ?? "") &&
-      String(entry.card ?? "") === String(identity.card ?? "") &&
-      String(entry.role ?? "worker") === String(identity.role ?? "worker")
-    );
-  };
-  const entry = next.subagents.find(matches);
-  if (entry === undefined) return next;
-  entry.status = change.status;
-  entry.lastSeenAt = new Date().toISOString();
-  if (change.lastResult !== undefined) entry.lastResult = change.lastResult;
-  if (Array.isArray(change.artifacts)) entry.artifacts = change.artifacts;
-  return next;
-}
-
-/**
- * Rows worth trying to reattach after a restart, optionally scoped to one
- * lane session. Terminal rows are excluded.
- *
- * @param {{subagents: object[]}} ledger
- * @param {{sessionKey?: string|null}} [options]
- */
-export function reattachCandidates(ledger, options = {}) {
-  const key = options.sessionKey ?? null;
-  return liveSubagents(ledger).filter((entry) => {
-    if (entry.subagentId === null || entry.subagentId === undefined || entry.subagentId === "") return false;
-    if (key === null) return true;
-    return String(entry.sessionKey ?? "") === String(key);
-  });
-}
-
-/**
- * Extract Claude's subagent handles from a tool-result or hook payload text.
- * The Agent tool result ends with `agentId: <id>`; SubagentStop carries
- * `agent_id`. Both spellings are accepted, de-duplicated.
- *
- * @param {string} text
- * @returns {string[]}
- */
-export function extractAgentIds(text) {
-  const out = new Set();
-  const body = String(text ?? "");
-  // `agentId: x` in prose, and `"agentId":"x"` in an agent event's JSON.
-  for (const match of body.matchAll(/\bagentId["']?\s*[:=]\s*["']?([A-Za-z0-9_.:-]+)/g)) out.add(match[1]);
-  for (const match of body.matchAll(/\bagent_id\b["']?\s*[:=]\s*["']?([A-Za-z0-9_.:-]+)/g)) out.add(match[1]);
-  return [...out];
-}
-
-/**
- * Release a slot no event can close.
- *
- * Every live row is either a turn in flight or an orphan: background dispatch
- * is retired, and a synchronous project turn marks its subagents completed
- * before it returns. A row whose last sighting (or start, when it never
- * reported one) is older than the bound is therefore an orphan; mark it
- * `stale` so it stops consuming a concurrency slot. A fresh row is untouched.
- *
- * `sessionTurnTimeoutMs < LEDGER_STALE_MS` (asserted in
- * `test/orchestrator/time-contract.test.mjs`) keeps this from reaping a live turn.
- *
- * @param {{subagents: object[]}} ledger
- * @param {{now?: number, staleAfterMs?: number}} [options]
- * @returns {{ledger: object, reaped: string[]}}
- */
-export function reap(ledger, options = {}) {
-  const next = normalise(ledger);
-  const now = options.now ?? Date.now();
-  const staleAfterMs = Number(options.staleAfterMs ?? LEDGER_STALE_MS);
-  const reaped = [];
-  for (const entry of next.subagents) {
-    if (!isLive(entry)) continue;
-    const lastSeen = Date.parse(String(entry.lastSeenAt ?? entry.startedAt ?? ""));
-    if (!Number.isFinite(lastSeen) || now - lastSeen <= staleAfterMs) continue;
-    entry.status = "stale";
-    entry.lastSeenAt = new Date(now).toISOString();
-    reaped.push(String(entry.subagentId ?? `${entry.sessionKey}:${entry.card}:${entry.role}`));
-  }
-  return { ledger: next, reaped };
 }
 
 /**

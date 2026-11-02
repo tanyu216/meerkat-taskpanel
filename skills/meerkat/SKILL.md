@@ -120,7 +120,7 @@ Write in the language the work is actually being done in. English is not the def
 Decide it from evidence, in this order:
 
 1. **The human in this conversation.** Their own messages are the signal — a Chinese question carrying an English stack trace is a Chinese request. An explicit instruction outranks this.
-2. **The card, then its project.** With no human message — a loop tick, a handoff, a subagent — inherit what is already there: this card's own text, or the project's recent cards.
+2. **The card, then its project.** With no human message — a loop tick, a handoff, a worker session — inherit what is already there: this card's own text, or the project's recent cards.
 3. **The repository.** Use `README.md`, `CLAUDE.md`/`AGENTS.md` or `GLOSSARY.md` when the project has no cards yet. English only with no signal at all.
 
 **What never translates:** identifiers, command lines, flags, error codes and status literals (`in_progress`, `E2`), field names, paths, code and log excerpts, and a quoted sentence. A review card's first line stays exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.

@@ -2088,7 +2088,6 @@ const BLOCKS = [
       "[data-create-project-form]",
       "[data-create-project-name]",
       "[data-create-project-prefix]",
-      "[data-create-project-reviewer]",
       "[data-modal-close]",
     ],
     states: [],

@@ -110,7 +110,7 @@ const REVIEWER_REPORT = {
   author_id: "agent-jobs",
 };
 
-const CONFIG = { reviewer: "jobs", maxActions: 20 };
+const CONFIG = { assignee: "jobs", maxActions: 20 };
 
 const types = (result) => result.actions.map((action) => action.type);
 
@@ -439,7 +439,7 @@ describe("planReviewDispatch", () => {
   });
 
   it("reports an unconfigured reviewer once, with the size of the backlog", () => {
-    const result = planReviewDispatch({ tasks: [card()], config: { ...CONFIG, reviewer: null } });
+    const result = planReviewDispatch({ tasks: [card()], config: { ...CONFIG, assignee: null } });
     assert.deepEqual(result.actions, []);
     assert.deepEqual(result.alerts, [
       {
@@ -449,7 +449,7 @@ describe("planReviewDispatch", () => {
         projects: [{ project: "proj", waiting: 1 }],
       },
     ]);
-    assert.deepEqual(planReviewDispatch({ tasks: [], config: { ...CONFIG, reviewer: null } }).alerts, []);
+    assert.deepEqual(planReviewDispatch({ tasks: [], config: { ...CONFIG, assignee: null } }).alerts, []);
   });
 
   it("orders oldest-first and honours the write cap", () => {
@@ -949,7 +949,7 @@ describe("planWorkflowTick", () => {
         { epic: "E-1", status: "todo", action: "start", reason: "child_in_progress", child: "T-1" },
         { epic: "E-2", status: "in_progress", action: "none", reason: "no_delivery_evidence" },
       ],
-      config: { ...CONFIG, reviewer: null },
+      config: { ...CONFIG, assignee: null },
       now: NOW,
     });
     assert.deepEqual(result.changes, [{ epic: "E-1", action: "start", reason: "child_in_progress", child: "T-1" }]);
@@ -1276,10 +1276,10 @@ describe("workflow alert dedup keys", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 0031 — review decision, per-project reviewer, auto-accept
+// 0031 — review decision, the review-card assignee, auto-accept
 // ---------------------------------------------------------------------------
 
-describe("planReviewDispatch — acceptance mode and project reviewers", () => {
+describe("planReviewDispatch — acceptance mode and the reconcile assignee", () => {
   it("skips a card that does not require review", () => {
     const result = planReviewDispatch({
       tasks: [card({ acceptance_mode: "off" })],
@@ -1315,49 +1315,48 @@ describe("planReviewDispatch — acceptance mode and project reviewers", () => {
     );
   });
 
-  it("resolves project.reviewer ?? the deployment reviewer per card", () => {
+  it("dispatches every reviewable card to the reconcile assignee", () => {
     const result = planReviewDispatch({
       tasks: [
         card({ identifier: "T-1", project_id: "p1" }),
         card({ identifier: "T-2", project_id: "p2" }),
         card({ identifier: "T-3", project_id: "p3" }),
       ],
-      config: {
-        ...CONFIG,
-        reviewer: "jobs",
-        projectReviewers: { p1: "alice", p2: " " },
-      },
+      config: { ...CONFIG, assignee: "jobs" },
     });
     const byRef = Object.fromEntries(result.actions.map((action) => [action.originalRef, action.reviewer]));
-    assert.equal(byRef["T-1"], "alice", "the project override wins");
-    assert.equal(byRef["T-2"], "jobs", "a blank override falls back to the deployment reviewer");
+    assert.equal(byRef["T-1"], "jobs", "the reconcile assignee is the only source");
+    assert.equal(byRef["T-2"], "jobs");
     assert.equal(byRef["T-3"], "jobs");
   });
 
-  it("aggregates the unconfigured-reviewer alert by project", () => {
+  it("aggregates the unconfigured-assignee alert by project", () => {
     const result = planReviewDispatch({
       tasks: [
         card({ identifier: "T-1", project_id: "p1" }),
         card({ identifier: "T-2", project_id: "p1" }),
         card({ identifier: "T-3", project_id: "p2" }),
       ],
-      config: { ...CONFIG, reviewer: null, projectReviewers: { p2: "bob" } },
+      config: { ...CONFIG, assignee: null },
     });
     assert.deepEqual(result.alerts, [
       {
         type: "dispatch_skipped",
         reason: "reviewer_not_configured",
-        waiting: 2,
-        projects: [{ project: "p1", waiting: 2 }],
+        waiting: 3,
+        projects: [
+          { project: "p1", waiting: 2 },
+          { project: "p2", waiting: 1 },
+        ],
       },
     ]);
-    assert.deepEqual(result.actions.map((action) => action.originalRef), ["T-3"]);
+    assert.deepEqual(result.actions, []);
   });
 
-  it("uses the effective reviewer for the self-review guard", () => {
+  it("uses the reconcile assignee for the self-review guard", () => {
     const result = planReviewDispatch({
       tasks: [card({ identifier: "T-1", project_id: "p1" })],
-      config: { ...CONFIG, reviewer: "jobs", projectReviewers: { p1: "linus" } },
+      config: { ...CONFIG, assignee: "linus" },
     });
     assert.deepEqual(result.actions, []);
     assert.equal(result.alerts[0].type, "self_review_not_independent");

@@ -122,8 +122,8 @@ would be wrong; when you need to know which project a directory belongs to, ask.
 ## Extra keys are pass-through, not a second store
 
 This map answers one question: which directory does work for this project happen in. The
-project's own metadata lives on its board row — `name`, `labels`, `readme`, `reviewer`
-and free-form `meta` (`taskctl project update <id> --meta k=v`).
+project's own metadata lives on its board row — `name`, `labels`, `readme` and
+free-form `meta` (`taskctl project update <id> --meta k=v`).
 
 An entry may still carry other keys: `project map set` copies them through unchanged, and
 `project map show` / `project map list` return them. taskpanel never validates or interprets

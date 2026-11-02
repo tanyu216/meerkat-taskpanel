@@ -105,7 +105,7 @@ const CREATE_BODY = project(TASK_OPS.create);
 const RECONCILE_BODY = shape({
   dry_run: bool(),
   workflow: bool(),
-  reviewer: str(),
+  assignee: str(),
   review_aging_ms: int(),
   rework_max_rounds: int(),
   max_actions: int(),
@@ -284,7 +284,7 @@ export function registerTaskRoutes(router, surface) {
   router.post("/api/v1/tasks/reconcile", ({ body }) => {
     if (body.workflow === true) {
       const result = commands.workflowTick({
-        reviewer: body.reviewer ?? null,
+        assignee: body.assignee ?? null,
         reviewAgingMs: body.review_aging_ms,
         reworkMaxRounds: body.rework_max_rounds,
         maxActions: body.max_actions,

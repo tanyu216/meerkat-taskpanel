@@ -389,6 +389,7 @@ inherited, not read by `taskd`. The structural rules:
 | `REVIEW_CARD_MARKER_INVALID` | 409 | A write tried to give a review card a non-`off` mode (flow B is never reviewed again). |
 | `VALIDATION_FAILED` | 400 | Unknown status; create in `in_progress`/`awaiting`; an epic's illegal initial status; an unknown `awaiting_reason`/`blocked_reason`; a malformed waiver; a `review_of` whose original is not `in_review`; a `review_of` that names a review card; a `review_round` that is not the original's current `delivery_round`; a review card that is not `kind=task`; a `parent` edge with a review card on either end. |
 | `ASSIGNEE_NOT_IN_CATALOG` | 400 | **CLI-only.** `issue create`/`issue assign` named an `--assignee` outside the local role catalog (`taskctl role list`) while the catalog is non-empty. `--force-create` admits it. A direct HTTP write never sees this check. |
+| `ASSIGNEE_NOT_REVIEWER` | 400 | **CLI-only.** A review card (`--review-of`) named an assignee that is not a reviewer-lane role; the catalog's `default_reviewer` is the default. `--force-create`, `--assignee-id` and a human assignee are refused on a review card. |
 | `VERSION_CONFLICT` | 409 | `--if-version` does not match the card's version. |
 | `EXECUTION_ACTIVE` | 409 | Another actor holds a fresh claim, or a non-holder sends a heartbeat. |
 | `CLAIM_LOST` | 409 | The claim's compare-and-swap lost a race. |
@@ -443,7 +444,7 @@ The board decides what happens after a delivery; the loop executes. One command:
 
 ```bash
 taskctl issue reconcile --workflow [--dry-run]
-  [--reviewer <agent>]
+  [--assignee <agent>]
   [--review-aging-ms <n>] [--max-actions <n>] [--board-limit <n>]
 ```
 

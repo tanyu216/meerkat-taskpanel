@@ -789,12 +789,15 @@ drawer veil deepens with the modal's — one token, every veil.
 ## B11 · Create-project modal
 
 `dialog[data-create-project]` → `form[data-create-project-form]` →
-`[data-create-project-name]` · `[data-create-project-prefix]` ·
-`[data-create-project-reviewer]` (optional project override) · `[data-modal-close]`.
+`[data-create-project-name]` · `[data-create-project-prefix]` · `[data-modal-close]`.
 
 > **0002 removes the project acceptance control.** A project carries no acceptance default;
 > each card states its own `off | auto | human` mode at creation. The old
 > `[data-create-project-review-policy]` hook is retired.
+>
+> **0031 retires the project reviewer override.** A project no longer names a reviewer;
+> the review card's assignee selects the role. The `[data-create-project-reviewer]` hook is
+> retired.
 
 > **前缀绑定（口径 = `design/contracts/project-prefix-binding.md`）**：`[data-create-project-prefix]`
 > 是**该项目卡号前缀**的 oracle——原型把它 `required` + `maxlength="4"`，提交时存入

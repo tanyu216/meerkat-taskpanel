@@ -79,7 +79,7 @@ describe("commands/workflowTick — the board's plan", () => {
   it("returns the approve plan for a reviewed delivery", async () => {
     await board(({ commands }) => {
       const { original, review } = seed(commands);
-      const result = commands.workflowTick({ reviewer: "jobs" });
+      const result = commands.workflowTick({ assignee: "jobs" });
 
       assert.equal(result.workflow.actions.length, 1);
       assert.equal(result.workflow.actions[0].type, "approve");
@@ -122,7 +122,7 @@ describe("commands/workflowTick — the board's plan", () => {
       assert.equal(commands.getTask({ id: review.id }).deliveryRound, 1);
       assert.equal(commands.listReports({ taskId: review.id })[0].round, 1);
 
-      const result = commands.workflowTick({ reviewer: "jobs" });
+      const result = commands.workflowTick({ assignee: "jobs" });
       assert.deepEqual(result.workflow.alerts, []);
       assert.equal(result.workflow.actions[0]?.type, "approve");
       assert.equal(result.workflow.summary.approved, 1);
@@ -132,7 +132,7 @@ describe("commands/workflowTick — the board's plan", () => {
   it("reads the card's acceptance mode, not a loop-supplied policy", async () => {
     await board(({ commands }) => {
       const { original } = seed(commands);
-      const result = commands.workflowTick({ reviewer: "jobs" });
+      const result = commands.workflowTick({ assignee: "jobs" });
       assert.equal(result.workflow.actions[0].type, "approve");
       assert.equal(commands.getTask({ id: original.id }).acceptanceMode, "auto");
       assert.equal(result.workflow.summary.held, 0);
@@ -142,7 +142,7 @@ describe("commands/workflowTick — the board's plan", () => {
   it("returns a plan with no actions when nobody delivered", async () => {
     await board(({ commands }) => {
       commands.createTask({ projectId: "proj", title: "Not started", actor: HUMAN });
-      const result = commands.workflowTick({ reviewer: "jobs" });
+      const result = commands.workflowTick({ assignee: "jobs" });
       assert.deepEqual(result.workflow.actions, []);
       assert.equal(result.workflow.summary.actions, 0);
     });
@@ -153,7 +153,7 @@ describe("commands/workflowTick — the board's plan", () => {
       seed(commands);
       // Two cards on the board, a read capped at one: the planner must treat
       // the missing rows as unknown and refuse to dispatch on a partial view.
-      const result = commands.workflowTick({ reviewer: "jobs", boardLimit: 1 });
+      const result = commands.workflowTick({ assignee: "jobs", boardLimit: 1 });
       assert.deepEqual(result.workflow.actions, []);
       assert.ok(
         result.workflow.alerts.some(
@@ -166,7 +166,7 @@ describe("commands/workflowTick — the board's plan", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 0031 — project reviewers and auto-accept in the board snapshot
+// 0031 — the review-card assignee and auto-accept in the board snapshot
 // ---------------------------------------------------------------------------
 
 describe("commands/workflowTick — 0031", () => {
@@ -183,14 +183,9 @@ describe("commands/workflowTick — 0031", () => {
     return task;
   }
 
-  it("uses a project's reviewer override in the dispatch action", async () => {
+  it("dispatches the review card to the reconcile assignee", async () => {
     await board(({ commands }) => {
-      commands.createProject({
-        id: "p2",
-        name: "P2",
-        reviewer: "bob",
-        actor: HUMAN,
-      });
+      commands.createProject({ id: "p2", name: "P2", actor: HUMAN });
       const task = commands.createTask({
         projectId: "p2",
         title: "Needs review",
@@ -201,21 +196,16 @@ describe("commands/workflowTick — 0031", () => {
       commands.moveStatus({ id: task.id, to: "in_progress", actor: WORKER });
       commands.deliver({ taskId: task.id, report: DELIVERY, actor: WORKER });
 
-      const result = commands.workflowTick({ reviewer: "jobs" });
+      const result = commands.workflowTick({ assignee: "jobs" });
       const dispatch = result.workflow.actions.find((action) => action.type === "create_review");
       assert.ok(dispatch, "the required card is dispatched");
-      assert.equal(dispatch.reviewer, "bob");
+      assert.equal(dispatch.reviewer, "jobs");
     });
   });
 
   it("gives the review card requirement, plan and omission items, within the 64 cap", async () => {
     await board(({ commands }) => {
-      commands.createProject({
-        id: "p2",
-        name: "P2",
-        reviewer: "bob",
-        actor: HUMAN,
-      });
+      commands.createProject({ id: "p2", name: "P2", actor: HUMAN });
       const items = Array.from({ length: 60 }, (_, index) => `criterion ${index}`);
       const task = commands.createTask({
         projectId: "p2",
@@ -237,7 +227,7 @@ describe("commands/workflowTick — 0031", () => {
       });
 
       const dispatch = commands
-        .workflowTick({ reviewer: "jobs" })
+        .workflowTick({ assignee: "jobs" })
         .workflow.actions.find((action) => action.type === "create_review");
       assert.ok(dispatch, "the required card is dispatched");
       assert.match(dispatch.description, /Reference material/);
@@ -299,7 +289,7 @@ describe("commands/workflowTick — 0031", () => {
       });
 
       const rejected = commands
-        .workflowTick({ reviewer: "jobs" })
+        .workflowTick({ assignee: "jobs" })
         .workflow.actions.find((action) => action.type === "reject_task");
       assert.ok(rejected, "the delivery is rejected");
       assert.deepEqual(rejected.mustFix, ["add the e2e case for a canceled child"]);
@@ -335,7 +325,7 @@ describe("commands/workflowTick — 0031", () => {
       });
 
       const dispatch = commands
-        .workflowTick({ reviewer: "jobs" })
+        .workflowTick({ assignee: "jobs" })
         .workflow.actions.find((action) => action.type === "create_review");
       assert.ok(dispatch, "round 2 is dispatched for review");
       assert.ok(
@@ -381,12 +371,12 @@ describe("commands/workflowTick — 0031", () => {
     });
   });
 
-  it("keeps an archived project's reviewer — its in-flight cards still dispatch", async () => {
+  it("keeps an archived project's review gate — its in-flight cards still dispatch", async () => {
     await board(({ db, commands }) => {
       commands.createProject({
         id: "p2",
         name: "P2",
-        reviewer: "bob",
+        meta: { review_gate: "npm run check" },
         actor: HUMAN,
       });
       const task = commands.createTask({
@@ -396,7 +386,7 @@ describe("commands/workflowTick — 0031", () => {
         actor: HUMAN,
       });
       // Archive the project after the card exists: the board must still read
-      // the override, or the card dispatches to the global reviewer instead.
+      // its gate, or the review card is created without the declared check.
       db.prepare("UPDATE projects SET archived_at = ? WHERE id = ?").run(
         "2026-10-19T10:00:00.000Z",
         "p2",
@@ -404,17 +394,17 @@ describe("commands/workflowTick — 0031", () => {
       commands.moveStatus({ id: task.id, to: "in_progress", actor: WORKER });
       commands.deliver({ taskId: task.id, report: DELIVERY, actor: WORKER });
 
-      const result = commands.workflowTick({ reviewer: "jobs" });
+      const result = commands.workflowTick({ assignee: "jobs" });
       const dispatch = result.workflow.actions.find((action) => action.type === "create_review");
       assert.ok(dispatch);
-      assert.equal(dispatch.reviewer, "bob");
+      assert.match(dispatch.description, /Declared gate: npm run check/);
     });
   });
 
   it("plans an auto_accept for a delivered card that needs no review", async () => {
     await board(({ commands }) => {
       const task = deliverPlain(commands);
-      const result = commands.workflowTick({ reviewer: "jobs" });
+      const result = commands.workflowTick({ assignee: "jobs" });
       const action = result.workflow.actions.find((item) => item.type === "auto_accept");
       assert.ok(action);
       assert.equal(action.originalRef, task.identifier);
@@ -426,7 +416,7 @@ describe("commands/workflowTick — 0031", () => {
   it("leaves a human-accepted card for the human", async () => {
     await board(({ commands }) => {
       const task = deliverPlain(commands, "proj", "human");
-      const result = commands.workflowTick({ reviewer: "jobs" });
+      const result = commands.workflowTick({ assignee: "jobs" });
       assert.equal(result.workflow.actions.some((item) => item.type === "auto_accept"), false);
       assert.equal(
         result.workflow.alerts.some((alert) => alert.type === "auto_accept_skipped"),
@@ -479,7 +469,7 @@ describe("commands/workflowTick — containers are reviewed too (round 2)", () =
       const epic = lateEpic(commands, child);
       assert.equal(commands.getTask({ id: epic.id }).acceptanceMode, "auto");
 
-      const result = commands.workflowTick({ reviewer: "jobs" });
+      const result = commands.workflowTick({ assignee: "jobs" });
 
       assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
       const dispatch = result.workflow.actions.find(
@@ -500,7 +490,7 @@ describe("commands/workflowTick — containers are reviewed too (round 2)", () =
       const child = doneChild(commands, "Child");
       const epic = lateEpic(commands, child, { acceptanceMode: "off" });
 
-      const result = commands.workflowTick({ reviewer: "jobs" });
+      const result = commands.workflowTick({ assignee: "jobs" });
 
       assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
       const action = result.workflow.actions.find(

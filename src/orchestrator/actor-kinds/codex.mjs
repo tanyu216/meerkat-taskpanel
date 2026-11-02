@@ -17,7 +17,6 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { extractAgentIds } from "../ledger.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
@@ -118,15 +117,6 @@ function serverReply(method, params) {
   return { decision: "accept" };
 }
 
-/** The child thread ids a `collabAgentToolCall` item reports. */
-function childThreadIds(item) {
-  const ids = Array.isArray(item?.receiverThreadIds) ? item.receiverThreadIds : [];
-  const fromStates = item?.agentsStates !== null && typeof item?.agentsStates === "object"
-    ? Object.keys(item.agentsStates)
-    : [];
-  return [...new Set([...ids, ...fromStates].filter((id) => typeof id === "string" && id !== ""))];
-}
-
 class CodexSession {
   /**
    * @param {{pool: object, opts: object, cwd: string, sessionId?: string|null,
@@ -143,7 +133,6 @@ class CodexSession {
     this.threadId = null;
     this.turnId = null;
     this.closed = false;
-    this.turnIds = [];
     this.current = null;
     this.text = "";
     this.developerInstructions = skillDeveloperInstructions(input.skillPath ?? null);
@@ -189,16 +178,8 @@ class CodexSession {
   handleNotification(method, params) {
     if (method === "item/started" || method === "item/completed") {
       const item = params?.item ?? {};
-      for (const subagentId of childThreadIds(item)) {
-        if (!this.turnIds.includes(subagentId)) this.turnIds.push(subagentId);
-        this.pool.onEvent?.({ type: "subagent", sessionId: this.sessionId, subagentId, phase: item.type });
-      }
       const text = typeof item.text === "string" ? item.text : "";
       if (text !== "") this.text = text;
-      for (const agentId of extractAgentIds(JSON.stringify(item))) {
-        if (!this.turnIds.includes(agentId)) this.turnIds.push(agentId);
-        this.pool.onEvent?.({ type: "subagent", sessionId: this.sessionId, subagentId: agentId, phase: "result" });
-      }
       return;
     }
     if (method === "item/agentMessage/delta") {
@@ -234,7 +215,6 @@ class CodexSession {
       resumeFailed: outcome.resumeFailed === true || this.resumeMismatch === true,
       sessionId: this.sessionId,
       cwd: this.cwd,
-      ids: this.turnIds.slice(),
     });
   }
 
@@ -259,7 +239,6 @@ class CodexSession {
       };
     }
     const timeoutMs = Number(options.timeoutMs ?? this.opts?.sessionTurnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS);
-    this.turnIds = [];
     this.text = "";
     return new Promise((resolve) => {
       const timer = setTimeout(() => {

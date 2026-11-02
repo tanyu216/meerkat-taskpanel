@@ -41,9 +41,9 @@ import {
 } from "./role-prompt.mjs";
 
 /**
- * Default cap on concurrently running subagents — workers and reviewers share it.
- * The loop reserves no slots per role: demand decides the split (at 8 the nominal
- * steady state is 6 workers + 2 reviewers, not a guarantee).
+ * Default cap on concurrently running card sessions — worker and review sessions
+ * share it. The loop reserves no slots per role: demand decides the split (at 8
+ * the nominal steady state is 6 workers + 2 reviews, not a guarantee).
  */
 export const DEFAULT_MAX_CONCURRENCY = 8;
 /**
@@ -66,18 +66,6 @@ export const DEFAULT_CONTINUE_SECONDS = 600; // 10 minutes
 
 /** A claim older than this is "stale" for patrol (same-holder recovery window). */
 export const PATROL_STALE_MS = CLAIM_STALE_SAME_MS;
-
-/**
- * 0034 — how long a live ledger row survives after its card has left the work
- * state. The reconcile pass reaps it at this age.
- *
- * It is the upper bound of the **time contract**: a turn must finish before the
- * bookkeeping that describes it is reclaimed (`sessionTurnTimeoutMs <
- * LEDGER_STALE_MS`), or a long turn outlives its own slot. One fact source: the
- * ledger imports this rather than spelling `2h` a second time.
- */
-export const LEDGER_STALE_MS = 2 * 60 * 60 * 1000;
-
 
 /**
  * Parse a yes/no-ish string into a boolean, or `null` when it says nothing.
@@ -234,7 +222,7 @@ export const DEFAULT_REVIEW_AGING_MINUTES = DEFAULT_REVIEW_AGING_MS / 60_000;
  * in flight.
  *
  * @param {{flags?: object, env?: object, file?: Record<string, string>|null}} [input]
- * @returns {{workflow: boolean, reviewer: string|null, maxActions: number, reviewAgingMs: number}}
+ * @returns {{workflow: boolean, maxActions: number, reviewAgingMs: number}}
  */
 export function resolveWorkflowConfig(input = {}) {
   const flags = input.flags ?? {};
@@ -245,14 +233,6 @@ export function resolveWorkflowConfig(input = {}) {
     for (const value of values) {
       const parsed = parseYesNo(value);
       if (parsed !== null) return parsed;
-    }
-    return null;
-  };
-  const firstText = (...values) => {
-    for (const value of values) {
-      if (typeof value !== "string") continue;
-      const trimmed = value.trim();
-      if (trimmed !== "") return trimmed;
     }
     return null;
   };
@@ -268,11 +248,6 @@ export function resolveWorkflowConfig(input = {}) {
       firstYesNo(flags.workflow, env.MEERKAT_TASKPANEL_WORKFLOW, file.MEERKAT_TASKPANEL_WORKFLOW) ?? true,
     // 0038 — the card's own acceptance mode is the whole decision; the loop no
     // longer carries an advisory copy of a board policy or a review-close flag.
-    reviewer: firstText(
-      flags.reviewer,
-      env.MEERKAT_TASKPANEL_REVIEWER,
-      file.MEERKAT_TASKPANEL_REVIEWER,
-    ),
     maxActions:
       firstPositive(
         flags.workflowMaxActions,
@@ -860,6 +835,70 @@ export function buildResidentEnvelope(input) {
       ? "The round method is the meerkat-director skill's rounds.md. Your role skill is"
       : `The round method is ${roundsPath}. Your role skill is`,
     "already loaded; read the branch file it names once and follow it.",
+  ].join("\n");
+}
+
+/**
+ * The lean envelope for a **review** card's resident session. The reviewer
+ * skill was loaded when the session opened, so this message carries the
+ * review's own moves and nothing of the role layer or the protocol text.
+ *
+ * @param {{card?: object, flags?: string|null}} input
+ * @returns {string}
+ */
+export function buildReviewEnvelope(input) {
+  const card = input.card ?? {};
+  const ref = card.identifier;
+  const reviewed =
+    typeof card.review_of === "string" && card.review_of.trim() !== ""
+      ? card.review_of.trim()
+      : null;
+  const original = reviewed ?? "<card under review>";
+  const round = card.review_round ?? "the round recorded on the review card";
+  const project = card.project ?? "<project id>";
+  const brief = cardFileRel(ref);
+  const originalBrief = reviewed === null ? null : cardFileRel(reviewed);
+  const flags = typeof input.flags === "string" && input.flags !== "" ? input.flags : null;
+  return [
+    `You are the reviewer for the ${project} project — one delivered card.`,
+    `Review card: ${ref}`,
+    `Card under review: ${original} (round ${round})`,
+    `Review brief: ${brief} — exported by the supervisor; read it, it is authoritative.`,
+    ...(originalBrief === null
+      ? []
+      : [`Original brief: ${originalBrief} (when present; also authoritative).`]),
+    "Never edit a card.md: the supervisor overwrites it from the board.",
+    ...(flags === null
+      ? ["Carry the session opener's Flags on every write."]
+      : [`Flags: ${flags}`, "Carry these Flags on every write."]),
+    "",
+    "Step 0 — the review_not_ready check; do it before reading anything else:",
+    `  taskctl issue get ${original} --json <flags>`,
+    "  If its status is not in_review, or its delivery_round is not the round above: leave a",
+    `  note on ${ref} and stop. Do not deliver a verdict; the loop closes this review card.`,
+    "",
+    `Read (start with ${brief}; taskctl is the live view):`,
+    `  taskctl issue get ${ref} --json <flags>`,
+    `  taskctl report list ${original} <flags>`,
+    `  taskctl comment list ${original} --limit 200 --json <flags>`,
+    `  taskctl relation list ${original} <flags>     # an epic's children`,
+    "Audit every acceptance item, this round's delivery report and its evidence, the comment",
+    "trail, and — for an epic — the rollup report and each child's state. The original's",
+    "baseline already carries every earlier round's findings: answer each one.",
+    "Verify what was delivered, not the live tree: take this round's report `commit` anchor and",
+    "read it with `git -C <project dir> show <sha>:<path>`. A claim visible only in the working",
+    "tree is unverified; if the tree has moved, say so in the report.",
+    "",
+    "Deliver one verdict on THIS review card:",
+    `  taskctl report template ${ref}   # fill it in, then:`,
+    `  taskctl issue deliver ${ref} --report-file - <flags>`,
+    "The report's FIRST line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`; put the",
+    "findings after it and in `leftovers`.",
+    "",
+    "Board: heartbeat only this review card, never the card under review. Do not move either",
+    "card: the loop applies the verdict and closes this one. You cannot enter awaiting — a",
+    "review ends in a verdict; if the evidence is insufficient, REJECT with the findings.",
+    "Your role skill is already loaded; read the branch file it names once and follow it.",
   ].join("\n");
 }
 

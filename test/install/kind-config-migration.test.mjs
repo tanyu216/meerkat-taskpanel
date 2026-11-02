@@ -168,7 +168,7 @@ describe("per-kind config — migration", () => {
     makeFakeCli(bin, "claude");
     const legacy = legacyFile(
       home,
-      "MEERKAT_TASKPANEL_REVIEWER=old-reviewer\nMEERKAT_TASKPANEL_CUSTOM=kept\n",
+      "MEERKAT_TASKPANEL_OPERATOR=old-reviewer\nMEERKAT_TASKPANEL_CUSTOM=kept\n",
     );
     const legacyBytes = readFileSync(legacy, "utf8");
 
@@ -178,7 +178,7 @@ describe("per-kind config — migration", () => {
     );
     assert.equal(run.status, 0, run.stderr);
     const text = readFileSync(join(programRoot, ".env.claude"), "utf8");
-    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=old-reviewer$/m, "the old choice survives");
+    assert.match(text, /^MEERKAT_TASKPANEL_OPERATOR=old-reviewer$/m, "the old choice survives");
     assert.match(text, /^MEERKAT_TASKPANEL_CUSTOM=kept$/m, "unknown keys survive the copy");
     assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m, "the install adds what it owns");
     assert.equal(readFileSync(legacy, "utf8"), legacyBytes, "the legacy file is not edited");
@@ -190,10 +190,10 @@ describe("per-kind config — migration", () => {
     const bin = makeTempDir();
     const programRoot = makeTempDir();
     makeFakeCli(bin, "claude");
-    const legacy = legacyFile(home, "MEERKAT_TASKPANEL_REVIEWER=old\n");
+    const legacy = legacyFile(home, "MEERKAT_TASKPANEL_OPERATOR=old\n");
     const legacyBytes = readFileSync(legacy, "utf8");
     mkdirSync(programRoot, { recursive: true });
-    writeFileSync(join(programRoot, ".env.claude"), "MEERKAT_TASKPANEL_REVIEWER=new\n", "utf8");
+    writeFileSync(join(programRoot, ".env.claude"), "MEERKAT_TASKPANEL_OPERATOR=new\n", "utf8");
 
     const run = runInstall(
       ["--target", "claude", "--prefix", home],
@@ -201,7 +201,7 @@ describe("per-kind config — migration", () => {
     );
     assert.equal(run.status, 0, run.stderr);
     const text = readFileSync(join(programRoot, ".env.claude"), "utf8");
-    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=new$/m, "the new file is authoritative");
+    assert.match(text, /^MEERKAT_TASKPANEL_OPERATOR=new$/m, "the new file is authoritative");
     assert.doesNotMatch(text, /old$/m);
     assert.equal(readFileSync(legacy, "utf8"), legacyBytes);
   });
@@ -226,7 +226,7 @@ describe("per-kind config — migration", () => {
     const bin = makeTempDir();
     const programRoot = makeTempDir();
     makeFakeCli(bin, "claude");
-    legacyFile(home, "MEERKAT_TASKPANEL_REVIEWER=old\n");
+    legacyFile(home, "MEERKAT_TASKPANEL_OPERATOR=old\n");
 
     const run = runInstall(
       ["--target", "claude", "--prefix", home, "--dry-run"],
@@ -253,7 +253,6 @@ describe("per-kind config — migration", () => {
     // The template is re-rendered, but a key it does not carry belongs to the operator
     // (or to `setup-meerkat`), so --force re-appends it rather than dropping it.
     assert.match(text, /^MEERKAT_TASKPANEL_CUSTOM=kept$/m, "force keeps keys the template does not carry");
-    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=Reviewer$/m);
     assert.ok(existsSync(legacy), "the legacy file is still untouched");
   });
 

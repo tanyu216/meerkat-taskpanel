@@ -69,9 +69,8 @@ Report the important rows, not the raw JSON:
   `default`), `loopback` vs `remote`, and `/health`;
 - board/chat/director/setup skills per actor kind, and the installed skill names each platform
   actually has; loop state and live pool; supervisor units;
-- per platform (`platforms`): its `MEERKAT_TASKPANEL_AGENT_KIND_ORDER` and
-  `MEERKAT_TASKPANEL_REVIEWER`, the role skills it actually carries (`roles`), whether pi
-  has `pi-subagents`, and `available`;
+- per platform (`platforms`): its `MEERKAT_TASKPANEL_AGENT_KIND_ORDER`, the role skills it
+  actually carries (`roles`), and `available`;
 - every discovered role with `installedOn`, `effective` and `fallback` — installation
   location is the routing, so this is a report, never a write;
 - any retired `meerkat-loop` skill / roles tree / `MEERKAT_TASKPANEL_ROLES_DIR` value
@@ -123,9 +122,8 @@ a remote server the user did not name.
 When detection reports more than one **available** agent kind, add one later-round
 question — **which kinds carry which role skills** — after the install set is settled:
 
-1. Show each kind's facts: chat and director skills, subagent support (pi needs
-   `pi-subagents`), the role skills it carries, and its configured reviewer. Never guess
-   these.
+1. Show each kind's facts: the chat and director skills and the role skills it carries.
+   Never guess these.
 2. Recommend **one kind for all roles** (one supervisor per machine), chosen as the kind
    whose capabilities best cover the team.
 3. Offer a move as the explicit alternative — a role skill copied to another kind and
@@ -324,13 +322,14 @@ overwrite without consent:
 
 ```text
 MEERKAT_TASKPANEL_AGENT_KIND_ORDER=claude,codex,pi
-MEERKAT_TASKPANEL_REVIEWER=Reviewer
 MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes
 ```
 
 `CLAIM_UNASSIGNED=yes` is the Worker default: an unassigned card is claimed as `Worker`,
 never as whichever role the scan names first. The claim set is **discovered**, not configured:
 there is no scan-set key, and a custom name with no role skill writes without being claimable.
+There is no reviewer key either: a review card's assignee is the role catalog's
+`default_reviewer` (normally `Reviewer`).
 The scheduling units carry the loop's writer identity (`--agent`); the catalog
 (`<config root>/roles.json`, read with `taskctl role list`) is the assignee range.
 

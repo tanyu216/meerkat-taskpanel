@@ -7,7 +7,7 @@
  * supervisor.
  *
  * The pool is deliberately kind-agnostic. `taskctl loop session` (the pool
- * manager) knows about projects, queues and subagents; it does not know which
+ * manager) knows about projects, queues and card sessions; it does not know which
  * CLI is underneath. An actor-kind adapter only has to implement this interface.
  *
  * Node builtins only; no network, no dependencies.

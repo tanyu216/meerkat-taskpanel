@@ -130,20 +130,23 @@ describe("supervisor status", () => {
     assert.equal(report.units.launchd.any, true);
   });
 
-  it("reports the scan set discovery produces — the worker roles, plus the reviewer", () => {
+  it("reports the scan set discovery produces — every worker and reviewer role", () => {
     // A team install has one question status must answer: can the role my card is
-    // assigned to ever be claimed? That is the discovered worker roles plus the
-    // reviewer; a name outside it strands its cards.
+    // assigned to ever be claimed? That is every discovered role in the worker or
+    // reviewer lane; a name outside it strands its cards.
     const dir = tempDir();
-    // Written before `optsFor`: `parseArgs` reads the config once, at parse time.
-    writeFileSync(join(dir, "config.env"), "MEERKAT_TASKPANEL_REVIEWER=Reviewer\n");
-    for (const [skill, agent] of [["jobs", "Jobs"], ["linus", "Linus"], ["turing", "Turing"]]) {
+    for (const [skill, agent, lanes] of [
+      ["jobs", "Jobs", ["worker"]],
+      ["linus", "Linus", ["worker"]],
+      ["turing", "Turing", ["worker"]],
+      ["reviewer", "Reviewer", ["reviewer"]],
+    ]) {
       const roleDir = join(dir, ".claude", "skills", skill);
       mkdirSync(roleDir, { recursive: true });
       writeFileSync(join(roleDir, "SKILL.md"), `---\nname: ${skill}\n---\n`);
       writeFileSync(
         join(roleDir, "role.json"),
-        JSON.stringify({ schema: "meerkat-role", id: skill, agent, lanes: ["worker"] }),
+        JSON.stringify({ schema: "meerkat-role", id: skill, agent, lanes }),
       );
     }
 
@@ -234,6 +237,32 @@ describe("supervisor status", () => {
     assert.match(text, /^supervisor: absent$/m);
     assert.match(text, /^ {2}platform: {2}codex \(~\/\.codex\)$/m);
     assert.match(text, /^ {2}scan set: {2}Jobs$/m);
+  });
+
+  it("splits card sessions by lane in the human report", async () => {
+    const dir = tempDir();
+    writePool(dir, {
+      projects: {
+        "worker:T-1:r1": { kind: "worker-session", role: "worker", status: "running" },
+        "worker:R-1:r1": { kind: "worker-session", role: "reviewer", status: "idle" },
+      },
+    });
+    const out = [];
+    const code = await main(
+      [
+        "--state", join(dir, "state.json"),
+        "--config", join(dir, "config.env"),
+        "--actor-kind", "claude",
+        "--home", dir,
+      ],
+      { HOME: dir },
+      { isAlive: (pid) => pid === 4242, now: () => NOW, run: noUnits() },
+      { out: (text) => out.push(text), err: () => {} },
+    );
+
+    assert.equal(code, 0);
+    const text = out.join("");
+    assert.match(text, /^ {2}sessions: {2}1 running \/ 2 total · reviewer 0\/1$/m);
   });
 
   it("reports each discovered role with where it is installed and where it runs", async () => {

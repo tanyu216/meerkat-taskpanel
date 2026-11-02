@@ -45,6 +45,10 @@
       "http": 400
     },
     {
+      "code": "ASSIGNEE_NOT_REVIEWER",
+      "http": 400
+    },
+    {
       "code": "ATTACHMENT_TOO_LARGE",
       "http": 413
     },
@@ -553,9 +557,6 @@
             },
             "readme": {
               "type": "string"
-            },
-            "reviewer": {
-              "type": "string"
             }
           },
           "required": [],
@@ -593,9 +594,6 @@
             },
             "readme": {
               "type": "string"
-            },
-            "reviewer": {
-              "type": "string"
             }
           },
           "required": [],
@@ -624,9 +622,6 @@
               "type": "string"
             },
             "readme": {
-              "type": "string"
-            },
-            "reviewer": {
               "type": "string"
             }
           },
@@ -1558,6 +1553,9 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "assignee": {
+              "type": "string"
+            },
             "board_limit": {
               "type": "integer"
             },
@@ -1569,9 +1567,6 @@
             },
             "review_aging_ms": {
               "type": "integer"
-            },
-            "reviewer": {
-              "type": "string"
             },
             "rework_max_rounds": {
               "type": "integer"
@@ -1686,7 +1681,6 @@
         "name": "string",
         "prefix": "string",
         "readme": "string",
-        "reviewer": "string",
         "task_count": "number",
         "updated_at": "string"
       },

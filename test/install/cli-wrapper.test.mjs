@@ -246,6 +246,5 @@ describe("cli-wrapper — wizard translation", () => {
     assert.equal(existsSync(join(home, ".meerkat-taskpanel")), false);
     const config = readFileSync(join(home, "kind-config", ".env.claude"), "utf8");
     assert.match(config, /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no$/m);
-    assert.match(config, /^MEERKAT_TASKPANEL_REVIEWER=Reviewer$/m);
   });
 });

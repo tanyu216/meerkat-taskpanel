@@ -190,7 +190,7 @@ function normaliseRow(row, id = undefined) {
     // (actor_kind, …): two kinds in one pool must never collide, and a role
     // migrated to another kind must never resume the old kind's native session.
     actor_kind: row.actor_kind ?? null,
-    // A worker row names its own session; a review row keeps the batch path.
+    // Every handoff row names its own card session, review or worker.
     worker_key: row.worker_key ?? null,
     // The subscriber maps an event's UUID back to this row; keep the shape
     // stable even for a legacy caller that knows no UUID.

@@ -15,38 +15,12 @@
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 
-import { extractAgentIds } from "../ledger.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
 export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
-
-/**
- * The directories `pi-subagents` installs into: the npm payload pi 1.x writes
- * (`~/.pi/agent/npm/node_modules`) and the legacy `extensions/` pair the
- * package's own git-clone installer writes. npm installs do not create the
- * legacy directory, so checking it alone warned on a working install.
- */
-const PI_SUBAGENT_DIRS = [
-  join(".pi", "agent", "npm", "node_modules", "pi-subagents"),
-  join(".pi", "agent", "extensions", "subagent"),
-  join(".pi", "agent", "extensions", "pi-subagents"),
-];
-export const PI_SUBAGENTS_INSTALL = "pi install npm:pi-subagents";
-
-/**
- * Whether a pi subagent extension is present under `home`. The loop's project
- * session spawns one subagent per card, and Pi has no native subagent mechanism,
- * so a missing extension means dispatch cannot happen.
- *
- * @param {string} home
- */
-export function piSubagentsInstalled(home = homedir()) {
-  return PI_SUBAGENT_DIRS.some((rel) => existsSync(join(home, rel)));
-}
 
 /**
  * The argv for one Pi resident session.
@@ -85,13 +59,8 @@ export function sessionArgs(input = {}) {
 }
 
 /**
- * The tool surface a role gets when full access is not enabled.
- *
- * Pi has no native subagent mechanism; `pi-subagents` registers the `subagent`
- * tool, and on models that add tools mid-session a fresh parent starts with the
- * small `subagents_enable` loader instead. Both entries are inert when the
- * extension is not installed, and a project/reviewer session that omits them
- * could not spawn the card it was handed.
+ * The tool surface a role gets when full access is not enabled. A card session
+ * owns its whole card, so no role gets a subagent tool.
  *
  * @param {string} role
  * @returns {string}
@@ -101,10 +70,10 @@ export function allowedToolsFor(role) {
     case "director":
       return "read,bash";
     case "reviewer":
-      return "read,bash,subagent,subagents_enable";
+      return "read,bash";
     case "worker":
     default:
-      return "read,bash,edit,write,subagent,subagents_enable";
+      return "read,bash,edit,write";
   }
 }
 
@@ -137,7 +106,6 @@ class PiSession {
     this.onEvent = input.onEvent ?? null;
     this.closed = false;
     this.current = null;
-    this.turnIds = [];
     this.text = "";
     this.nextId = 1;
     this.pending = new Map();
@@ -245,9 +213,6 @@ class PiSession {
     if (event.type === "message_end") {
       const text = assistantText(event.message);
       if (text !== "") this.text += text;
-      for (const subagentId of extractAgentIds(JSON.stringify(event.message ?? {}))) {
-        this.recordSubagent(subagentId, "result");
-      }
       return;
     }
     if (event.type === "agent_settled") {
@@ -255,23 +220,11 @@ class PiSession {
       this.finish({ ok: true, result: this.text });
       return;
     }
-    // A subagent package reports its run in a tool event; capture the id for the
-    // ledger so reattach (or the ledger fallback) has a handle.
-    if (/subagent|agent_(start|end)|tool/i.test(String(event.type ?? ""))) {
-      for (const subagentId of extractAgentIds(JSON.stringify(event))) {
-        this.recordSubagent(subagentId, String(event.type));
-      }
-    }
     this.onEvent?.({
       type: "event",
       sessionId: this.sessionId,
       eventType: event.type ?? "unknown",
     });
-  }
-
-  recordSubagent(subagentId, phase) {
-    if (!this.turnIds.includes(subagentId)) this.turnIds.push(subagentId);
-    this.onEvent?.({ type: "subagent", sessionId: this.sessionId, subagentId, phase });
   }
 
   finish(outcome) {
@@ -284,7 +237,6 @@ class PiSession {
       resumeFailed: outcome.resumeFailed === true || this.resumeMismatch === true,
       sessionId: this.sessionId,
       cwd: this.cwd,
-      ids: this.turnIds.slice(),
     });
   }
 
@@ -298,7 +250,6 @@ class PiSession {
       return { ok: false, error: "a turn is already in flight", sessionId: this.sessionId, cwd: this.cwd };
     }
     const timeoutMs = Number(options.timeoutMs ?? this.opts?.sessionTurnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS);
-    this.turnIds = [];
     this.text = "";
     this.sawSettled = false;
     return new Promise((resolve) => {
@@ -344,12 +295,6 @@ class PiSession {
  *   onEvent?: (event: object) => void, home?: string}} input
  */
 export function createPiPool(input) {
-  const home = input.home ?? homedir();
-  if (!piSubagentsInstalled(home)) {
-    input.log(
-      `pi: no subagent extension found — the reviewer lane cannot spawn review subagents; install it with ${PI_SUBAGENTS_INSTALL}`,
-    );
-  }
   const sessions = new Set();
   return {
     actorKind: "pi",

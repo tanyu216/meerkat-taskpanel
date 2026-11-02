@@ -13,11 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import {
-  createPiPool,
-  piSubagentsInstalled,
-  sessionArgs,
-} from "../../src/orchestrator/actor-kinds/pi.mjs";
+import { createPiPool, sessionArgs } from "../../src/orchestrator/actor-kinds/pi.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -124,17 +120,15 @@ describe("pi session args", () => {
     assert.equal(args[args.indexOf("--session-id") + 1], "sid-1");
     assert.equal(
       args[args.indexOf("--tools") + 1],
-      "read,bash,edit,write,subagent,subagents_enable",
-      "the project lane must be able to spawn through pi-subagents",
+      "read,bash,edit,write",
+      "a card session owns its whole card and spawns nothing",
     );
   });
 
-  it("keeps the reviewer read-only but able to spawn its subagent", () => {
+  it("keeps the reviewer read-only, with no subagent tool", () => {
     const args = sessionArgs({ opts: {}, role: "reviewer" });
     const tools = args[args.indexOf("--tools") + 1];
-    assert.doesNotMatch(tools, /edit|write/);
-    assert.match(tools, /subagent/);
-    assert.match(tools, /subagents_enable/);
+    assert.equal(tools, "read,bash");
   });
 
   it("trusts project files when all tools are authorized", () => {
@@ -161,48 +155,18 @@ describe("pi session args", () => {
   });
 });
 
-describe("pi subagent dependency", () => {
-  it("warns when the extension is absent, and clears once it is installed", (t) => {
-    const f = fixture(t);
-    const home = join(f.dir, "home");
-    mkdirSync(home, { recursive: true });
-    const logs = [];
-    const pool = createPiPool({ opts: {}, bin: f.bin, log: (line) => logs.push(line), home });
-    t.after(() => pool.close());
-
-    assert.equal(piSubagentsInstalled(home), false);
-    assert.ok(
-      logs.some((line) => line.includes("pi install npm:pi-subagents")),
-      logs.join("\n"),
-    );
-
-    mkdirSync(join(home, ".pi", "agent", "extensions", "subagent"), { recursive: true });
-    assert.equal(piSubagentsInstalled(home), true);
-  });
-
-  it("recognises the npm layout (no ~/.pi/agent/extensions)", (t) => {
-    const f = fixture(t);
-    const home = join(f.dir, "home-npm");
-    mkdirSync(join(home, ".pi", "agent", "npm", "node_modules", "pi-subagents"), { recursive: true });
-    assert.equal(piSubagentsInstalled(home), true);
-  });
-});
-
 describe("pi resident session", () => {
-  it("keeps one process across two turns and captures a subagent id", async (t) => {
+  it("keeps one process across two turns", async (t) => {
     const f = fixture(t);
-    const events = [];
-    const pool = createPiPool({ opts: {}, bin: f.bin, log: f.log, onEvent: (event) => events.push(event) });
+    const pool = createPiPool({ opts: {}, bin: f.bin, log: f.log });
     t.after(() => pool.close());
     const session = pool.openSession({ cwd: f.project, role: "project" });
     const first = await session.send("one", { timeoutMs: 5000 });
     const second = await session.send("SPAWN two", { timeoutMs: 5000 });
     assert.equal(first.ok, true, first.error);
     assert.equal(second.ok, true, second.error);
-    assert.equal(second.ids.includes("pi-child-1"), true, JSON.stringify(second.ids));
     assert.equal(new Set(readFileSync(f.pids, "utf8").trim().split("\n")).size, 1);
     assert.equal(realpathSync(readFileSync(f.cwd, "utf8").trim()), realpathSync(f.project));
-    assert.ok(events.some((event) => event.type === "subagent" && event.subagentId === "pi-child-1"));
     await session.close();
   });
 

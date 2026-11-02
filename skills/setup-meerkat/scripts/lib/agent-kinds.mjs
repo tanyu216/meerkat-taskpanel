@@ -13,8 +13,7 @@ export const AGENT_KINDS = Object.freeze({
   claude: { dir: ".claude", loop: true },
   openclaw: { dir: ".openclaw", loop: false },
   codex: { dir: ".codex", loop: true },
-  // Pi gets subagents from the `pi-subagents` extension; the skills and config
-  // still use the `.agents` base.
+  // Pi keeps its skills and config under the `.agents` base.
   pi: { dir: ".agents", loop: true },
 });
 

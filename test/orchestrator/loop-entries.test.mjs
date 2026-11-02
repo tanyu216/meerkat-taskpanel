@@ -422,9 +422,10 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.equal(run.status, 0, run.stderr);
     const args = calls(record);
     assert.ok(args.length > 0, "poll must scan");
-    assert.ok(
+    assert.equal(
       args.some((call) => call.includes("project") && call[call.indexOf("project") + 1] === "list"),
-      "the project reviewer overrides are read before the scan",
+      false,
+      "no project override read: discovered roles are the routing",
     );
     const candidateCall = args.find((call) => call.includes("candidates"));
     assert.ok(candidateCall, "the scan is `issue candidates`");
@@ -887,9 +888,10 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     const { run, record } = runWithSentinel("workflow");
     assert.equal(run.status, 0, run.stderr);
     const args = calls(record);
-    assert.ok(
+    assert.equal(
       args.some((call) => call.includes("project") && call[call.indexOf("project") + 1] === "list"),
-      "the required-project reviewer promise is checked before reconcile",
+      false,
+      "no project override read: the role catalog owns the default assignee",
     );
     const callsToReconcile = args.filter((call) => call.includes("issue") && call.includes("reconcile"));
     assert.equal(callsToReconcile.length, 1, "one plan read: the board computes the plan");
@@ -1254,12 +1256,30 @@ describe("the resident poll dispatch", () => {
       watched.push(cards.map((entry) => entry.ref));
       return { ok: true, running: true };
     };
+    const reviewer = {
+      id: "reviewer",
+      agent: "Reviewer",
+      nativeAgent: "reviewer",
+      lanes: ["reviewer"],
+      title: "Independent reviewer",
+      installedOn: ["claude"],
+      platform: "claude",
+      skillDir: "/roles/reviewer",
+      workflow: "/roles/reviewer/SKILL.md",
+      selfCheck: null,
+      reviewerPrompt: null,
+      variants: {},
+    };
+    const opts = {
+      ...f.opts,
+      roles: { roles: [reviewer], defaultReviewer: null, decisionPolicy: { path: null }, warnings: [] },
+    };
     const admission = createProjectAdmission({
-      opts: f.opts,
+      opts,
       projectConcurrency: f.concurrency,
       watchCards,
     });
-    const action = { identifier: "T-2", agent: "jobs", reason: "ready" };
+    const action = { identifier: "T-2", agent: "Reviewer", reason: "ready" };
     const card = {
       id: "uuid-2",
       identifier: "T-2",
@@ -1270,8 +1290,8 @@ describe("the resident poll dispatch", () => {
     assert.equal((await admission.admit(action, card)).ok, true);
     assert.deepEqual(watched, [["T-2", "T-1"]], "one registration, the review card and its original");
     const dispatch = createQueueDispatch({
-      opts: f.opts,
-      config: { reviewers: ["jobs"], reviewerWorkers: [] },
+      opts,
+      config: { reviewers: [] },
       stateDir: f.dir,
       admission,
     });
@@ -1286,6 +1306,52 @@ describe("the resident poll dispatch", () => {
     assert.match(entry.handoff, /Review brief: \.meerkat\/T-2\/card\.md/);
     assert.match(entry.handoff, /Original brief: \.meerkat\/T-1\/card\.md/);
     assert.deepEqual(watched, [["T-2", "T-1"]], "the claim event refreshes it; no second export");
+  });
+
+  it("refuses a review card whose assignee is not a reviewer-lane role", async () => {
+    const f = fixture();
+    const jobs = {
+      id: "jobs",
+      agent: "Jobs",
+      nativeAgent: "jobs",
+      lanes: ["worker"],
+      title: "Product design",
+      installedOn: ["claude"],
+      platform: "claude",
+      skillDir: "/roles/jobs",
+      workflow: "/roles/jobs/SKILL.md",
+      selfCheck: null,
+      reviewerPrompt: null,
+      variants: {},
+    };
+    const opts = {
+      ...f.opts,
+      roles: { roles: [jobs], defaultReviewer: null, decisionPolicy: { path: null }, warnings: [] },
+    };
+    const admission = createProjectAdmission({
+      opts,
+      projectConcurrency: f.concurrency,
+      watchCards: f.watchCards,
+    });
+    const action = { identifier: "T-3", agent: "Jobs", reason: "ready" };
+    const card = {
+      id: "uuid-3",
+      identifier: "T-3",
+      project: "P",
+      review_of: "T-1",
+      review_round: 1,
+    };
+    assert.equal((await admission.admit(action, card)).ok, true);
+    const dispatch = createQueueDispatch({
+      opts,
+      config: { reviewers: [] },
+      stateDir: f.dir,
+      admission,
+    });
+    const result = await dispatch(action, card);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /reviewer-lane/);
+    assert.equal(readCards(f.dir).value.cards.length, 0, "nothing was queued");
   });
 
   it("defers an unmapped project before the claim", async () => {
@@ -1511,8 +1577,26 @@ describe("the resident poll dispatch", () => {
   it("admits and enqueues a review card whose original is already watched", async () => {
     const f = fixture();
     const reviewPath = join(f.app, ".meerkat", "T-5", "card.md");
+    const reviewer = {
+      id: "reviewer",
+      agent: "Reviewer",
+      nativeAgent: "reviewer",
+      lanes: ["reviewer"],
+      title: "Independent reviewer",
+      installedOn: ["claude"],
+      platform: "claude",
+      skillDir: "/roles/reviewer",
+      workflow: "/roles/reviewer/SKILL.md",
+      selfCheck: null,
+      reviewerPrompt: null,
+      variants: {},
+    };
+    const opts = {
+      ...f.opts,
+      roles: { roles: [reviewer], defaultReviewer: null, decisionPolicy: { path: null }, warnings: [] },
+    };
     const admission = createProjectAdmission({
-      opts: f.opts,
+      opts,
       projectConcurrency: f.concurrency,
       watchCards: () => ({
         ok: true,
@@ -1524,16 +1608,16 @@ describe("the resident poll dispatch", () => {
     });
     const card = { id: "uuid-5", identifier: "T-5", project: "P", review_of: "T-1", review_round: 1 };
     const dispatch = createQueueDispatch({
-      opts: f.opts,
-      config: { reviewers: ["jobs"], reviewerWorkers: [] },
+      opts,
+      config: { reviewers: [] },
       stateDir: f.dir,
       admission,
     });
     const result = await runPollTick({
-      agents: ["jobs"],
+      agents: ["Reviewer"],
       registry: { running: {} },
       config: {},
-      readCandidates: () => [{ ...card, agent: "jobs", reason: "ready" }],
+      readCandidates: () => [{ ...card, agent: "Reviewer", reason: "ready" }],
       claim: async () => ({ ok: true }),
       dispatch,
       admit: admission.admit,

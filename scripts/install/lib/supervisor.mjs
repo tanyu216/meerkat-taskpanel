@@ -44,7 +44,6 @@ import { AGENT_DIRS, resolveKindConfigPath } from "../../../src/foundation/agent
 import { loadRoles } from "../../../src/foundation/roles.mjs";
 import { effectiveScanAgents } from "../../../src/orchestrator/options.mjs";
 import {
-  LIVE_STATUSES,
   QUEUE_FILES,
 } from "../../../src/foundation/loop-state.mjs";
 
@@ -121,11 +120,12 @@ function agentConfigValue(path, key) {
 
 /**
  * The scan set one agent kind's loop will actually use: every role skill
- * discovered under the install's agent kinds, plus the configured reviewer.
+ * discovered under the install's agent kinds, in the worker or reviewer lane.
  *
- * There is no scan-set key any more, so this reads the target home rather than
- * the per-kind config — the same discovery the loop performs at runtime.
- * `none` is the finding: no role skill is installed, so nothing can be claimed.
+ * There is no scan-set key and no reviewer key any more, so this reads the
+ * target home rather than the per-kind config — the same discovery the loop
+ * performs at runtime. `none` is the finding: no role skill is installed, so
+ * nothing can be claimed.
  *
  * @param {string} path the per-kind config (`<program root>/.env.<kind>`)
  * @param {{home?: string|null, actorKind?: string|null}} [options]
@@ -142,10 +142,7 @@ export function scanSetFromConfig(path, options = {}) {
   } catch {
     // Discovery is deliberately soft; an unreadable tree means no roles.
   }
-  const reviewer = agentConfigValue(path, "MEERKAT_TASKPANEL_REVIEWER");
-  const reviewers =
-    typeof reviewer === "string" && reviewer.trim() !== "" ? [reviewer.trim()] : [];
-  const agents = effectiveScanAgents({ roleSet, reviewers });
+  const agents = effectiveScanAgents({ roleSet });
   return agents.length > 0 ? { agents, source: "discovered" } : { agents: [], source: "none" };
 }
 
@@ -155,7 +152,7 @@ export function scanSetFromConfig(path, options = {}) {
  *
  * @param {string} stateDir the directory holding `sessions.state.json` etc.
  * @param {{isAlive?: (pid: number) => boolean, now?: () => number}} [options]
- * @returns {{live: boolean, pid: number|null, heartbeatAgeMs: number|null, liveSubagents: number,
+ * @returns {{live: boolean, pid: number|null, heartbeatAgeMs: number|null, runningSessions: number,
  *            cardsQueued: number, reason: string}}
  */
 export function poolReport(stateDir, options = {}) {
@@ -171,11 +168,11 @@ export function poolReport(stateDir, options = {}) {
   // The state-file names and the live-status set come from the loop itself: a
   // status line that re-derives either drifts the moment the pool adds one.
   const sessions = readJson(QUEUE_FILES.sessions);
-  const ledger = readJson(QUEUE_FILES.ledger);
   const cards = readJson(QUEUE_FILES.cards);
-  const liveSubagents = Array.isArray(ledger?.subagents)
-    ? ledger.subagents.filter((row) => LIVE_STATUSES.includes(String(row?.status ?? ""))).length
-    : 0;
+  // A running card session is the pool's real load: worker and reviewer alike.
+  const runningSessions = Object.values(
+    sessions?.projects !== null && typeof sessions?.projects === "object" ? sessions.projects : {},
+  ).filter((record) => String(record?.status ?? "") === "running").length;
   const cardsQueued = Array.isArray(cards?.cards)
     ? cards.cards.filter(
         (row) =>
@@ -192,7 +189,7 @@ export function poolReport(stateDir, options = {}) {
       live: false,
       pid,
       heartbeatAgeMs,
-      liveSubagents,
+      runningSessions,
       cardsQueued,
       reason: pid === null ? "no session state" : `pool pid ${pid} is gone`,
     };
@@ -201,7 +198,7 @@ export function poolReport(stateDir, options = {}) {
     live: true,
     pid,
     heartbeatAgeMs,
-    liveSubagents,
+    runningSessions,
     cardsQueued,
     reason: "",
   };
@@ -1137,7 +1134,7 @@ export function runSupervisorAction(options) {
     log(`supervisor:   platform: ${paths.actorKind} (~/${paths.agentDir})`);
     log(
       scan.source === "discovered"
-        ? `supervisor:   scan set: ${scan.agents.join(",")} (discovered roles + reviewer)`
+        ? `supervisor:   scan set: ${scan.agents.join(",")} (discovered worker and reviewer roles)`
         : "supervisor:   scan set: none — no role skill is installed (run setup-meerkat)",
     );
     const names = scheduler === "auto" ? ["launchd", "systemd", "cron"] : [requested];
@@ -1155,7 +1152,7 @@ export function runSupervisorAction(options) {
     // actually alive and what it is carrying.
     const pool = poolReport(paths.stateDir, { now: options.now });
     const detail = pool.live
-      ? `pid ${pool.pid}, ${pool.liveSubagents} live subagent(s), ${pool.cardsQueued} card(s) queued` +
+      ? `pid ${pool.pid}, ${pool.runningSessions} running session(s), ${pool.cardsQueued} card(s) queued` +
         `${pool.heartbeatAgeMs === null ? "" : `, heartbeat ${Math.round(pool.heartbeatAgeMs / 1000)}s`}`
       : pool.reason;
     log(`supervisor:   session: ${pool.live ? "running" : "not running"} (${detail})`);

@@ -2017,7 +2017,7 @@ describe("parseArgs — the workflow surface", () => {
   it("leaves the settings unresolved, so the agent config can decide them", () => {
     const opts = parseArgs(["--actor-kind", "claude", "--once"], ENV);
     assert.equal(opts.workflow, undefined);
-    assert.equal(opts.reviewer, undefined);
+    assert.equal(opts.reviewerDeprecated, undefined);
     assert.equal(opts.workflowMaxActions, undefined);
     assert.equal(opts.recoverStale, undefined);
   });
@@ -2029,17 +2029,20 @@ describe("parseArgs — the workflow surface", () => {
 
   it("takes every workflow flag in both spellings", () => {
     const spaced = parseArgs(
-      ["--workflow", "no", "--reviewer", "jobs", "--workflow-max-actions", "5"],
+      ["--workflow", "no", "--workflow-max-actions", "5"],
       ENV,
     );
     assert.equal(spaced.workflow, "no");
-    assert.equal(spaced.reviewer, "jobs");
     assert.equal(spaced.workflowMaxActions, "5");
 
-    const joined = parseArgs(["--workflow=yes", "--reviewer=jobs", "--workflow-max-actions=9"], ENV);
+    const joined = parseArgs(["--workflow=yes", "--workflow-max-actions=9"], ENV);
     assert.equal(joined.workflow, "yes");
-    assert.equal(joined.reviewer, "jobs");
     assert.equal(joined.workflowMaxActions, "9");
+  });
+
+  it("keeps --reviewer as a deprecated no-op", () => {
+    const opts = parseArgs(["--reviewer", "jobs", "--once"], ENV);
+    assert.equal(opts.reviewerDeprecated, "jobs");
   });
 });
 

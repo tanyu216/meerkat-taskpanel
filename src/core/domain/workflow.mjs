@@ -60,27 +60,6 @@ export function acceptanceModeOf(task) {
   return normalizeCardAcceptance(task?.acceptance_mode ?? task?.acceptanceMode) ?? "auto";
 }
 
-/**
- * The reviewer for this card: the project's override when it has one, else the
- * deployment-level reviewer passed in the reconcile request.
- *
- * @param {object} task a wire task
- * @param {{reviewer?: string|null, projectReviewers?: object|Map<string,string>|null}} [config]
- * @returns {string|null}
- */
-function effectiveReviewerFor(task, config) {
-  const projectReviewers = config?.projectReviewers;
-  const projectId = task?.project_id;
-  let override = null;
-  if (projectReviewers && projectId !== undefined && projectId !== null) {
-    override =
-      typeof projectReviewers.get === "function"
-        ? nonEmpty(projectReviewers.get(projectId))
-        : nonEmpty(projectReviewers[projectId]);
-  }
-  return override ?? nonEmpty(config?.reviewer);
-}
-
 /** How long a childless epic may exist before `empty_epic` is worth a notice. */
 export const EMPTY_EPIC_GRACE_MS = 30 * 60_000;
 
@@ -694,7 +673,9 @@ export function planReviewDispatch(input = {}) {
     const ref = String(task.identifier ?? "");
     if (ref === "" || skip.has(ref)) continue;
 
-    const reviewer = effectiveReviewerFor(task, config);
+    // The review card's assignee, carried by the reconcile request. There is no
+    // project override: the card's assignee is the one decision.
+    const reviewer = nonEmpty(config?.assignee);
     if (reviewer === null) {
       const project = String(task.project_id ?? "");
       unconfigured.set(project, (unconfigured.get(project) ?? 0) + 1);
@@ -1150,13 +1131,11 @@ export function planReviewOutcomes(input = {}) {
     // The verdict must come from the card's own reviewer. The board has no
     // per-agent ACL, so this is the loop's half of the separation: a report
     // written by anybody else is not a verdict, whatever it says.
-    // The review card's assignee is the effective reviewer (the dispatch action
-    // set it from `project.reviewer ?? global`). The global value is only a
-    // fallback for a card created before per-project overrides existed.
+    // The review card's own assignee is the reviewer; the board has no config
+    // fallback to invent one.
     const expectedReviewer =
       nonEmpty(review.assignee?.display_name)
-      ?? nonEmpty(review.assignee_id)
-      ?? nonEmpty(input.config?.reviewer);
+      ?? nonEmpty(review.assignee_id);
     if (expectedReviewer !== null && !reportAuthorMatches(verdict.report, expectedReviewer)) {
       alerts.push({
         type: "review_report_not_by_reviewer",

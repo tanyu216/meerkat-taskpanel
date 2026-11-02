@@ -51,8 +51,8 @@ const TINY = {
 describe("storage/migrations — the shipped set", () => {
   it("reads the shipped migrations in version order with stable checksums", () => {
     const migrations = listMigrations();
-    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002"]);
-    assert.deepEqual(migrations.map((m) => m.name), ["init", "card_acceptance_model"]);
+    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003"]);
+    assert.deepEqual(migrations.map((m) => m.name), ["init", "card_acceptance_model", "drop_project_reviewer"]);
     for (const migration of migrations) {
       assert.match(migration.checksum, /^[0-9a-f]{64}$/);
       assert.equal(migration.checksum, checksumFor(migration.sql));
@@ -65,17 +65,17 @@ describe("storage/migrations — the shipped set", () => {
     const board = await createTempBoard({ migrate: false });
     try {
       const first = applyMigrations(board.db);
-      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002"]);
+      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003"]);
       assert.deepEqual(first.skipped, []);
       for (const entry of first.applied) assert.equal(typeof entry.ms, "number");
 
       const second = applyMigrations(board.db);
       assert.deepEqual(second.applied, [], "re-apply must be a no-op");
-      assert.deepEqual(second.skipped, ["0001", "0002"]);
+      assert.deepEqual(second.skipped, ["0001", "0002", "0003"]);
 
       const rows = board.db.prepare("SELECT version, checksum FROM schema_migrations ORDER BY version").all();
       assert.equal(rows.length, listMigrations().length, "one bookkeeping row per shipped file");
-      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002"]);
+      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003"]);
     } finally {
       board.close();
     }
@@ -513,6 +513,117 @@ describe("storage/migrations — the 0002 card-acceptance upgrade", () => {
       // The project revision trigger is the second intended change: the retired
       // `acceptance` column leaves its `AFTER UPDATE OF` list.
       assert.doesNotMatch(after.get("trigger:tr_rev_projects_upd"), /acceptance/);
+    } finally {
+      board.close();
+    }
+  });
+});
+
+describe("storage/migrations — the 0003 project-reviewer drop", () => {
+  const shipped = listMigrations();
+  const one = shipped.find((m) => m.version === "0001");
+  const two = shipped.find((m) => m.version === "0002");
+  const three = shipped.find((m) => m.version === "0003");
+  const fileName = (m) => `${m.version}_${m.name}.sql`;
+
+  it("drops the column, keeps the rows and every guard, and recreates the revision triggers", async () => {
+    const dir = stageMigrations({ [fileName(one)]: one.sql, [fileName(two)]: two.sql });
+    const board = await createTempBoard({ migrate: false });
+    try {
+      applyMigrations(board.db, { dir });
+      const now = TS;
+      board.db
+        .prepare("INSERT INTO projects (id, name, created_at, updated_at, reviewer) VALUES (?, ?, ?, ?, ?)")
+        .run("p1", "P", now, now, "jobs");
+      board.db
+        .prepare("INSERT INTO projects (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)")
+        .run("batch", "P2", now, now);
+      board.db
+        .prepare("INSERT INTO actors (id, display_name, normalized_name, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)")
+        .run("a1", "A", "a", now, now);
+      board.db
+        .prepare("INSERT INTO tasks (id, identifier, project_id, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .run("t1", "P-1", "p1", "kept", "todo", now, now);
+
+      writeFileSync(join(dir, fileName(three)), three.sql, "utf8");
+      const upgraded = applyMigrations(board.db, { dir });
+      assert.deepEqual(upgraded.applied.map((m) => m.version), ["0003"]);
+      assert.deepEqual(applyMigrations(board.db, { dir }).applied, [], "the second apply is a no-op");
+
+      const columns = board.db.prepare("PRAGMA table_info(projects)").all().map((row) => row.name);
+      assert.deepEqual(columns, [
+        "id",
+        "name",
+        "next_task_number",
+        "labels",
+        "meta_json",
+        "readme",
+        "archived_at",
+        "created_at",
+        "updated_at",
+      ]);
+      const rows = board.db.prepare("SELECT id, name, next_task_number FROM projects ORDER BY id").all();
+      assert.deepEqual(rows.map((row) => ({ ...row })), [
+        { id: "batch", name: "P2", next_task_number: 1 },
+        { id: "p1", name: "P", next_task_number: 1 },
+      ]);
+      assert.equal(Number(board.db.prepare("SELECT COUNT(*) AS n FROM tasks").get().n), 1, "the card survived");
+      assert.deepEqual(board.db.prepare("PRAGMA foreign_key_check").all(), []);
+      assert.equal(
+        Number(board.db.prepare("PRAGMA foreign_keys").get().foreign_keys),
+        1,
+        "the pinned pragma is restored",
+      );
+
+      const triggers = board.db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'projects' ORDER BY name")
+        .all()
+        .map((row) => row.name);
+      assert.deepEqual(triggers, ["tr_rev_projects_del", "tr_rev_projects_ins", "tr_rev_projects_upd"]);
+      const upd = board.db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'tr_rev_projects_upd'")
+        .get().sql;
+      assert.doesNotMatch(upd, /reviewer/);
+
+      // The recreated trigger still bumps the revision.
+      const before = Number(board.db.prepare("SELECT revision FROM global_revision WHERE singleton = 1").get().revision);
+      board.db.prepare("UPDATE projects SET name = ? WHERE id = ?").run("Renamed", "p1");
+      const after = Number(board.db.prepare("SELECT revision FROM global_revision WHERE singleton = 1").get().revision);
+      assert.equal(after, before + 1);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("rebuilds the schema without drifting any other trigger or index", async () => {
+    const dir = stageMigrations({ [fileName(one)]: one.sql, [fileName(two)]: two.sql });
+    const board = await createTempBoard({ migrate: false });
+    const definition = (sql) =>
+      String(sql)
+        .replace(/--[^\n]*/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const snapshot = () =>
+      new Map(
+        board.db
+          .prepare("SELECT type, name, sql FROM sqlite_master WHERE type IN ('trigger','index') AND sql IS NOT NULL")
+          .all()
+          .map((row) => [`${row.type}:${row.name}`, definition(row.sql)]),
+      );
+    try {
+      applyMigrations(board.db, { dir });
+      const before = snapshot();
+      assert.match(before.get("trigger:tr_rev_projects_upd"), /reviewer/);
+      writeFileSync(join(dir, fileName(three)), three.sql, "utf8");
+      applyMigrations(board.db, { dir });
+      const after = snapshot();
+
+      for (const [key, sql] of before) {
+        if (key === "trigger:tr_rev_projects_upd") continue;
+        assert.equal(after.get(key), sql, `${key} kept its definition`);
+      }
+      assert.equal(after.size, before.size, "no trigger or index was added or dropped");
+      assert.doesNotMatch(after.get("trigger:tr_rev_projects_upd"), /reviewer/);
     } finally {
       board.close();
     }

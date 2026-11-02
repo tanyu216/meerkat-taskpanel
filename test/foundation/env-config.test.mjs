@@ -364,12 +364,11 @@ describe("loadEnvFile — the per-kind overlay", () => {
     const kindFile = join(root, ".env.codex");
     writeFileSync(
       kindFile,
-      "MEERKAT_TASKPANEL_REPO=/tree\nMEERKAT_TASKPANEL_REVIEWER=Reviewer\nMEERKAT_TASKPANEL_MAX_CONCURRENCY=4\n",
+      "MEERKAT_TASKPANEL_REPO=/tree\nMEERKAT_TASKPANEL_MAX_CONCURRENCY=4\n",
     );
 
     const config = loadEnvFile({ root, env: {}, kindFile });
     assert.equal(config.env.MEERKAT_TASKPANEL_REPO, "/tree", "REPO is a per-kind deployment fact");
-    assert.equal(config.env.MEERKAT_TASKPANEL_REVIEWER, undefined, "loop policy is not a board key");
     assert.equal(config.env.MEERKAT_TASKPANEL_MAX_CONCURRENCY, undefined);
   });
 

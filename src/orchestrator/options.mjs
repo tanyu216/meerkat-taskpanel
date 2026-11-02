@@ -201,7 +201,9 @@ flag("--assignee-only", (opts) => { opts.claimUnassigned = "no"; }, "switch");
 flag("--recover-stale", (opts, value) => { opts.recoverStale = value; });
 flag("--recover-wedged", (opts, value) => { opts.recoverWedged = value; });
 flag("--workflow", (opts, value) => { opts.workflow = value; });
-flag("--reviewer", (opts, value) => { opts.reviewer = value; });
+// Deprecated no-op for one release: installed units still pass it. The review
+// card's assignee selects the reviewer role; this value is never consulted.
+flag("--reviewer", (opts, value) => { opts.reviewerDeprecated = value; });
 flag("--workflow-max-actions", (opts, value) => { opts.workflowMaxActions = value; });
 flag("--review-aging-minutes", (opts, value) => { opts.reviewAgingMinutes = value; });
 flag("--rework-max-rounds", (opts, value) => { opts.reworkMaxRounds = number("--rework-max-rounds", value); });
@@ -275,7 +277,6 @@ function defaultOptions(env) {
     recoverStale: undefined,
     recoverWedged: undefined,
     workflow: undefined,
-    reviewer: undefined,
     workflowMaxActions: undefined,
     reviewAgingMinutes: undefined,
     reworkMaxRounds: undefined,
@@ -378,7 +379,7 @@ export function parseArgs(argv, env = process.env) {
   opts.kindOrder = env.MEERKAT_TASKPANEL_AGENT_KIND_ORDER ?? opts.configFile.MEERKAT_TASKPANEL_AGENT_KIND_ORDER ?? null;
   const rolesDir = opts.rolesDir ?? env.MEERKAT_TASKPANEL_ROLES_DIR ?? opts.configFile.MEERKAT_TASKPANEL_ROLES_DIR;
   opts.rolesDir = typeof rolesDir === "string" && rolesDir.trim() !== "" ? resolve(rolesDir.trim()) : null;
-  // One concurrency cap for the whole fleet of subagents: workers and reviewers
+  // One concurrency cap for the whole fleet of card sessions: worker and review
   // share it and compete for the slots by demand. Zero is meaningful ("claim
   // nothing"), so this uses the non-negative resolver.
   opts.maxConcurrency = resolveNonNegative(
@@ -615,18 +616,38 @@ export function roleIsWorker(roleSet, agent) {
   );
 }
 
+/** The reviewer-lane agents discovery found on this host, in discovery order. */
+export function reviewerAgents(roleSet) {
+  return (Array.isArray(roleSet?.roles) ? roleSet.roles : [])
+    .filter((role) => Array.isArray(role.lanes) && role.lanes.includes("reviewer"))
+    .map((role) => role.agent)
+    .filter((agent) => typeof agent === "string" && agent.trim() !== "");
+}
+
+/** Whether a board identity names an installed reviewer-lane role. */
+export function roleIsReviewer(roleSet, agent) {
+  if (typeof agent !== "string" || agent.trim() === "") return false;
+  const key = agent.trim().toLowerCase();
+  return (Array.isArray(roleSet?.roles) ? roleSet.roles : []).some(
+    (role) =>
+      Array.isArray(role.lanes) &&
+      role.lanes.includes("reviewer") &&
+      (role.agent.toLowerCase() === key || role.id.toLowerCase() === key),
+  );
+}
+
 /**
  * The board identities a poll may claim for: every discovered worker-lane role,
- * plus the configured reviewers (deployment and project-level).
+ * plus every discovered reviewer-lane role.
  *
  * Discovery is the routing, so this is the one scan-set reader: the key that
  * used to list the names by hand is gone, and a writer identity with no role
  * skill can write without ever making its name claimable.
  *
- * @param {{roleSet?: object|null, reviewers?: string[]}} [input]
+ * @param {{roleSet?: object|null}} [input]
  * @returns {string[]}
  */
-export function effectiveScanAgents({ roleSet = null, reviewers = [] } = {}) {
+export function effectiveScanAgents({ roleSet = null } = {}) {
   const scan = [];
   const add = (value) => {
     if (typeof value !== "string") return;
@@ -634,35 +655,8 @@ export function effectiveScanAgents({ roleSet = null, reviewers = [] } = {}) {
     if (name !== "" && !scan.includes(name)) scan.push(name);
   };
   for (const agent of workerAgents(roleSet)) add(agent);
-  for (const reviewer of Array.isArray(reviewers) ? reviewers : []) add(reviewer);
+  for (const agent of reviewerAgents(roleSet)) add(agent);
   return scan;
-}
-
-/**
- * Merge the deployment reviewer with the project-level overrides (0031).
- *
- * `resolveLoopConfig` is synchronous and has no board access; the async entries
- * (poll/workflow/patrol) read `project list` and call this to get the effective
- * reviewer set. A reviewer that is also a worker stays in the worker lane and
- * is not scanned twice.
- *
- * @param {object|null} roleSet
- * @param {{reviewer: string|null}} config
- * @param {string[]} projectReviewers
- * @returns {{reviewers: string[], reviewerWorkers: string[], scanAgents: string[]}}
- */
-export function mergeReviewerSets(roleSet, config, projectReviewers = []) {
-  const reviewers = [];
-  const add = (value) => {
-    if (typeof value !== "string") return;
-    const name = value.trim();
-    if (name !== "" && !reviewers.includes(name)) reviewers.push(name);
-  };
-  add(config?.reviewer);
-  for (const reviewer of Array.isArray(projectReviewers) ? projectReviewers : []) add(reviewer);
-
-  const reviewerWorkers = reviewers.filter((reviewer) => roleIsWorker(roleSet, reviewer));
-  return { reviewers, reviewerWorkers, scanAgents: effectiveScanAgents({ roleSet, reviewers }) };
 }
 
 /**
@@ -711,7 +705,6 @@ export function resolveLoopConfig(opts, env = process.env) {
   const workflow = resolveWorkflowConfig({
     flags: {
       workflow: opts.workflow,
-      reviewer: opts.reviewer,
       workflowMaxActions: opts.workflowMaxActions,
       reviewAgingMinutes: opts.reviewAgingMinutes,
       reworkMaxRounds: opts.reworkMaxRounds,
@@ -727,7 +720,6 @@ export function resolveLoopConfig(opts, env = process.env) {
     patrolLlm: opts.patrolLlm,
     actorKind: opts.actorKind,
     workflow: workflow.workflow,
-    reviewer: workflow.reviewer,
     maxActions: workflow.maxActions,
     reviewAgingMs: workflow.reviewAgingMs,
     reworkMaxRounds: workflow.reworkMaxRounds,
@@ -755,9 +747,8 @@ surface: \`loop session\` is the resident pool, \`loop subscribe\` the event dae
 \`loop run --ping-once\` / \`--continue-once\` one-shot clocks.
 
 The loop's scheduler. In its default resident shape it owns a session pool:
-  session    long-lived — one control conversation (cwd = this checkout) plus one
-             lane conversation per target directory; the pool spawns
-             the worker/reviewer subagent, which inherits that directory.
+  session    long-lived — one card session per card (worker or review, cwd = the
+             card's directory) plus one director lane per project directory.
 It also owns two clocks:
   ping       every ${DEFAULT_PING_SECONDS}s — prune dead worker pids; no board read, no LLM.
   continue   every ${DEFAULT_CONTINUE_SECONDS}s — run patrol → workflow → poll in-process
@@ -799,7 +790,7 @@ Options:
                             board; a human-opened one may ask its own operator.
   --session-poll-ms <ms>    Queue poll interval (default: 1000).
   --session-pool-max <n>    Max resident lane sessions (default: 8).
-  --project-concurrency <n> Max live subagents per project (default: --max-concurrency).
+  --project-concurrency <n> Max live card sessions per project (default: --max-concurrency).
   --workspace <worktree|shared>
                             Per-card git worktree for a git project (default: worktree).
   --project-idle-ms <ms>    Close an idle lane session after this (default: 1800000).
@@ -827,16 +818,16 @@ Options:
   --patrol-interval <sec>   SLA measurement period P (default: the board's
                             TASKD_SLA_PERIOD_SECONDS, else ${DEFAULT_PATROL_SECONDS}). It no longer
                             schedules anything; an explicit value overrides the board.
-  --max-concurrency <n>     Max concurrent subagents. Workers and reviewers share
-                            this cap and compete for slots by demand; no per-role
+  --max-concurrency <n>     Max concurrent card sessions. Worker and review sessions
+                            share this cap and compete for slots by demand; no per-role
                             reservation (default: ${DEFAULT_MAX_CONCURRENCY}; at 8 the nominal
-                            working set is 6 workers + 2 reviewers).
+                            working set is 6 workers + 2 reviews).
   --claim-unassigned=yes|no Also claim unassigned cards (default: yes).
   --assignee-only           Alias for --claim-unassigned=no.
   --recover-stale=yes|no    Also recover stale in_progress claims (default: yes).
   --recover-wedged=yes|no   Stop a pool whose tick outlived 2× the turn timeout (default: yes).
   --workflow=yes|no         Run the workflow pass in each tick (default: yes).
-  --reviewer <agent>        The independent reviewer. Unset disables review dispatch.
+  --reviewer <agent>        Deprecated no-op (the review card's assignee picks the role).
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
   --rework-max-rounds <n>   Park a card after this many delivery rounds since its last hold (default: 4).

@@ -50,33 +50,113 @@ const metaOf = (flags) => flags.meta;
  *
  * The guard looks at the **assignee**, never the writer: `system`/`Orchestrator`
  * are writer identities for task closure and cannot become assignees through
- * this path. The two system-created cards are the review card (the configured
- * reviewer, explicitly outside the catalog with `--force-create`) and the
- * rework child (`--assignee-id`), both exempt on their own terms.
+ * this path. A review card is an ordinary create with one extra rule: its
+ * assignee must name a reviewer-lane role, it defaults to the catalog's
+ * reviewer, and the structural escapes cannot bypass that rule. The rework
+ * child remains the `--assignee-id` structural spelling.
  *
- * Skipped when: `--force-create` (the documented escape), `--assignee-id` (the
- * structural spelling), an explicit human assignee, no assignee at all, or no
+ * Skipped when: `--force-create` (the documented escape on ordinary cards),
+ * `--assignee-id`, an explicit human assignee, no assignee at all, or no
  * usable catalog (bootstrap — before the supervisor's first sync).
  */
-function assertAssigneeInCatalog(ctx, { assignee, assigneeId, assigneeKind, forceCreate }) {
-  if (forceCreate === true) return;
-  if (typeof assigneeId === "string" && assigneeId.trim() !== "") return;
-  if (assigneeKind === "human") return;
-  if (typeof assignee !== "string" || assignee.trim() === "") return;
+function catalogRoleNamed(catalog, assignee) {
+  if (typeof assignee !== "string" || assignee.trim() === "") return null;
+  const key = assignee.trim().toLowerCase();
+  return (
+    (catalog?.roles ?? []).find(
+      (role) => role.agent.toLowerCase() === key || role.id.toLowerCase() === key,
+    ) ?? null
+  );
+}
 
+/** The role catalog's default reviewer, then any reviewer-lane role, then the
+ * conventional name. The board never learns roles; this is the CLI's fallback. */
+function defaultReviewerAgent(catalog) {
+  const roles = Array.isArray(catalog?.roles) ? catalog.roles : [];
+  const role =
+    roles.find((candidate) => candidate.default_reviewer === true) ??
+    roles.find((candidate) => Array.isArray(candidate.lanes) && candidate.lanes.includes("reviewer"));
+  return role?.agent ?? "Reviewer";
+}
+
+/**
+ * The create/assign assignee range. A review card has one extra rule: its
+ * assignee must name a reviewer-lane role, and the structural escapes
+ * (`--assignee-id`, `--force-create`, a human assignee) cannot bypass it.
+ * Returns the effective assignee so a review create can apply the default.
+ */
+function assertAssigneeInCatalog(ctx, { assignee, assigneeId, assigneeKind, forceCreate, reviewOf }) {
   const read = readRoleCatalog(defaultRoleCatalogPath(ctx.env ?? {}, { cwd: ctx.cwd }));
   // Absent, unreadable or still-empty: the open range, so a first card can be
   // created before any poll has published a catalog. A malformed file reads the
   // same way — the next sync repairs it, and a half-read range is worse.
-  if (!read.ok || read.present !== true || read.catalog.roles.length === 0) return;
-  if (catalogHasAssignee(read.catalog, assignee)) return;
+  const catalog = read.ok && read.present === true ? read.catalog : null;
+  const hasCatalog = catalog !== null && catalog.roles.length > 0;
+  const review = typeof reviewOf === "string" && reviewOf.trim() !== "";
+
+  if (review) {
+    if (assigneeKind === "human") {
+      throw new DomainError("ASSIGNEE_NOT_REVIEWER", {
+        message: "a review card must be assigned to an agent role in the reviewer lane",
+        details: { field: "assignee", assignee_kind: "human" },
+      });
+    }
+    if (typeof assigneeId === "string" && assigneeId.trim() !== "") {
+      throw new DomainError("ASSIGNEE_NOT_REVIEWER", {
+        message: "a review card cannot be assigned by --assignee-id; name a reviewer-lane role",
+        details: { field: "assignee_id" },
+      });
+    }
+    if (forceCreate === true) {
+      throw new DomainError("ASSIGNEE_NOT_REVIEWER", {
+        message: "--force-create cannot bypass the reviewer-lane rule on a review card",
+        details: { field: "force_create" },
+      });
+    }
+    const effective =
+      typeof assignee === "string" && assignee.trim() !== ""
+        ? assignee.trim()
+        : defaultReviewerAgent(catalog);
+    if (hasCatalog) {
+      const role = catalogRoleNamed(catalog, effective);
+      if (role === null) {
+        throw new DomainError("ASSIGNEE_NOT_IN_CATALOG", {
+          message: `assignee ${JSON.stringify(effective)} is not a role in the local role catalog`,
+          details: { field: "assignee", assignee: effective, roles: catalogAgentNames(catalog) },
+          hint: { fix: "use a discovered role name from `taskctl role list`" },
+        });
+      }
+      if (!Array.isArray(role.lanes) || !role.lanes.includes("reviewer")) {
+        throw new DomainError("ASSIGNEE_NOT_REVIEWER", {
+          message: `assignee ${JSON.stringify(effective)} is not a reviewer-lane role`,
+          details: {
+            field: "assignee",
+            assignee: effective,
+            lanes: role.lanes ?? [],
+            roles: catalog.roles
+              .filter((candidate) => (candidate.lanes ?? []).includes("reviewer"))
+              .map((candidate) => candidate.agent),
+          },
+          hint: { fix: "assign a reviewer-lane role (for example Reviewer)" },
+        });
+      }
+    }
+    return effective;
+  }
+
+  if (forceCreate === true) return assignee;
+  if (typeof assigneeId === "string" && assigneeId.trim() !== "") return assignee;
+  if (assigneeKind === "human") return assignee;
+  if (typeof assignee !== "string" || assignee.trim() === "") return assignee;
+  if (!hasCatalog) return assignee;
+  if (catalogHasAssignee(catalog, assignee)) return assignee;
 
   throw new DomainError("ASSIGNEE_NOT_IN_CATALOG", {
     message: `assignee ${JSON.stringify(assignee)} is not a role in the local role catalog`,
     details: {
       field: "assignee",
       assignee,
-      roles: catalogAgentNames(read.catalog),
+      roles: catalogAgentNames(catalog),
     },
     hint: {
       fix:
@@ -228,11 +308,14 @@ export const COMMANDS = [
     async run(ctx) {
       const flags = ctx.flags;
       // The assignee range is the local role catalog; refuse before the board call.
-      assertAssigneeInCatalog(ctx, {
+      // A review card also defaults its assignee to the catalog's reviewer and
+      // must name a reviewer-lane role.
+      const assignee = assertAssigneeInCatalog(ctx, {
         assignee: flags.assignee,
         assigneeId: flags.assigneeId,
         assigneeKind: flags.assigneeKind,
         forceCreate: flags.forceCreate === true,
+        reviewOf: flags.reviewOf,
       });
       // `--acceptance` and `--target` are declared CLI-only inputs that fold into
       // the card's `meta` (`--target` because the board owns no project
@@ -248,7 +331,7 @@ export const COMMANDS = [
         labels: flags.labels,
         meta: metaOf(flags),
         acceptance: flags.acceptance,
-        assignee: flags.assignee,
+        assignee,
         assignee_kind: flags.assigneeKind,
         assignee_id: flags.assigneeId,
         reporter: flags.reporter,
@@ -992,7 +1075,7 @@ export const COMMANDS = [
     name: "reconcile",
     summary: "Replay the epic rules and, with --workflow, return the board's workflow plan.",
     usage:
-      'issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] ' +
+      'issue reconcile [--dry-run] [--workflow] [--assignee <agent>] ' +
       "[--review-aging-ms <n>] [--rework-max-rounds <n>] [--max-actions <n>] [--board-limit <n>]",
     positionals: [],
     flags: [
@@ -1009,11 +1092,18 @@ export const COMMANDS = [
         summary: "Also return the board's workflow plan (reconcile → outcomes → dispatch).",
       },
       {
-        flag: "reviewer",
-        key: "reviewer",
+        flag: "assignee",
+        key: "assignee",
         as: "string",
         value: "<agent>",
-        summary: "The independent reviewer the plan dispatches to.",
+        summary: "The review card's assignee the plan dispatches to.",
+      },
+      {
+        flag: "reviewer",
+        key: "assignee",
+        as: "string",
+        value: "<agent>",
+        summary: "Deprecated alias for --assignee.",
       },
       {
         flag: "review-aging-ms",
@@ -1057,7 +1147,7 @@ export const COMMANDS = [
       const payload = await ctx.client.post("/api/v1/tasks/reconcile", {
         dry_run: ctx.flags.dryRun === true,
         workflow: ctx.flags.workflow === true ? true : undefined,
-        reviewer: ctx.flags.reviewer,
+        assignee: ctx.flags.assignee,
         review_aging_ms: integerFlag("--review-aging-ms", ctx.flags.reviewAgingMs),
         rework_max_rounds: integerFlag("--rework-max-rounds", ctx.flags.reworkMaxRounds),
         max_actions: integerFlag("--max-actions", ctx.flags.maxActions),

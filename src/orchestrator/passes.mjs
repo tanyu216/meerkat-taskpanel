@@ -28,7 +28,6 @@ import {
   readBoard,
   readHandoffTriage,
   readOpenQuestions,
-  readProjectReviewers,
   readUnownedTodos,
   runSlaPass,
   runWorkflowPass,
@@ -41,10 +40,9 @@ import {
   readDeferralLedger,
   writeDeferralLedger,
 } from "./deferrals.mjs";
-import { liveSubagents, readLedger } from "./ledger.mjs";
-import { mergeReviewerSets, parseArgs, resolveLoopConfig, roleIsWorker, USAGE } from "./options.mjs";
+import { effectiveScanAgents, parseArgs, resolveLoopConfig, roleIsReviewer, roleIsWorker, USAGE } from "./options.mjs";
 import { isKindAvailable } from "./platforms.mjs";
-import { loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
+import { defaultReviewerAgent, loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
 import { parseWorkerKey, readWorkerSessions } from "./worker-session.mjs";
 import {
@@ -480,7 +478,13 @@ export function createQueueDispatch(input) {
     const projectDir = context?.projectDir ?? dir;
     const round = card?.delivery_round ?? card?.review_round ?? 1;
     const handoffRow = buildHandoffRow({ opts, config, action, card, projectDir, round, resident: true });
-    const { role, agentRole, actorKind, platformFallback, roleWarnings, handoff, worker_key } = handoffRow;
+    const { role, agentRole, actorKind, platformFallback, roleWarnings, handoff, worker_key, executorReady } = handoffRow;
+    if (!executorReady) {
+      return {
+        ok: false,
+        error: `review card assignee ${action.agent} is not an installed reviewer-lane role; not dispatching ${action.identifier}`,
+      };
+    }
     for (const warning of roleWarnings) {
       if (loggedRoleWarnings.has(warning)) continue;
       loggedRoleWarnings.add(warning);
@@ -532,11 +536,10 @@ export function createQueueDispatch(input) {
  * One poll pass: scan, atomically claim, enqueue the handoff.
  *
  * **Poll never spawns.** It claims on the board and writes the handoff to the
- * card queue; a resident lane session (one per target directory) takes the
- * handoff and spawns the worker/reviewer subagent in that directory. Without a
- * live pool there is nowhere to send the handoff, so this pass claims **nothing**
- * and alerts once — a claimed card that cannot run is worse than an untouched
- * one.
+ * card queue; the card's own resident session (one per card, worker or review)
+ * takes the handoff in that card's directory. Without a live pool there is
+ * nowhere to send the handoff, so this pass claims **nothing** and alerts once —
+ * a claimed card that cannot run is worse than an untouched one.
  *
  * An empty board scans nothing; a refused claim never enqueues. `--recover-stale`
  * also offers stale `in_progress` claims.
@@ -565,19 +568,7 @@ export async function runPollOnce(opts, env = process.env) {
     kindOrder: opts.kindOrder,
     explicitDir: opts.rolesDir ?? null,
   });
-  // 0031 — project-level reviewer overrides join the deployment reviewer in the
-  // scan/wake set. A failed read falls back to the global reviewer (the board
-  // itself still resolves the effective reviewer per card).
-  const projectRead = readProjectReviewers(opts, log);
-  const projectReviewers = projectRead.ok
-    ? projectRead.projects
-        .map((project) => project.reviewer)
-        .filter((reviewer) => typeof reviewer === "string" && reviewer.trim() !== "")
-    : [];
-  const merged = mergeReviewerSets(roleSet, config, projectReviewers);
-  config.reviewers = merged.reviewers;
-  config.reviewerWorkers = merged.reviewerWorkers;
-  const agents = merged.scanAgents;
+  const agents = effectiveScanAgents({ roleSet });
   // Publish the discovered set locally through `taskctl` — before the no-pool
   // return, so every poll (resident or not) keeps the catalog fresh. A failure is
   // logged and never blocks a claim: routing does not read this file.
@@ -714,10 +705,9 @@ export async function runPollOnce(opts, env = process.env) {
     ? { version: 1, running: {} }
     : pruneRegistry(loadRegistry(opts.state), isProcessAlive);
 
-  // The claim budget: what the pool can actually run. A live subagent and a
-  // handoff already queued both occupy a slot, so neither is claimed twice. A
-  // question row is a project-session turn, not a subagent, and is not counted.
-  const live = liveSubagents(readLedger(stateDir).value);
+  // The claim budget: what the pool can actually run. A pending or processing
+  // handoff occupies a slot, so it is neither claimed nor enqueued twice. A
+  // question row is a project-session turn, not card work, and is not counted.
   const queued = readCards(stateDir).value.cards.filter(
     (card) =>
       (card.status === "pending" || card.status === "processing") &&
@@ -745,12 +735,14 @@ export async function runPollOnce(opts, env = process.env) {
     }
     return counts;
   };
-  const liveByProject = countByProject(live);
+  // No live ledger rows: a card session holds its slot through its queue row,
+  // so a pending or processing handoff is the whole load.
+  const liveByProject = new Map();
   const queuedByProject = countByProject(queued);
-  const budget = Math.max(0, maxConcurrency - live.length - queued.length);
+  const budget = Math.max(0, maxConcurrency - queued.length);
   if (budget === 0) {
     log(
-      `poll: claim budget is 0 (${live.length} live subagent(s), ${queued.length} queued card(s), ` +
+      `poll: claim budget is 0 (${queued.length} queued card(s), ` +
         `cap ${maxConcurrency}) — nothing claimed`,
     );
     return 0;
@@ -818,8 +810,9 @@ export async function runPollOnce(opts, env = process.env) {
     config,
     defaultAgent,
     readCandidates: (agent, { claimUnassigned: claimPool }) => {
-      const dedicatedReviewer =
-        merged.reviewers.includes(agent) && !merged.reviewerWorkers.includes(agent);
+      // A role that can review but cannot work never takes the public pool:
+      // handing it an ordinary card would be a self-review waiting to happen.
+      const dedicatedReviewer = roleIsReviewer(roleSet, agent) && !roleIsWorker(roleSet, agent);
       // A dedicated reviewer never takes the public pool, and only sees review
       // cards: handing it an ordinary card would be a self-review waiting to
       // happen.
@@ -963,15 +956,14 @@ export async function runPatrolOnce(opts, env = process.env) {
 
   // Terminal cards' worktrees are removed here, not when a turn completes: the
   // reviewer may still need the tree after delivery. A path still named by a
-  // queued row or a live subagent is left alone.
+  // queued (pending or processing) row is left alone.
   const stateDir = dirname(String(opts.state));
   const deferrals = deferralRecorderFor(opts, stateDir, log);
-  const busyPaths = new Set([
-    ...readCards(stateDir)
+  const busyPaths = new Set(
+    readCards(stateDir)
       .value.cards.filter((card) => card.status === "pending" || card.status === "processing")
       .map((card) => card.target_dir),
-    ...liveSubagents(readLedger(stateDir).value).map((row) => row.sessionKey),
-  ]);
+  );
   if (opts.dryRun !== true) {
     sweepWorkspaces({
       stateDir,
@@ -1113,7 +1105,7 @@ export async function runPatrolOnce(opts, env = process.env) {
       // Admission is proven: the card is no longer deferred.
       deferrals.clear(alert.identifier);
       const round = task?.delivery_round ?? 1;
-      const { role, agentRole, handoff, worker_key, actorKind } = buildHandoffRow({
+      const { role, agentRole, handoff, worker_key, actorKind, executorReady } = buildHandoffRow({
         opts,
         config,
         action,
@@ -1121,6 +1113,10 @@ export async function runPatrolOnce(opts, env = process.env) {
         projectDir,
         round,
       });
+      if (!executorReady) {
+        log(`patrol: ${alert.identifier} needs a reviewer-lane assignee; ${action.agent} is not one — not dispatching`);
+        return { ok: false };
+      }
       if (actorKind === null) {
         log(`patrol: no available platform carries ${action.agent}'s role — not dispatching ${alert.identifier}`);
         return { ok: false };
@@ -1182,48 +1178,41 @@ export async function runWorkflowOnce(opts, env = process.env) {
     kindOrder: opts.kindOrder,
     explicitDir: opts.rolesDir ?? null,
   });
-  const reviewerIsWorker = roleIsWorker(roleSet, config.reviewer);
+  const defaultAssignee = defaultReviewerAgent(roleSet);
+  const assigneeIsWorker = defaultAssignee !== null && roleIsWorker(roleSet, defaultAssignee);
 
   // The channel is the one that writes cards, so its policy is stated up
   // front: a deployment must never have to infer who reviews or who closes a
   // review card from a quiet board.
   log(
     `workflow: ${config.workflow ? "on" : "off"} ` +
-      `reviewer=${config.reviewer === null ? "not configured" : `${config.reviewer}${reviewerIsWorker ? " (also a worker)" : ""}`} ` +
+      `assignee=${defaultAssignee === null ? "no reviewer-lane role" : `${defaultAssignee}${assigneeIsWorker ? " (also a worker)" : ""}`} ` +
       `max_actions=${config.maxActions} ` +
       `review_aging=${Math.round(config.reviewAgingMs / 60_000)}m`,
   );
   if (!config.workflow) {
-    if (config.reviewer !== null) {
-      log(`warning: reviewer ${config.reviewer} is configured but workflow is off — no review card will be dispatched`);
+    if (defaultAssignee !== null) {
+      log(
+        `warning: reviewer-lane role ${defaultAssignee} is installed but workflow is off — ` +
+          "no review card will be dispatched",
+      );
     }
     return 0;
   }
-
-  // The loop reads the project rows for the reviewer merge and the worker/reviewer
-  // warning below. There is no project-level acceptance default to validate:
-  // every card states its own mode, and a missing effective reviewer is reported
-  // per card (`reviewer_not_configured` / `dispatch_skipped`).
-  const projectRead = readProjectReviewers(opts, log);
-  const projects = projectRead.ok ? projectRead.projects : [];
-
-  // Warn once per reviewer that is also a worker — the review lane and the work
-  // lane share one identity. This covers the deployment reviewer and every
-  // project override.
-  const reviewers = new Set();
-  if (config.reviewer !== null) reviewers.add(config.reviewer);
-  for (const project of projects) {
-    if (typeof project.reviewer === "string" && project.reviewer.trim() !== "") {
-      reviewers.add(project.reviewer.trim());
-    }
+  if (defaultAssignee === null) {
+    log(
+      "warning: reviewer_role_unavailable — no installed reviewer-lane role; review-card dispatch is paused",
+    );
   }
-  for (const reviewer of reviewers) {
-    if (roleIsWorker(roleSet, reviewer)) {
-      log(
-        `warning: reviewer ${reviewer} is also a worker — the review lane and the work lane ` +
-          "share one identity; a dedicated reviewer keeps the two apart",
-      );
-    }
+  config.assignee = defaultAssignee;
+
+  // Warn once when the catalog default is also a worker — the review lane and
+  // the work lane share one identity.
+  if (defaultAssignee !== null && roleIsWorker(roleSet, defaultAssignee)) {
+    log(
+      `warning: reviewer ${defaultAssignee} is also a worker — the review lane and the work lane ` +
+        "share one identity; a dedicated reviewer keeps the two apart",
+    );
   }
   const result = await runWorkflowPass(opts, config, log);
   return result?.failed > 0 ? 1 : 0;

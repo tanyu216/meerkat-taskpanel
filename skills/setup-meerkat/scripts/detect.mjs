@@ -570,33 +570,6 @@ function detectMatt(project, home) {
   };
 }
 
-/**
- * The directories `pi-subagents` installs into.
- *
- * pi 1.x puts the package under `~/.pi/agent/npm/node_modules` and never creates
- * `~/.pi/agent/extensions`; the latter is the legacy layout the package's own
- * git-clone installer writes. Pi has no native subagent mechanism, and the supervisor's
- * supervisor needs one to spawn the worker/reviewer. A directory check is a
- * heuristic, not a load test.
- */
-const PI_SUBAGENT_DIRS = [
-  join(".pi", "agent", "npm", "node_modules", "pi-subagents"),
-  join(".pi", "agent", "extensions", "subagent"),
-  join(".pi", "agent", "extensions", "pi-subagents"),
-];
-const PI_SUBAGENTS_INSTALL = "pi install npm:pi-subagents";
-
-/** @param {string} home */
-function detectPiSubagents(home) {
-  const candidates = PI_SUBAGENT_DIRS.map((rel) => join(home, rel));
-  const found = candidates.find((dir) => existsSync(dir)) ?? null;
-  return {
-    installed: found !== null,
-    extensionDir: found ?? candidates[0],
-    recommended: found === null ? PI_SUBAGENTS_INSTALL : null,
-  };
-}
-
 function humanReport(report) {
   const lines = [];
   lines.push(`detect: ${report.actorKind} on ${report.home}`);
@@ -618,7 +591,6 @@ function humanReport(report) {
   lines.push(`  matt:      skill=${report.mattPocock.skill.installed} tracker=${report.mattPocock.tracker.exists ? report.mattPocock.tracker.path : "none"}`);
   if (report.actorKind === "pi" || report.actorKind === "all") {
     lines.push(
-      `  pi subagents: ${report.piSubagents.installed ? report.piSubagents.extensionDir : `missing (${report.piSubagents.recommended})`}`,
     );
   }
   if (report.platforms) {
@@ -725,22 +697,18 @@ async function main(argv) {
   roles.kindOrder = kindOrder;
   const human = detectHuman(opts, opts.home, kind, env, envFile, config);
   const mattPocock = detectMatt(opts.project, opts.home);
-  const piSubagents = detectPiSubagents(opts.home);
-
   // Per platform: what a role→platform decision needs before it is offered. `available` is
-  // the hard gate (the director skill, and for pi its subagent extension); `capabilities` is
-  // the heuristic table the recommendation reads. `config` is this platform's current
+  // the hard gate (the director skill); `capabilities` is the heuristic table the
+  // recommendation reads. `config` is this platform's current
   // assignment, so the interview can show the truth and propose only real diffs.
   const platforms = {};
   for (const candidate of LOOP_KINDS) {
     const kindSkills = skillsByKind[candidate];
-    const kindSubagents = candidate === "pi" ? piSubagents : { installed: null };
     const platformBase = agentBase(opts.home, candidate);
     const platformSkillsDir = join(platformBase, "skills");
     const programRoot = resolveKindConfigDir(opts, opts.home, candidate, env);
     const platformConfigPath = programRoot.dir === null ? null : kindConfigFile(programRoot.dir, candidate);
     const platformConfig = parseEnvText(readText(platformConfigPath) ?? "");
-    const reviewer = platformConfig.get("MEERKAT_TASKPANEL_REVIEWER");
     platforms[candidate] = {
       kind: candidate,
       dir: AGENT_KINDS[candidate].dir,
@@ -757,12 +725,10 @@ async function main(argv) {
         present: platformConfigPath !== null && existsSync(platformConfigPath),
         // No scan-set key: the claimable set is the discovered role skills above.
         kindOrder: splitList(platformConfig.get("MEERKAT_TASKPANEL_AGENT_KIND_ORDER")),
-        reviewer: typeof reviewer === "string" && reviewer.trim() !== "" ? reviewer.trim() : null,
       },
       roles: roleSkillsAt(opts.home, candidate).map((role) => role.agent),
       capabilities: [...(PLATFORM_CAPABILITIES[candidate] ?? [])],
-      piSubagents: kindSubagents,
-      available: kindSkills.director === true && (candidate !== "pi" || kindSubagents.installed === true),
+      available: kindSkills.director === true,
     };
   }
   const rolePlatforms = recommendRolePlatforms(roles.list, platforms, kindOrder);
@@ -777,7 +743,6 @@ async function main(argv) {
   if (!loopState.installed) missing.push("loop-state");
   if (!supervisor.installed) missing.push("supervisor");
   if (roles.list.length === 0) missing.push("role-skills");
-  if (kind === "pi" && !piSubagents.installed) missing.push("pi-subagents");
 
   const warnings = [];
   const hostname = new URL(resolved.url).hostname.toLowerCase();
@@ -788,11 +753,6 @@ async function main(argv) {
   if (opts.network && loopback && !health.reachable) warnings.push("the board is configured loopback but is not reachable; a local taskd may need to start");
   if (opts.network && !loopback && !health.reachable) warnings.push("the remote board is unreachable; do not fall back to localhost without the operator");
   if (checkout.found && checkout.path === process.cwd() && !opts.checkout) warnings.push("using the current directory as the checkout");
-  if (kind === "pi" && !piSubagents.installed) {
-    warnings.push(
-      `pi has no subagent extension; the supervisor's reviewer lane cannot spawn its subagent, so review cards are never worked — install it with \`${PI_SUBAGENTS_INSTALL}\``,
-    );
-  }
   for (const retired of legacy) {
     if (retired.kind === "roles-dir-env") {
       warnings.push(
@@ -812,7 +772,6 @@ async function main(argv) {
   if (!human.configured) actions.push("configure-human-name");
   if (roles.list.length === 0) actions.push("install-role-skills");
   if (legacy.length > 0) actions.push("report-retired-role-trees");
-  if (kind === "pi" && !piSubagents.installed) actions.push("install-pi-subagents");
   if (mattPocock.skill.installed && !mattPocock.tracker.exists) actions.push("offer-matt-integration");
   if (mattPocock.tracker.exists && mattPocock.tracker.unrelated) actions.push("ask-tracker-overwrite");
 
@@ -855,7 +814,6 @@ async function main(argv) {
     roles,
     legacy,
     mattPocock,
-    piSubagents,
     missing,
     actions,
     warnings,

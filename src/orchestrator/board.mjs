@@ -74,10 +74,6 @@ export function reviewCreateArgs(action) {
     "--description", action.description,
     "--assignee", action.reviewer,
     "--assignee-kind", "agent",
-    // The configured reviewer is an explicit automation identity, not a role the
-    // card creator routed to, so it is outside the local role catalog by design.
-    // This is the one argv builder that needs the escape.
-    "--force-create",
     "--label", "review",
     // 0038 — a review card is flow B and is never itself reviewed.
     "--acceptance-mode", "off",
@@ -88,30 +84,6 @@ export function reviewCreateArgs(action) {
     "--idem", action.idem,
     ...action.acceptance.flatMap((text) => ["--acceptance", text]),
   ];
-}
-
-/**
- * Read every project's reviewer override (0031).
- *
- * The loop uses this at start-up to merge project reviewers into its scan/wake
- * set and to fail fast when a `required` project has no effective reviewer. It
- * is a board read, so a failure is returned rather than thrown; the caller
- * decides whether it can continue (the workflow pass cannot enforce the
- * required-project promise without it).
- *
- * @param {object} opts
- * @param {(message: string) => void} log
- * @returns {{ok: boolean, projects: object[], error?: string}}
- */
-export function readProjectReviewers(opts, log) {
-  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
-  if (agent === null) return { ok: false, projects: [], error: "no agent configured" };
-  const read = runCli(opts, agent, ["project", "list"]);
-  if (!read.ok) {
-    log(`project list failed: ${read.error}`);
-    return { ok: false, projects: [], error: read.error };
-  }
-  return { ok: true, projects: Array.isArray(read.data?.projects) ? read.data.projects : [] };
 }
 
 /** A non-empty trimmed string, or `null`. */
@@ -476,19 +448,6 @@ function strandedTodoAlerts(opts, config, invoke, log) {
       log(`workflow: stranded-pool read failed (${poolRead.error ?? "unknown"})`);
     }
   }
-  // A dedicated reviewer is in the scan set but only takes review cards.
-  // Report an ordinary todo assigned to it as stranded; keep a reviewer that is
-  // also a worker.
-  const reviewerNames = new Set(
-    [...(Array.isArray(config.reviewers) ? config.reviewers : []), config.reviewer]
-      .filter((name) => typeof name === "string" && name !== "")
-      .map((name) => name.toLowerCase()),
-  );
-  const reviewerWorkers = new Set(
-    (Array.isArray(config.reviewerWorkers) ? config.reviewerWorkers : [])
-      .filter((name) => typeof name === "string" && name !== "")
-      .map((name) => name.toLowerCase()),
-  );
   const roleSet =
     opts.roles ??
     loadRoles({
@@ -497,17 +456,26 @@ function strandedTodoAlerts(opts, config, invoke, log) {
       kindOrder: opts.kindOrder,
       explicitDir: opts.rolesDir ?? null,
     });
+  // A reviewer-only role is in the scan set but only takes review cards. Report
+  // an ordinary todo assigned to it as stranded; a role that can also work is
+  // not stranded.
+  const reviewerOnly = new Set(
+    (roleSet?.roles ?? [])
+      .filter(
+        (role) =>
+          Array.isArray(role.lanes) &&
+          role.lanes.includes("reviewer") &&
+          !role.lanes.includes("worker"),
+      )
+      .map((role) => role.agent.toLowerCase()),
+  );
   const workerRoles = (roleSet?.roles ?? [])
     .filter((role) => !Array.isArray(role.lanes) || role.lanes.includes("worker"))
     .map((role) => role.agent);
   const workers = [
     ...new Set([
       ...workerRoles,
-      ...agents.filter(
-        (name) =>
-          !reviewerNames.has(name.toLowerCase()) ||
-          reviewerWorkers.has(name.toLowerCase()),
-      ),
+      ...agents.filter((name) => !reviewerOnly.has(name.toLowerCase())),
     ]),
   ];
   return planStrandedTodoAlerts({
@@ -515,7 +483,7 @@ function strandedTodoAlerts(opts, config, invoke, log) {
     unassignedPool,
     workers,
     agents,
-    reviewer: config.reviewer,
+    reviewer: config.assignee,
     claimUnassigned: config.claimUnassigned,
     now: Date.now(),
   });
@@ -529,7 +497,7 @@ export async function runWorkflowPass(opts, config, log) {
   // One call does the board's container reconcile and returns the plan.
   const args = ["issue", "reconcile", "--workflow"];
   if (opts.dryRun) args.push("--dry-run");
-  if (config.reviewer !== null) args.push("--reviewer", config.reviewer);
+  if (config.assignee !== null) args.push("--assignee", config.assignee);
   args.push("--review-aging-ms", String(config.reviewAgingMs));
   args.push("--rework-max-rounds", String(config.reworkMaxRounds));
   args.push("--max-actions", String(config.maxActions));

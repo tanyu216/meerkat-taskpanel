@@ -136,9 +136,8 @@ Options:
                     dispatch, applying verdicts). Persisted to the per-kind config;
                     default yes.
   --reviewer <agent>
-                    The independent reviewer that audits delivered cards
-                    (default: Reviewer). Set MEERKAT_TASKPANEL_REVIEWER empty in
-                    the per-kind config to leave deliveries for a human to accept.
+                    Deprecated and ignored; a review card's assignee selects the
+                    reviewer role from the installed catalog.
   --ping-interval <sec>
                     The liveness clock (default 60). It only prunes dead worker
                     pids from the registry: no board read, no LLM.
@@ -250,7 +249,6 @@ Environment (set for each agent-kind installer):
   MEERKAT_TASKPANEL_CLAIM_UNASSIGNED  "yes"/"no" default for the claim policy
   MEERKAT_TASKPANEL_RECOVER_STALE     "yes"/"no" (default yes)
   MEERKAT_TASKPANEL_WORKFLOW          "yes"/"no" (default yes)
-  MEERKAT_TASKPANEL_REVIEWER          reviewer agent (default Reviewer; empty = no dispatch)
   MEERKAT_TASKPANEL_PING_INTERVAL      liveness clock, seconds (default 60)
   MEERKAT_TASKPANEL_CONTINUE_INTERVAL  judgment clock, seconds (default 600)
   MEERKAT_TASKPANEL_CONTINUE           "yes"/"no" (default yes)
@@ -701,7 +699,9 @@ echo "install.sh: claim unassigned tasks: $CLAIM_UNASSIGNED"
 # any agent kind is dispatched — a misspelt policy must install nothing.
 RECOVER_STALE="${RECOVER_STALE_FLAG:-${MEERKAT_TASKPANEL_RECOVER_STALE:-yes}}"
 WORKFLOW="${WORKFLOW_FLAG:-${MEERKAT_TASKPANEL_WORKFLOW:-yes}}"
-REVIEWER="${REVIEWER_FLAG:-${MEERKAT_TASKPANEL_REVIEWER:-Reviewer}}"
+if [ -n "${REVIEWER_FLAG:-}" ]; then
+  echo "install.sh: warning: --reviewer is deprecated and ignored; a review card's assignee selects the reviewer role" >&2
+fi
 case "$RECOVER_STALE" in
   yes | no) ;;
   *) die "--recover-stale must be yes or no (got '$RECOVER_STALE')" ;;
@@ -712,7 +712,7 @@ case "$WORKFLOW" in
 esac
 echo "install.sh: recover stale claims: $RECOVER_STALE"
 
-echo "install.sh: workflow: $WORKFLOW; reviewer: ${REVIEWER:-none}"
+echo "install.sh: workflow: $WORKFLOW; review assignee: the installed role catalog's default reviewer"
 
 # The scheduler's two clocks. The interval is rendered into the units, so it must
 # be known here; the continue switch is persisted and read by the entry itself.
@@ -938,7 +938,6 @@ FAIL $target — installer not found"
       MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
       MEERKAT_TASKPANEL_RECOVER_STALE="$RECOVER_STALE" \
       MEERKAT_TASKPANEL_WORKFLOW="$WORKFLOW" \
-      MEERKAT_TASKPANEL_REVIEWER="$REVIEWER" \
       MEERKAT_TASKPANEL_PING_INTERVAL="$PING_INTERVAL" \
       MEERKAT_TASKPANEL_CONTINUE_INTERVAL="$CONTINUE_INTERVAL" \
       MEERKAT_TASKPANEL_CONTINUE="$CONTINUE" \

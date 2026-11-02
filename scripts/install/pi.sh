@@ -29,30 +29,3 @@ reconcile_taskctl_on_path
 install_scheduling
 write_agent_config
 
-# The loop dispatches one subagent per card. Pi has no native subagent mechanism, so a
-# Pi host needs an extension for the project session to spawn worker/reviewer subagents.
-# Check the recommended one and print the install command; install nothing: the installer
-# is offline and a package install is the operator's decision.
-#
-# Two layouts exist, and a working install may have only the newer one:
-#   * `pi install npm:pi-subagents` (pi 1.x) puts the package under
-#     ~/.pi/agent/npm/node_modules and does NOT create ~/.pi/agent/extensions;
-#   * the package's own git-clone installer writes ~/.pi/agent/extensions/{subagent,pi-subagents}.
-# Checking only the legacy pair made every npm install print a false "missing" warning.
-pi_ext=""
-for candidate in \
-  "$(target_home)/.pi/agent/npm/node_modules/pi-subagents" \
-  "$(target_home)/.pi/agent/extensions/subagent" \
-  "$(target_home)/.pi/agent/extensions/pi-subagents"; do
-  if [ -d "$candidate" ]; then
-    pi_ext="$candidate"
-    break
-  fi
-done
-if [ -n "$pi_ext" ]; then
-  echo "pi: subagent extension found ($pi_ext)"
-else
-  echo "pi: no subagent extension found — the loop's project session cannot spawn" >&2
-  echo "    worker/reviewer subagents. Install the recommended one:" >&2
-  echo "      pi install npm:pi-subagents" >&2
-fi

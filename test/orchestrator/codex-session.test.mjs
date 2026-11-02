@@ -186,10 +186,9 @@ describe("codex resident session", () => {
     assert.ok(threads.every((row) => row.method === "thread/start"));
   });
 
-  it("keeps one thread across turns and records child threads", async (t) => {
+  it("keeps one thread across turns", async (t) => {
     const f = fixture(t);
-    const events = [];
-    const pool = createCodexPool({ opts: {}, bin: f.bin, log: f.log, onEvent: (event) => events.push(event) });
+    const pool = createCodexPool({ opts: {}, bin: f.bin, log: f.log });
     t.after(() => pool.close());
     const session = pool.openSession({ cwd: f.app, role: "project" });
     assert.equal((await session.send("first", { timeoutMs: 5000 })).ok, true);
@@ -197,8 +196,6 @@ describe("codex resident session", () => {
     assert.equal(second.ok, true);
     assert.equal(second.sessionId, "th-1");
     assert.equal(readLines(f.threads).length, 1, "one thread for two turns");
-    assert.deepEqual(second.ids.sort(), ["child-1", "child-2"]);
-    assert.ok(events.some((event) => event.type === "subagent" && event.subagentId === "child-1"));
   });
 
   it("resumes a stored thread id", async (t) => {

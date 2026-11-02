@@ -198,9 +198,6 @@ export function projectToWire(project) {
     labels: Array.isArray(project.labels) ? project.labels : [],
     meta: project.meta ?? {},
     readme: project.readme ?? null,
-    // The project supplies an optional reviewer override; acceptance is the
-    // card's own decision and is not a project field any more.
-    reviewer: project.reviewer ?? null,
     // The sidebar badge's number (design/BLOCKS.md §Projects): the project's
     // **total** task count, served with the list and independent of the order.
     // `null` when the caller did not supply it — this projection counts nothing

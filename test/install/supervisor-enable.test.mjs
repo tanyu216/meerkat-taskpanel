@@ -1139,7 +1139,7 @@ describe("install.sh: one loop supervisor per machine", () => {
         assert.match(line, new RegExp(`\\b${name}\\b`), `${name} in: ${line}`);
       }
       assert.doesNotMatch(line, /\balice\b/);
-      assert.match(line, /\(discovered roles \+ reviewer\)$/);
+      assert.match(line, /\(discovered worker and reviewer roles\)$/);
     }
   });
 

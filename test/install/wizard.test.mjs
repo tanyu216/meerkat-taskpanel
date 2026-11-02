@@ -171,12 +171,6 @@ describe("wizard_text", () => {
     assert.equal(result.out, "q");
   });
 
-  it("reviewer accepts none or - to clear", () => {
-    assert.equal(call("wizard_text 'Reviewer' bob reviewer", "none\n").out, "");
-    assert.equal(call("wizard_text 'Reviewer' bob reviewer", "-\n").out, "");
-    assert.equal(call("wizard_text 'Reviewer' bob reviewer", "\n").out, "bob");
-  });
-
   it("q cancels a path question", () => {
     assert.equal(call("wizard_text 'Home' /tmp path", "q\n").code, 2);
   });
@@ -366,7 +360,6 @@ describe("install.sh --interactive end to end", () => {
     assert.match(config, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m);
     assert.match(config, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m);
     assert.match(config, /^MEERKAT_TASKPANEL_CONTINUE=yes$/m);
-    assert.match(config, /^MEERKAT_TASKPANEL_REVIEWER=Reviewer$/m);
     assert.match(config, /^MEERKAT_TASKPANEL_PING_INTERVAL=60$/m);
     assert.match(config, /^MEERKAT_TASKPANEL_CONTINUE_INTERVAL=600$/m);
   });
@@ -489,8 +482,8 @@ describe("install.sh --interactive end to end", () => {
   });
 
   it("leaves the removed options to their flags", () => {
-    // Agent name, reviewer and the two intervals are no longer wizard
-    // questions; an explicit flag must still take effect.
+    // Agent name and the two intervals are no longer wizard questions; an
+    // explicit flag must still take effect.
     const home = harness.makeTempDir();
     const run = runWizard(
       [
@@ -502,8 +495,6 @@ describe("install.sh --interactive end to end", () => {
         "--skip-web-build",
         "--agent-name",
         "Bob",
-        "--reviewer",
-        "Grace",
         "--ping-interval",
         "30",
         "--continue-interval",
@@ -513,7 +504,6 @@ describe("install.sh --interactive end to end", () => {
     );
     assert.equal(run.status, 0, run.stderr);
     const config = configOf(home, ".claude");
-    assert.match(config, /^MEERKAT_TASKPANEL_REVIEWER=Grace$/m);
     assert.match(config, /^MEERKAT_TASKPANEL_PING_INTERVAL=30$/m);
     assert.match(config, /^MEERKAT_TASKPANEL_CONTINUE_INTERVAL=120$/m);
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));

@@ -219,8 +219,6 @@ export const EXTRA = {
     "activity.detail.archived": "Archived from",
     // 0038/0002 — one per-card acceptance vocabulary. None of these exist in the
     // prototype.
-    "createProject.field.reviewer": "Reviewer",
-    "createProject.field.reviewerHint": "Leave blank to use the deployment reviewer",
     "createTask.field.acceptance": "Acceptance",
     "createTask.acceptance.off": "Off",
     "createTask.acceptance.auto": "Automatic — the loop closes after review",
@@ -346,8 +344,6 @@ export const EXTRA = {
     "activity.progress": "记录了进度",
     "activity.other": "记录了一次事件",
     "activity.detail.archived": "归档前状态",
-    "createProject.field.reviewer": "审核人",
-    "createProject.field.reviewerHint": "留空则使用部署级 reviewer",
     "createTask.field.acceptance": "验收",
     "createTask.acceptance.off": "关闭",
     "createTask.acceptance.auto": "自动 —— 评审后由 loop 收口",

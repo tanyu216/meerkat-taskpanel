@@ -43,7 +43,7 @@ that already mentions taskpanel is skipped; the Matt skill is not invoked by thi
 
 ## 5. Decision ladder
 
-> A subagent asks an operational question, an epic-split question, and an E2 acceptance
+> A worker session asks an operational question, an epic-split question, and an E2 acceptance
 > question. Show how the supervisor and director handle each.
 
 Assert: the three items are one round (one question string per card, not one comment per

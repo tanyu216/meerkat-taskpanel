@@ -271,6 +271,13 @@ export const ERROR_CODES = Object.freeze({
         "--force-create to allow an assignee outside the catalog",
     },
   ),
+  ASSIGNEE_NOT_REVIEWER: spec(
+    400,
+    "A review card's assignee must name a role in the reviewer lane.",
+    {
+      fix: "assign a reviewer-lane role (for example Reviewer); a human, --assignee-id or --force-create cannot bypass it",
+    },
+  ),
 });
 
 /** Codes the migration SQL must raise, verbatim, via `RAISE(ABORT,'CODE')`. */
@@ -393,6 +400,8 @@ export const JS_ONLY_CODES = Object.freeze([
   "CLI_IO",
   // The role catalog is a local file; the board schema never learns roles.
   "ASSIGNEE_NOT_IN_CATALOG",
+  // The reviewer lane is a role fact, not a board fact; only the CLI guard knows it.
+  "ASSIGNEE_NOT_REVIEWER",
 ]);
 
 /**

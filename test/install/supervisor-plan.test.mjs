@@ -303,15 +303,8 @@ describe("supervisor: the discovered scan set and the machine-level view", () =>
     assert.equal(discovered.source, "discovered");
     assert.deepEqual(
       [...discovered.agents].sort(),
-      ["Jobs", "Linus"],
-      "a reviewer-lane role is not a worker and is not scanned unconfigured",
-    );
-
-    // The configured reviewer joins the scan; it is not discovered as a worker.
-    writeFileSync(path, "MEERKAT_TASKPANEL_REVIEWER=Reviewer\n", "utf8");
-    assert.deepEqual(
-      [...scanSetFromConfig(path, { home, actorKind: "claude" }).agents].sort(),
       ["Jobs", "Linus", "Reviewer"],
+      "every discovered role in the worker or reviewer lane is scanned",
     );
   });
 
@@ -528,17 +521,15 @@ describe("supervisor: the docs and the implementation agree", () => {
     const now = Date.parse("2026-01-01T00:00:00.000Z");
     writeFileSync(
       join(dir, "sessions.state.json"),
-      JSON.stringify({ version: 1, poolPid: 4242, heartbeatAt: new Date(now - 3_000).toISOString() }),
-    );
-    writeFileSync(
-      join(dir, "subagents.state.json"),
       JSON.stringify({
-        version: 1,
-        subagents: [
-          { subagentId: "a-1", status: "running" },
-          { subagentId: "a-2", status: "completed" },
-          { subagentId: "a-3", status: "reattaching" },
-        ],
+        version: 3,
+        poolPid: 4242,
+        heartbeatAt: new Date(now - 3_000).toISOString(),
+        projects: {
+          "worker:T-1:r1": { role: "worker", status: "running" },
+          "worker:R-1:r1": { role: "reviewer", status: "running" },
+          "worker:T-2:r1": { role: "worker", status: "idle" },
+        },
       }),
     );
     writeFileSync(
@@ -557,7 +548,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.equal(live.live, true);
     assert.equal(live.pid, 4242);
     assert.equal(live.heartbeatAgeMs, 3_000);
-    assert.equal(live.liveSubagents, 2, "running and reattaching subagents occupy a slot");
+    assert.equal(live.runningSessions, 2, "running card sessions are the load");
     assert.equal(live.cardsQueued, 1);
 
     assert.equal(poolReport(dir, { isAlive: () => false, now: () => now }).live, false);

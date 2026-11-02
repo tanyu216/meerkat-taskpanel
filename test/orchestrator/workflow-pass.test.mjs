@@ -79,7 +79,7 @@ function optsFor(dir, script, workspace) {
 
 const CONFIG = {
   workflow: true,
-  reviewer: null,
+  assignee: null,
   reviewAgingMs: 60 * 60_000,
   maxActions: 20,
   claimUnassigned: false,

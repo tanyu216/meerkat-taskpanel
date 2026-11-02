@@ -252,6 +252,7 @@ describe("wakeHandoff selects the card's role", () => {
       { identifier: "T-1", title: "x", project: "P1" },
     );
     assert.equal(result.isReview, false);
+    assert.equal(result.executorReady, true);
     assert.equal(result.role, "worker");
     assert.equal(result.agentRole, "Jobs");
     assert.match(result.handoff, /## Team role/);
@@ -273,6 +274,7 @@ describe("wakeHandoff selects the card's role", () => {
         { identifier: "R-1", review_of: "T-1", review_round: 1, project: "P1" },
       );
       assert.equal(result.isReview, true);
+      assert.equal(result.executorReady, true);
       assert.equal(result.role, "reviewer");
       assert.equal(result.agentRole, "Reviewer");
       assert.match(result.handoff, /## Reviewer protocol/);
@@ -282,6 +284,21 @@ describe("wakeHandoff selects the card's role", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("refuses a review card whose assignee is not a reviewer-lane role", () => {
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "R-2", agent: "Jobs" },
+      { identifier: "R-2", review_of: "T-1", review_round: 1, project: "P1" },
+    );
+    assert.equal(result.isReview, true);
+    assert.equal(result.executorReady, false, "the assignee does not select a reviewer role");
+    assert.equal(result.role, "reviewer", "the card still needs the review handoff");
+    assert.equal(result.agentRole, null);
+    assert.match(result.handoff, /^You are the reviewer/);
+    assert.doesNotMatch(result.handoff, /## Role skill/);
   });
 
   it("uses a thin task envelope for a resident worker session", () => {
@@ -340,7 +357,7 @@ describe("wakeHandoff selects the card's role", () => {
     assert.match(result.handoff, /meerkat-director skill's rounds\.md/);
   });
 
-  it("keeps the full reviewer handoff for a resident reviewer session", () => {
+  it("gives a resident review session the lean envelope, not the role layer", () => {
     const dir = mkdtempSync(join(tmpdir(), "tp-role-resident-"));
     try {
       const promptPath = join(dir, "reviewer-prompt.md");
@@ -357,9 +374,16 @@ describe("wakeHandoff selects the card's role", () => {
         true,
       );
       assert.equal(result.isReview, true);
-      assert.match(result.handoff, /## Reviewer protocol/);
-      assert.match(result.handoff, /## Role skill/);
-      assert.match(result.handoff, /VERDICT first/);
+      assert.match(result.handoff, /You are the reviewer for the P1 project/);
+      assert.match(result.handoff, /Review card: R-1/);
+      assert.match(result.handoff, /Original brief: \.meerkat\/T-1\/card\.md/);
+      assert.match(result.handoff, /Step 0 — the review_not_ready check/);
+      assert.match(result.handoff, /VERDICT: APPROVE/);
+      // The skill was loaded at open, so the envelope carries neither the role
+      // layer nor the duplicate protocol text.
+      assert.doesNotMatch(result.handoff, /## Role skill/);
+      assert.doesNotMatch(result.handoff, /## Reviewer protocol/);
+      assert.doesNotMatch(result.handoff, /VERDICT first/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

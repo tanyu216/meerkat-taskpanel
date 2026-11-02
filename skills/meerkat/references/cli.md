@@ -105,9 +105,9 @@ not a failure; `note` says why (no pointer, or a stale pid).
 
 | Command | Purpose |
 |---|---|
-| `project create [--id <id>] [--prefix <p>] --name <n> [--reviewer <agent>] [--meta k=v]… [--label <l>]… [--readme <text>]` | Create a project. `--prefix` (1-4 characters of A-Z and 0-9, normalized) is the prefix its cards are numbered with (`tp` → `TP-0001`); it beats `--id` and is enough on its own — the server then mints the project id. Without `--prefix` the id supplies the prefix (`demo` → `DEMO-0001`). `--prefix` is `meta.prefix`; passing both with different values is a usage error. A project carries no acceptance default; `--reviewer` overrides the deployment reviewer for this project. |
-| `project ensure <id> [--name <n>] [--prefix <p>] [--reviewer <agent>] [--meta k=v]… [--label <l>]… [--readme <text>]` | Create the project if its id is absent; if it exists, return it **untouched** (`created:false`). `--name` is needed only on creation. `--prefix` (1-4 characters of A-Z and 0-9) is the new project's card prefix and beats the id-derived one; it is ignored for an existing project. This is the idempotent form of `project create`; it never updates an existing row. |
-| `project update <id> [--name] [--reviewer <agent>] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**; acceptance is not a project field. |
+| `project create [--id <id>] [--prefix <p>] --name <n> [--meta k=v]… [--label <l>]… [--readme <text>]` | Create a project. `--prefix` (1-4 characters of A-Z and 0-9, normalized) is the prefix its cards are numbered with (`tp` → `TP-0001`); it beats `--id` and is enough on its own — the server then mints the project id. Without `--prefix` the id supplies the prefix (`demo` → `DEMO-0001`). `--prefix` is `meta.prefix`; passing both with different values is a usage error. A project carries no acceptance default and no reviewer: the review card's assignee selects the role. |
+| `project ensure <id> [--name <n>] [--prefix <p>] [--meta k=v]… [--label <l>]… [--readme <text>]` | Create the project if its id is absent; if it exists, return it **untouched** (`created:false`). `--name` is needed only on creation. `--prefix` (1-4 characters of A-Z and 0-9) is the new project's card prefix and beats the id-derived one; it is ignored for an existing project. This is the idempotent form of `project create`; it never updates an existing row. |
+| `project update <id> [--name] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**; acceptance and reviewer are not project fields. |
 | `project list [--include-archived]` | List projects. |
 | `project dir <id> [--require-dir]` | Print the local directory work happens in, resolved from the config-root `projects.json`: the entry's `local_path`, else `run_dir`. An entry naming no directory succeeds and says so. Exits non-zero only when no entry is registered, or the path is relative, missing, not a directory, or blank. `--require-dir` is the wake shape: resolve from the map only (no board check) and exit **3** when the map names no usable directory — a wake has to start somewhere. |
 | `project map list` / `show <id>` / `set <id> --local-path <dir>` / `set <id> --run-dir <dir>` / `set <id> --no-dir` / `remove <id>` | Read and edit the machine-local map at the config root. `set` takes exactly one of `--local-path` (`<dir>`), `--run-dir` (`<dir>`) and `--no-dir`; the directory must be absolute, existing and a directory. Local only: no identity, no token, no board. A missing map is an empty map for `list`; `show`/`remove` on an absent entry are `PROJECT_DIR_UNMAPPED`. |
@@ -138,7 +138,7 @@ validates it and stops to ask rather than guessing; `project map` is the only wr
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue meta <ref> --meta <k>=<v>…` | Merge metadata keys into a card, leaving other keys intact. The read-modify-write form with `--if-version` CAS. |
 | `issue deliver <ref> --report-file <file\|-> [--to done] [--no-report --reason "<why>"] [--seg <seg>]` | **Write the report and move, in one transaction.** The default destination is `in_review`; `--to done` is the `off` card's **direct acceptance** (any other `--to`, and a waiver with `--to done`, are usage errors). The two report forms are mutually exclusive. On an **epic** the report is its rollup: it must name every live child by `ref` (`ROLLUP_STALE` otherwise) and is stored with `is_rollup = 1`; `--no-report` is refused for an epic (`ROLLUP_REQUIRED`). |
-| `issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] [--review-aging-ms <n>] [--rework-max-rounds <n>] [--max-actions <n>] [--board-limit <n>]` | Without `--workflow`: replay the epic rules over every non-terminal container. With it: return the board's workflow plan (see below). `--dry-run` writes nothing. `--rework-max-rounds` bounds the delivery rounds before a loop hold. Idempotent. |
+| `issue reconcile [--dry-run] [--workflow] [--assignee <agent>] [--review-aging-ms <n>] [--rework-max-rounds <n>] [--max-actions <n>] [--board-limit <n>]` | Without `--workflow`: replay the epic rules over every non-terminal container. With it: return the board's workflow plan (see below). `--dry-run` writes nothing. `--assignee` is the review card's assignee (the role catalog's `default_reviewer`, normally `Reviewer`); `--reviewer` is a deprecated alias. `--rework-max-rounds` bounds the delivery rounds before a loop hold. Idempotent. |
 
 #### `issue create`
 
@@ -543,7 +543,8 @@ whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) 
 claim pool; `--recover-stale <yes|no>` recovers stale in-progress claims, and
 `--recover-wedged <yes|no>` lets the ping clock stop a pool whose dispatch tick outlived
 twice the turn timeout (the service manager restarts it). `--workflow <yes|no>` applies the
-board's plan and `--reviewer <agent>` names the independent reviewer;
+board's plan; the review card's assignee selects the reviewer role, and `--reviewer` is a
+deprecated no-op;
 `--workflow-max-actions` and `--review-aging-minutes` bound workflow execution and
 silent-review escalation, and `--rework-max-rounds` sets how many delivery rounds since the
 last hold before the loop parks a card as `blocked`/`decision`. `--workspace <worktree|shared>` says where a card runs: its own
@@ -580,8 +581,9 @@ The **local role catalog** — a host-local projection of the roles the supervis
 A card's assignee is checked against this catalog when it is non-empty (`ASSIGNEE_NOT_IN_CATALOG`,
 exit 1). The check is a **CLI guard**, not a board invariant: a direct HTTP write bypasses it.
 The writer identity (`system`/`Orchestrator`) is never exempt — the guard looks at the
-assignee, and the loop's own review card carries `--force-create` because its configured
-reviewer is an automation identity.
+assignee. A review card is stricter still: its assignee must name a **reviewer-lane** role
+(`ASSIGNEE_NOT_REVIEWER`), so the loop creates it with the catalog's `default_reviewer` and
+never needs `--force-create`.
 
 ## Editing a card: status, priority, description, attachments, dependencies
 
@@ -780,7 +782,7 @@ cannot be moved directly to `canceled`; cancel it with
 ## reconcile --workflow — the board's workflow plan
 
 ```bash
-taskctl issue reconcile --workflow --reviewer jobs \
+taskctl issue reconcile --workflow --assignee Reviewer \
   --review-aging-ms 3600000 --rework-max-rounds 4 --max-actions 20 --board-limit 500 --json
 ```
 

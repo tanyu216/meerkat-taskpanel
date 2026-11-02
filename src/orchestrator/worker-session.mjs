@@ -140,19 +140,28 @@ export function buildWorkerDispatchPrompt(input = {}) {
   return String(input.handoff ?? "").trim();
 }
 
+/** A queue row that reviews a card rather than working it. */
+function isReviewRow(row) {
+  return String(row?.role ?? "worker") === "reviewer";
+}
+
 /**
- * A same-round re-dispatch: the worker already has context, so the prompt
- * carries the answer/decision and forbids starting over.
+ * A same-round re-dispatch: the session already has context, so the prompt
+ * carries the answer/decision and forbids starting over. A review session is
+ * told to finish the review it already opened, not to "continue the work".
  */
 export function buildWorkerResumePrompt(input = {}) {
   const row = input.row ?? {};
   const ref = String(row.card ?? "<card>");
   const round = roundOf(row);
+  const review = isReviewRow(row);
   const answer =
     clip(input.answer, 2000).trim() ||
     "(no answer text recorded — read the card comments newer than your question)";
   return [
-    `This is a same-round resume of the worker session for card ${ref} (round ${round}).`,
+    `This is a same-round resume of the ${review ? "reviewer" : "worker"} session for ${
+      review ? "review card" : "card"
+    } ${ref} (round ${round}).`,
     `Reason: ${String(input.reason ?? "same-round re-dispatch")}.`,
     ...(input.sessionId ? [`Resume native session ${input.sessionId}.`] : []),
     "",
@@ -160,7 +169,9 @@ export function buildWorkerResumePrompt(input = {}) {
     answer,
     "",
     `Re-read .meerkat/${ref}/card.md and the comments after your question before acting.`,
-    "Continue the work you already started; do not start over, and do not repeat completed work.",
+    review
+      ? "Continue the review you already started; do not start over, and end in one verdict."
+      : "Continue the work you already started; do not start over, and do not repeat completed work.",
     "",
     String(input.handoff ?? "").trim(),
   ].join("\n");
@@ -168,20 +179,22 @@ export function buildWorkerResumePrompt(input = {}) {
 
 /**
  * The native session is gone. Start fresh, replay the bounded transcript, and
- * verify the tree/board before repeating anything.
+ * verify the tree/board before repeating anything. A review replays into a
+ * fresh verdict on the same round.
  */
 export function buildWorkerReplayPrompt(input = {}) {
   const row = input.row ?? {};
   const ref = String(row.card ?? "<card>");
   const round = roundOf(row);
+  const review = isReviewRow(row);
   const transcript =
     typeof input.transcript === "string" ? input.transcript : renderReplay(input.transcript);
   const answer = clip(input.answer, 2000).trim() || "(none recorded)";
   return [
-    `The native session for card ${ref} (round ${round}) could not be resumed: ${String(
+    `The native session for ${review ? "review card" : "card"} ${ref} (round ${round}) could not be resumed: ${String(
       input.nativeError ?? input.reason ?? "session unavailable",
     )}.`,
-    "This is a NEW session; the bounded transcript of the previous worker follows.",
+    "This is a NEW session; the bounded transcript of the previous session follows.",
     "",
     "Previous transcript:",
     clip(transcript, WORKER_TRANSCRIPT_MAX_CHARS).trim() || "(no transcript recorded)",
@@ -189,7 +202,9 @@ export function buildWorkerReplayPrompt(input = {}) {
     "The answer/decision since the last turn:",
     answer,
     "",
-    `Before acting, verify the worktree and the board: re-read .meerkat/${ref}/card.md, check git status/log and the card comments. Do not repeat work that is already done.`,
+    review
+      ? `Before acting, re-read .meerkat/${ref}/card.md and both briefs, and check the board: the card under review may have moved, and the verdict must answer the current round. Do not move either card.`
+      : `Before acting, verify the worktree and the board: re-read .meerkat/${ref}/card.md, check git status/log and the card comments. Do not repeat work that is already done.`,
     "",
     String(input.handoff ?? "").trim(),
   ].join("\n");

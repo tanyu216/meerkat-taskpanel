@@ -260,8 +260,7 @@ export const COMMANDS = [
     name: "create",
     summary: "Create a project.",
     usage:
-      "project create [--id <id>] [--prefix <p>] --name <name> " +
-      "[--reviewer <agent>] [--meta k=v]…",
+      "project create [--id <id>] [--prefix <p>] --name <name> [--meta k=v]…",
     positionals: [],
     flags: [
       { flag: "id", key: "id", as: "string", value: "<id>", summary: "Project id; also the identifier prefix when --prefix is absent (must be unique across projects after normalization). Optional when --prefix is declared — the server mints an id." },
@@ -277,13 +276,6 @@ export const COMMANDS = [
       { flag: "meta", key: "meta", as: "kv", summary: "Repeatable key=value metadata." },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
-      {
-        flag: "reviewer",
-        key: "reviewer",
-        as: "string",
-        value: "<agent>",
-        summary: "Reviewer for this project; empty uses the deployment-level reviewer.",
-      },
     ],
     async run(ctx) {
       const { project } = await ctx.client.post("/api/v1/projects", {
@@ -292,7 +284,6 @@ export const COMMANDS = [
         labels: ctx.flags.labels,
         meta: metaWithPrefix(ctx.flags),
         readme: ctx.flags.readme,
-        reviewer: ctx.flags.reviewer,
       });
       return {
         data: { project },
@@ -306,7 +297,7 @@ export const COMMANDS = [
     summary: "Create a project if it does not exist; leave an existing one untouched.",
     usage:
       "project ensure <id> [--name <name>] [--prefix <p>] " +
-      "[--reviewer <agent>] [--meta k=v]… [--label <label>]… [--readme <text>]",
+      "[--meta k=v]… [--label <label>]… [--readme <text>]",
     positionals: [{ name: "id", summary: "Project id." }],
     flags: [
       { flag: "name", key: "name", as: "string", value: "<name>", summary: "Required only when the project does not exist yet." },
@@ -321,13 +312,6 @@ export const COMMANDS = [
       { flag: "meta", key: "meta", as: "kv", summary: "Repeatable key=value metadata (used only on creation)." },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
-      {
-        flag: "reviewer",
-        key: "reviewer",
-        as: "string",
-        value: "<agent>",
-        summary: "Reviewer for a newly created project; empty uses the deployment-level reviewer.",
-      },
     ],
     async run(ctx) {
       const { project, created } = await ctx.client.put(
@@ -337,7 +321,6 @@ export const COMMANDS = [
           labels: ctx.flags.labels,
           meta: metaWithPrefix(ctx.flags),
           readme: ctx.flags.readme,
-              reviewer: ctx.flags.reviewer,
         },
       );
       return {
@@ -351,23 +334,14 @@ export const COMMANDS = [
 
   {
     name: "update",
-    summary: "Update a project's name, labels, metadata, readme or reviewer.",
-    usage:
-      "project update <id> [--name <name>] " +
-      "[--reviewer <agent>] [--meta k=v]…",
+    summary: "Update a project's name, labels, metadata or readme.",
+    usage: "project update <id> [--name <name>] [--meta k=v]…",
     positionals: [{ name: "id", summary: "Project id." }],
     flags: [
       { flag: "name", key: "name", as: "string", value: "<name>" },
       { flag: "meta", key: "meta", as: "kv" },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
-      {
-        flag: "reviewer",
-        key: "reviewer",
-        as: "string",
-        value: "<agent>",
-        summary: "Set this project's reviewer; pass an empty value to fall back to the deployment one.",
-      },
     ],
     async run(ctx) {
       const body = {};
@@ -375,7 +349,6 @@ export const COMMANDS = [
       if (ctx.flags.meta !== undefined) body.meta = ctx.flags.meta;
       if (ctx.flags.labels !== undefined) body.labels = ctx.flags.labels;
       if (ctx.flags.readme !== undefined) body.readme = ctx.flags.readme;
-      if (ctx.flags.reviewer !== undefined) body.reviewer = ctx.flags.reviewer;
       const { project } = await ctx.client.patch(`/api/v1/projects/${ctx.args.id}`, body);
       return {
         data: { project },
@@ -397,8 +370,8 @@ export const COMMANDS = [
       const human = projects.length === 0
         ? "no projects"
         : table(
-            ["id", "name", "reviewer"],
-            projects.map((p) => [p.id, p.name, p.reviewer ?? "-"]),
+            ["id", "name"],
+            projects.map((p) => [p.id, p.name]),
           );
       return { data: { projects }, human };
     },

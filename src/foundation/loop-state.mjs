@@ -34,7 +34,7 @@ export const STATE_FILES = Object.freeze({
   sessionRecord: "supervisor.session.json",
 });
 
-/** Statuses that still consume a concurrency slot in the subagent ledger. */
+/** Statuses a legacy ledger row may carry while it still claims a concurrency slot. */
 export const LIVE_STATUSES = Object.freeze(["spawned", "running", "reattaching"]);
 
 /** The resident pool's defaults; every CLI flag overrides one. */

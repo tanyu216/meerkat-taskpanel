@@ -877,7 +877,8 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     const rows = [];
     for (const row of queueRows) {
       if (String(row?.status ?? "") !== "processing") continue;
-      if (String(row?.role ?? "worker") === "reviewer") continue;
+      // A review card now runs in its own claimed session, so a stale review
+      // handoff is the same finding as a stale worker one.
       const owner = owners.get(String(row?.target_dir ?? row?.claimedBy ?? ""));
       if (owner === undefined || owner.age === null || owner.age < bound) continue;
       rows.push({

@@ -23,7 +23,7 @@ import { workflowToWire } from "../../src/foundation/wire.mjs";
 import { runWorkflowTick } from "../../src/orchestrator/runners.mjs";
 
 const NOW = "2026-10-08T00:05:00.000Z";
-const CONFIG = Object.freeze({ reviewer: "jobs", maxActions: 20, reviewAgingMs: 60 * 60_000 });
+const CONFIG = Object.freeze({ assignee: "jobs", maxActions: 20, reviewAgingMs: 60 * 60_000 });
 
 /** A wire task with the fields the planner reads. */
 function card(overrides = {}) {

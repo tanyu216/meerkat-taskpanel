@@ -1668,13 +1668,13 @@ describe("server/requests — query-string coercions", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 0031 — project review policy, reviewer override, task decision
+// 0031 — no project reviewer override, no project acceptance
 // ---------------------------------------------------------------------------
 
-describe("server/routes — project reviewer, no project acceptance (0002)", () => {
+describe("server/routes — no project reviewer or acceptance (0031/0002)", () => {
   const AGENT = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "agent-a" }) };
 
-  it("round-trips a project's reviewer and drops the retired acceptance field", async () => {
+  it("drops the retired reviewer and acceptance fields", async () => {
     const created = dataOf(
       await call("POST", "/api/v1/projects", {
         id: "frq",
@@ -1684,16 +1684,17 @@ describe("server/routes — project reviewer, no project acceptance (0002)", () 
       }),
     );
     assert.equal(created.project.acceptance, undefined);
-    assert.equal(created.project.reviewer, "jobs");
+    assert.equal(created.project.reviewer, undefined);
 
     const updated = dataOf(
       await call("PATCH", "/api/v1/projects/frq", {
+        name: "Flow Required (renamed)",
         acceptance: "off",
         reviewer: "",
       }),
     );
     assert.equal(updated.project.acceptance, undefined);
-    assert.equal(updated.project.reviewer, null);
+    assert.equal(updated.project.reviewer, undefined);
   });
 
   it("defaults the card to auto and lets an explicit value win", async () => {
