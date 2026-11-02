@@ -1,10 +1,10 @@
 /**
- * The team's ownership matrix and the seams it pins.
+ * The cross-file seams between the role skills.
  *
- * `docs/agents/team-roles.md` is the maintainer's single source for "one
- * accountable role per work shape". It is a repository document, not an
- * installed skill: the role skills must not link back to it, and the matrix
- * must stay in step with the role manifests and the lifecycle documents.
+ * The ownership matrix that used to live in `docs/agents/team-roles.md` is
+ * gone; these assertions keep the seams it pinned. Each role skill, the board
+ * skill and the director policy must agree on who claims, who lands, and which
+ * handoff markers exist.
  *
  * Run with: node --test
  */
@@ -17,61 +17,6 @@ import { describe, it } from "node:test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
-const roleJson = (role) => JSON.parse(read(`skills/${role}/role.json`));
-
-const MATRIX = read("docs/agents/team-roles.md");
-const ROLES = ["jobs", "linus", "turing", "reviewer", "worker"];
-
-describe("team roles: the ownership matrix", () => {
-  it("covers every discovered role by its board name", () => {
-    for (const role of ROLES) {
-      const { agent } = roleJson(role);
-      assert.match(MATRIX, new RegExp(`\\b${agent}\\b`), `${role}: ${agent} is in the matrix`);
-    }
-  });
-
-  it("states the four layers and the one-role-per-shape rule", () => {
-    for (const layer of ["Human", "Director", "Supervisor", "Roles"]) {
-      assert.match(MATRIX, new RegExp(`\\*\\*${layer}\\*\\*`), `${layer} is named`);
-    }
-    assert.match(MATRIX, /one accountable role\s+per work shape/i);
-    assert.match(MATRIX, /a shape no role\s+describes goes to Worker/i);
-  });
-
-  it("leaves E1–E5 to the human", () => {
-    assert.match(MATRIX, /E1–E5\s*\|\s*a human/i);
-    assert.match(MATRIX, /E1–E5\s*→\s*human/i);
-  });
-
-  it("leaves landing and cleanup to the supervisor", () => {
-    assert.match(MATRIX, /\|\s*landing \/ cleanup\s*\|\s*Supervisor\s*\|/i);
-    assert.doesNotMatch(MATRIX, /landing and cleanup belong to the director/i);
-  });
-
-  it("names the markers each layer writes", () => {
-    for (const key of [
-      "stage_handoff",
-      "design_stage",
-      "product_change",
-      "review_gate",
-      "handoff_consumed_round",
-      "handoff_declined_round",
-    ]) {
-      assert.match(MATRIX, new RegExp(key), `${key} is inventoried`);
-    }
-  });
-
-  it("points at the live authorities rather than restating them", () => {
-    for (const link of [
-      "scheduling.md",
-      "lifecycle.md",
-      "skills/meerkat/SKILL.md",
-    ]) {
-      assert.match(MATRIX, new RegExp(link.replace(".", "\\.")), `${link} is linked`);
-    }
-    assert.doesNotMatch(MATRIX, /ARCHITECTURE\.md/, "no phantom ARCHITECTURE citation");
-  });
-});
 
 describe("team roles: the cross-file seams", () => {
   it("makes the reviewer's claim rule conditional on dispatch", () => {

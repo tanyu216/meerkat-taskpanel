@@ -322,7 +322,5 @@ Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/age
 - `docs/agents/development.md` — the two build layers and the server operations (one writer, bounded stop, lock contention).
 - `docs/agents/docker.md` — why verification is containerised, build/run, profiles, host-allowed checks.
 - `docs/agents/contract.md` — the API and CLI contract snapshots + route-request lint.
-- `docs/agents/team-roles.md` — the ownership matrix: one accountable role per work shape, the
-  decision authority, the handoff markers and the lifecycle seams.
 - `docs/agents/migration.md`, `docs/scheduling.md`, `docs/ops/observability.md` — the named subsystems.
 - `src/core/README.md` — what the core engine owns and the rules it enforces.
