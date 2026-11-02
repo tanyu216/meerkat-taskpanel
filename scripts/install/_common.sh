@@ -7,19 +7,15 @@
 #
 #   * `meerkat` — the board. Every agent kind installs it (`install_skill`). It was
 #     `meerkat-taskpanel` before the rename; `install_skill` migrates a legacy directory.
-#   * `meerkat-director` — the external supervisor's decision lane. The three non-OpenClaw
-#     agent kinds install it (`install_director_skill` + `install_scheduling`); **OpenClaw
-#     does not**, because the openclaw-team framework already ships a per-agent poll and a
-#     `task-patrol`, which is the same design (its cadence is the framework's own
-#     AUTOMATIONS.md, not a number restated here) — see `scripts/install/openclaw.sh` and
+#   * `meerkat-director`, `meerkat-chat`, `setup-meerkat` — the team layer. They follow the
+#     **primary** agent kind (`install_team_skills`): the explicit `--supervisor=enable`
+#     actor kind when one is named, else the first claude|codex|pi in normalized --target
+#     order. **OpenClaw never gets them**, because the openclaw-team framework already ships
+#     a per-agent poll and a `task-patrol` — see `scripts/install/openclaw.sh` and
 #     docs/scheduling.md.
-#   * `meerkat-chat` — the human's live console over the same board. It is installed beside
-#     the director for the same three kinds: it reads `loop doctor`/`loop console` and writes
-#     the human's answers with `--as-human`, which needs the loop and the board together.
-#     OpenClaw has no loop of its own, so it keeps the board skill only.
-#   * `setup-meerkat` — the install/repair and team-setup command. **Only the Claude
-#     bundle copies it** (`claude.sh`); the repository bundle and marketplace still carry
-#     it for the other kinds, but the bash installer does not copy it there.
+#   * the role skills (`skills/*/role.json`) — `install.sh` assigns each role to the kinds
+#     that already carry it (a fresh role defaults to the primary kind). director/chat/setup
+#     are never detected: the runtime finds the director wherever its skill is installed.
 #
 # Each agent-kind script sources this file and calls the pieces it needs. The two bundle agent kinds
 # (claude, codex) add the config / command / trigger helpers below; the skill-only agent kinds
@@ -227,9 +223,12 @@ setup_skill_name() { printf '%s\n' "setup-meerkat"; }
 # Deliberately shell-only: the node-check tests run the whole installer under a
 # fake `node` that answers `-v` and nothing else, so spawning node here would
 # read that fake and install a version string as a role name.
+#
+# `common_dir`, not `repo_root`: install.sh sources this file and assigns roles,
+# and its own $0 makes repo_root resolve the checkout's parent.
 role_skill_names() {
   local dir marker
-  for dir in "$(repo_root)"/skills/*/; do
+  for dir in "$(common_dir)/../../skills"/*/; do
     [ -d "$dir" ] || continue
     marker="$dir/role.json"
     [ -f "$marker" ] || continue
@@ -610,6 +609,19 @@ supervisor_value() {
   fi
 
   printf ''
+}
+
+# primary_agent_kind <normalized targets>
+#   The first loop kind (claude|codex|pi) in --target order, or nothing when none is
+#   selected. This is the same primary the supervisor's `enable` action uses; the team
+#   skills (director, chat, setup and any fresh role) follow it.
+primary_agent_kind() {
+  for primary_target in $1; do
+    case "$primary_target" in
+      claude | codex | pi) printf '%s\n' "$primary_target"; return 0 ;;
+    esac
+  done
+  return 0
 }
 
 # supervisor_actor_kinds_value <action> <explicit-list> <targets> — resolve which loop agent
@@ -1279,35 +1291,60 @@ install_skill() {
   migrate_legacy_skill "$agent_dir" "$label" "$skill" "$dest" "$link"
 }
 
-# install_director_skill <agent_dir> <label>
-#   The decision lane, the human's console and the five role skills, for the agent kinds that
-#   run an external supervisor. Always copies (O6); OpenClaw never calls this — its framework
-#   already ships an equivalent supervisor, so a second one would only race the first for the
-#   same cards.
-install_director_skill() {
-  install_skill "$1" "$2" "$(director_skill_name)" copy
-  install_skill "$1" "$2" "$(chat_skill_name)" copy
-  role_names="$(role_skill_names)" || {
-    echo "$2: cannot read the role skills from $(script_dir)/../skills" >&2
-    return 1
-  }
-  for role in $role_names; do
-    install_skill "$1" "$2" "$role" copy
+# install_team_skills <agent_dir> <label>
+#   The team layer for one agent kind: director, chat and setup when this is the primary
+#   kind, plus exactly the role skills install.sh assigned to it. `install.sh` always sets
+#   MEERKAT_TASKPANEL_ROLE_SKILLS (possibly empty) and MEERKAT_TASKPANEL_IS_PRIMARY; a
+#   direct scripts/install/<kind>.sh run has neither, so it keeps the old behaviour (the
+#   whole team on that kind) for the documented direct-invocation path.
+#   Always copies (O6); OpenClaw never calls this — its framework already ships an
+#   equivalent supervisor, so a second one would only race the first for the same cards.
+install_team_skills() {
+  team_agent_dir="$1"
+  team_label="$2"
+  if [ "${MEERKAT_TASKPANEL_ROLE_SKILLS+x}" = "x" ]; then
+    team_roles="${MEERKAT_TASKPANEL_ROLE_SKILLS}"
+    team_primary="${MEERKAT_TASKPANEL_IS_PRIMARY:-0}"
+  else
+    team_roles="$(role_skill_names)" || {
+      echo "$team_label: cannot read the role skills from $(common_dir)/../../skills" >&2
+      return 1
+    }
+    team_primary=1
+  fi
+
+  if [ "$team_primary" = "1" ]; then
+    install_skill "$team_agent_dir" "$team_label" "$(director_skill_name)" copy
+    install_skill "$team_agent_dir" "$team_label" "$(chat_skill_name)" copy
+    install_skill "$team_agent_dir" "$team_label" "$(setup_skill_name)" copy
+  fi
+  for team_role in $team_roles; do
+    install_skill "$team_agent_dir" "$team_label" "$team_role" copy
   done
-  install_native_agents "$2"
+  # Called even with zero roles: native-agents reports a generated definition for a role
+  # this kind no longer carries, and removes nothing.
+  install_native_agents "$team_label" "$team_roles"
 }
 
-# install_native_agents <label>
+# install_native_agents <label> [roles]
 #   Derive each role's native agent definition from the same role.json the
 #   supervisor reads (scripts/install/lib/native-agents.mjs). A differing file
 #   without the generated marker is reported, never clobbered without --force.
+#   With <roles> (space-separated), only those are written; an explicitly empty
+#   list writes none. Omitted, every role in the repository is written.
 install_native_agents() {
   label="$1"
-  dry_flag=""
-  [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ] && dry_flag="--dry-run"
-  force_flag=""
-  [ -n "${MEERKAT_TASKPANEL_FORCE:-}" ] && force_flag="--force"
-  node "$(script_dir)/lib/native-agents.mjs" --kind "$label" --home "$(target_home)" $dry_flag $force_flag || {
+  native_roles_set=0
+  native_roles=""
+  if [ "$#" -ge 2 ]; then
+    native_roles_set=1
+    native_roles="$2"
+  fi
+  native_args=("--kind" "$label" "--home" "$(target_home)")
+  [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ] && native_args+=("--dry-run")
+  [ -n "${MEERKAT_TASKPANEL_FORCE:-}" ] && native_args+=("--force")
+  [ "$native_roles_set" = "1" ] && native_args+=("--roles=$native_roles")
+  node "$(script_dir)/lib/native-agents.mjs" "${native_args[@]}" || {
     echo "$label: native agent definitions not refreshed (see above)" >&2
     return 0
   }

@@ -8,7 +8,7 @@
 # copied into this file is a number that drifts. OpenClaw users install that
 # framework instead; see docs/scheduling.md and docs/ops/install.md.
 #
-# That is why this script calls neither `install_director_skill` nor `install_scheduling`:
+# That is why this script calls neither `install_team_skills` nor `install_scheduling`:
 # there is no `~/.openclaw/skills/meerkat-director`, no `~/.openclaw/skills/meerkat-chat` and
 # no `~/.openclaw/scheduling`, on purpose, permanently (ruling O3). The chat console reads
 # `loop doctor`/`loop console`, which this target does not install. Two supervisors on one

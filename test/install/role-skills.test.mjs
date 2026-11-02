@@ -83,7 +83,9 @@ describe("role-skills — the install and package inventories", () => {
     const source = readFileSync(join(ROOT, "scripts/install/_common.sh"), "utf8");
     // Shell-only: a node spawn here would be intercepted by the node-check tests'
     // fake `node`, which answers `-v` and nothing else.
-    assert.match(source, /for dir in "\$\(repo_root\)"\/skills\/\*\/; do/);
+    // `common_dir`, not `repo_root`: install.sh sources this file and calls the
+    // lister, and its own $0 makes repo_root resolve the checkout's parent.
+    assert.match(source, /for dir in "\$\(common_dir\)\/\.\.\/\.\.\/skills"\/\*\/; do/);
     assert.match(source, /"meerkat-role"/);
     assert.doesNotMatch(
       source,

@@ -97,7 +97,7 @@ meerkat-taskpanel/
 ├── skills/                       # meerkat (board), meerkat-director (decisions),
 │                                 #   meerkat-chat (the human's live console),
 │                                 #   jobs/linus/turing/reviewer/worker (roles),
-│                                 #   setup-meerkat (install/repair + migration; Claude-only copy)
+│                                 #   setup-meerkat (install/repair + migration; primary-kind copy)
 ├── .claude-plugin/               # marketplace + the board plugin manifest (plugin root = the repo root)
 ├── .pi/                          # the Pi extension (declared by package.json's `pi` field)
 ├── design/                       # design artifacts: DESIGN / BLOCKS, prototype/, brand/, assets/
@@ -170,9 +170,9 @@ The `Bundle` column is the per-agent manifest that the agent's own plugin system
 
 The repository root is the board's plugin root, so every harness reads the one `skills/` tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle too — see [`docs/ops/install.md`](docs/ops/install.md#openclaw).
 
-The `meerkat-director`, `meerkat-chat` and role skills are not distributed through the marketplace. `install.sh --target claude|codex|pi` installs them. `--target openclaw` installs the board skill only for now; supervisor support for OpenClaw is on the [roadmap](#roadmap). See [The supervisor and the director](#the-supervisor-and-the-director).
+The `meerkat-director`, `meerkat-chat`, `setup-meerkat` and role skills are not distributed through the marketplace. `install.sh` puts them on the **primary kind** — the explicit `--supervisor=enable` kind when one is named, else the first `claude|codex|pi` in `--target` order (`all` → claude); an upgrade refreshes a role on the kind that already carries it. `--target openclaw` installs the board skill only for now; supervisor support for OpenClaw is on the [roadmap](#roadmap). See [The supervisor and the director](#the-supervisor-and-the-director).
 
-The **`setup-meerkat`** skill is the `/setup-meerkat` command. It detects what is installed, repairs what is missing, offers the Matt Pocock issue-tracker integration, moves role skills between agent platforms on request, and initializes a project's decision-rights pointer to the director. `install.sh --target claude` copies it to `~/.claude/skills/setup-meerkat`. Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
+The **`setup-meerkat`** skill is the `/setup-meerkat` command. It detects what is installed, repairs what is missing, offers the Matt Pocock issue-tracker integration, moves role skills between agent platforms on request, and initializes a project's decision-rights pointer to the director. `install.sh` copies it to the primary kind's skill directory (for example `~/.codex/skills/setup-meerkat` when codex is primary). Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
 
 Role skills have no roles root to own: each one is discovered from the agent kind whose `skills/` tree carries it, and that installation location is the routing. `/setup-meerkat` copies a role between kinds only on request and never deletes one the user did not name.
 
@@ -222,7 +222,7 @@ The full design — the clocks, the fire-only cost gate, idempotent wakes, the c
 
 ### Turn it on (and what it costs)
 
-`install.sh --target claude|codex|pi` installs the `meerkat-director`, `meerkat-chat` and role skills on each requested kind and writes that kind's launchd, systemd or cron units. They are not distributed through the marketplace.
+`install.sh` installs the `meerkat-director`, `meerkat-chat`, `setup-meerkat` and role skills on the **primary kind**, and writes every requested kind's launchd, systemd or cron units. An upgrade refreshes a role on the kind that already carries it. They are not distributed through the marketplace.
 
 A plain install only writes the units and prints the load command. It never starts a daemon for you. Loading is a separate, explicit act:
 
@@ -313,7 +313,7 @@ Ordered by priority; IM integration is the next planned item.
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |
 | **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity | *(planned)* |
 | **OpenClaw supervisor support** | Install and run the supervisor for the `openclaw` target (scheduling units + session pool). Today `--target openclaw` installs the board skill only; how it should coexist with OpenClaw's own poll/patrol still needs design | *(planned)* |
-| **OpenClaw setup-meerkat support** | Install and run `setup-meerkat` for the `openclaw` target. Today only `--target claude` copies it; OpenClaw can only read it from the shared bundle | *(planned)* |
+| **OpenClaw setup-meerkat support** | Install and run `setup-meerkat` for the `openclaw` target. The installer copies it to the primary loop kind; OpenClaw can still only read it from the shared bundle | *(planned)* |
 
 > The `M0`–`M6` labels are retired from this table: `M3` (the stdio MCP server) was landed
 > and then removed outright — see

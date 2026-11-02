@@ -347,9 +347,37 @@ describe("decision policy", () => {
       writeDirector(f, "claude", "# policy\n");
       const result = loadRoles({ home: f.home, primaryKind: "claude" });
       assert.equal(result.decisionPolicy.source, "director");
+      assert.equal(result.decisionPolicy.kind, "claude");
       assert.match(result.decisionPolicy.path, /meerkat-director\/references\/decision-policy\.md$/);
       assert.match(result.decisionPolicy.skillDir, /skills\/meerkat-director$/);
       assert.match(result.decisionPolicy.text, /policy/);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("finds the director on a non-primary kind", () => {
+    const f = fixture();
+    try {
+      const dir = writeDirector(f, "codex", "# installed elsewhere\n");
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.decisionPolicy.source, "director");
+      assert.equal(result.decisionPolicy.kind, "codex");
+      assert.equal(result.decisionPolicy.skillDir, dir);
+      assert.match(result.decisionPolicy.text, /installed elsewhere/);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("prefers the primary kind when several kinds carry the director", () => {
+    const f = fixture();
+    try {
+      writeDirector(f, "claude", "# primary\n");
+      writeDirector(f, "codex", "# other\n");
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.decisionPolicy.kind, "claude");
+      assert.match(result.decisionPolicy.text, /primary/);
     } finally {
       f.cleanup();
     }
@@ -381,9 +409,17 @@ describe("decision policy", () => {
       const result = loadRoles({ home: f.home, primaryKind: "claude" });
       assert.equal(result.decisionPolicy.source, null);
       assert.equal(result.decisionPolicy.path, null);
+      assert.equal(result.decisionPolicy.kind, "claude", "the primary kind is the fallback kind");
     } finally {
       f.cleanup();
     }
+  });
+
+  it("reports no policy when there is no home to scan", () => {
+    const result = loadRoles({ primaryKind: "pi" });
+    assert.equal(result.decisionPolicy.source, null);
+    assert.equal(result.decisionPolicy.skillDir, null);
+    assert.equal(result.decisionPolicy.kind, "pi");
   });
 });
 

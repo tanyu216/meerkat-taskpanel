@@ -8,10 +8,9 @@
  * the description is what the host uses to decide when to load the skill).
  *
  * The board skill goes to every agent kind; the supervisor's director skill, the human's chat
- * console and every role skill (each directory carrying `role.json` with the `meerkat-role`
- * marker — the standard five are `jobs`, `linus`, `turing`, `reviewer`, `worker`) go to
- * claude/codex/pi; `setup-meerkat` is the Claude-only install/repair command. All live in the
- * one `skills/` tree.
+ * console, every role skill (each directory carrying `role.json` with the `meerkat-role`
+ * marker — the standard five are `jobs`, `linus`, `turing`, `reviewer`, `worker`) and
+ * `setup-meerkat` go to the primary kind. All live in the one `skills/` tree.
  *
  * Node builtins only.
  */

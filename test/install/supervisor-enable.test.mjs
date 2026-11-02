@@ -902,10 +902,21 @@ describe("install.sh: --dry-run and per-agent-kind selection", () => {
     assert.equal(bootstraps.length, 4, "only claude's units are loaded");
     for (const line of bootstraps) assert.ok(line.includes(join(".claude", "scheduling")), line);
 
-    // Every loop agent kind is still installed — the selection is about the *action*, not the files.
-    for (const agentDir of [".claude", ".codex", ".agents"]) {
-      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-director", "SKILL.md")), `${agentDir} director skill`);
-      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat-chat", "SKILL.md")), `${agentDir} chat skill`);
+    // The action selection is not the file placement: the team skills follow the primary
+    // kind (claude for --target all), so the other kinds get the board only.
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-director", "SKILL.md")), "claude director skill");
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-chat", "SKILL.md")), "claude chat skill");
+    for (const agentDir of [".codex", ".agents"]) {
+      assert.equal(
+        existsSync(join(home, agentDir, "skills", "meerkat-director")),
+        false,
+        `${agentDir} must not receive the director skill`,
+      );
+      assert.equal(
+        existsSync(join(home, agentDir, "skills", "meerkat-chat")),
+        false,
+        `${agentDir} must not receive the chat skill`,
+      );
     }
   });
 

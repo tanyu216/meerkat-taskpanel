@@ -645,6 +645,49 @@ describe("session pool", () => {
     await pool.stop();
   });
 
+  it("opens the director lane on the kind that carries the director skill", async (t) => {
+    // Installation location is the routing: the supervisor runs as claude, but the
+    // director skill is installed under codex, so the director conversation must be
+    // a codex session (inline skill, not Claude's /meerkat-director opener).
+    const f = fixture(t);
+    const board = join(f.dir, ".claude", "skills", "meerkat");
+    mkdirSync(board, { recursive: true });
+    writeFileSync(join(board, "SKILL.md"), "---\nname: meerkat\n---\n", "utf8");
+    const skillDir = join(f.dir, ".codex", "skills", "meerkat-director");
+    mkdirSync(join(skillDir, "references"), { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: meerkat-director\n---\n", "utf8");
+    writeFileSync(join(skillDir, "references", "decision-policy.md"), "# policy\n", "utf8");
+
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f, { actorKind: "claude", maxConcurrency: 0 }),
+      kindPool: fake,
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "question:T-1:q-1",
+      queue_kind: "question",
+      role: "question",
+      card: "T-1",
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      question_id: "q-1",
+      question: "Which option?",
+      asked_at: "2026-01-01T00:00:00Z",
+    });
+    await pool.routeQuestionsNow();
+
+    const director = fake.opened.find((handle) => handle.role === "director" && handle.cwd === f.app);
+    assert.ok(director, "the director lane opens");
+    assert.equal(director.skillPath, join(skillDir, "SKILL.md"), "the codex skill is loaded at open");
+    assert.doesNotMatch(director.prompts[0], /^\/meerkat-director/, "not the Claude opener");
+    assert.match(director.prompts[0], /You are the director/);
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+    await pool.stop();
+  });
+
   it("leaves a handoff pending while the worker's turn is still in flight", async (t) => {
     const f = fixture(t);
     let releaseFirst;
@@ -1586,6 +1629,29 @@ describe("session pool", () => {
       { log: () => {}, kindPool: fakePool(), signal: controller.signal },
     );
     assert.equal(code, 0);
+    assert.equal(existsSync(join(f.dir, "session.lock")), false, "the lock is released");
+  });
+
+  it("starts when the director skill lives on another kind", async (t) => {
+    const f = fixture(t);
+    const home = join(f.dir, "home");
+    const board = join(home, ".claude", "skills", "meerkat");
+    mkdirSync(board, { recursive: true });
+    writeFileSync(join(board, "SKILL.md"), "---\nname: meerkat\n---\n");
+    const director = join(home, ".codex", "skills", "meerkat-director");
+    mkdirSync(join(director, "references"), { recursive: true });
+    writeFileSync(join(director, "SKILL.md"), "---\nname: meerkat-director\n---\n");
+    writeFileSync(join(director, "references", "decision-policy.md"), "# policy\n");
+
+    const controller = new AbortController();
+    controller.abort();
+    const lines = [];
+    const code = await runSession(
+      { ...optsFor(f), home, actorKind: "claude" },
+      { log: (line) => lines.push(line), kindPool: fakePool(), signal: controller.signal },
+    );
+    assert.equal(code, 0, lines.join("\n"));
+    assert.doesNotMatch(lines.join("\n"), /missing skill/);
     assert.equal(existsSync(join(f.dir, "session.lock")), false, "the lock is released");
   });
 

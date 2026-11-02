@@ -46,7 +46,7 @@ checkout.
 | `--dry-run` | detect, plan and print; **no writes**, no clone, no daemon, no env merge |
 | `--json` | machine-readable reports from the bundled scripts |
 | `--project <dir>` | the repository/project whose instruction file and detection inputs matter (default: cwd) |
-| `--actor-kind <kind>` | the platform to configure (default: `claude`); `all` runs detection across every loop platform, which is what the role → platform report reads |
+| `--actor-kind <kind>` | the platform to configure: pass the kind this skill is running on. `claude` is only the fallback default; `all` runs detection across every loop platform, which is what the role → platform report reads |
 | `--checkout <dir>` | use this checkout instead of discovering one |
 | `--human-name <name>` | the fixed local human name; exported as `MEERKAT_TASKPANEL_HUMAN_NAME` |
 | `--yes` | accept recommended defaults only; destructive/overwrite/daemon steps still ask |
@@ -162,19 +162,23 @@ node <skill-dir>/scripts/configure-env.mjs --file <env-file> --key TASKD_URL --v
 Then show the plan with the installer's own dry run, and only then run it:
 
 ```bash
-bash <checkout>/install.sh --target claude,server --agent-name <name> --dry-run
+# <kind> is the platform this skill is running on (claude, codex or pi).
+bash <checkout>/install.sh --target <kind>,server --agent-name <name> --dry-run
 # local board: the same without --dry-run
-# remote board: bash <checkout>/install.sh --target claude --no-automation
+# remote board: bash <checkout>/install.sh --target <kind> --no-automation
 ```
+
+The first `claude|codex|pi` in `--target` is the primary kind and receives the team skills;
+an upgrade refreshes a role on the kind that already carries it.
 
 Always drive the installer with explicit flags (or `--non-interactive`); never `-i`, and
 never a bare `install.sh` from a terminal — with no options on a TTY it opens a wizard and
 waits for a human.
 
 - **Local + reachable**: skip the server install; do not restart what is healthy.
-- **Local + unreachable**: propose `--target claude,server`; the taskd guard loads a
+- **Local + unreachable**: propose `--target <kind>,server`; the taskd guard loads a
   keepalive, so ask separately before enabling it.
-- **Remote + reachable**: `--target claude --no-automation` (no local server, no guard),
+- **Remote + reachable**: `--target <kind> --no-automation` (no local server, no guard),
   then confirm the remote URL in the env file. Never fall back to localhost.
 - **Remote + unreachable**: report the failure and ask for a corrected URL; stop.
 - **No URL/pointer**: report `source: "default"` and confirm
@@ -188,9 +192,10 @@ installer renders it into `TASKCTL_HUMAN`. If the name is a fallback (`USER`/`LO
 ask for the fixed name and set it explicitly. A token goes in `TASKD_TOKEN` or
 `TASKD_TOKEN_FILE` (mode 0600); never print it.
 
-`install.sh` copies `setup-meerkat` only for **Claude**; other actor kinds get the board
-skill, the `meerkat-chat` console, the `meerkat-director` hub and the five role skills.
-OpenClaw gets the board only by design.
+`install.sh` copies `setup-meerkat` onto the **primary kind** (the first `claude|codex|pi`
+in `--target`); other actor kinds get the board skill only. OpenClaw gets the board only by
+design. The runtime finds `meerkat-director` wherever it is installed, so no config records
+its location.
 
 ## 3. Matt Pocock integration
 
@@ -301,10 +306,16 @@ The decision hub is `meerkat-director`, installed beside them; its
 installed kind, prefers its own primary kind, then the configured
 `MEERKAT_TASKPANEL_AGENT_KIND_ORDER` (written by `install.sh` from the `--target` order; the
 default is claude → codex → pi). There is no roles root, no manifest and no
-platform-mapping config key. `install.sh --target claude|codex|pi`
-copies every role skill the repository ships (the standard five are jobs, linus, turing,
-reviewer, worker), the chat console and the director; `--target all` installs every kind.
-Role skills are always **copied**, never linked.
+platform-mapping config key.
+
+`install.sh` puts the director, the chat console, this skill and every role skill on the
+**primary kind** — the explicit `--supervisor=enable` actor kind when one was named, else the
+first `claude|codex|pi` in `--target` order (`all` → claude). On an upgrade it scans for each
+role and refreshes every copy that is in `--target`; a role whose only home is outside
+`--target` is reported and left alone, and a role added by a later release defaults to the
+primary kind. Role skills are always **copied**, never linked. The runtime finds
+`meerkat-director` by scanning the installed kinds (primary first), so its location is never
+a config value.
 
 ### Defaults the installer writes
 
@@ -332,8 +343,8 @@ Creating a team card is the routing step: pass the role's board name
 `fallback`. Installation location *is* the answer: a role installed on one kind runs there.
 
 To move a role — for example Turing onto codex — copy its skill directory from the source
-kind to the target kind's `skills/` tree with the bundled script (the director is not moved;
-it stays on the primary kind):
+kind to the target kind's `skills/` tree with the bundled script (the director is not moved
+by this skill; the runtime finds it wherever it is installed):
 
 ```bash
 node <skill-dir>/scripts/route-role.mjs --role turing --to codex --home <home> --dry-run
@@ -374,8 +385,9 @@ and follow its printed commands with the user's consent.
 1. Re-run `<skill-dir>/scripts/detect.mjs --json`; report every discovered role with
    `installedOn`, `effective` and `fallback`, and the discovered scan set (worker roles plus
    the configured reviewer) the supervisor will use.
-2. Check the director's decision policy exists at the installed `meerkat-director` skill
-   (`references/decision-policy.md`); its absence is a finding, not a pass.
+2. Check the director's decision policy exists at the installed `meerkat-director` skill —
+   the kind `detect.mjs` reports as carrying it (the runtime scans, so it need not be the
+   primary kind) — at `references/decision-policy.md`; its absence is a finding, not a pass.
 3. Check that every kind a role is expected to run on has its CLI available; an unavailable
    kind is a fallback or a reported gap, never a silent one.
 4. Run `install.sh --supervisor=enable` for the primary actor kind. Then read

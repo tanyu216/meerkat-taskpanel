@@ -22,6 +22,7 @@ import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs"
 import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
 import {
   loadRoles,
+  resolveDirectorSkill,
   roleVariant,
   selectReviewerRole,
   selectRole,
@@ -958,7 +959,12 @@ export function createSessionPool(input = {}) {
         kindOrder: opts.kindOrder,
         explicitDir: opts.rolesDir ?? null,
       });
-      const directorKind = String(opts.actorKind ?? roleSet?.primaryKind ?? "claude");
+      // Installation location is the routing for the director too: the skill may sit on
+      // another kind (a codex-only install, or a copy that was not migrated). Use the
+      // kind that actually carries it, so the lane opens with that CLI.
+      const directorKind = String(
+        roleSet?.decisionPolicy?.kind ?? opts.actorKind ?? roleSet?.primaryKind ?? "claude",
+      );
       const directorSkillDir = roleSet?.decisionPolicy?.skillDir ?? null;
       const directorFingerprint = skillFingerprint(directorSkillDir);
       const directorMode = skillLoadMode(directorKind);
@@ -979,6 +985,7 @@ export function createSessionPool(input = {}) {
       let entry = await ensureSession(dir, {
         cwd: dir,
         role: "director",
+        actorKind: directorKind,
         skillPath: directorSkillPath,
       });
       if (entry.busy === true) {
@@ -1006,6 +1013,7 @@ export function createSessionPool(input = {}) {
         entry = await ensureSession(dir, {
           cwd: dir,
           role: "director",
+          actorKind: directorKind,
           skillPath: directorSkillPath,
         });
       }
@@ -2227,11 +2235,16 @@ export async function runSession(opts, deps = {}) {
   const log = deps.log ?? (() => {});
   // The resident sessions load skills by name: the director lane runs
   // `meerkat-director`, and workers/reviewers use the board skill. A missing
-  // install is a hard error, not a session that silently cannot work.
-  const paths = agentPaths(opts.home ?? homedir(), opts.actorKind ?? "claude");
-  const missing = [paths.directorSkill, paths.boardSkill].filter(
-    (dir) => !existsSync(join(dir, "SKILL.md")),
-  );
+  // install is a hard error, not a session that silently cannot work. The director
+  // is found wherever its skill is installed (the primary kind first): its location
+  // is routing, not a config value.
+  const home = opts.home ?? homedir();
+  const paths = agentPaths(home, opts.actorKind ?? "claude");
+  const director = resolveDirectorSkill(home, opts.actorKind ?? "claude", opts.kindOrder);
+  const missing = [
+    director.exists ? null : director.skillDir,
+    existsSync(join(paths.boardSkill, "SKILL.md")) ? null : paths.boardSkill,
+  ].filter((dir) => dir !== null);
   if (missing.length > 0) {
     log(
       `session: missing skill(s): ${missing.join(", ")} — run ` +

@@ -186,7 +186,7 @@ export async function main(argv, env = process.env, io = {}) {
       log(lines.length > 0 ? `roles: ${lines.join("; ")}` : "roles: none discovered");
       if (roleSet.roles.length > 0 && roleSet.decisionPolicy?.path == null) {
         log(
-          "roles: no meerkat-director decision policy found on the primary kind — decision rows fall back to the built-in summary",
+          "roles: no meerkat-director skill found on any agent kind — decision rows fall back to the built-in summary",
           { level: "warning" },
         );
       }

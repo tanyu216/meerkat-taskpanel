@@ -415,10 +415,20 @@ unit and it is the only thing that can dispatch a worker.
 _中文_: 常驻会话池
 _Avoid_: worker pool, daemon, agent team
 
+**Primary agent kind**:
+The explicit `--supervisor=enable` actor kind when one is named, else the first
+`claude|codex|pi` in normalized `--target` order (`--target all` → `claude`). It is the kind
+`install.sh` gives the team skills — the director, the chat console, `setup-meerkat` and a
+fresh install's role skills. An upgrade refreshes a role on the kind that already carries it
+instead.
+_中文_: 主 agent kind
+_Avoid_: main platform, default agent, config key
+
 **Director lane**:
 The pool's decision conversation for one project directory — the `meerkat-director` skill
 answering question, route, triage and escalation decisions. It is not a role, receives no
-card, draws no worker budget, and always runs on the supervisor's primary kind.
+card, draws no worker budget, and runs on the kind that carries the director skill (the
+primary kind first, then the configured kind order), discovered at session open.
 _中文_: 决策通道
 _Avoid_: project session, control lane
 
