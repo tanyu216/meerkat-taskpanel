@@ -29,6 +29,19 @@ describe("platformChain", () => {
     assert.deepEqual(platformChain(role("turing", ["codex"]), "claude"), ["codex"]);
   });
 
+  it("honors the configured kind order after the primary", () => {
+    // The configured order flips codex/pi relative to the old fixed order.
+    assert.deepEqual(platformChain(role("turing", ["codex", "pi"]), "claude", ["pi", "codex", "claude"]), ["pi", "codex"]);
+    assert.deepEqual(platformChain(role("turing", ["pi", "claude"]), "codex", ["pi", "codex", "claude"]), ["pi", "claude"]);
+    // The running primary still wins when it carries the role.
+    assert.deepEqual(platformChain(role("turing", ["pi", "claude"]), "claude", ["pi", "claude", "codex"]), ["claude", "pi"]);
+  });
+
+  it("appends kinds missing from the configured order", () => {
+    assert.deepEqual(platformChain(role("turing", ["codex", "pi"]), "claude", ["pi"]), ["pi", "codex"]);
+    assert.deepEqual(platformChain(role("turing", ["codex", "pi"]), "claude", []), ["codex", "pi"]);
+  });
+
   it("keeps a single-kind role single and falls back to platform", () => {
     assert.deepEqual(platformChain(role("turing", ["codex"]), null), ["codex"]);
     assert.deepEqual(platformChain({ id: "x", platform: "pi" }, "claude"), ["pi"]);

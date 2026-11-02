@@ -210,17 +210,18 @@ describe("loop doctor — the report", () => {
     seedState(dir);
     writeLog(dir, 50);
 
-    // The scan set comes from config, never from `--agent` (which names units), so
-    // the test sets it explicitly instead of inheriting the developer's environment.
-    const previous = process.env.MEERKAT_TASKPANEL_AGENTS;
-    process.env.MEERKAT_TASKPANEL_AGENTS = "alice,bob";
-    let report;
-    try {
-      report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
-    } finally {
-      if (previous === undefined) delete process.env.MEERKAT_TASKPANEL_AGENTS;
-      else process.env.MEERKAT_TASKPANEL_AGENTS = previous;
+    // The scan set is discovery, never `--agent` (which names the units): two role
+    // skills on this home stand in for the team.
+    for (const [skill, agent] of [["jobs", "alice"], ["linus", "bob"]]) {
+      const roleDir = join(dir, ".claude", "skills", skill);
+      mkdirSync(roleDir, { recursive: true });
+      writeFileSync(join(roleDir, "SKILL.md"), `---\nname: ${skill}\n---\n`);
+      writeFileSync(
+        join(roleDir, "role.json"),
+        JSON.stringify({ schema: "meerkat-role", id: skill, agent, lanes: ["worker"] }),
+      );
     }
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
 
     assert.equal(report.read_only, true);
     assert.equal(report.supervisor.verdict, "absent");

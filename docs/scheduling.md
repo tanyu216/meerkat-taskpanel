@@ -985,11 +985,12 @@ path must stay inside the skill directory, including through symlinks.
 **Discovery is the routing.** The supervisor scans every installed kind's skills tree
 (`<home>/<agent-dir>/skills/*/role.json` for claude, codex and pi) and merges by role id.
 Each hit records the kind that carries it. The effective platform is the supervisor's
-**primary kind** when the role is installed there, else the first kind that carries it
-(fixed order claude → codex → pi). At dispatch, an adapter that cannot start falls back to
-another kind that carries the same role; if none does, the card is left unclaimed and
-reported. Installation location is the only configuration — there is no platform-mapping
-key.
+**primary kind** when the role is installed there, else the first kind that carries it in
+the configured order `MEERKAT_TASKPANEL_AGENT_KIND_ORDER` (install writes the `--target`
+order; the default is claude → codex → pi). At dispatch, an adapter that cannot start falls
+back to another kind that carries the same role; if none does, the card is left unclaimed
+and reported. Installation location is the routing; the only other configuration is that
+preference order — there is no platform-mapping key.
 
 **Two layers.** The supervisor routes by the card's assignee and puts the role's title,
 responsibilities and boundaries into the full handoff (layer 1); a resident worker session
@@ -1046,13 +1047,17 @@ are settled, numbered Q1..Qn with a recommendation each, one question string per
 the asker looking up the facts. The director skill ships the full round method as
 `references/rounds.md`; the frontier rule above is the design requirement.
 
-**The scan set.** `MEERKAT_TASKPANEL_AGENTS` is the union of the configured names and every
-discovered role's board name (plus the reviewer and `Worker`). The installed units carry no
-`--agent`, so this key still names the supervisor's identity; a name no skill and no config
-names can never claim its cards. `/setup-meerkat` writes the default set and offers the
-cross-platform migration with `scripts/route-role.mjs`: copy a role skill into another
-kind's tree, remove the source only with explicit consent (`--confirm-remove`, never in a dry
-run), and report an old `meerkat-loop` roles tree as deprecated without deleting it.
+**The scan set.** Discovery *is* the claim set: every discovered worker-lane role's board
+name, plus the configured reviewer(s). There is no scan-set key — a writer identity with no
+role skill can write, but its cards are never claimed. Each scheduling unit carries
+`--agent <installer name>` as the loop's **writer** identity (a launchd/systemd/cron start
+has no shell `TASKCTL_AGENT` to inherit); that flag does not narrow the claim set. The
+discovered set is published locally as `<config root>/roles.json` by `taskctl role sync`
+(every poll, full replacement), and `taskctl role list` is the assignee range
+`/setup-meerkat` and the `meerkat` skill read. `/setup-meerkat` offers the cross-platform
+migration with `scripts/route-role.mjs`: copy a role skill into another kind's tree, remove
+the source only with explicit consent (`--confirm-remove`, never in a dry run), and report an
+old `meerkat-loop` roles tree as deprecated without deleting it.
 
 ## The director lane
 
@@ -2141,11 +2146,11 @@ unseen or running. On `--target all`, `--supervisor=enable` therefore does **not
 
 Per-OS commands below are written for the Claude install (`~/.claude`); for Codex and Pi
 substitute `~/.codex` / `~/.agents` for the agent kind directory and `codex` / `pi` for
-`--actor-kind`. `<agent>` names the unit label and state directory from the install's
-`--agent-name` (default `Worker`), and `<uid>` is `id -u`. The units carry no `--agent`:
-the supervisor's scan set is the per-kind config's `MEERKAT_TASKPANEL_AGENTS` **plus every
-worker-lane role skill discovered on the installed kinds**. `install.sh` seeds the key with
-`Jobs,Linus,Turing,Worker` and the installing agent's name.
+`--actor-kind`. `<agent>` names the unit label, state directory and `--agent` flag from the
+install's `--agent-name` (default `Worker`), and `<uid>` is `id -u`. The unit's `--agent` is
+the loop's **writer** identity; the claim set is every worker-lane role skill discovered on
+the installed kinds plus the configured reviewer. `install.sh` renders the flag and writes
+`MEERKAT_TASKPANEL_AGENT_KIND_ORDER` from the `--target` order.
 
 ### macOS — launchd
 
@@ -2315,16 +2320,15 @@ loosens it: the resident adapters ship **no** bypass flag by default, and turnin
 still needs the written authorization, documented at the point of use, that section
 describes.
 
-- **Identity and parameters.** The units start the supervisor with `--actor-kind <h>` and
-  one pass (`taskctl loop run --ping-once` / `--continue-once`); they deliberately carry no
-  `--agent`, so the scan set is the per-kind config's `MEERKAT_TASKPANEL_AGENTS` (seeded by
-  `install.sh` with `Jobs,Linus,Turing,Worker`) plus every discovered worker-lane role.
-  A flag here would outrank that key and leave a team's role cards unclaimed. The tick runs
-  the passes in-process; poll claims a card and enqueues it, and the resident pool runs the
-  card in its own worker session on the kind that carries the role. A resumed session
-  continues it (`claude --resume <sid>` / `codex thread/resume` / `pi --session-id <sid>`
-  are the resident resume forms; `claude -p "<handoff>" [--resume <sid>]` etc. are the
-  one-shot shapes).
+- **Identity and parameters.** The units start the supervisor with `--actor-kind <h>`, `--agent
+  <installer name>` and one pass (`taskctl loop run --ping-once` / `--continue-once`). The
+  `--agent` is the loop's **writer** identity — the minimal unit environment has no
+  `TASKCTL_AGENT` to inherit. It does not narrow the claim set, which is every discovered
+  worker-lane role (plus the configured reviewer). The tick runs the passes in-process; poll
+  claims a card and enqueues it, and the resident pool runs the card in its own worker session
+  on the kind that carries the role. A resumed session continues it (`claude --resume <sid>` /
+  `codex thread/resume` / `pi --session-id <sid>` are the resident resume forms;
+  `claude -p "<handoff>" [--resume <sid>]` etc. are the one-shot shapes).
 - **Logs.** `<config root>/logs/supervisor.log` (the supervisor's `--log`) — one file for
   every actor kind, each line tagged `actor_kind=<kind>` — written and rotated by the supervisor
   itself. The units do **not** redirect their stdout/stderr into it — that would duplicate
@@ -2357,11 +2361,11 @@ describes.
   [The cost gate: a worker turn starts only on fire](#the-cost-gate-a-worker-turn-starts-only-on-fire).
 - **Disable and status** are part of the same entry point: `--supervisor=disable` unloads /
   removes, `--supervisor=status` prints the per-agent kind load state and changes nothing
-  (per-OS forms above). Status also names the **primary platform**, the configured **scan
-  set** (`MEERKAT_TASKPANEL_AGENTS`) and the discovered **role → platform** map (every
-  `installedOn` entry and the effective kind), and closes with a machine line — a machine
-  that still runs a second kind's supervisor is visible there, with the command that stops
-  it.
+  (per-OS forms above). Status also names the **primary platform**, the discovered **scan
+  set** (worker roles + reviewer, read from the target home's role skills) and the discovered
+  **role → platform** map (every `installedOn` entry and the effective kind), and closes with
+  a machine line — a machine that still runs a second kind's supervisor is visible there,
+  with the command that stops it.
 
 ### OpenClaw stays excluded
 

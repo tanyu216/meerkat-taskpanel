@@ -69,8 +69,9 @@ Report the important rows, not the raw JSON:
   `default`), `loopback` vs `remote`, and `/health`;
 - board/chat/director/setup skills per actor kind, and the installed skill names each platform
   actually has; loop state and live pool; supervisor units;
-- per platform (`platforms`): its current `MEERKAT_TASKPANEL_AGENTS` scan set and
-  `MEERKAT_TASKPANEL_REVIEWER`, whether pi has `pi-subagents`, and `available`;
+- per platform (`platforms`): its `MEERKAT_TASKPANEL_AGENT_KIND_ORDER` and
+  `MEERKAT_TASKPANEL_REVIEWER`, the role skills it actually carries (`roles`), whether pi
+  has `pi-subagents`, and `available`;
 - every discovered role with `installedOn`, `effective` and `fallback` — installation
   location is the routing, so this is a report, never a write;
 - any retired `meerkat-loop` skill / roles tree / `MEERKAT_TASKPANEL_ROLES_DIR` value
@@ -123,7 +124,8 @@ When detection reports more than one **available** agent kind, add one later-rou
 question — **which kinds carry which role skills** — after the install set is settled:
 
 1. Show each kind's facts: chat and director skills, subagent support (pi needs
-   `pi-subagents`), the role skills it carries, and its current scan set. Never guess these.
+   `pi-subagents`), the role skills it carries, and its configured reviewer. Never guess
+   these.
 2. Recommend **one kind for all roles** (one supervisor per machine), chosen as the kind
    whose capabilities best cover the team.
 3. Offer a move as the explicit alternative — a role skill copied to another kind and
@@ -296,11 +298,13 @@ The decision hub is `meerkat-director`, installed beside them; its
 
 **Installation location is the routing.** A role skill present under
 `<home>/<agent-dir>/skills/<role>/` is carried by that kind; the supervisor scans every
-installed kind, prefers its own primary kind, then claude → codex → pi. There is no roles
-root, no manifest and no platform-mapping config key. `install.sh --target claude|codex|pi`
-copies all five role skills, the chat console and the director; `--target all` installs every
-kind. Role skills
-are always **copied**, never linked.
+installed kind, prefers its own primary kind, then the configured
+`MEERKAT_TASKPANEL_AGENT_KIND_ORDER` (written by `install.sh` from the `--target` order; the
+default is claude → codex → pi). There is no roles root, no manifest and no
+platform-mapping config key. `install.sh --target claude|codex|pi`
+copies every role skill the repository ships (the standard five are jobs, linus, turing,
+reviewer, worker), the chat console and the director; `--target all` installs every kind.
+Role skills are always **copied**, never linked.
 
 ### Defaults the installer writes
 
@@ -308,14 +312,16 @@ are always **copied**, never linked.
 overwrite without consent:
 
 ```text
-MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing,Worker
+MEERKAT_TASKPANEL_AGENT_KIND_ORDER=claude,codex,pi
 MEERKAT_TASKPANEL_REVIEWER=Reviewer
 MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes
 ```
 
 `CLAIM_UNASSIGNED=yes` is the Worker default: an unassigned card is claimed as `Worker`,
-never as whichever role the scan names first. `AGENTS` is the scan set for a role that has
-no skill (a custom agent name); discovered role skills are added automatically.
+never as whichever role the scan names first. The claim set is **discovered**, not configured:
+there is no scan-set key, and a custom name with no role skill writes without being claimable.
+The scheduling units carry the loop's writer identity (`--agent`); the catalog
+(`<config root>/roles.json`, read with `taskctl role list`) is the assignee range.
 
 Creating a team card is the routing step: pass the role's board name
 (`--assignee Jobs --assignee-kind agent`).
@@ -341,11 +347,13 @@ node <skill-dir>/scripts/route-role.mjs --role turing --to codex --home <home> -
   unless `--force` is given.
 
 **Retired structures are reported, never read or deleted.** `detect.mjs` names a legacy
-`meerkat-loop` skill, a `meerkat-loop/roles/` tree, a project `.meerkat/roles/`, or a
-`MEERKAT_TASKPANEL_ROLES_DIR` value: all are deprecated, none is consulted, and the skill
-removes none of them. The new role skills already ship their own workflows; an old file is
-copied into a role skill only when the user asks for that specific file, after reviewing it
-— nothing is copied or deleted automatically.
+`meerkat-loop` skill, a `meerkat-loop/roles/` tree, a project `.meerkat/roles/`, or an
+old-shape `MEERKAT_TASKPANEL_ROLES_DIR` value: all are deprecated, and the skill removes
+none of them. One distinction matters: a `MEERKAT_TASKPANEL_ROLES_DIR` that points at a
+directory of `role.json` directories is still honored as an explicit discovery override by
+the supervisor; a roles tree without `role.json` files is not read. The new role skills
+already ship their own workflows; an old file is copied into a role skill only when the user
+asks for that specific file, after reviewing it — nothing is copied or deleted automatically.
 
 The team's prose (each role's workflow, self-check, the reviewer protocol and the security
 checklist) lives only in those skills. This skill installs them and initializes the project;
@@ -364,7 +372,8 @@ and follow its printed commands with the user's consent.
 ## 7. Verify and finish
 
 1. Re-run `<skill-dir>/scripts/detect.mjs --json`; report every discovered role with
-   `installedOn`, `effective` and `fallback`, and the scan set the supervisor will use.
+   `installedOn`, `effective` and `fallback`, and the discovered scan set (worker roles plus
+   the configured reviewer) the supervisor will use.
 2. Check the director's decision policy exists at the installed `meerkat-director` skill
    (`references/decision-policy.md`); its absence is a finding, not a pass.
 3. Check that every kind a role is expected to run on has its CLI available; an unavailable

@@ -282,13 +282,28 @@ a leftover `MEERKAT_TASKPANEL_PROJECTS_JSON` line from `.env` / `.env.<kind>` �
 would otherwise refuse the unknown key. A file that is not the documented shape is left in
 place with a warning; repair it with `taskctl project map set`.
 
+### The local `roles.json` (one per install, at the config root)
+
+The role **catalog** is the host-local projection of the roles the supervisor discovered:
+`<config root>/roles.json`, beside `projects.json` and the per-kind configs. It is written only by
+`taskctl role sync --file <path|->` (the supervisor's poll publishes the discovered set on every
+tick, a full replacement) and read by `taskctl role list` (the valid `assignee` range). Both are
+local commands: no board request, no token. Identical content is a no-op; a malformed file is
+reported and treated as absent, and the next sync repairs it.
+
+It is **not board state**: there is no table, route or event, and no cross-machine sync. It is
+git- and docker-ignored at the root. `install.sh` ships none and never writes one; the first
+supervisor tick creates it. The loop's own writer identity is separate — `--agent` in the
+scheduling units / `TASKCTL_AGENT` in the shim — and a name with no role skill is not
+claimable.
+
 ### Scheduling units (claude, codex, pi)
 
 | Artefact | Where | What |
 |---|---|---|
 | director skill | `<agent-dir>/skills/meerkat-director/` | the decision hub as a skill: its `SKILL.md` plus the decision policy and operator view. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked |
 | chat skill | `<agent-dir>/skills/meerkat-chat/` | the human's console as a skill: its `SKILL.md` plus the console, answering and acceptance references. It carries no execution body; every write is the `meerkat` board skill's command. Always **copied**, never symlinked |
-| role skills | `<agent-dir>/skills/{jobs,linus,turing,reviewer,worker}/` | each role's workflow, `role.json` and references. Always **copied**; where a role is installed is the platform that runs it |
+| role skills | `<agent-dir>/skills/<role>/` for every discovered role (the standard five are jobs, linus, turing, reviewer, worker) | each role's workflow, `role.json` and references. The list is data (`scripts/install/lib/role-skills.mjs`), not a hard-coded set. Always **copied**; where a role is installed is the platform that runs it |
 | loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, worker transcripts, `continue.state.json` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
 | launchd | `<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
 | systemd | `<agent-dir>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
@@ -303,7 +318,7 @@ that same set. The shim heads the list so a globally installed `taskctl` cannot 
 and write the wrong actor identity. If the agent CLI is not on `PATH` at install time, the
 installer says so and renders the shim directory and node's alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](../scheduling.md#what-the-loops-units-run-with).
-| per-kind config | `<program root>/.env.<actor-kind>` | the loop's policy: claiming, stale recovery, where `taskctl` lives (`MEERKAT_TASKPANEL_REPO`), the workflow channel, the clocks, the concurrency cap and the session pool. **Every key, its default and its allowed values are inventoried once in [`.env.example`](../../.env.example)** (`docs/tech-spec.md` TS-26). Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
+| per-kind config | `<program root>/.env.<actor-kind>` | the loop's policy: claiming, stale recovery, where `taskctl` lives (`MEERKAT_TASKPANEL_REPO`), the workflow channel, the clocks, the concurrency cap, the session pool and the role kind preference (`MEERKAT_TASKPANEL_AGENT_KIND_ORDER`). **Every key, its default and its allowed values are inventoried once in [`.env.example`](../../.env.example)** (`docs/tech-spec.md` TS-26). Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
 | log (runtime) | `<program root>/logs/supervisor.log` | the supervisor's tick log — **one file for every actor kind**, each line carrying `actor_kind=<kind>`; `~/.meerkat-taskpanel/logs/supervisor.log` for a combined install |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
@@ -732,7 +747,9 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--no-server` | Install the agent-kind skills only, leaving the runtime tree out (`--target all --no-server` is the old `all`). |
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`; the server tree lands at `<home>/.meerkat-taskpanel`. |
 | `--skip-web-build` | Never try to build `web/dist`. A server install without a prebuilt `web/dist` is then API-only (with a warning) instead of building it. |
-| `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle and seeded as the loop's default `MEERKAT_TASKPANEL_AGENTS` (default `Worker`). `/setup-meerkat` replaces that key with a team's role list; the scheduling units carry no `--agent`, so the key is the loop's identity. |
+| `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle and rendered into every scheduling unit as `--agent <name>` (default `Worker`). It is the loop's **writer** identity, not its claim set: what the loop claims for is every discovered worker-lane role plus the configured reviewer. |
+| `--supervisor-actor-kinds <kind>` | With `--supervisor=enable`, which loop kind is the **primary** (one per machine). The normalized `--target` order, primary first, becomes `MEERKAT_TASKPANEL_AGENT_KIND_ORDER`; a kind the order omits is appended at discovery time, never excluded. |
+| `--supervisor=enable\|disable\|status` | Apply the supervisor action per loop kind. `status` prints the discovered scan set (worker roles + configured reviewer) and the machine view. |
 | `--no-automation` | Skip the Codex scheduling units **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each agent-kind installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<program root>/.env.<actor-kind>`; overrides the interactive answer. Default `yes`. |
@@ -743,7 +760,7 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
 | `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the agent kind with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
 | `--continue=yes\|no` | Enable the continue turn. Persisted to the per-kind config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
-| `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints each agent kind's load state, platform and configured scan set, plus a machine-level view of every loaded loop kind, and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
+| `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints each agent kind's load state, platform and discovered scan set (worker roles + reviewer), plus a machine-level view of every loaded loop kind, and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
 | `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}`. For `enable` it must name exactly one kind (the primary kind); listing several is refused because one supervisor already holds every kind. `disable`/`status` default to every loop kind in `--target` and accept a narrowing list. A kind outside `--target` is named and dropped. Not `--actor-kind`: that is the loop's per-command identity flag. `openclaw` is **rejected** (reason on stderr, exit 2). |
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](../scheduling.md#enabling-the-supervisor-opt-in). |
 | `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |
@@ -787,8 +804,9 @@ never an error:
   exactly as they are, and the installer reports each as unchanged — for an emitted file,
   `left unchanged — use --force to overwrite`. This means changing a flag such as
   `--agent-name` on its own does **not** take effect on an existing install — it still
-  exits 0, with only the unchanged notices on stdout. The loop's identity is the
-  `MEERKAT_TASKPANEL_AGENTS` key; `--agent-name` seeds it only when the file lacks it.
+  exits 0, with only the unchanged notices on stdout. The loop's **writer** identity is the
+  `--agent` rendered into each scheduling unit (and `TASKCTL_AGENT` in the shim);
+  `--agent-name` is what that value comes from. The claim set is discovered, not configured.
 - **`--force` is the only way to overwrite.** With it, the managed files and managed
   config keys are re-rendered from the current flags (unrelated keys and hooks are still
   preserved). Deleting the destination first also gives a clean slate.

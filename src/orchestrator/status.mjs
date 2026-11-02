@@ -30,8 +30,13 @@ import { fileURLToPath } from "node:url";
 import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
-import { AGENT_DIRS, parseArgs, resolveLoopConfig, resolveScanSet } from "./options.mjs";
-import { loadRoles } from "../foundation/roles.mjs";
+import {
+  AGENT_DIRS,
+  effectiveScanAgents,
+  parseArgs,
+  resolveLoopConfig,
+} from "./options.mjs";
+import { loadRoles, normalizeKindOrder } from "../foundation/roles.mjs";
 import { describeRolePlatforms } from "../foundation/role-platforms.mjs";
 import { availableKinds } from "./platforms.mjs";
 import {
@@ -52,7 +57,7 @@ const USAGE = `Usage: taskctl loop status [--json] [--agent <name>] [--actor-kin
          [--take-over | --stop]
 
 Reports whether a supervisor/pool is running and what is driving it, including the
-agent platform (--actor-kind) and the scan set the loop resolves from its config.
+agent platform (--actor-kind) and the scan set its discovered roles produce.
   --take-over  start the pool for this session (explicit; refuses unless absent)
   --stop       stop the pool this session started
 Nothing here is a scheduler: status only reads, and a takeover is one pool.`;
@@ -169,38 +174,44 @@ export function probeSupervisor(opts, deps = {}) {
   else if (subscribeLive) verdict = "partial";
   else verdict = "absent";
 
-  // The scan set the loop will use, resolved exactly as the loop resolves it. This is
-  // what tells a team install whether its roles can ever be claimed: a name outside
-  // this list is never scanned, and its cards strand. Status is a read, so a config it
-  // cannot resolve falls back to the names it was given rather than failing.
-  let agents = Array.isArray(opts.agents) ? [...opts.agents] : [];
+  // The role set is read once: it is both the scan set and the platform report.
+  // Installation location is the routing, so a role silently stranded on a kind
+  // whose CLI is missing must be visible here — not discovered when a card strands.
+  let roleSet = null;
   try {
-    // `--agent` on a status call names the *units* (the shim supplies one on every
-    // invocation); it is not the scan set. Passing it through would report the
-    // installer's default exactly when the question matters — "does the config's team
-    // get scanned?" — so the scan set is resolved without it, from the config/env.
-    const scan = resolveScanSet([], opts);
-    agents = resolveLoopConfig({ ...opts, agents: scan }).scanAgents;
-  } catch {
-    // fall through with the names from the command line
-  }
-
-  // Where each role is installed and where it will actually run. Installation
-  // location is the routing, so a role silently stranded on a kind whose CLI is
-  // missing must be visible here — not discovered when a card strands.
-  let roles = [];
-  try {
-    const roleSet = loadRoles({
+    roleSet = loadRoles({
       home: typeof opts.home === "string" ? opts.home : null,
       primaryKind: opts.actorKind,
+      kindOrder: opts.kindOrder,
       explicitDir: opts.rolesDir ?? null,
-    });
-    roles = describeRolePlatforms(roleSet.roles, {
-      primaryKind: opts.actorKind,
-      available: availableKinds(),
     });
   } catch {
     // A status read never fails on a bad role tree; the absence is the report.
+  }
+
+  // The scan set the loop will use, resolved exactly as the loop resolves it:
+  // every discovered worker-lane role, plus the configured reviewer. This is what
+  // tells a team install whether its roles can ever be claimed — a name outside
+  // this list is never scanned, and its cards strand. `--agent` here names the
+  // units (the shim supplies one), never the claim set.
+  let agents = [];
+  try {
+    const { config } = resolveLoopConfig(opts);
+    const reviewers = config.reviewer === null ? [] : [config.reviewer];
+    agents = effectiveScanAgents({ roleSet, reviewers });
+  } catch {
+    // A config it cannot resolve leaves the scan set empty rather than failing.
+  }
+
+  let roles = [];
+  try {
+    roles = describeRolePlatforms(roleSet?.roles ?? [], {
+      primaryKind: opts.actorKind,
+      order: opts.kindOrder,
+      available: availableKinds(),
+    });
+  } catch {
+    // The absence is the report.
   }
 
   return {
@@ -209,6 +220,7 @@ export function probeSupervisor(opts, deps = {}) {
     // script reading the verdict needs it next to the scan set: a machine can run more
     // than one loop kind, and this report answers for one of them.
     platform: opts.actorKind ?? "claude",
+    kindOrder: normalizeKindOrder(opts.kindOrder),
     agents,
     roles,
     pool: {

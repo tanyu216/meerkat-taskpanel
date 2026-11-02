@@ -99,8 +99,15 @@ function tomlDefinition(role) {
   ].join("\n");
 }
 
-/** Normalise the role.json fields the definition needs. */
-function loadRole(dir) {
+/**
+ * The role.json fields a caller needs, or `null` when the directory is not a
+ * role. Exported so the installer's role lister and this generator read the same
+ * marker (`scripts/install/lib/role-skills.mjs`).
+ *
+ * @param {string} dir a skill directory
+ * @returns {{id: string, agent: string, native_agent: string, description: string, summary: string, lanes: string[]}|null}
+ */
+export function readRoleSkill(dir) {
   const path = join(dir, "role.json");
   if (!existsSync(path)) return null;
   let raw;
@@ -137,7 +144,7 @@ export function writeNativeAgents({ kind, home, repo, dryRun = false, force = fa
   const outDir = join(home, target.dir);
   for (const name of readdirSync(skillsDir, { withFileTypes: true })) {
     if (!name.isDirectory()) continue;
-    const role = loadRole(join(skillsDir, name.name));
+    const role = readRoleSkill(join(skillsDir, name.name));
     if (role === null || role.id === "" || role.native_agent === "") continue;
     const dest = join(outDir, `${role.native_agent}.${target.ext}`);
     const body = kind === "codex" ? tomlDefinition(role) : markdownDefinition(role);

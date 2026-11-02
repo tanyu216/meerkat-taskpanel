@@ -466,7 +466,7 @@ const QUESTION_PROMPT_BODY_MAX = 2000;
  * Two ways a `todo` card has no one to claim it, and they are not the same gate:
  *
  *   * **assigned to an agent name outside the scan set** — always a finding: no
- *     scan will ever claim it (`MEERKAT_TASKPANEL_AGENTS` is the claim authority).
+ *     scan will ever claim it (the discovered role set is the claim authority).
  *     A card owned by a **human** is not: a person is the owner, not a missed route.
  *     An epic is not: it never carries work.
  *   * **unassigned** — a finding only when this loop will not take the public pool

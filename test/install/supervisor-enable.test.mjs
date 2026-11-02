@@ -762,8 +762,8 @@ describe("install.sh: enable — cron", () => {
     // PATH line sits *inside* the block, so `disable` takes it away with the block.
     const blockLines = table.split("# >>> meerkat-taskpanel (~/.claude) >>>\n")[1].split("\n");
     assert.match(blockLines[0], /^PATH=\S+$/);
-    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --ping-once --actor-kind claude --log .* >\/dev\/null 2>&1$/);
-    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --continue-once --actor-kind claude /);
+    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --ping-once --actor-kind claude --agent alice --log .* >\/dev\/null 2>&1$/);
+    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --continue-once --actor-kind claude --agent alice /);
     assert.equal(blockLines[3], "# <<< meerkat-taskpanel (~/.claude) <<<");
     assert.match(table, /^# <<< meerkat-taskpanel \(~\/\.claude\) <<<$/m);
 
@@ -1104,13 +1104,12 @@ describe("install.sh: one loop supervisor per machine", () => {
     assert.equal(stopped.length, 12, "three kinds × four units");
   });
 
-  it("--supervisor=status covers every loop kind and prints the platform and the configured scan set", () => {
+  it("--supervisor=status covers every loop kind and prints the platform and the discovered scan set", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const env = installEnv(home, manager);
     assert.equal(runInstall(["--target", "all", "--agent-name", "alice", "--prefix", home], env).status, 0);
 
-    writeFileSync(join(kindConfigDirFor(home), ".env.claude"), "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing\n", "utf8");
     const run = runInstall(["--target", "all", "--prefix", home, "--supervisor=status", "--scheduler=launchd"], env);
 
     assert.equal(run.status, 0, run.stderr);
@@ -1118,10 +1117,19 @@ describe("install.sh: one loop supervisor per machine", () => {
       assert.match(run.stdout, new RegExp(`^supervisor: status \\(kind=${kind}\\)$`, "m"), kind);
     }
     assert.match(run.stdout, /^supervisor:   platform: claude \(~\/\.claude\)$/m);
-    assert.match(run.stdout, /^supervisor:   scan set: Jobs,Linus,Turing \(from .*\.env\.claude\)$/m);
-    // The seeded per-kind file carries the union scan set plus the installing agent
-    // until setup-meerkat writes a team.
-    assert.match(run.stdout, /^supervisor:   scan set: Jobs,Linus,Turing,Worker,alice \(from .*\.env\.codex\)$/m);
+    // Every kind discovers the five installed roles. The installing writer identity
+    // (alice) is not a role, so it is not in the scan set.
+    const scanLines = run.stdout
+      .split("\n")
+      .filter((line) => line.startsWith("supervisor:   scan set: "));
+    assert.equal(scanLines.length, 3);
+    for (const line of scanLines) {
+      for (const name of ["Jobs", "Linus", "Turing", "Worker", "Reviewer"]) {
+        assert.match(line, new RegExp(`\\b${name}\\b`), `${name} in: ${line}`);
+      }
+      assert.doesNotMatch(line, /\balice\b/);
+      assert.match(line, /\(discovered roles \+ reviewer\)$/);
+    }
   });
 
   it("enable warns when another loop kind is already loaded", () => {

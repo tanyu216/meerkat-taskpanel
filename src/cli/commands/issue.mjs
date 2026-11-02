@@ -15,7 +15,16 @@
  */
 
 import { CLI_EXIT } from "../../foundation/constants.mjs";
+import { DomainError } from "../../foundation/errors.mjs";
 import { norm } from "../../foundation/norm.mjs";
+import {
+  catalogAgentNames,
+  catalogHasAssignee,
+} from "../../foundation/role-catalog.mjs";
+import {
+  defaultRoleCatalogPath,
+  readRoleCatalog,
+} from "../../foundation/role-catalog-file.mjs";
 import {
   isHumanComment,
   isQuestionComment,
@@ -32,6 +41,50 @@ import { projectBody, projectFlags } from "./task-input.mjs";
 
 /** `--meta k=v` repeated → object. */
 const metaOf = (flags) => flags.meta;
+
+/**
+ * The local role catalog is the assignee range — a **CLI guard**, not a board
+ * invariant. `taskd` never learns roles, so a caller that speaks HTTP directly
+ * bypasses this by design; every supported surface (the `meerkat` skill, the
+ * worker, the director, a human) goes through `taskctl`.
+ *
+ * The guard looks at the **assignee**, never the writer: `system`/`Orchestrator`
+ * are writer identities for task closure and cannot become assignees through
+ * this path. The two system-created cards are the review card (the configured
+ * reviewer, explicitly outside the catalog with `--force-create`) and the
+ * rework child (`--assignee-id`), both exempt on their own terms.
+ *
+ * Skipped when: `--force-create` (the documented escape), `--assignee-id` (the
+ * structural spelling), an explicit human assignee, no assignee at all, or no
+ * usable catalog (bootstrap — before the supervisor's first sync).
+ */
+function assertAssigneeInCatalog(ctx, { assignee, assigneeId, assigneeKind, forceCreate }) {
+  if (forceCreate === true) return;
+  if (typeof assigneeId === "string" && assigneeId.trim() !== "") return;
+  if (assigneeKind === "human") return;
+  if (typeof assignee !== "string" || assignee.trim() === "") return;
+
+  const read = readRoleCatalog(defaultRoleCatalogPath(ctx.env ?? {}, { cwd: ctx.cwd }));
+  // Absent, unreadable or still-empty: the open range, so a first card can be
+  // created before any poll has published a catalog. A malformed file reads the
+  // same way — the next sync repairs it, and a half-read range is worse.
+  if (!read.ok || read.present !== true || read.catalog.roles.length === 0) return;
+  if (catalogHasAssignee(read.catalog, assignee)) return;
+
+  throw new DomainError("ASSIGNEE_NOT_IN_CATALOG", {
+    message: `assignee ${JSON.stringify(assignee)} is not a role in the local role catalog`,
+    details: {
+      field: "assignee",
+      assignee,
+      roles: catalogAgentNames(read.catalog),
+    },
+    hint: {
+      fix:
+        "use a discovered role name from `taskctl role list`, or pass --force-create " +
+        "to allow an assignee outside the catalog",
+    },
+  });
+}
 
 /**
  * The sections `issue get --include` can add to the payload.
@@ -174,6 +227,13 @@ export const COMMANDS = [
     flags: projectFlags(TASK_OPS.create),
     async run(ctx) {
       const flags = ctx.flags;
+      // The assignee range is the local role catalog; refuse before the board call.
+      assertAssigneeInCatalog(ctx, {
+        assignee: flags.assignee,
+        assigneeId: flags.assigneeId,
+        assigneeKind: flags.assigneeKind,
+        forceCreate: flags.forceCreate === true,
+      });
       // `--acceptance` and `--target` are declared CLI-only inputs that fold into
       // the card's `meta` (`--target` because the board owns no project
       // directory, so `target` is not a top-level create field). `projectBody`
@@ -820,6 +880,12 @@ export const COMMANDS = [
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: projectFlags(TASK_OPS.assign),
     async run(ctx) {
+      assertAssigneeInCatalog(ctx, {
+        assignee: ctx.flags.assignee,
+        assigneeId: ctx.flags.assigneeId,
+        assigneeKind: ctx.flags.assigneeKind,
+        forceCreate: ctx.flags.forceCreate === true,
+      });
       const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/assign`, projectBody(TASK_OPS.assign, {
         assignee: ctx.flags.assignee,
         assignee_id: ctx.flags.assigneeId,

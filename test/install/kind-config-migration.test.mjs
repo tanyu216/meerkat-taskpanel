@@ -99,6 +99,59 @@ describe("per-kind config — placement", () => {
   });
 });
 
+describe("per-kind config — the install-time kind order", () => {
+  it("writes the --target order into every loop kind's config", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    const programRoot = makeTempDir();
+    for (const name of ["claude", "pi"]) makeFakeCli(bin, name);
+
+    const run = runInstall(
+      ["--target", "pi,claude", "--prefix", home],
+      envFor(bin, { MEERKAT_TASKPANEL_REPO: programRoot }),
+    );
+    assert.equal(run.status, 0, run.stderr);
+    for (const kind of ["pi", "claude"]) {
+      assert.match(
+        readFileSync(join(programRoot, `.env.${kind}`), "utf8"),
+        /^MEERKAT_TASKPANEL_AGENT_KIND_ORDER=pi,claude$/m,
+        `${kind}: the target order is persisted`,
+      );
+    }
+  });
+
+  it("--target all writes claude,codex,pi", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    const programRoot = makeTempDir();
+    for (const name of ["claude", "codex", "pi", "openclaw"]) makeFakeCli(bin, name);
+
+    const run = runInstall(
+      ["--target", "all", "--no-server", "--prefix", home],
+      envFor(bin, { MEERKAT_TASKPANEL_REPO: programRoot }),
+    );
+    assert.equal(run.status, 0, run.stderr);
+    for (const kind of ["claude", "codex", "pi"]) {
+      assert.match(
+        readFileSync(join(programRoot, `.env.${kind}`), "utf8"),
+        /^MEERKAT_TASKPANEL_AGENT_KIND_ORDER=claude,codex,pi$/m,
+        `${kind}: the normalized target order is persisted`,
+      );
+    }
+  });
+
+  it("--supervisor-actor-kinds moves the primary to the front", () => {
+    const bin = makeTempDir();
+    for (const name of ["claude", "codex", "pi", "openclaw"]) makeFakeCli(bin, name);
+    const run = runInstall(
+      ["--target", "all", "--no-server", "--dry-run", "--supervisor=enable", "--supervisor-actor-kinds", "codex"],
+      envFor(bin),
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /^install\.sh: agent kind order: codex,claude,pi$/m);
+  });
+});
+
 describe("per-kind config — migration", () => {
   function legacyFile(home, text) {
     const dir = join(home, ".claude");

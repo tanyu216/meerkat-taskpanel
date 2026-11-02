@@ -779,20 +779,16 @@ describe("agent bundle: --force preserves operator data", () => {
     const config = join(kindConfigDirFor(home), ".env.claude");
     const before = readFileSync(config, "utf8");
     assert.match(before, /^MEERKAT_TASKPANEL_REVIEWER=/m);
-    // Replaced by `/setup-meerkat` (configure-env.mjs writes the value, it does not
-    // append a second line); without it the loop never claims a role card.
-    writeFileSync(
-      config,
-      before.replace(/^MEERKAT_TASKPANEL_AGENTS=.*$/m, "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing"),
-      "utf8",
-    );
+    // An operator-owned key (written through `/setup-meerkat` or by hand) that the
+    // installer's template does not carry must survive a forced rewrite.
+    writeFileSync(config, `${before}MEERKAT_TASKPANEL_SLA_LEADER=alice\n`, "utf8");
 
     const forced = runInstall(["--target", "claude", "--force"], env);
     assert.equal(forced.status, 0, forced.stderr);
 
     assert.match(
       readFileSync(config, "utf8"),
-      /^MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing$/m,
+      /^MEERKAT_TASKPANEL_SLA_LEADER=alice$/m,
       "--force must not drop keys the installer's template does not carry",
     );
   });

@@ -27,6 +27,7 @@ import { COMMANDS as loopCommands } from "./loop.mjs";
 import { COMMANDS as projectCommands } from "./project.mjs";
 import { COMMANDS as relationCommands } from "./relation.mjs";
 import { COMMANDS as reportCommands } from "./report.mjs";
+import { COMMANDS as roleCommands } from "./role.mjs";
 import { COMMANDS as sessionCommands } from "./session.mjs";
 import { COMMANDS as slaCommands } from "./sla.mjs";
 import { COMMANDS as statusCommands } from "./status.mjs";
@@ -63,6 +64,11 @@ export const groups = Object.freeze([
     name: "loop",
     summary: "The external loop: passes, daemons and status.",
     commands: loopCommands,
+  },
+  {
+    name: "role",
+    summary: "The local role catalog the supervisor discovers (never board state).",
+    commands: roleCommands,
   },
 ]);
 

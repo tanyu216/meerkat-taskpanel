@@ -528,8 +528,10 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     errors.push(`supervisor: ${error.message}`);
   }
 
-  const fromProbe = Array.isArray(supervisor?.agents) ? supervisor.agents : [];
-  const agents = fromProbe.length > 0 ? fromProbe : Array.isArray(opts.agents) ? [...opts.agents] : [];
+  // The scan set is discovered roles plus the reviewer. A writer identity is not
+  // a claim identity, so `--agent` never stands in for it; when nothing is
+  // discovered the report says so, which is itself the finding.
+  const agents = Array.isArray(supervisor?.agents) ? supervisor.agents : [];
 
   // 2. The patrol's own marker: a loop whose process is up but whose patrol no
   // longer completes looks healthy on `status` alone.
@@ -548,7 +550,9 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     const read = readBoard(
       {
         ...opts,
-        agents: agents.length > 0 ? agents : ["agent"],
+        // The read is attributed to the loop's own writer identity, never to a
+        // discovered role the loop merely scans for.
+        agents: Array.isArray(opts.agents) && opts.agents.length > 0 ? [...opts.agents] : ["agent"],
         // An inspection must never start a board as a side effect.
         cliEnv: { ...(opts.cliEnv ?? {}), TASKD_NO_AUTOSTART: "1" },
       },

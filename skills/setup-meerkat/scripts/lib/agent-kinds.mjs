@@ -25,6 +25,41 @@ export const LOOP_KINDS = Object.freeze(
     .map(([kind]) => kind),
 );
 
+/**
+ * A full preference permutation from a configured order. Mirrors
+ * `src/foundation/roles.mjs#normalizeKindOrder`; the setup skill runs from its
+ * installed skill directory and cannot import the toolkit's `src/`.
+ *
+ * @param {string|string[]|null|undefined} value
+ * @returns {string[]}
+ */
+export function normalizeKindOrder(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[,\s]+/)
+      : [];
+  const listed = [];
+  for (const entry of raw) {
+    const kind = String(entry ?? "").trim().toLowerCase();
+    if (LOOP_KINDS.includes(kind) && !listed.includes(kind)) listed.push(kind);
+  }
+  return [...listed, ...LOOP_KINDS.filter((kind) => !listed.includes(kind))];
+}
+
+/**
+ * The order the supervisor actually scans: its own primary kind first, then the
+ * configured order for the rest.
+ *
+ * @param {string|null|undefined} primaryKind
+ * @param {string|string[]|null|undefined} kindOrder
+ * @returns {string[]}
+ */
+export function effectiveKindOrder(primaryKind, kindOrder) {
+  const primary = LOOP_KINDS.includes(primaryKind) ? primaryKind : LOOP_KINDS[0];
+  return [primary, ...normalizeKindOrder(kindOrder).filter((kind) => kind !== primary)];
+}
+
 export const PLATFORM_CAPABILITIES = Object.freeze({
   claude: Object.freeze(["design", "architecture", "implementation", "tests", "review"]),
   codex: Object.freeze(["implementation", "tests", "review"]),
@@ -37,14 +72,6 @@ export const ROLE_CAPABILITY_TAGS = Object.freeze({
   linus: Object.freeze(["architecture", "implementation"]),
   turing: Object.freeze(["tests"]),
   reviewer: Object.freeze(["review"]),
-});
-
-/** Where each role is offered first when more than one platform can do the work. */
-export const ROLE_PLATFORM_PREFERENCE = Object.freeze({
-  jobs: Object.freeze(["claude", "codex", "pi"]),
-  linus: Object.freeze(["claude", "codex", "pi"]),
-  turing: Object.freeze(["codex", "claude", "pi"]),
-  reviewer: Object.freeze(["claude", "codex", "pi"]),
 });
 
 /** @param {string} kind */

@@ -139,20 +139,22 @@ describe("skill definitions", () => {
   it("every SKILL.md names its directory and carries a real description", async () => {
     const { ok, results } = await validateSkills(ROOT);
     assert.equal(ok, true, results.filter((result) => !result.ok).map((result) => result.error).join("\n"));
-    assert.deepEqual(
-      results.map((result) => result.name).sort(),
-      [
-        "meerkat",
-        "meerkat-chat",
-        "meerkat-director",
-        "setup-meerkat",
-        "jobs",
-        "linus",
-        "turing",
-        "reviewer",
-        "worker",
-      ].sort(),
-    );
+    // The product team is these nine; role skills are otherwise discovered, so a
+    // sixth role is validated and installed without editing this list.
+    const names = results.map((result) => result.name);
+    for (const required of [
+      "meerkat",
+      "meerkat-chat",
+      "meerkat-director",
+      "setup-meerkat",
+      "jobs",
+      "linus",
+      "turing",
+      "reviewer",
+      "worker",
+    ]) {
+      assert.ok(names.includes(required), `${required} must be present`);
+    }
     for (const result of results) {
       assert.ok(
         typeof result.description === "string" && result.description.length >= 20,
@@ -183,6 +185,15 @@ describe("package manifest", () => {
       );
     }
     assert.ok(pkg.files.includes("web/dist"), "the packaged server needs the built frontend");
+
+    // Host-local runtime state must never enter a commit or the image context.
+    for (const file of [".gitignore", ".dockerignore"]) {
+      assert.match(
+        readFileSync(join(ROOT, file), "utf8"),
+        /^\/roles\.json$/m,
+        `${file} must ignore the host-local role catalog`,
+      );
+    }
 
     const range = String(pkg.engines?.node ?? "");
     const major = Number(range.match(/\d+/)?.[0]);

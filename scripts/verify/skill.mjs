@@ -8,7 +8,8 @@
  * the description is what the host uses to decide when to load the skill).
  *
  * The board skill goes to every agent kind; the supervisor's director skill, the human's chat
- * console and the five role skills (`jobs`, `linus`, `turing`, `reviewer`, `worker`) go to
+ * console and every role skill (each directory carrying `role.json` with the `meerkat-role`
+ * marker — the standard five are `jobs`, `linus`, `turing`, `reviewer`, `worker`) go to
  * claude/codex/pi; `setup-meerkat` is the Claude-only install/repair command. All live in the
  * one `skills/` tree.
  *
@@ -19,21 +20,26 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
+import { listRoleSkills } from "../install/lib/role-skills.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
+/** The non-role skills shipped from `skills/`, in the order this checker reports them. */
+const STATIC_SKILLS = Object.freeze(["meerkat", "meerkat-chat", "meerkat-director", "setup-meerkat"]);
+
+/**
+ * The role skills this repository ships, discovered from `role.json` — the same
+ * marker the supervisor reads. A new role joins the validation with no edit here.
+ *
+ * @param {string} [repo]
+ * @returns {string[]}
+ */
+export function discoverRoleSkills(repo = root) {
+  return listRoleSkills(repo).map((role) => role.dir);
+}
+
 /** The skills shipped from `skills/`, in the order this checker reports them. */
-export const SKILLS = Object.freeze([
-  "meerkat",
-  "meerkat-chat",
-  "meerkat-director",
-  "setup-meerkat",
-  "jobs",
-  "linus",
-  "turing",
-  "reviewer",
-  "worker",
-]);
+export const SKILLS = Object.freeze([...STATIC_SKILLS, ...discoverRoleSkills()]);
 
 const MIN_DESCRIPTION = 20;
 

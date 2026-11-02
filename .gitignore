@@ -25,6 +25,8 @@ dist/
 
 # the machine-local project → directory map at the config root: host paths, never tracked
 /projects.json
+# the machine-local role catalog the supervisor publishes: host state, never tracked
+/roles.json
 
 # parallel-task worktrees — the convention in CLAUDE.md keeps them inside the checkout,
 # so they must never appear as untracked files in the primary one

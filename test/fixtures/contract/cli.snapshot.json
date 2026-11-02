@@ -6006,6 +6006,31 @@
       ]
     },
     {
+      "name": "role",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "list",
+          "positionals": [],
+          "flags": []
+        },
+        {
+          "name": "sync",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "file",
+              "as": "string",
+              "value": "<path|->",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "session",
       "default_command": null,
       "commands": [

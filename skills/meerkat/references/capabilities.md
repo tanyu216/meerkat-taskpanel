@@ -162,7 +162,7 @@ All writes use `--actor-kind system --agent Orchestrator` and are idempotent by 
 
 | Capability | Invocation | Keys read |
 |---|---|---|
-| create a review card | `issue create --project <p> --kind task --title … --description … --assignee <reviewer> --assignee-kind agent --label review --meta flow=B --review-of <original> --review-round <n> --target <t> --idem <key> --acceptance <text>…` | `data.task.identifier` |
+| create a review card | `issue create --project <p> --kind task --title … --description … --assignee <reviewer> --assignee-kind agent --force-create --label review --meta flow=B --review-of <original> --review-round <n> --target <t> --idem <key> --acceptance <text>…` | `data.task.identifier` |
 | create a rework child | `issue create --project <p> --kind task --title … --description … [--assignee-id <id>] --acceptance-mode off --meta rework_of=<original> --meta rework_round=<n> --target … --idem …` | `data.task.identifier` |
 | list relations | `relation list <ref>` | `data.children[].target` |
 | link a parent | `relation add <ref> --type parent --target <child>` | `ok` only |
@@ -176,6 +176,23 @@ values and sends no CAS, so a concurrent write can be lost. Use `issue meta` for
 The acceptance baseline is a column, immune to `--meta`, and a **changed** `meta.acceptance` /
 `meta.acceptance_legacy` is refused (`VALIDATION_FAILED`) — append with
 `issue update --acceptance`, prune only as a human with `--drop-acceptance --reason`.
+
+The review card names the **configured reviewer**, an explicit automation identity that is not
+a role the card creator routed to, so it carries `--force-create` — the documented escape from
+the local role catalog. The rework child is assigned with `--assignee-id`, likewise exempt.
+
+## 7a. Local role catalog — `role sync`
+
+| Capability | Invocation | Keys read |
+|---|---|---|
+| publish the discovered roles | `role sync --file -` (payload on stdin) | `data.changed`, `data.roles` |
+| read the assignee range | `role list --json` | `data.roles[].agent`, `.id`, `.lanes` |
+
+The payload is the discovery result the poll already holds
+(`{schema:"meerkat-role-catalog/1", source, primary_kind, updated_at, roles:[…]}`); `taskctl`
+writes `<config root>/roles.json` atomically. This is **local state, never board state**: no
+route, no table, no event. Identical content is a no-op (the stored `updated_at` is kept), so
+the poll can call it every tick; a failure is logged and never blocks a claim.
 
 ## Questions — the `awaiting` protocol
 

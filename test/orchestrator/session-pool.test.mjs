@@ -414,6 +414,30 @@ describe("session pool", () => {
     await pool.stop();
   });
 
+  it("uses the selected kind's skill copy when a role is installed on several kinds", async (t) => {
+    const f = fixture(t);
+    installRole(f.dir, { id: "jobs", agent: "Jobs", lanes: ["worker"], kind: "claude" });
+    installRole(f.dir, { id: "jobs", agent: "Jobs", lanes: ["worker"], kind: "codex" });
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app, "worker"),
+      agent: "Jobs",
+      actor_kind: "codex",
+    });
+    await pool.tick();
+    const worker = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
+    assert.ok(worker, "the codex worker session opens");
+    assert.equal(
+      worker.skillPath,
+      join(f.dir, ".codex", "skills", "jobs", "SKILL.md"),
+      "the fallback kind's copy is the one loaded, not the primary kind's",
+    );
+    await pool.stop();
+  });
+
   it("does not reopen an inline lane merely because its skill was loaded at open", async (t) => {
     const f = fixture(t);
     installRole(f.dir, { id: "reviewer", agent: "Reviewer", lanes: ["reviewer"], kind: "codex" });

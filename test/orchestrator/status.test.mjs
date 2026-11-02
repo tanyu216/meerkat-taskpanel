@@ -130,13 +130,22 @@ describe("supervisor status", () => {
     assert.equal(report.units.launchd.any, true);
   });
 
-  it("reports the scan set the loop will use — the team, plus the reviewer", () => {
+  it("reports the scan set discovery produces — the worker roles, plus the reviewer", () => {
     // A team install has one question status must answer: can the role my card is
-    // assigned to ever be claimed? That is the scan set, and it is resolved here the
-    // same way the loop resolves it — a name outside it strands its cards.
+    // assigned to ever be claimed? That is the discovered worker roles plus the
+    // reviewer; a name outside it strands its cards.
     const dir = tempDir();
     // Written before `optsFor`: `parseArgs` reads the config once, at parse time.
-    writeFileSync(join(dir, "config.env"), "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing\nMEERKAT_TASKPANEL_REVIEWER=Reviewer\n");
+    writeFileSync(join(dir, "config.env"), "MEERKAT_TASKPANEL_REVIEWER=Reviewer\n");
+    for (const [skill, agent] of [["jobs", "Jobs"], ["linus", "Linus"], ["turing", "Turing"]]) {
+      const roleDir = join(dir, ".claude", "skills", skill);
+      mkdirSync(roleDir, { recursive: true });
+      writeFileSync(join(roleDir, "SKILL.md"), `---\nname: ${skill}\n---\n`);
+      writeFileSync(
+        join(roleDir, "role.json"),
+        JSON.stringify({ schema: "meerkat-role", id: skill, agent, lanes: ["worker"] }),
+      );
+    }
 
     const report = probeSupervisor(optsFor(dir), {
       isAlive: () => false,
@@ -144,12 +153,15 @@ describe("supervisor status", () => {
       run: noUnits(),
     });
 
-    assert.deepEqual(report.agents, ["Jobs", "Linus", "Turing", "Reviewer"]);
+    assert.deepEqual(
+      [...report.agents].sort(),
+      ["Jobs", "Linus", "Turing", "Reviewer"].sort(),
+    );
   });
 
-  it("falls back to the one default identity when no team is configured", () => {
-    // `--agent alice` names the units, not the scan set: with no config the loop scans
-    // the OS identity, and saying "alice" here would hide that.
+  it("reports an empty scan set when no role skill is installed", () => {
+    // `--agent alice` names the units (the writer), never the claim set: a writer
+    // with no role skill can write, but its cards are never claimed.
     const dir = tempDir();
     const report = probeSupervisor(optsFor(dir), {
       isAlive: () => false,
@@ -157,8 +169,19 @@ describe("supervisor status", () => {
       run: noUnits(),
     });
 
-    const fallback = process.env.TASKCTL_AGENT || process.env.USER || process.env.LOGNAME || "agent";
-    assert.deepEqual(report.agents, [fallback]);
+    assert.deepEqual(report.agents, []);
+  });
+
+  it("reports the configured kind order, normalized to every loop kind", () => {
+    const dir = tempDir();
+    // Written before `optsFor`: `parseArgs` reads the config once, at parse time.
+    writeFileSync(join(dir, "config.env"), "MEERKAT_TASKPANEL_AGENT_KIND_ORDER=codex,claude\n");
+    const report = probeSupervisor(optsFor(dir), {
+      isAlive: () => false,
+      now: () => NOW,
+      run: noUnits(),
+    });
+    assert.deepEqual(report.kindOrder, ["codex", "claude", "pi"]);
   });
 
   it("names the agent platform it answered for", () => {
@@ -186,7 +209,13 @@ describe("supervisor status", () => {
 
   it("prints the platform and the scan set in the human report", async () => {
     const dir = tempDir();
-    writeFileSync(join(dir, "config.env"), "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus\n");
+    const roleDir = join(dir, ".codex", "skills", "jobs");
+    mkdirSync(roleDir, { recursive: true });
+    writeFileSync(join(roleDir, "SKILL.md"), "---\nname: jobs\n---\n");
+    writeFileSync(
+      join(roleDir, "role.json"),
+      JSON.stringify({ schema: "meerkat-role", id: "jobs", agent: "Jobs", lanes: ["worker"] }),
+    );
     const out = [];
     const code = await main(
       [
@@ -204,7 +233,7 @@ describe("supervisor status", () => {
     const text = out.join("");
     assert.match(text, /^supervisor: absent$/m);
     assert.match(text, /^ {2}platform: {2}codex \(~\/\.codex\)$/m);
-    assert.match(text, /^ {2}scan set: {2}Jobs,Linus$/m);
+    assert.match(text, /^ {2}scan set: {2}Jobs$/m);
   });
 
   it("reports each discovered role with where it is installed and where it runs", async () => {

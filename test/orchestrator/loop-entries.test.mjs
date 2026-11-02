@@ -82,6 +82,19 @@ function sentinelCli(dir) {
   return { script, record };
 }
 
+/** Write one role skill into a kind's skills tree (the discovery input). */
+function seedRole(home, kind, id, agent, lanes = ["worker"]) {
+  const roleDir = join(home, `.${kind}`, "skills", id);
+  mkdirSync(roleDir, { recursive: true });
+  writeFileSync(join(roleDir, "SKILL.md"), `---\nname: ${id}\n---\n`, "utf8");
+  writeFileSync(
+    join(roleDir, "role.json"),
+    JSON.stringify({ schema: "meerkat-role", id, agent, lanes }),
+    "utf8",
+  );
+  return roleDir;
+}
+
 /** A state file that says "the pool manager is alive and beating". */
 function writeLivePool(dir, extra = {}) {
   writeFileSync(
@@ -387,9 +400,14 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
   function runWithSentinel(pass, extra = [], { livePool = false } = {}) {
     const dir = tempDir(`tp-entry-${pass}-`);
     if (livePool) writeLivePool(dir);
+    // The scan set is the discovered Worker role. Scope it to this temp home so a
+    // developer's installed role skills cannot answer for the test.
+    const home = join(dir, "home");
+    seedRole(home, "claude", "worker", "Worker");
     const { script, record } = sentinelCli(dir);
     const run = runEntry("passes.mjs", [
       "--actor-kind", "claude", "--agent", "alice", "--dry-run",
+      "--home", home,
       "--cli", script, "--repo", dir,
       "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       ...extra,
@@ -412,14 +430,20 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.equal(existsSync(join(dirname(record), "state.json")), false, "dry-run writes no registry");
   });
 
-  it("poll with no team list still scans the public pool as the default agent", () => {
-    // setup-meerkat may never have run, so MEERKAT_TASKPANEL_AGENTS is absent.
-    // The fallback identity must still reach the scan, and the public pool must
-    // be requested — otherwise an empty-assignee card is never picked up.
-    const dir = tempDir("tp-entry-poll-unset-");
+  it("scans the public pool as the discovered Worker role, not as the writer identity", () => {
+    // setup-meerkat may never have run, so no scan-set key exists — none is needed:
+    // the Worker role skill is what owns the public pool. The writer identity
+    // (`pollbot`, from USER) must not become claimable by accident.
+    const dir = tempDir("tp-entry-poll-worker-");
     writeLivePool(dir);
     const home = join(dir, "home");
-    mkdirSync(home, { recursive: true });
+    const roleDir = join(home, ".claude", "skills", "worker");
+    mkdirSync(roleDir, { recursive: true });
+    writeFileSync(join(roleDir, "SKILL.md"), "---\nname: worker\n---\n");
+    writeFileSync(
+      join(roleDir, "role.json"),
+      JSON.stringify({ schema: "meerkat-role", id: "worker", agent: "Worker", lanes: ["worker"] }),
+    );
     const { script, record } = sentinelCli(dir);
     // The child inherits this process's env; empty values stand in for absent
     // ones, and the parser treats "" exactly like missing.
@@ -433,7 +457,6 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       ],
       {
         TP_SENTINEL: record,
-        MEERKAT_TASKPANEL_AGENTS: "",
         TASKCTL_AGENT: "",
         USER: "pollbot",
         LOGNAME: "",
@@ -442,15 +465,43 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     );
     assert.equal(run.status, 0, run.stderr);
     const candidateCall = calls(record).find((call) => call.includes("candidates"));
-    assert.ok(candidateCall, "the fallback identity must still scan");
+    assert.ok(candidateCall, "the discovered Worker role must still scan");
     assert.deepEqual(candidateCall.slice(candidateCall.indexOf("issue")), [
       "issue",
       "candidates",
       "--assignee",
-      "pollbot",
+      "Worker",
       "--include-unassigned",
       "--stale",
     ]);
+  });
+
+  it("scans nothing when no role skill is installed, even with a writer identity", () => {
+    // `--agent pollbot` is the loop's *writer* identity. Without a discovered
+    // role it is not a claim identity: scanning for it would make an arbitrary
+    // name silently claimable.
+    const dir = tempDir("tp-entry-poll-noskill-");
+    writeLivePool(dir);
+    const home = join(dir, "home");
+    mkdirSync(home, { recursive: true });
+    const { script, record } = sentinelCli(dir);
+    const run = runEntry(
+      "passes.mjs",
+      [
+        "--actor-kind", "claude", "--dry-run", "--agent", "pollbot",
+        "--home", home,
+        "--cli", script, "--repo", dir,
+        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      ],
+      { TP_SENTINEL: record },
+      "poll",
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(
+      calls(record).some((call) => call.includes("candidates")),
+      false,
+      "the writer identity alone is never a scan identity",
+    );
   });
 
   it("poll claims nothing at all without a resident pool", () => {
@@ -669,7 +720,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     );
   });
 
-  it("scans every discovered worker-lane role even when the config omits it", () => {
+  it("scans every discovered worker-lane role", () => {
     const dir = tempDir("tp-scan-roles-");
     const home = join(dir, "home");
     const roleDir = join(home, ".codex", "skills", "turing");
@@ -679,7 +730,6 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       join(roleDir, "role.json"),
       JSON.stringify({ schema: "meerkat-role", id: "turing", agent: "Turing", lanes: ["worker"] }),
     );
-    writeFileSync(join(dir, ".env.claude"), "MEERKAT_TASKPANEL_AGENTS=Worker\n");
     writeLivePool(dir);
     const { script, record } = sentinelCli(dir);
     const run = runEntry(
@@ -696,8 +746,58 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.equal(run.status, 0, run.stderr);
     assert.ok(
       calls(record).some((call) => call.includes("candidates") && call.includes("Turing")),
-      "a discovered role is scanned without being in MEERKAT_TASKPANEL_AGENTS",
+      "a discovered role is scanned without any hand-kept list",
     );
+  });
+
+  it("does not claim a card whose role has no available carrying kind", () => {
+    const dir = tempDir("tp-role-unavailable-");
+    const home = join(dir, "home");
+    const roleDir = join(home, ".codex", "skills", "turing");
+    mkdirSync(roleDir, { recursive: true });
+    writeFileSync(join(roleDir, "SKILL.md"), "---\nname: turing\n---\n");
+    writeFileSync(
+      join(roleDir, "role.json"),
+      JSON.stringify({ schema: "meerkat-role", id: "turing", agent: "Turing", lanes: ["worker"] }),
+    );
+    writeLivePool(dir);
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "candidate-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "const assignee = argv.includes('--assignee') ? argv[argv.indexOf('--assignee') + 1] : null;",
+        "const candidates = assignee === 'Turing'",
+        "  ? [{ identifier: 'T-1', agent: 'Turing', status: 'todo', project_id: 'P', version: 1 }]",
+        "  : [];",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data: { candidates, tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } } })}\\n`);',
+      ].join("\n"),
+    );
+    // An empty PATH proves neither loop CLI can start; the role is installed on
+    // codex only, so the poll must not claim it.
+    const bin = join(dir, "empty-bin");
+    mkdirSync(bin, { recursive: true });
+    const run = runEntry(
+      "passes.mjs",
+      [
+        "--actor-kind", "claude", "--agent", "alice",
+        "--home", home, "--cli", script, "--repo", dir,
+        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+        "--config", join(dir, ".env.claude"),
+      ],
+      { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir, PATH: bin },
+      "poll",
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(
+      calls(record).some((call) => call.includes("claim")),
+      false,
+      "the card stays todo instead of being claimed and refused at dispatch",
+    );
+    assert.match(run.stdout + run.stderr, /no available kind|defer T-1/);
   });
 
   it("reads open questions for the stale filter but enqueues nothing when the pool predates the capability", () => {
@@ -1501,9 +1601,14 @@ describe("the tick runs the passes in-process", () => {
   }
 
   function tickArgs(dir, extra = []) {
+    // Pin discovery to this temp home: the poll must scan the seeded role, not a
+    // developer's installed skill tree.
+    const home = join(dir, "home");
+    seedRole(home, "claude", "worker", "Worker");
     return [
       "--continue-only", "--once",
       "--actor-kind", "claude", "--agent", "alice",
+      "--home", home,
       "--repo", dir, "--state", join(dir, "state.json"), "--log", join(dir, "log"),
       "--continue-state", join(dir, "continue.state.json"),
       ...extra,

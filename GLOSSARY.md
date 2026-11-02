@@ -430,12 +430,35 @@ _中文_: 对话台
 _Avoid_: director mode, manual mode
 
 **Role skill**:
-One of the five standalone skills — `jobs`, `linus`, `turing`, `reviewer`, `worker` — each a
-complete role (`SKILL.md`, `role.json`, `references/`). **Installation location is the
-routing**: a role present under a kind's `skills/` runs on that kind. There is no roles root
-and no manifest.
+A standalone skill that is a complete role (`SKILL.md`, `role.json`, `references/`). The
+standard team is `jobs`, `linus`, `turing`, `reviewer` and `worker`, but discovery does not
+name them: any directory carrying `role.json` with the `meerkat-role` marker is a role.
+**Installation location is the routing**: a role present under a kind's `skills/` runs on
+that kind. There is no roles root and no team manifest.
 _中文_: 角色技能
 _Avoid_: team manifest, role prompt, subagent definition
+
+**Role catalog**:
+The **local** projection of the discovered roles at `<config root>/roles.json`, written by
+`taskctl role sync` and read by `taskctl role list`. It is the assignee range humans and the
+`meerkat` skill use; it is never board state and never the routing source (the supervisor
+routes by the set it discovered). `MEERKAT_TASKPANEL_CONFIG_DIR` relocates it.
+_中文_: 角色目录
+_Avoid_: team manifest, role registry (that word also names board identities)
+
+**Kind order**:
+The install-time preference when several agent kinds carry the same role:
+`MEERKAT_TASKPANEL_AGENT_KIND_ORDER`, written from the normalized `--target` order with the
+primary kind first. A kind the order omits is appended at discovery, never excluded.
+_中文_: kind 顺序
+_Avoid_: platform preference, fallback list
+
+**Writer identity**:
+The board identity the loop itself writes as — `--agent` on a scheduling unit, else
+`TASKCTL_AGENT`, else the OS user. It is not the claim set: the loop claims for the discovered
+worker-lane roles plus the reviewer.
+_中文_: 写入身份
+_Avoid_: scan set, assignee (that is the card's routed role)
 
 **Worker session**:
 The card's own top-level conversation inside the pool, keyed `worker:<card>:r<round>` and
