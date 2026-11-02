@@ -155,10 +155,12 @@ stops at the boundary of the supervisor.
 shares ([claim-unassigned](#the-claim-unassigned-policy),
 [end to end](#the-end-to-end-path)).
 
-The director is a skill of its own, and the five role skills ship beside it: `claude`,
-`codex` and `pi` install them; OpenClaw installs the board skill only, because its agent
-framework runs the equivalent automations itself (see
-[OpenClaw: no loop units](#openclaw-no-loop-units)).
+The director is a skill of its own, and the five role skills ship beside it. `install.sh`
+puts the director, the chat console, `setup-meerkat` and a fresh install's roles on the
+**primary kind**; an upgrade refreshes each role on the kind(s) that already carry it.
+OpenClaw installs the board skill only, because its agent framework runs the equivalent
+automations itself (see [OpenClaw: no loop units](#openclaw-no-loop-units)). The runtime
+finds the director by scanning the installed skills trees, never from a config value.
 
 ## The two clocks
 
@@ -486,7 +488,8 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   route or escalation row is queued. It is the one LLM decision lane: it assigns unowned
   cards, answers worker questions with a `note` + `todo`, or escalates E1–E5 with
   `awaiting --awaiting-reason --question`. It never claims, never implements and never
-  moves a card to `done`. It runs on the supervisor's primary kind. The director skill loads
+  moves a card to `done`. It runs on the kind that carries the director skill (the primary
+  kind first, then claude → codex → pi — discovered at session open, never configured). The director skill loads
   once, at session open (`/meerkat-director` on Claude, developer instructions on Codex, an
   appended system prompt on Pi), so each later turn carries only the rows. A missing skill
   falls back to naming the decision-policy path in every prompt.
@@ -967,7 +970,8 @@ and the report author are recorded as those names. Each role's own workflow name
 shapes it owns; the director lane is the only content-decision authority, and no role decides
 its own escalation.
 
-Each role is a standalone **skill**, installed by `install.sh` on claude, codex and pi:
+Each role is a standalone **skill**, installed by `install.sh` on the primary kind (and
+refreshed on whichever kinds already carry it during an upgrade):
 
 ```text
 skills/<role>/
@@ -1058,8 +1062,9 @@ run), and report an old `meerkat-loop` roles tree as deprecated without deleting
 
 The director is the supervisor's one content-decision lane. It is a
 [`meerkat-director`](../skills/meerkat-director/SKILL.md) session in the pool, opened on
-demand, one per project directory, always on the supervisor's **primary kind**. It is not a
-role: it receives no card, has no assignee, and never appears in the scan set.
+demand, one per project directory, on the kind that carries the director skill (primary
+first, then claude → codex → pi). It is not a role: it receives no card, has no assignee,
+and never appears in the scan set.
 
 | Row | Source | The director's move |
 |---|---|---|
@@ -1426,12 +1431,15 @@ a second board is the unguarded case; see
 
 The supervisor follows the same machine-level rule: `install.sh --supervisor=enable` acts on
 the **first loop kind in normalized `--target` order** (`all` → `claude`; `--target pi,claude`
-→ `pi`). That kind is the supervisor's **primary kind** — its board identity, its director
-lane and its own config. It is not the only kind that runs work: role discovery assigns each
-card's session to the kind that carries its role skill, so one supervisor process holds
-claude, codex and pi sessions at once. The atomic claim still keeps two supervisors from
-executing the same card, but a second supervisor doubles the cadences, pools, logs and SLA
-ledgers, so one per machine remains the rule.
+→ `pi`). That kind is the supervisor's **primary kind** — its board identity and its own
+config; the team skills (director, chat, setup and a fresh install's roles) are installed
+there too. The director lane itself follows the **director skill's** location, discovered at
+session open (primary kind first, then claude → codex → pi), which is also where its decision
+policy is read. It is not the only kind that runs work: role discovery assigns each card's
+session to the kind that carries its role skill, so one supervisor process holds claude,
+codex and pi sessions at once. The atomic claim still keeps two supervisors from executing
+the same card, but a second supervisor doubles the cadences, pools, logs and SLA ledgers, so
+one per machine remains the rule.
 
 `--supervisor-actor-kinds` is now a **primary-kind selector**; listing several kinds is
 refused with a hint that role placement, not a second supervisor, is how another platform
@@ -1973,9 +1981,10 @@ recorded.
 ## The three agent kinds: how each one is triggered
 
 Claude Code, Codex and Pi have no clock, and their headless entry points differ. The
-supervisor's `--actor-kind` selects the **primary kind** — its own board identity, its
-director lane and its config; the rest (scan, claim, patrol, registry) is identical. Each
-card's worker/reviewer session runs on the kind that carries its role skill.
+supervisor's `--actor-kind` selects the **primary kind** — its own board identity and its
+config; the rest (scan, claim, patrol, registry) is identical. Each card's worker/reviewer
+session runs on the kind that carries its role skill, and the director lane runs on the kind
+that carries the director skill (primary first, then claude → codex → pi).
 
 | Agent kind | Session command | Trigger / scheduling | Continuity |
 |---|---|---|---|
@@ -2396,7 +2405,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | Flag | Default | Meaning |
 |---|---|---|
 | `--agent <name>` | `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
-| `--actor-kind claude\|codex\|pi` | `claude` | the supervisor's **primary kind**: its board identity, config and director lane |
+| `--actor-kind claude\|codex\|pi` | `claude` | the supervisor's **primary kind**: its board identity and config (the director lane follows the director skill's location) |
 | `--repo <path>` | this checkout — or, for a agent-installed copy, the `MEERKAT_TASKPANEL_REPO` in the per-kind config | repository root: what `--cli` is resolved from, and the fallback working directory |
 | `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids; no board read |
 | `--continue-interval <sec>` | `600` | tick clock: run `patrol → workflow → poll` in-process |

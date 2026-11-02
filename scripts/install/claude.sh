@@ -3,12 +3,12 @@
 #
 # Deploys the complete Claude bundle, not just the board skill:
 #   1. board skill      → ~/.claude/skills/meerkat
-#   2. director + chat + roles → ~/.claude/skills/{meerkat-director,meerkat-chat,jobs,linus,turing,reviewer,worker} (copies)
-#   3. setup skill      → ~/.claude/skills/setup-meerkat (Claude-only; /setup-meerkat)
-#   4. settings.json    → merged: env.TASKCTL_AGENT + a SessionStart hook, preserving
+#   2. team skills      → director/chat/setup when claude is the primary kind, plus the
+#                         role skills install.sh assigned to this kind (copies)
+#   3. settings.json    → merged: env.TASKCTL_AGENT + a SessionStart hook, preserving
 #                         every other key and hook
-#   5. slash commands   → ~/.claude/commands/{board,claim,deliver}.md
-#   6. scheduling       → ~/.claude/scheduling/{launchd,systemd,cron}, the loop state
+#   4. slash commands   → ~/.claude/commands/{board,claim,deliver}.md
+#   5. scheduling       → ~/.claude/scheduling/{launchd,systemd,cron}, the loop state
 #                         directory (~/.claude/meerkat-taskpanel/) and the per-kind config
 #                         (<program root>/.env.claude)
 # plus the reproducible hook script and the taskctl shim that injects --agent <name>.
@@ -16,8 +16,7 @@ set -eu
 . "$(cd "$(dirname "$0")" && pwd)/_common.sh"
 
 install_skill ".claude" "claude"
-install_director_skill ".claude" "claude"
-install_skill ".claude" "claude" "$(setup_skill_name)" copy
+install_team_skills ".claude" "claude"
 
 export_tp_env ".claude" "claude"
 

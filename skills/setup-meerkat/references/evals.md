@@ -86,8 +86,8 @@ primary kind, not from a config mapping key; a role installed on several kinds r
 fallback instead of being silently reassigned; an unavailable Codex makes Turing fall back to
 another kind that also carries its skill, and the fallback is reported once in status/doctor;
 when no carrying kind is available the card is not claimed and the gap is reported — the
-handoff is never pointed at a skill that is not installed; the director stays on the primary
-kind and is not routed by role discovery.
+handoff is never pointed at a skill that is not installed; the director is found by scanning
+the installed kinds (primary first) and is not routed by role discovery.
 
 ## 9. Decision round
 

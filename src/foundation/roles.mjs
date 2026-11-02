@@ -321,7 +321,7 @@ function scanRoleDirectory(dir, kind, warnings) {
  *   byAgent: Map<string, object>,
  *   defaultReviewer: object|null,
  *   routing: {source: string|null, text: string|null},
- *   decisionPolicy: {source: string|null, path: string|null, text: string|null, skillDir: string|null, isDefault: boolean, truncated: boolean},
+ *   decisionPolicy: {source: string|null, kind: string, path: string|null, text: string|null, skillDir: string|null, isDefault: boolean, truncated: boolean},
  *   warnings: string[],
  *   error?: string,
  * }}
@@ -457,26 +457,79 @@ export function renderRoutingTable(roles) {
 }
 
 /**
+ * Where the `meerkat-director` skill actually lives.
+ *
+ * Installation location is the routing for the director too: `install.sh` places it on
+ * the primary kind, but the runtime finds it wherever it is installed (primary first,
+ * then claude → codex → pi). No config key records this path.
+ *
+ * @param {string|null} home
+ * @param {string} primaryKind
+ * @returns {{kind: string, skillDir: string|null, path: string|null, exists: boolean}}
+ */
+export function resolveDirectorSkill(home, primaryKind) {
+  const primary = ROLE_KINDS.includes(primaryKind) ? primaryKind : "claude";
+  if (!nonEmptyString(home)) {
+    return { kind: primary, skillDir: null, path: null, exists: false };
+  }
+  for (const kind of kindsToScan(primary)) {
+    const skillDir = join(home, AGENT_DIRS[kind] ?? `.${kind}`, "skills", "meerkat-director");
+    if (!existsSync(join(skillDir, "SKILL.md"))) continue;
+    const policy = join(skillDir, "references", "decision-policy.md");
+    return {
+      kind,
+      skillDir,
+      path: existsSync(policy) ? policy : null,
+      exists: true,
+    };
+  }
+  // Keep the old fallback shape: a caller that renders a path still names the
+  // primary kind's expected location, even when nothing is installed.
+  const fallback = join(home, AGENT_DIRS[primary] ?? `.${primary}`, "skills", "meerkat-director");
+  return { kind: primary, skillDir: fallback, path: null, exists: false };
+}
+
+/**
  * The director skill's decision policy. A role/team layer can never override it.
  *
  * @param {string|null} home
  * @param {string} primaryKind
- * @returns {{source: string|null, path: string|null, text: string|null, skillDir: string|null, isDefault: boolean, truncated: boolean}}
+ * @returns {{source: string|null, kind: string, path: string|null, text: string|null, skillDir: string|null, isDefault: boolean, truncated: boolean}}
  */
 function loadDecisionPolicy(home, primaryKind) {
-  if (!nonEmptyString(home)) {
-    return { source: null, path: null, text: null, skillDir: null, isDefault: true, truncated: false };
-  }
-  const skillDir = join(home, AGENT_DIRS[primaryKind] ?? `.${primaryKind}`, "skills", "meerkat-director");
-  const path = join(skillDir, "references", "decision-policy.md");
-  if (!existsSync(path)) {
-    return { source: null, path: null, text: null, skillDir, isDefault: true, truncated: false };
+  const resolved = resolveDirectorSkill(home, primaryKind);
+  if (resolved.path === null) {
+    return {
+      source: null,
+      kind: resolved.kind,
+      path: null,
+      text: null,
+      skillDir: resolved.skillDir,
+      isDefault: true,
+      truncated: false,
+    };
   }
   try {
-    const { text, truncated } = readBounded(path, ROLES_LIMITS.policyBytes);
-    return { source: "director", path, text, skillDir, isDefault: true, truncated };
+    const { text, truncated } = readBounded(resolved.path, ROLES_LIMITS.policyBytes);
+    return {
+      source: "director",
+      kind: resolved.kind,
+      path: resolved.path,
+      text,
+      skillDir: resolved.skillDir,
+      isDefault: true,
+      truncated,
+    };
   } catch {
-    return { source: null, path: null, text: null, skillDir, isDefault: true, truncated: false };
+    return {
+      source: null,
+      kind: resolved.kind,
+      path: null,
+      text: null,
+      skillDir: resolved.skillDir,
+      isDefault: true,
+      truncated: false,
+    };
   }
 }
 

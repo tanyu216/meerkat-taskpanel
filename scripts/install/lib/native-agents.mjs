@@ -12,7 +12,12 @@
  * else's: it is reported and left alone unless `--force` says to replace it.
  *
  * Usage:
- *   node scripts/install/lib/native-agents.mjs --kind claude --home <dir> [--dry-run] [--force]
+ *   node scripts/install/lib/native-agents.mjs --kind claude --home <dir>
+ *     [--roles jobs,linus] [--dry-run] [--force]
+ *
+ * `--roles` limits the write to the roles a kind actually carries (omitted = every role
+ * in the repository; an empty value = none). A generated definition left behind for a
+ * role the kind no longer carries is reported as `stale` and never deleted.
  *
  * Node builtins only.
  */
@@ -33,10 +38,16 @@ const NATIVE = Object.freeze({
   pi: { dir: ".pi/agent/agents", ext: "md" },
 });
 
-const USAGE = `Usage: node scripts/install/lib/native-agents.mjs --kind <claude|codex|pi> --home <dir> [--dry-run] [--force]`;
+const USAGE = `Usage: node scripts/install/lib/native-agents.mjs --kind <claude|codex|pi> --home <dir> [--roles <list>] [--dry-run] [--force]`;
+
+/** `--roles` values are comma- or whitespace-separated; null means every role. */
+function selectedRoles(raw) {
+  if (raw === null) return null;
+  return [...new Set(String(raw).split(/[\s,]+/).filter(Boolean))];
+}
 
 function parse(argv) {
-  const opts = { kind: null, home: process.env.HOME ?? null, dryRun: false, force: false, help: false };
+  const opts = { kind: null, home: process.env.HOME ?? null, roles: null, dryRun: false, force: false, help: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const take = () => {
@@ -47,11 +58,14 @@ function parse(argv) {
     switch (arg) {
       case "--kind": opts.kind = take(); break;
       case "--home": opts.home = resolve(take()); break;
+      case "--roles": opts.roles = take(); break;
       case "--dry-run": opts.dryRun = true; break;
       case "--force": opts.force = true; break;
       case "-h":
       case "--help": opts.help = true; break;
-      default: throw new Error(`unknown option: ${arg}`);
+      default:
+        if (arg.startsWith("--roles=")) opts.roles = arg.slice("--roles=".length);
+        else throw new Error(`unknown option: ${arg}`);
     }
   }
   return opts;
@@ -121,9 +135,9 @@ function loadRole(dir) {
   };
 }
 
-/** @returns {{written: string[], unchanged: string[], skipped: string[], conflicts: string[]}} */
-export function writeNativeAgents({ kind, home, repo, dryRun = false, force = false }) {
-  const result = { written: [], unchanged: [], skipped: [], conflicts: [] };
+/** @returns {{written: string[], unchanged: string[], skipped: string[], conflicts: string[], stale: string[]}} */
+export function writeNativeAgents({ kind, home, repo, roles = null, dryRun = false, force = false }) {
+  const result = { written: [], unchanged: [], skipped: [], conflicts: [], stale: [] };
   const target = NATIVE[kind];
   if (target === undefined) {
     result.skipped.push(`${kind} has no native agent format`);
@@ -134,12 +148,19 @@ export function writeNativeAgents({ kind, home, repo, dryRun = false, force = fa
     result.conflicts.push(`role skills not found at ${skillsDir}`);
     return result;
   }
+  const selected = roles === null ? null : new Set(roles);
   const outDir = join(home, target.dir);
   for (const name of readdirSync(skillsDir, { withFileTypes: true })) {
     if (!name.isDirectory()) continue;
     const role = loadRole(join(skillsDir, name.name));
     if (role === null || role.id === "" || role.native_agent === "") continue;
     const dest = join(outDir, `${role.native_agent}.${target.ext}`);
+    // A role this kind does not carry: never write it, but report a generated
+    // definition left behind by an earlier install or a role move.
+    if (selected !== null && !selected.has(name.name) && !selected.has(role.id)) {
+      if (existsSync(dest) && readFileSync(dest, "utf8").includes(MARKER)) result.stale.push(dest);
+      continue;
+    }
     const body = kind === "codex" ? tomlDefinition(role) : markdownDefinition(role);
     if (existsSync(dest)) {
       const current = readFileSync(dest, "utf8");
@@ -180,11 +201,15 @@ function main(argv) {
     kind: opts.kind,
     home: opts.home,
     repo,
+    roles: selectedRoles(opts.roles),
     dryRun: opts.dryRun,
     force: opts.force,
   });
   for (const path of result.written) console.log(`${opts.dryRun ? "would write" : "wrote"} ${path}`);
   for (const path of result.unchanged) console.log(`unchanged ${path}`);
+  for (const path of result.stale) {
+    console.log(`stale ${path} (role not carried on ${opts.kind}; left in place — /setup-meerkat can move it)`);
+  }
   for (const path of result.conflicts) {
     console.error(`conflict ${path}: a file without the generated marker; re-run with --force to replace it`);
   }

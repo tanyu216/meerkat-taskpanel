@@ -4,25 +4,26 @@ Meerkat TaskPanel ships as **a local server**, **the board, director, chat conso
 role skills**, and **one plugin root** — the repository itself, which every harness reads in
 place:
 
-- **`meerkat`** (`skills/meerkat/`) — the board. Installed for all four
-  agents.
+- **`meerkat`** (`skills/meerkat/`) — the board. Installed for every selected agent kind.
 - **`meerkat-director`** (`skills/meerkat-director/`) — the decision hub and the
   supervisor's operator skill: assignment, worker questions and E1–E5 escalation. Installed
-  for **every agent except OpenClaw** (claude, codex, pi); OpenClaw gets the board on its
-  own, because the openclaw-team framework already runs an equivalent poll / patrol (see
-  [`scheduling.md`](../scheduling.md#openclaw-no-loop-units)).
+  on the **primary kind** (the first `claude|codex|pi` in `--target` order; `all` → claude).
+  OpenClaw never gets it, because the openclaw-team framework already runs an equivalent
+  poll / patrol (see [`scheduling.md`](../scheduling.md#openclaw-no-loop-units)). The
+  supervisor finds the skill wherever it is installed at runtime; no config records its path.
 - **`meerkat-chat`** (`skills/meerkat-chat/`) — the human's live console: progress, awaiting
   questions, pending acceptance, `loop doctor` and abnormal-card triage; records the human's
-  own words with `--as-human`. Installed beside the director for the same three kinds.
+  own words with `--as-human`. Installed beside the director on the primary kind.
 - **`jobs`, `linus`, `turing`, `reviewer`, `worker`** (`skills/<role>/`) — the five
   standalone role skills. Each is a complete role: `SKILL.md`, `role.json` and `references/`.
-  Installed beside the director for the same three kinds; installation location is the
-  platform the role runs on.
+  A fresh install puts them on the primary kind; on an upgrade each role is refreshed on the
+  kind(s) that already carry it and are in `--target`. Installation location is the platform
+  the role runs on.
 - **`setup-meerkat`** (`skills/setup-meerkat/`) — the user-invoked `/setup-meerkat`
   command: it detects what is installed, repairs what is missing, offers the Matt Pocock
   issue-tracker integration, and moves role skills between platforms. The bash installer
-  copies it **with the Claude bundle only**; the repository
-  bundle and marketplace still carry it for the other agent kinds.
+  copies it **on the primary kind only**; the repository bundle and marketplace still carry
+  it for the other agent kinds.
 
 > **"Actor kind" and "agent".** An **actor kind** is the application that runs the agent — Claude
 > Code, OpenClaw, Codex or Pi / Agent Skills: the values `--target` takes.
@@ -54,9 +55,8 @@ There are three layers, and it is worth keeping them straight:
    one `skills/` tree instead of receiving a copy. The marketplace has a single entry —
    `meerkat-taskpanel`, sourced at `./`. `meerkat-director`, `meerkat-chat`, the role skills
    and `setup-meerkat` are **not** separate marketplace plugins: the root bundle carries them
-   from the same tree, and `install.sh` copies them into an agent's skill directory (the
-   director, chat console and roles for the three non-OpenClaw agents, the setup command for
-   Claude).
+   from the same tree, and `install.sh` copies the director, chat console, setup command and
+   roles into the **primary** agent kind's skill directory only.
 
 > **Status: the engine has landed in full.** The skill is discoverable, the `taskctl`
 > commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
@@ -186,21 +186,28 @@ match the assignee the board uses for it; it defaults to `Worker`.
 
 ## Where things land
 
-| Agent | `--target` | Board skill | Director + chat + role skills | Bundle |
+| Agent | `--target` | Board skill | Director + chat + setup | Role skills |
 |---|---|---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/meerkat` | `~/.claude/skills/{meerkat-director,meerkat-chat,jobs,linus,turing,reviewer,worker}` | `.` — the repository root (`.claude-plugin/plugin.json`) |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat` | **none** — see [OpenClaw](../scheduling.md#openclaw-no-loop-units) | `.` — the same root bundle |
-| Codex | `codex` | `~/.codex/skills/meerkat` | `~/.codex/skills/{meerkat-director,meerkat-chat,jobs,linus,turing,reviewer,worker}` | `.` — the same root bundle, through the marketplace |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat` | `~/.agents/skills/{meerkat-director,meerkat-chat,jobs,linus,turing,reviewer,worker}` | `.` — the root `package.json`'s `pi` field |
+| Claude Code | `claude` | `~/.claude/skills/meerkat` | `~/.claude/skills/{meerkat-director,meerkat-chat,setup-meerkat}` **when primary** | `~/.claude/skills/<role>` when the role is assigned there |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat` | **none** — never a loop kind; see [OpenClaw](../scheduling.md#openclaw-no-loop-units) | **none** |
+| Codex | `codex` | `~/.codex/skills/meerkat` | `~/.codex/skills/{meerkat-director,meerkat-chat,setup-meerkat}` **when primary** | `~/.codex/skills/<role>` when the role is assigned there |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat` | `~/.agents/skills/{meerkat-director,meerkat-chat,setup-meerkat}` **when primary** | `~/.agents/skills/<role>` when the role is assigned there |
 
-The **setup skill** is an extra row with no column of its own: `install.sh --target claude`
-copies `setup-meerkat` to `~/.claude/skills/setup-meerkat`, and no other target copies it.
-The repository bundle and marketplace still expose it, so another agent kind can read it in
-place; the bash installer just does not put a second copy on disk for them.
+**The primary kind** is the first `claude|codex|pi` in normalized `--target` order —
+`--target all` → `claude`; `--target codex,pi` → `codex`. It is the same primary
+`--supervisor=enable` acts on. The director, the chat console, `setup-meerkat` and a fresh
+install's role skills go there, and nowhere else.
 
-Roles are installed and upgraded **only** by `/setup-meerkat`. `install.sh` ships no roles
-root and never creates, writes or deletes one; a forced reinstall carries an existing
-`roles/` across untouched. To upgrade a team, re-run the skill.
+**Roles on an upgrade.** `install.sh` scans `<home>/{.claude,.codex,.agents}/skills/<role>/`
+for each role. Every kind that already carries the role **and is in `--target`** is refreshed;
+the primary kind is not given a second copy. A role whose only home is outside `--target` is
+named on stderr and left alone — the write scope is exactly the declared targets. A role the
+repository adds later has no installed home, so it defaults to the primary kind. Roles are
+never deleted; move one between kinds with `/setup-meerkat` (`route-role.mjs`).
+
+`install.sh` ships no roles root and never creates, writes or deletes one; a forced reinstall
+carries an existing `roles/` across untouched. A copy of the director, chat console or setup
+command left on a non-primary kind by an older install is kept, not refreshed.
 
 The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists a single
 plugin, `./` (the board); Codex reads the same marketplace manifest, which is why it has no
@@ -286,9 +293,10 @@ place with a warning; repair it with `taskctl project map set`.
 
 | Artefact | Where | What |
 |---|---|---|
-| director skill | `<agent-dir>/skills/meerkat-director/` | the decision hub as a skill: its `SKILL.md` plus the decision policy and operator view. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked |
-| chat skill | `<agent-dir>/skills/meerkat-chat/` | the human's console as a skill: its `SKILL.md` plus the console, answering and acceptance references. It carries no execution body; every write is the `meerkat` board skill's command. Always **copied**, never symlinked |
-| role skills | `<agent-dir>/skills/{jobs,linus,turing,reviewer,worker}/` | each role's workflow, `role.json` and references. Always **copied**; where a role is installed is the platform that runs it |
+| director skill | `<primary-agent-dir>/skills/meerkat-director/` | the decision hub as a skill: its `SKILL.md` plus the decision policy and operator view. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked; the runtime finds it wherever it is installed |
+| chat skill | `<primary-agent-dir>/skills/meerkat-chat/` | the human's console as a skill: its `SKILL.md` plus the console, answering and acceptance references. It carries no execution body; every write is the `meerkat` board skill's command. Always **copied**, never symlinked |
+| setup skill | `<primary-agent-dir>/skills/setup-meerkat/` | `/setup-meerkat`: detect, repair, and move a role between kinds. Always **copied**, never symlinked |
+| role skills | `<agent-dir>/skills/<role>/` | each role's workflow, `role.json` and references. Always **copied**; where a role is installed is the platform that runs it |
 | loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, worker transcripts, `continue.state.json` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
 | launchd | `<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
 | systemd | `<agent-dir>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
@@ -347,11 +355,19 @@ bash install.sh --target all --supervisor=disable       # stop every loop kind i
 **One supervisor per machine is the rule** (see
 [`scheduling.md §One supervisor per machine`](../scheduling.md#one-supervisor-per-machine)).
 `--supervisor=enable` acts on the **first loop kind in normalized `--target` order** — the
-**primary kind**; `--target all` therefore enables `claude` only. Other platforms join by
-installing a role skill there, not by starting a second supervisor, and
-`--supervisor-actor-kinds` naming several kinds is refused with that hint.
+**primary kind**; `--target all` therefore enables `claude` only. The primary kind is also
+where the team skills land (director, chat, setup and a fresh install's roles); see
+[Where things land](#where-things-land). Other platforms join by installing a role skill
+there, not by starting a second supervisor, and `--supervisor-actor-kinds` naming several
+kinds is refused with that hint. `--supervisor-actor-kinds` selects the **action's** kind; it
+does not move the team skills.
 `--supervisor=disable` and `--supervisor=status` cover **every** loop kind in `--target`, so
 a pre-rule multi-supervisor machine is visible in one status and stopped by one disable.
+
+**The director is found, not configured.** At session open the supervisor scans
+`<home>/{.claude,.codex,.agents}/skills/meerkat-director/` (primary kind first, then
+claude → codex → pi) and opens the director lane on the kind that carries the skill. No
+`.env` key, `projects.json` field or constants entry records its location.
 
 **`--supervisor-actor-kinds` names one primary kind for `enable`.** Listing several kinds
 for `enable` is refused (one supervisor process already holds every kind's sessions; a
@@ -728,7 +744,7 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 
 | Flag | Effect |
 |---|---|
-| `--target <agent-kind>` | Which agent kind(s) to install for, or `server` for the runtime tree. Default `all` — every agent plus the server. Repeatable, and a comma-separated list (`--target claude,server,pi`) works too. `--no-server` removes the server from whatever the selection resolves to. |
+| `--target <agent-kind>` | Which agent kind(s) to install for, or `server` for the runtime tree. Default `all` — every agent plus the server. Repeatable, and a comma-separated list (`--target claude,server,pi`) works too. The **first** `claude|codex|pi` in the list is the primary kind and receives the team skills; the board skill goes to every selected kind. `--no-server` removes the server from whatever the selection resolves to. |
 | `--no-server` | Install the agent-kind skills only, leaving the runtime tree out (`--target all --no-server` is the old `all`). |
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`; the server tree lands at `<home>/.meerkat-taskpanel`. |
 | `--skip-web-build` | Never try to build `web/dist`. A server install without a prebuilt `web/dist` is then API-only (with a warning) instead of building it. |
@@ -927,7 +943,7 @@ Uninstall:
 ```bash
 codex plugin remove meerkat-taskpanel
 codex plugin marketplace remove meerkat-taskpanel-marketplace
-rm -rf ~/.codex/skills/meerkat ~/.codex/skills/{meerkat-director,meerkat-chat} ~/.codex/skills/{jobs,linus,turing,reviewer,worker} \
+rm -rf ~/.codex/skills/meerkat ~/.codex/skills/{meerkat-director,meerkat-chat,setup-meerkat} ~/.codex/skills/{jobs,linus,turing,reviewer,worker} \
        ~/.codex/bin/taskctl \
        ~/.codex/scheduling ~/.codex/meerkat-taskpanel
 ```
@@ -988,7 +1004,7 @@ Uninstall:
 
 ```bash
 pi remove "$PWD"
-rm -rf ~/.agents/skills/meerkat ~/.agents/skills/{meerkat-director,meerkat-chat} ~/.agents/skills/{jobs,linus,turing,reviewer,worker} \
+rm -rf ~/.agents/skills/meerkat ~/.agents/skills/{meerkat-director,meerkat-chat,setup-meerkat} ~/.agents/skills/{jobs,linus,turing,reviewer,worker} \
        ~/.agents/scheduling
 ```
 
@@ -1090,10 +1106,10 @@ Each agent kind's section above lists the plugin/bundle removal command. The ski
 are removed by deleting their destinations:
 
 ```bash
-rm -rf ~/.claude/skills/{meerkat,meerkat-director,meerkat-chat,jobs,linus,turing,reviewer,worker}  # claude
+rm -rf ~/.claude/skills/{meerkat,meerkat-director,meerkat-chat,setup-meerkat,jobs,linus,turing,reviewer,worker}  # claude
 rm -rf ~/.openclaw/skills/meerkat                                  # openclaw (no loop)
-rm -rf ~/.codex/skills/{meerkat,meerkat-director,meerkat-chat,jobs,linus,turing,reviewer,worker}   # codex
-rm -rf ~/.agents/skills/{meerkat,meerkat-director,meerkat-chat,jobs,linus,turing,reviewer,worker} # pi
+rm -rf ~/.codex/skills/{meerkat,meerkat-director,meerkat-chat,setup-meerkat,jobs,linus,turing,reviewer,worker}   # codex
+rm -rf ~/.agents/skills/{meerkat,meerkat-director,meerkat-chat,setup-meerkat,jobs,linus,turing,reviewer,worker} # pi
 ```
 
 Nothing is written outside those directories, and nothing is sent over the network — see

@@ -15,7 +15,7 @@
  */
 
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
@@ -295,28 +295,39 @@ describe("install.sh: scheduling units", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The director skill: installed by the three agent kinds that can be woken, never by OpenClaw
+// The team skills: the primary agent kind by default, never OpenClaw
 //
-// The loop is a skill of its own (T-20261012-163500-loopdecouple-b), distributed to the
-// three non-OpenClaw agent kinds. OpenClaw is excluded **permanently** (ruling O3): the
-// openclaw-team framework already ships a per-agent poll and a `task-patrol` — the same
-// design (cadence: the framework's own AUTOMATIONS.md, not a number restated here); two
-// supervisors on one board would only race each other for the same cards.
+// The loop is a skill of its own (T-20261012-163500-loopdecouple-b). `meerkat-director`,
+// `meerkat-chat`, `setup-meerkat` and every role skill go to the **primary** kind — the
+// first claude|codex|pi in normalized --target order, the same rule --supervisor=enable
+// uses. A role already installed on another kind is refreshed there on upgrade; a role
+// whose only home is outside --target is reported, never written cross-target.
+// OpenClaw is excluded **permanently** (ruling O3): the openclaw-team framework already
+// ships a per-agent poll and a `task-patrol` — the same design (cadence: the framework's
+// own AUTOMATIONS.md, not a number restated here); two supervisors on one board would only
+// race each other for the same cards.
 //
 // The skill carries decisions, not an execution body: `taskctl loop …` is the body.
 // ---------------------------------------------------------------------------
 
-/** Agent kinds the installer must place the director skill in, the dot-directory, and the CLI name. */
+/** Agent kinds the installer can place a skill in, the dot-directory, and the CLI name. */
 const LOOP_KINDS = [
   ["claude", ".claude", "claude"],
   ["codex", ".codex", "codex"],
   ["pi", ".agents", "pi"],
 ];
 
-describe("install.sh: the director and role skills' distribution", () => {
+/** A PATH carrying a fake CLI for every loop kind, so an --target all run is quiet. */
+function allKindsEnv(home) {
+  const bin = makeTempDir();
+  for (const [, , cli] of LOOP_KINDS) makeFakeCli(bin, cli);
+  return installEnv(home, bin);
+}
+
+describe("install.sh: the team skills' distribution", () => {
   const ROLE_SKILLS = ["jobs", "linus", "turing", "reviewer", "worker"];
   for (const [kind, agentDir, cli] of LOOP_KINDS) {
-    it(`installs the director and role skills for ${kind}`, () => {
+    it(`installs the team skills for ${kind}`, () => {
       const home = makeTempDir();
       const bin = makeTempDir();
       makeFakeCli(bin, cli);
@@ -368,23 +379,16 @@ describe("install.sh: the director and role skills' distribution", () => {
         `${kind}: the taskctl shim must land`,
       );
 
-      // The setup command ships with the Claude bundle only; the repository bundle
-      // and marketplace still carry it for the other kinds, but this installer does not.
+      // setup-meerkat follows the primary kind now: a single-kind run makes that kind primary.
       const setup = join(home, agentDir, "skills", "setup-meerkat");
+      assert.ok(existsSync(setup), `${kind}: setup-meerkat follows the primary kind`);
+      assert.ok(existsSync(join(setup, "scripts", "detect.mjs")), `${kind}: the setup scripts must land`);
+      assert.ok(existsSync(join(setup, "evals", "evals.json")), `${kind}: the setup evals must land`);
       assert.equal(
-        existsSync(setup),
-        kind === "claude",
-        `${kind}: setup-meerkat is copied for Claude only`,
+        existsSync(join(setup, "assets", "team")),
+        false,
+        `${kind}: role prose lives in the standalone role skills, not a team template`,
       );
-      if (kind === "claude") {
-        assert.ok(existsSync(join(setup, "scripts", "detect.mjs")), "claude: the setup scripts must land");
-        assert.ok(existsSync(join(setup, "evals", "evals.json")), "claude: the setup evals must land");
-        assert.equal(
-          existsSync(join(setup, "assets", "team")),
-          false,
-          "claude: role prose lives in the standalone role skills, not a team template",
-        );
-      }
     });
   }
 
@@ -416,10 +420,140 @@ describe("install.sh: the director and role skills' distribution", () => {
     assert.equal(
       existsSync(join(home, ".openclaw", "skills", "setup-meerkat")),
       false,
-      "setup-meerkat is Claude-only",
+      "OpenClaw is never the primary loop kind",
     );
     assert.equal(existsSync(join(home, ".openclaw", "scheduling")), false);
     assert.equal(existsSync(join(home, ".openclaw", "meerkat-taskpanel")), false);
+    assert.doesNotMatch(run.stdout, /primary agent kind/, "no loop kind is selected");
+  });
+
+  it("--target all installs the team skills on the primary kind only", () => {
+    const home = makeTempDir();
+    const run = runInstall(["--target", "all", "--no-server", "--prefix", home], allKindsEnv(home));
+    assert.equal(run.status, 0, run.stderr);
+
+    assert.match(run.stdout, /install\.sh: primary agent kind: claude/);
+    assert.match(run.stdout, /install\.sh: roles:/);
+    for (const skill of ["meerkat-director", "meerkat-chat", "setup-meerkat", ...ROLE_SKILLS]) {
+      assert.ok(
+        existsSync(join(home, ".claude", "skills", skill, "SKILL.md")),
+        `.claude must carry ${skill}`,
+      );
+      for (const agentDir of [".codex", ".agents"]) {
+        assert.equal(
+          existsSync(join(home, agentDir, "skills", skill)),
+          false,
+          `${agentDir} must not receive ${skill}: only the primary kind gets the team`,
+        );
+      }
+    }
+    assert.ok(
+      existsSync(join(home, ".claude", "agents", "jobs.md")),
+      "native agent definitions follow the primary kind",
+    );
+    assert.equal(existsSync(join(home, ".codex", "agents")), false);
+    assert.equal(existsSync(join(home, ".pi", "agent", "agents")), false);
+
+    // The board skill still lands everywhere.
+    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
+      assert.ok(existsSync(join(home, agentDir, "skills", "meerkat", "SKILL.md")), `${agentDir} board`);
+    }
+  });
+
+  it("--target codex,pi makes codex the primary kind", () => {
+    const home = makeTempDir();
+    const run = runInstall(
+      ["--target", "codex,pi", "--no-server", "--prefix", home],
+      allKindsEnv(home),
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /install\.sh: primary agent kind: codex/);
+
+    for (const skill of ["meerkat-director", "meerkat-chat", "setup-meerkat", ...ROLE_SKILLS]) {
+      assert.ok(existsSync(join(home, ".codex", "skills", skill, "SKILL.md")), `.codex ${skill}`);
+      assert.equal(existsSync(join(home, ".agents", "skills", skill)), false, `.agents ${skill}`);
+    }
+    assert.ok(existsSync(join(home, ".codex", "agents", "jobs.toml")), "codex native definitions");
+    assert.equal(existsSync(join(home, ".claude")), false, "claude is not in --target");
+  });
+
+  it("an upgrade refreshes a role where it is already installed", () => {
+    const home = makeTempDir();
+    const env = allKindsEnv(home);
+    assert.equal(runInstall(["--target", "codex", "--no-server", "--prefix", home], env).status, 0);
+
+    const again = runInstall(["--target", "all", "--no-server", "--prefix", home], env);
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /already installed: .*\.codex\/skills\/jobs/, "the codex copy is kept");
+    assert.ok(existsSync(join(home, ".codex", "skills", "jobs", "SKILL.md")));
+    assert.equal(
+      existsSync(join(home, ".claude", "skills", "jobs")),
+      false,
+      "no second role copy is created on the primary kind",
+    );
+    assert.ok(
+      existsSync(join(home, ".claude", "skills", "meerkat-director", "SKILL.md")),
+      "director still follows the primary kind",
+    );
+  });
+
+  it("a newly added role defaults to the primary kind", () => {
+    const home = makeTempDir();
+    const env = allKindsEnv(home);
+    assert.equal(runInstall(["--target", "codex", "--no-server", "--prefix", home], env).status, 0);
+
+    for (const role of ["linus", "turing", "reviewer", "worker"]) {
+      rmSync(join(home, ".codex", "skills", role), { recursive: true, force: true });
+    }
+    const run = runInstall(["--target", "all", "--no-server", "--prefix", home], env);
+    assert.equal(run.status, 0, run.stderr);
+
+    assert.ok(existsSync(join(home, ".codex", "skills", "jobs", "SKILL.md")), "jobs stays on codex");
+    for (const role of ["linus", "turing", "reviewer", "worker"]) {
+      assert.ok(
+        existsSync(join(home, ".claude", "skills", role, "SKILL.md")),
+        `${role} defaults to the primary kind`,
+      );
+      assert.equal(existsSync(join(home, ".codex", "skills", role)), false, `${role} is not re-added`);
+    }
+  });
+
+  it("reports a role home outside --target and does not write there", () => {
+    const home = makeTempDir();
+    const env = allKindsEnv(home);
+    assert.equal(runInstall(["--target", "codex", "--no-server", "--prefix", home], env).status, 0);
+
+    const run = runInstall(
+      ["--target", "claude", "--no-server", "--prefix", home, "--dry-run"],
+      env,
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stderr, /jobs lives on codex, which is not in --target/);
+    assert.equal(run.stdout.includes(join(home, ".codex", "skills", "jobs")), false, "no cross-target write");
+    assert.equal(run.stdout.includes(join(home, ".claude", "skills", "jobs")), false, "no primary copy either");
+    assert.ok(
+      run.stdout.includes(join(home, ".claude", "skills", "meerkat-director")),
+      "the director is still previewed for the primary kind",
+    );
+  });
+
+  it("refreshes every copy of a role when all its kinds are in --target", () => {
+    const home = makeTempDir();
+    const env = allKindsEnv(home);
+    assert.equal(runInstall(["--target", "claude", "--no-server", "--prefix", home], env).status, 0);
+
+    // A legacy install left a second copy; nothing creates one under the new rules.
+    const legacy = join(home, ".codex", "skills", "jobs");
+    mkdirSync(dirname(legacy), { recursive: true });
+    cpSync(join(home, ".claude", "skills", "jobs"), legacy, { recursive: true });
+
+    const run = runInstall(
+      ["--target", "all", "--no-server", "--prefix", home, "--dry-run"],
+      env,
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(run.stdout.includes(join(home, ".claude", "skills", "jobs")), "claude copy refreshed");
+    assert.ok(run.stdout.includes(join(home, ".codex", "skills", "jobs")), "codex copy refreshed");
   });
 
   it("copies the director and role skills even under --link, which names the board skill only", () => {

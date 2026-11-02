@@ -10,7 +10,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -111,5 +111,63 @@ describe("native agent definitions", () => {
     const result = writeNativeAgents({ kind: "openclaw", home: f.home, repo: f.repo });
     assert.equal(result.written.length, 0);
     assert.match(result.skipped[0], /no native agent format/);
+  });
+
+  /** A second role, so a role filter has something to leave out. */
+  function addReviewer(repo) {
+    const role = join(repo, "skills", "reviewer");
+    mkdirSync(role, { recursive: true });
+    writeFileSync(join(role, "SKILL.md"), "---\nname: reviewer\n---\n");
+    writeFileSync(
+      join(role, "role.json"),
+      JSON.stringify({
+        schema: "meerkat-role",
+        id: "reviewer",
+        agent: "Reviewer",
+        native_agent: "reviewer",
+        lanes: ["reviewer"],
+        description: "Independent review",
+      }),
+    );
+  }
+
+  it("writes only the roles assigned to this kind", () => {
+    const f = fixture();
+    addReviewer(f.repo);
+    const result = writeNativeAgents({
+      kind: "claude",
+      home: f.home,
+      repo: f.repo,
+      roles: ["jobs"],
+    });
+    assert.deepEqual(result.written, [join(f.home, ".claude", "agents", "jobs.md")]);
+    assert.equal(existsSync(join(f.home, ".claude", "agents", "reviewer.md")), false);
+  });
+
+  it("reports a generated definition for a role this kind no longer carries", () => {
+    const f = fixture();
+    addReviewer(f.repo);
+    writeNativeAgents({ kind: "claude", home: f.home, repo: f.repo });
+    const reviewer = join(f.home, ".claude", "agents", "reviewer.md");
+
+    const result = writeNativeAgents({
+      kind: "claude",
+      home: f.home,
+      repo: f.repo,
+      roles: ["jobs"],
+    });
+    assert.deepEqual(result.stale, [reviewer]);
+    assert.equal(existsSync(reviewer), true, "stale is reported, never deleted");
+  });
+
+  it("an empty role list writes nothing and reports every generated definition stale", () => {
+    const f = fixture();
+    writeNativeAgents({ kind: "claude", home: f.home, repo: f.repo });
+    const jobs = join(f.home, ".claude", "agents", "jobs.md");
+
+    const result = writeNativeAgents({ kind: "claude", home: f.home, repo: f.repo, roles: [] });
+    assert.deepEqual(result.written, []);
+    assert.deepEqual(result.stale, [jobs]);
+    assert.equal(existsSync(jobs), true);
   });
 });

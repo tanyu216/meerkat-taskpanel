@@ -442,9 +442,10 @@ supported answer.
 | `meerkat-taskpanel` | `./` | the board skill, the director and the five role skills — the repository's one `skills/` tree, read in place |
 
 The loop used to be a second entry, sourced at a `plugins/loop` bundle that carried the loop
-skill and nothing else so it could be installed alone. That bundle is gone: the director and
-the role skills are installed by `install.sh --target claude|codex|pi`, and a marketplace
-install of the board brings the shared tree with it (it is not filtered per entry).
+skill and nothing else so it could be installed alone. That bundle is gone: the director,
+the chat console, `setup-meerkat` and the role skills are installed by `install.sh` on the
+**primary** agent kind, and a marketplace install of the board brings the shared tree with
+it (it is not filtered per entry).
 
 ```bash
 # consumer: register this repository as the marketplace

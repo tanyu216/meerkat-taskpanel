@@ -21,16 +21,20 @@ agent's default everywhere.
 
 ## `--target`
 
-`all` means **six actor kinds + the server**; an explicit comma list is literal;
+`all` means **the four agent kinds + the server**; an explicit comma list is literal;
 `--no-server` removes the server. The server is dispatched first because the agent shims
-and per-kind config name it.
+and per-kind config name it. The first `claude|codex|pi` in the list is the **primary
+kind**: it receives the director, the chat console, `setup-meerkat` and a fresh install's
+role skills.
 
 | Intent | Invocation |
 |---|---|
-| local server + Claude | `bash <checkout>/install.sh --target claude,server` |
-| Claude only, remote board | `bash <checkout>/install.sh --target claude --no-automation` |
+| local server + this kind | `bash <checkout>/install.sh --target <kind>,server` |
+| this kind only, remote board | `bash <checkout>/install.sh --target <kind> --no-automation` |
 | all actor kinds + server | `bash <checkout>/install.sh --target all` |
 | server only | `bash <checkout>/install.sh --target server` |
+
+`<kind>` is the platform this skill runs on (claude, codex or pi), not a fixed value.
 
 `<checkout>` is the detected source tree (or the cloned cache), not the user's project.
 
@@ -103,8 +107,7 @@ it here.
 
 ## `setup-meerkat` itself
 
-`install.sh --target claude` copies `skills/setup-meerkat/` to
-`~/.claude/skills/setup-meerkat`. Other actor kinds keep the board, director and role
-skills; the
-repository bundle and marketplace still expose the setup skill, but the bash installer
-does not copy it there. OpenClaw gets the board only.
+`install.sh` copies `skills/setup-meerkat/` to the **primary kind's** skill directory (for
+example `~/.codex/skills/setup-meerkat` when codex is primary). Other actor kinds keep the
+board skill only; the repository bundle and marketplace still expose the setup skill, but
+the bash installer does not copy it there. OpenClaw gets the board only.

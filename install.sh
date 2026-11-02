@@ -50,13 +50,18 @@
 #
 # The skills are distributed, and they do not go to the same agent kinds:
 #
-#   meerkat            the board                    → all four agent kinds
-#   meerkat-director   the decision hub             → claude, codex, pi
-#   jobs/linus/turing/reviewer/worker  the roles    → claude, codex, pi
-#                                                     (never openclaw)
-#   setup-meerkat      install/repair + migration   → the Claude bundle only
-#                                                     (the bundle/marketplace still
-#                                                      carries it for other kinds)
+#   meerkat            the board                    → every selected agent kind
+#   meerkat-director   the decision hub             → the primary kind only
+#   meerkat-chat       the human console            → the primary kind only
+#   skills/*/role.json the role skills              → the primary kind only
+#                                                     (an upgrade refreshes a role
+#                                                      on the kind(s) that already
+#                                                      carry it, within --target)
+#   setup-meerkat      install/repair + migration   → the primary kind only
+#
+# The primary kind is the first claude|codex|pi in normalized --target order
+# (`--target all` → claude) — the same rule --supervisor=enable uses. Move a role later
+# with /setup-meerkat; the runtime finds meerkat-director wherever its skill is installed.
 #
 # OpenClaw is excluded from the loop on purpose: the openclaw-team framework already
 # ships an equivalent `poll` / `task-patrol`, so a second supervisor would only race the
@@ -109,6 +114,8 @@ Options:
   --target <agent-kind>  claude | openclaw | codex | pi | server | all
                     (default: all — every agent above plus the server)
                     A comma-separated list is also accepted (claude,codex).
+                    The team skills go to the primary kind: the first
+                    claude|codex|pi in --target order (`all` → claude).
                     `server` materializes the runtime at <home>/.meerkat-taskpanel
                     and provides bin/taskd + bin/taskctl.
   --no-server       Install the agent-kind skills only, leaving the server out
@@ -193,29 +200,25 @@ Destinations:
   codex      <home>/.codex/skills/meerkat
   pi         <home>/.agents/skills/meerkat
 
-The **board** skill goes to all four agent kinds. The **director** and the five **role**
-skills (jobs, linus, turing, reviewer, worker) go to the three non-OpenClaw agent kinds:
+The **board** skill goes to every selected agent kind. The **team skills** — the
+director, the human console, the setup command and every role skill (`skills/*/role.json`)
+— go to the **primary kind only**: the first claude|codex|pi in --target order
+(`--target all` → claude).
 
-  claude     <home>/.claude/skills/{meerkat-director,jobs,linus,turing,reviewer,worker}
-  codex      <home>/.codex/skills/{meerkat-director,jobs,linus,turing,reviewer,worker}
-  pi         <home>/.agents/skills/{meerkat-director,jobs,linus,turing,reviewer,worker}
-  openclaw   — none, on purpose: the openclaw-team framework's poll / task-patrol
-              automations already are this design (see docs/scheduling.md).
+  primary    <home>/<agent-dir>/skills/{meerkat-director,meerkat-chat,setup-meerkat,<roles>}
+  others     — the board skill only. An upgrade refreshes a role on every kind that
+              already carries it and is in --target; a role whose only home is outside
+              --target is reported and left alone.
+  openclaw   — never the primary loop kind, and no team skills on purpose: the
+              openclaw-team framework's poll / task-patrol automations already are
+              this design (see docs/scheduling.md).
 
-The **setup** skill (`/setup-meerkat`, install/repair plus the role migration) is copied
-with the Claude bundle only:
+`/setup-meerkat` migrates a role between agent kinds and reports an old `meerkat-loop`
+roles tree as deprecated; a forced reinstall carries an existing one across untouched.
+`install.sh` never deletes a copy it did not put in this run's target set.
 
-  claude     <home>/.claude/skills/setup-meerkat
-  other      — not copied by this installer; the repository bundle and marketplace
-              still carry it for the other agent kinds.
-
-Roles are installed as skills by this installer. `/setup-meerkat` only migrates them
-between agent kinds and reports an old `meerkat-loop` roles tree as deprecated; a forced
-reinstall carries an existing one across untouched.
-
-The director and role skills are always **copied**, never symlinked: --link names the
-board skill only, or a symlinked director would put the checkout back into the load path
-the split removes.
+The team skills are always **copied**, never symlinked: --link names the board skill only,
+or a symlinked director would put the checkout back into the load path the split removes.
 
 The claim policy is written to <program root>/.env.<actor-kind> for the agent kinds that
 build a supervisor (claude, codex, pi); OpenClaw installs
@@ -237,6 +240,8 @@ explicitly (an agent-only install cannot detect the change itself).
 Environment (set for each agent-kind installer):
   MEERKAT_TASKPANEL_TARGET_HOME  overrides $HOME
   MEERKAT_TASKPANEL_AGENT_NAME   agent identity (default: Worker)
+  MEERKAT_TASKPANEL_IS_PRIMARY   "1" for the primary kind (internal: team placement)
+  MEERKAT_TASKPANEL_ROLE_SKILLS  the roles assigned to this kind (internal; always set)
   MEERKAT_TASKPANEL_HUMAN_NAME   the human name --as-human signs with (default: the
                                  name an earlier install recorded, else $USER)
   MEERKAT_TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger + scheduling
@@ -662,6 +667,85 @@ for target in $TARGETS; do
   fi
 done
 
+# ---------------------------------------------------------------------------
+# Team-skill placement. The primary kind is the first agent kind in normalized
+# --target order (the same rule --supervisor=enable uses). On a fresh install the
+# director, chat console, setup command and every role go there; on an upgrade a
+# role stays on the kind(s) that already carry it — every one of them that is in
+# --target is refreshed. A role whose only home is outside --target is reported
+# and left alone (the write scope is exactly --target). Roles only: director,
+# chat and setup always follow the primary kind; the runtime finds the director
+# wherever its skill is installed, so no config records any of this.
+#
+# This runs before the server reorder below: primary is an agent-kind-order fact,
+# and `server` moving to the front must not influence it.
+# ---------------------------------------------------------------------------
+PRIMARY_KIND="$(primary_agent_kind "$TARGETS")"
+ROLE_ASSIGNMENTS="" # "role:kind" pairs, one per (role, carrying kind) in --target
+ROLE_SUMMARY=""
+if [ -n "$PRIMARY_KIND" ]; then
+  echo "install.sh: primary agent kind: $PRIMARY_KIND"
+  for role in $(role_skill_names); do
+    carriers=""
+    for kind in claude codex pi; do
+      case "$kind" in
+        claude) role_dir=".claude" ;;
+        codex) role_dir=".codex" ;;
+        pi) role_dir=".agents" ;;
+      esac
+      [ -d "$TARGET_HOME/$role_dir/skills/$role" ] && carriers="$carriers $kind"
+    done
+    carriers="${carriers# }"
+    if [ -z "$carriers" ]; then
+      # A newly added role defaults to the primary kind.
+      carriers="$PRIMARY_KIND"
+      assigned="$carriers"
+      ROLE_SUMMARY="$ROLE_SUMMARY $role->$carriers(new)"
+    else
+      ROLE_SUMMARY="$ROLE_SUMMARY $role->$carriers"
+      assigned=""
+      for kind in $carriers; do
+        case " $TARGETS " in
+          *" $kind "*) assigned="$assigned $kind" ;;
+          *)
+            echo "install.sh: note: role $role lives on $kind, which is not in --target — left unrefreshed (add $kind to --target, or move it with /setup-meerkat)" >&2
+            ;;
+        esac
+      done
+      assigned="${assigned# }"
+    fi
+    for kind in $assigned; do ROLE_ASSIGNMENTS="$ROLE_ASSIGNMENTS $role:$kind"; done
+  done
+  [ -n "$ROLE_SUMMARY" ] && echo "install.sh: roles:$ROLE_SUMMARY"
+
+  # director/chat/setup are not detected or migrated; name an older copy on a secondary
+  # kind so "only the primary is refreshed" is never a silent surprise. Nothing is deleted.
+  for kind in claude codex pi; do
+    [ "$kind" = "$PRIMARY_KIND" ] && continue
+    case " $TARGETS " in *" $kind "*) ;; *) continue ;; esac
+    case "$kind" in
+      claude) legacy_dir=".claude" ;;
+      codex) legacy_dir=".codex" ;;
+      pi) legacy_dir=".agents" ;;
+    esac
+    legacy=""
+    for team_skill in "$(director_skill_name)" "$(chat_skill_name)" "$(setup_skill_name)"; do
+      [ -d "$TARGET_HOME/$legacy_dir/skills/$team_skill" ] || continue
+      legacy="${legacy:+$legacy, }$team_skill"
+    done
+    [ -n "$legacy" ] && echo "install.sh: note: $legacy also exists on $kind — only the primary kind is refreshed; the old copy is kept (nothing is deleted)" >&2
+  done
+fi
+
+# roles_for_kind <kind> — the roles assigned to this agent kind, space-separated.
+roles_for_kind() {
+  roles_out=""
+  for role_pair in $ROLE_ASSIGNMENTS; do
+    [ "${role_pair#*:}" = "$1" ] && roles_out="$roles_out ${role_pair%%:*}"
+  done
+  printf '%s\n' "${roles_out# }"
+}
+
 if [ "$SERVER_SELECTED" = "1" ]; then
   # server first: the agent shims and per-kind config name the tree, so it must exist
   # before any agent installer writes them.
@@ -800,8 +884,22 @@ FAIL $target — installer not found"
     *" $target "*) kind_supervisor="$SUPERVISOR" ;;
   esac
 
+  # Team-skill placement for this kind. ROLE_SKILLS is set even when empty: the
+  # ${VAR+x} test in install_team_skills is what distinguishes the dispatcher path
+  # from the documented direct scripts/install/<kind>.sh run.
+  kind_is_primary=0
+  kind_role_skills=""
+  case "$target" in
+    claude | codex | pi)
+      [ "$target" = "$PRIMARY_KIND" ] && kind_is_primary=1
+      kind_role_skills="$(roles_for_kind "$target")"
+      ;;
+  esac
+
   if MEERKAT_TASKPANEL_TARGET_HOME="$TARGET_HOME" \
       MEERKAT_TASKPANEL_AGENT_NAME="$AGENT_NAME" \
+      MEERKAT_TASKPANEL_IS_PRIMARY="$kind_is_primary" \
+      MEERKAT_TASKPANEL_ROLE_SKILLS="$kind_role_skills" \
       MEERKAT_TASKPANEL_NO_AUTOMATION="$NO_AUTOMATION" \
       MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
       MEERKAT_TASKPANEL_RECOVER_STALE="$RECOVER_STALE" \
