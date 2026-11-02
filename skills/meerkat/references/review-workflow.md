@@ -187,10 +187,9 @@ so the board will not let you create one.
 
 The card's own `acceptance_mode` is the whole rule; there is no policy, no project default
 and no scope. It selects the closer, not the review: `auto` and `human` both produce a review
-card, and only `off` does not. The reviewer for a dispatched card is
-`project.reviewer ?? the deployment reviewer` (the loop's `--reviewer` /
-`MEERKAT_TASKPANEL_REVIEWER` / per-kind config), and the review card's assignee records the one
-actually used.
+card, and only `off` does not. A dispatched card's reviewer is the role its review card is
+assigned to — the role catalog's `default_reviewer` unless the loop's reconcile says otherwise;
+there is no project-level or deployment-level reviewer configuration.
 
 **The fallback is `auto`.** An unresolved card — task or epic — is reviewed; `human` and `off`
 appear only when explicitly set. Any card, at any depth, may be `human`; a person's decision on

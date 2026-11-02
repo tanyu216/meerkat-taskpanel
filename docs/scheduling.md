@@ -1952,18 +1952,16 @@ allowlist:
 | Role | Tools (Claude adapter, default) |
 |---|---|
 | director | `Read`, `Grep`, `Glob`, `Bash(taskctl *)`, `Bash(node *)` |
-| reviewer | `Read`, `Grep`, `Glob`, `Agent`, `Bash(taskctl *)`, `Bash(git *)`, `Bash(npm run *)`, `Bash(node *)`, `Bash(bash *)` |
-| worker | `Read`, `Edit`, `Write`, `Grep`, `Glob`, `Agent`, `Bash(taskctl *)`, `Bash(node *)`, `Bash(git *)` |
+| reviewer | `Read`, `Grep`, `Glob`, `Bash(taskctl *)`, `Bash(git *)`, `Bash(npm run *)`, `Bash(node *)`, `Bash(bash *)` |
+| worker | `Read`, `Edit`, `Write`, `Grep`, `Glob`, `Bash(taskctl *)`, `Bash(node *)`, `Bash(git *)` |
 
-`Agent` is the subagent-spawning tool (older CLIs spell it `Task`; both are listed
-so one adapter serves either). The reviewer's `npm run` / `node` / `bash` entries
-exist because its contract is to re-run the project's declared gate
-(`project.meta.review_gate`) itself; a read-only lane with only `taskctl` and
-`git` cannot reproduce anything and turns "reproducible evidence" into "read the
-report and trust it". It still has no `Edit`/`Write`. The Pi adapter carries the
-same split through `--tools`, and its lists also include `subagent` /
-`subagents_enable` — the `pi-subagents` extension's tools (inert when the
-extension is not installed, but a lane without them could not spawn). Codex,
+No role carries `Agent`/`Task`: a card session owns its whole card and spawns
+nothing. The reviewer's `npm run` / `node` / `bash` entries exist because its
+contract is to re-run the project's declared gate (`project.meta.review_gate`)
+itself; a read-only lane with only `taskctl` and `git` cannot reproduce anything
+and turns "reproducible evidence" into "read the report and trust it". It still
+has no `Edit`/`Write`. The Pi adapter carries the same split through `--tools`
+(`read,bash` for the reviewer, `read,bash,edit,write` for the worker). Codex,
 OpenCode and Cursor have no equivalent option.
 
 An operator who needs unattended runs that edit and execute without prompts can
@@ -2007,15 +2005,14 @@ session runs that card in the mapped directory or its worktree — see
 **Resident adapters:** the pool ships one per agent kind, each on that agent kind's native
 persistent protocol.
 
-| Agent kind | Resident form | Session identity | Subagent handle |
-|---|---|---|---|
-| Claude Code | one `claude -p --input-format stream-json --output-format stream-json` process per session | `--resume <session_id>` | Agent tool's `agentId`; reattach with `SendMessage` |
-| Codex | one `codex app-server --listen stdio://`; one **thread** per session | `thread/resume` | child thread (`receiverThreadIds`) |
-| Pi | one `pi --mode rpc` process per session | `--session-id <id>` | the `pi-subagents` extension's `agentId` |
+| Agent kind | Resident form | Session identity |
+|---|---|---|
+| Claude Code | one `claude -p --input-format stream-json --output-format stream-json` process per session | `--resume <session_id>` |
+| Codex | one `codex app-server --listen stdio://`; one **thread** per session | `thread/resume` |
+| Pi | one `pi --mode rpc` process per session | `--session-id <id>` |
 
-A **worker session is a top-level session**: the identity column is what the pool stores and
-resumes for it, and it needs no subagent support. The subagent handle column now applies to
-the reviewer lane only.
+A **card session is a top-level session**: the identity column is what the pool stores and
+resumes for it. No adapter spawns a subagent, so no adapter needs a subagent handle.
 
 Claude, Codex and Pi are verified against the real CLIs (Codex's app-server
 schema is pinned by `codex app-server generate-json-schema`);
@@ -2026,11 +2023,9 @@ design — an adapter implements `openSession({cwd, sessionId, role}) →
 {send, interrupt, close}` in `src/orchestrator/actor-kinds/`, and the pool manager never
 names a CLI.
 
-Pi has no native subagents. The pool's Pi adapter warns when no `pi-subagents` payload is
-found — `~/.pi/agent/npm/node_modules/pi-subagents` for a pi 1.x npm install, or the legacy
-`~/.pi/agent/extensions/{subagent,pi-subagents}` pair; `setup-meerkat` reports the same
-check and `install.sh --target pi` prints `pi install npm:pi-subagents`. Without the
-extension the reviewer lane cannot spawn its subagent; worker sessions do not depend on it.
+Pi needs no subagent extension: the session pool runs every card — worker or review — as its
+own top-level `pi --mode rpc` session, so nothing is spawned from inside a session. A Pi host
+needs only the CLI, a selected provider and model, and the role skills.
 
 Installers also install the **director skill** at `<agent-dir>/skills/meerkat-director/`, the
 **chat console** at `<agent-dir>/skills/meerkat-chat/` and the five **role skills** beside

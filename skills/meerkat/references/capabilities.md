@@ -31,12 +31,11 @@ taskctl --json --agent <agent> --actor-kind <kind> [--env-file <p>] [--url <u>] 
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `taskctl --json … project list` | `data.projects[].id`, `.name`, `.reviewer`, `.meta.review_gate` | poll's reviewer merge and the workflow pass's reviewer check |
+| `taskctl --json … project list` | `data.projects[].id`, `.name`, `.meta.review_gate` | the workflow pass's review-card gate |
 
-`reviewer` is the project's override. There is no project-level acceptance default:
-the card states its own mode. The board resolves the effective reviewer per card
-(`project.reviewer ?? deployment reviewer`). `meta.review_gate` names the one command
-the reviewer re-runs; it is copied into the review card's description (or
+A project carries no acceptance default and no reviewer: the card states its own mode,
+and the review card's assignee selects the reviewing role. `meta.review_gate` names the
+one command the reviewer re-runs; it is copied into the review card's description (or
 `n/a — none declared`), never validated or executed by the board.
 
 ## 3. Candidate scan and atomic claim
@@ -121,7 +120,7 @@ cannot see the other agent kind's file.
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `issue reconcile --workflow [--dry-run] [--reviewer <a>] [--review-aging-ms <n>] [--max-actions <n>] --board-limit <n>` | `data.scanned`; `data.workflow.actions[]`, `.alerts[]`, `.changes[]`, `.summary` | the workflow pass |
+| `issue reconcile --workflow [--dry-run] [--assignee <a>] [--review-aging-ms <n>] [--max-actions <n>] --board-limit <n>` | `data.scanned`; `data.workflow.actions[]`, `.alerts[]`, `.changes[]`, `.summary` | the workflow pass |
 
 The plan is snake_case (`workflowToWire`). Action `type`s the loop executes:
 
@@ -162,7 +161,7 @@ All writes use `--actor-kind system --agent Orchestrator` and are idempotent by 
 
 | Capability | Invocation | Keys read |
 |---|---|---|
-| create a review card | `issue create --project <p> --kind task --title … --description … --assignee <reviewer> --assignee-kind agent --force-create --label review --meta flow=B --review-of <original> --review-round <n> --target <t> --idem <key> --acceptance <text>…` | `data.task.identifier` |
+| create a review card | `issue create --project <p> --kind task --title … --description … --assignee <reviewer> --assignee-kind agent --label review --meta flow=B --review-of <original> --review-round <n> --target <t> --idem <key> --acceptance <text>…` | `data.task.identifier` |
 | create a rework child | `issue create --project <p> --kind task --title … --description … [--assignee-id <id>] --acceptance-mode off --meta rework_of=<original> --meta rework_round=<n> --target … --idem …` | `data.task.identifier` |
 | list relations | `relation list <ref>` | `data.children[].target` |
 | link a parent | `relation add <ref> --type parent --target <child>` | `ok` only |
@@ -177,9 +176,10 @@ The acceptance baseline is a column, immune to `--meta`, and a **changed** `meta
 `meta.acceptance_legacy` is refused (`VALIDATION_FAILED`) — append with
 `issue update --acceptance`, prune only as a human with `--drop-acceptance --reason`.
 
-The review card names the **configured reviewer**, an explicit automation identity that is not
-a role the card creator routed to, so it carries `--force-create` — the documented escape from
-the local role catalog. The rework child is assigned with `--assignee-id`, likewise exempt.
+The review card names the reviewer role its reconcile plan carried — the role catalog's
+`default_reviewer` unless the plan says otherwise — so it is a catalog role like any other
+assignee and needs no `--force-create`. The rework child is assigned with `--assignee-id`,
+which is exempt from the catalog guard.
 
 ## 7a. Local role catalog — `role sync`
 

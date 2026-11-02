@@ -996,18 +996,8 @@ Pi has no timer of its own, so step 1 also drops the units under
 `~/.agents/scheduling/`; load one of them to run the supervisor (see
 [Scheduling units](#scheduling-units-claude-codex-pi)).
 
-The loop dispatches one subagent per card, and Pi has no native subagent mechanism. A Pi
-host therefore needs an extension; the installer checks the npm layout pi 1.x writes
-(`~/.pi/agent/npm/node_modules/pi-subagents`) and the legacy
-`~/.pi/agent/extensions/{subagent,pi-subagents}` pair, and prints the recommended command
-when neither is present:
-
-```bash
-pi install npm:pi-subagents
-```
-
-Install it before enabling the supervisor. Without it the pool can start and worker sessions
-still run, but the reviewer lane cannot spawn its subagent, so review cards are never worked.
+The loop runs one card per session and spawns nothing from inside one, so a Pi host needs no
+subagent extension: the CLI, a selected provider and model, and the role skills are enough.
 
 Pi also needs a **provider and model selected**. The loop does not pass `--provider` or
 `--model`: Pi uses `defaultProvider` / `defaultModel` from `~/.pi/agent/settings.json` (the

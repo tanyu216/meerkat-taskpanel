@@ -41,21 +41,6 @@ actor kind's shim (`<home>/<agent-dir>/bin/taskctl`), the checkout's
 - Live pool: `<agent-dir>/meerkat-taskpanel/sessions.state.json` (`poolPid` alive and a
   heartbeat fresher than five minutes).
 
-## Pi subagents
-
-Pi has no native subagent mechanism, and the loop's reviewer session spawns one subagent per
-review card. The check looks for `~/.pi/agent/npm/node_modules/pi-subagents` (where pi 1.x's
-`pi install npm:pi-subagents` puts the package) and for the legacy
-`~/.pi/agent/extensions/subagent` (and the `pi-subagents` alias) and reports:
-
-- `installed` — the directory exists;
-- `extensionDir` — the directory found, or the expected path;
-- `recommended` — `pi install npm:pi-subagents` when missing, else `null`.
-
-For an `--actor-kind pi` run, a missing extension is added to `missing`, an
-`install-pi-subagents` action is emitted, and a warning names the install command. Other
-actor kinds report the field but are not blocked by it.
-
 ## The per-kind config
 
 `<program root>/.env.<actor-kind>`, reported as `kindConfig.path`. The program root is
@@ -92,8 +77,8 @@ the per-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the render
     "claude": {"kind": "claude", "dir": ".claude",
                "skills": {"board": true, "director": true, "setup": true, "names": ["…"]},
                "loopState": {}, "supervisor": {},
-               "config": {"path": "…", "present": true, "agents": ["Jobs", "Linus"], "reviewer": "Reviewer"},
-               "roles": {}, "capabilities": ["design", "…"], "piSubagents": {"installed": null}, "available": true}
+               "config": {"path": "…", "present": true, "kindOrder": ["claude"]},
+               "roles": {}, "capabilities": ["design", "…"], "available": true}
   },
   "rolePlatforms": {"status": "split|single|no-platform",
                     "byPlatform": {"claude": ["Jobs", "Linus", "Reviewer"], "codex": ["Turing"]},
@@ -104,7 +89,6 @@ the per-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the render
   "roles": {"source": "skills", "installedOn": {"claude": ["Jobs"]}, "list": [{"id": "jobs", "agent": "Jobs", "installedOn": ["claude"], "effective": "claude", "fallback": null}]},
   "legacy": [],
   "mattPocock": {"skill": {}, "tracker": {"path": null, "exists": false, "mentionsTaskpanel": false, "unrelated": false}},
-  "piSubagents": {"installed": false, "extensionDir": "…/.pi/agent/extensions/subagent", "recommended": "pi install npm:pi-subagents"},
   "missing": [],
   "actions": [],
   "warnings": []
@@ -129,14 +113,13 @@ interview needs before it can ask **which platform runs which role**:
 - `skills.names` — the installed skills under `<agent-dir>/skills/` that carry a `SKILL.md`
   (facts, not a score);
 - `loopState` and `supervisor` — whether this kind can run the loop at all;
-- `config.kindOrder` / `config.reviewer` — this platform's kind preference and reviewer from
-  its own `<program root>/.env.<kind>`, so a proposal only names real diffs. There is no
-  scan-set field: the claim set is the `roles` below plus the reviewer;
+- `config.kindOrder` — this platform's kind preference from its own
+  `<program root>/.env.<kind>`, so a proposal only names real diffs. There is no scan-set
+  field: the claim set is the `roles` below;
 - `roles` — the role skills this kind carries (`<agent-dir>/skills/<role>/role.json` with
   the `meerkat-role` marker), as agent names; installation location is the routing;
 - `capabilities` — a static heuristic table (`PLATFORM_CAPABILITIES`), not detection;
-- `piSubagents` — pi cannot spawn workers without the extension, so it is unavailable then;
-- `available` — director skill present, plus the pi-subagent gate.
+- `available` — the director skill is present.
 
 `roles` (top level) is the discovery report: every role with `installedOn`, `effective` and
 `fallback`, plus `legacy` for a retired `meerkat-loop` skill, old-shape roles tree or
