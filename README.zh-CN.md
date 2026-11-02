@@ -40,7 +40,7 @@ Meerkat TaskPanel 是为 AI Agent 团队而生的任务看板。它关注的是 
 >
 > `src/core/` 包含领域模型、SQLite 存储与迁移、用例和 `openBoard()`。`src/cli/` 与 `src/server/` 提供真实的 `taskctl` 命令面，以及 CLI 在回环地址上自动启动的本地 `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）。`src/server/` 提供看板 HTTP API 与 SSE 事件流。`web/` 是 Vue 3 看板，构建到 `web/dist`，由 `taskd` 提供。Agent 集成只走 skill，驱动 `taskctl` CLI（见 [`docs/ops/install.md`](docs/ops/install.md)）。
 >
-> 仍待实现（按优先级）：IM 集成（通道插件）、Epic 视图与迭代管理（见[路线图](#路线图)）。更多细节见 `CLAUDE.md` 与 [`docs/agents/development.md`](docs/agents/development.md)。
+> 仍待实现（按优先级）：IM 集成（通道插件）、Epic 视图与迭代管理（见[路线图](#路线图)）。更多细节见 `CLAUDE.md` 与 [`docs/maintenance/development.md`](docs/maintenance/development.md)。
 
 ## 亮点
 
@@ -178,7 +178,7 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，默认 `Worker`；它同时种入随包 shim，并默认把 `MEERKAT_TASKPANEL_AGENTS` 扫描集种为 `Jobs,Linus,Turing,Worker`；既有值不加 `--force` 会保留）、`--no-automation`（跳过 Codex 调度单元与 taskd guard）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 —— 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
-**看板配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的 `.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于两者。`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每个 actor kind 还有一份**按 kind 的配置** —— `<program root>/.env.<actor-kind>`（例如 `.env.claude`）—— `taskctl` 会把它作为 per-agent 默认层读取（身份、引擎位置），`taskctl loop …` 则从同一份文件读 loop 策略。旁边还有**一份**机器本地的 `projects.json`：项目 → 目录映射，所有 agent kind 共用，只能通过 `taskctl project map` 维护（从不进看板）。它不是看板配置，loader 也拒绝把 loop 策略键写进 `.env`。每条 `taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其中的键搬进 `.env`。详见 [`docs/ops/install.md`](docs/ops/install.md) 与 [`docs/agents/development.md`](docs/agents/development.md)。
+**看板配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的 `.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于两者。`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每个 actor kind 还有一份**按 kind 的配置** —— `<program root>/.env.<actor-kind>`（例如 `.env.claude`）—— `taskctl` 会把它作为 per-agent 默认层读取（身份、引擎位置），`taskctl loop …` 则从同一份文件读 loop 策略。旁边还有**一份**机器本地的 `projects.json`：项目 → 目录映射，所有 agent kind 共用，只能通过 `taskctl project map` 维护（从不进看板）。它不是看板配置，loader 也拒绝把 loop 策略键写进 `.env`。每条 `taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其中的键搬进 `.env`。详见 [`docs/ops/install.md`](docs/ops/install.md) 与 [`docs/maintenance/development.md`](docs/maintenance/development.md)。
 
 ## supervisor 与 director
 
@@ -316,7 +316,7 @@ npm run check
 | **OpenClaw 的 setup-meerkat 支持** | 为 `openclaw` 目标安装并运行 `setup-meerkat`。当前只有 `--target claude` 会复制它，OpenClaw 只能从共享 bundle 读到 | *（规划中）* |
 
 > 本表已弃用 `M0`–`M6` 编号：`M3`（stdio MCP 服务器）是先落地、后被整体移除的 —— 见
-> [迁移记录](docs/agents/migration.md#separate-migration-the-mcp-integration-is-gone)。
+> [迁移记录](docs/maintenance/migration.md#separate-migration-the-mcp-integration-is-gone)。
 
 ## 许可证
 

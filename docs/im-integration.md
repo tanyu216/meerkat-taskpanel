@@ -329,5 +329,5 @@ validate `channel-kit`; WeChat iLink is the least clean SDK ecosystem and should
 - [`scheduling.md`](scheduling.md) — the supervisor, the resident pool and the director lane.
 - [`events.md`](events.md) — the activity catalogue and the “signal, not payload” rule.
 - [`install.md`](ops/install.md) — the install targets and the installed tree.
-- [`contract.md`](agents/contract.md) — the CLI/HTTP contracts the integration must reuse.
+- [`contract.md`](maintenance/contract.md) — the CLI/HTTP contracts the integration must reuse.
 - [`README.md`](README.md) — documentation index.

@@ -20,7 +20,7 @@ the API ships in every commit, and a route or error-code change must be
 accompanied by an explicit snapshot update (`node scripts/verify/contract.mjs
 --update`); the request lint is the pairing half — it proves the declaration the
 snapshot freezes is the one the handler honours (see
-[`../docs/agents/contract.md`](../docs/agents/contract.md)). The two tree gates: a
+[`../docs/maintenance/contract.md`](../docs/maintenance/contract.md)). The two tree gates: a
 host-absolute path is a statement about one machine, and a walkable reference
 into an external framework's private store is an instruction to leave this
 repository, which a session reading the tree will follow (see
@@ -31,7 +31,7 @@ and `signposts` jobs in `check.yml`.
 ## The container gate runs at `pre-push`
 
 The authoritative suite is `npm run verify:docker` — it builds the image and runs
-everything that *runs* ([`../docs/agents/docker.md`](../docs/agents/docker.md)). It is the last
+everything that *runs* ([`../docs/maintenance/docker.md`](../docs/maintenance/docker.md)). It is the last
 gate in `pre-push`, after the static ones:
 
 - it runs only when a **branch commit** is moving. A tag-only push and a branch

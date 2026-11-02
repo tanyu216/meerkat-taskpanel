@@ -29,7 +29,8 @@ const SKILLS = join(ROOT, "skills");
 /**
  * Pages and project docs that exist only in the Meerkat source repository,
  * never in a target project's install. `docs/agents/` and `docs/ops/` are
- * project-discovery surfaces, so only their Meerkat-specific files belong here.
+ * project-discovery surfaces; `docs/maintenance/` is entirely repository-only,
+ * so it is denied as a prefix.
  */
 const REPOSITORY_ONLY = [
   "docs/scheduling.md",
@@ -41,10 +42,7 @@ const REPOSITORY_ONLY = [
   "docs/events.md",
   "docs/im-integration.md",
   "docs/README.md",
-  "docs/agents/development.md",
-  "docs/agents/docker.md",
-  "docs/agents/contract.md",
-  "docs/agents/migration.md",
+  "docs/maintenance/",
   "docs/ops/install.md",
   "docs/ops/observability.md",
   "docs/ops/publishing.md",
@@ -98,8 +96,8 @@ describe("installed skills: self-contained references", () => {
       assert.deepEqual(findRepositoryOnlyRefs(allowed), [], `${allowed} is a project document`);
     }
 
-    assert.deepEqual(findRepositoryOnlyRefs("docs/agents/development.md"), [
-      "docs/agents/development.md",
+    assert.deepEqual(findRepositoryOnlyRefs("docs/maintenance/development.md"), [
+      "docs/maintenance/",
     ]);
     assert.deepEqual(findRepositoryOnlyRefs("docs/scheduling.md"), ["docs/scheduling.md"]);
     assert.deepEqual(findRepositoryOnlyRefs("docs/ops/install.md"), ["docs/ops/install.md"]);

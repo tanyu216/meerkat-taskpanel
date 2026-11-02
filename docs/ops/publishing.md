@@ -94,7 +94,7 @@ The published tarball's contents are decided by the `files` whitelist in the roo
 `CHANGELOG.md`, `LICENSE` and the two READMEs. `web/dist` (the **built** frontend, produced
 by the image's `webbuild` stage) is included so the package is a runnable board; the rest of
 `web/`, `dist/` and the test/CI directories are **not**. See
-[development.md](../agents/development.md#two-build-layers-engine-and-web).
+[development.md](../maintenance/development.md#two-build-layers-engine-and-web).
 
 > **`web/dist` needs `web/.npmignore`.** npm's packlist reads `.npmignore` in a directory
 > *instead of* `.gitignore`, and a `files` entry does not override either — verified against
@@ -280,7 +280,7 @@ Local hooks (`git config core.hooksPath .githooks`, wired by the root `package.j
   `refs/tags/vX.Y.Z` also runs `tag-version.mjs` and `changelog.mjs --strict`, and a branch
   push ends with the container gate.
 - **`.githooks/pre-commit`** — the append-only migration check (see
-  [migration.md](../agents/migration.md#the-append-only-migration-gate)); unrelated to tagging but
+  [migration.md](../maintenance/migration.md#the-append-only-migration-gate)); unrelated to tagging but
   shipped in the same directory.
 
 CI is the authority: **`.github/workflows/version-gate.yml`** runs on a `v*` tag push and
@@ -302,7 +302,7 @@ proves the declaration the snapshot freezes is the one the handler honours: it r
 each route's handler source and compares the fields it reads against the declared
 `{query, body}`. `version-gate.yml` runs the snapshot check at tag time, and the
 `contract` job in `.github/workflows/check.yml` runs both on every pull request and every
-push to `dev`. The full story, and the `--update` workflow, is in [contract.md](../agents/contract.md).
+push to `dev`. The full story, and the `--update` workflow, is in [contract.md](../maintenance/contract.md).
 
 ### 3.3 Branch protection on `main`, and tags cut only from `main`
 
@@ -524,7 +524,7 @@ default, so a manifest that is not listed never reaches the tarball, and
 ## See also
 
 - [install.md](install.md) — the per-agent-kind install and plugin-registration commands in full.
-- [development.md](../agents/development.md) — the two build layers, the offline policy and the
+- [development.md](../maintenance/development.md) — the two build layers, the offline policy and the
   generated-skill rule.
 - [`../README.md`](../README.md) / [`../README.zh-CN.md`](../../README.zh-CN.md) — status and
   the four-agent-kind support matrix.

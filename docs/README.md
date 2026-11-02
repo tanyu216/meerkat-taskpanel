@@ -5,11 +5,13 @@ working in this repository, what the product is designed to do, and what an oper
 
 ## Documentation layers and reference direction
 
-This repository has four documentation layers, and references cross them in one direction
+This repository has five documentation layers, and references cross them in one direction
 only:
 
 - **Design record — the Meerkat-specific design pages under `docs/`.** What this system is and
   why. They are never installed.
+- **Repository maintenance — `docs/maintenance/` and `CONTRIBUTING.md`.** How to develop, verify
+  and change this repository. It is never installed and a target project does not receive it.
 - **Project documentation — the target project's own `docs/` and root files.** `docs/tech-spec.md`,
   `docs/architecture.md`, `docs/adr/`, `docs/agents/`, `docs/ops/`, `README.md`,
   `CONTRIBUTING.md`, `CHANGELOG.md`, `CLAUDE.md`, `AGENTS.md` and `GLOSSARY.md` are supplied by
@@ -28,34 +30,41 @@ it must not present that artifact as the authority for a design rule. Comments i
 the installer scripts may cite a design page as provenance, but nothing read at runtime may read
 this tree. The reverse is never allowed: an installed skill that cites `docs/scheduling.md`,
 `docs/lifecycle.md` or another repository-only page dangles after installation
-(`test/skill/installability.test.mjs`), even in a comment. This repository's maintainer-only
-pages — `docs/agents/development.md`, `docs/agents/docker.md`, `docs/agents/contract.md`,
-`docs/agents/migration.md`, `docs/ops/install.md`, `docs/ops/observability.md` and
-`docs/ops/publishing.md` — are repository-only, even if a target project supplies a file at the
-same path. The project-generated tracker files (`docs/agents/issue-tracker.md`, `issue-tracer.md`,
-`domain.md`, `triage-labels.md`) are project documentation and remain addressable. The same path
-can be a design record here and project documentation in another repository
-(`docs/architecture.md`, `docs/agents/*`); the guard asks whether a target project is guaranteed
-to have the file, not which layer the path belongs to.
+(`test/skill/installability.test.mjs`), even in a comment. The whole of `docs/maintenance/` is
+repository-only, as are `docs/ops/install.md`, `docs/ops/observability.md` and
+`docs/ops/publishing.md`; a target project may supply a file at the same path, but this
+repository's copy is not its documentation. The project-generated tracker files
+(`docs/agents/issue-tracker.md`, `issue-tracer.md`, `domain.md`, `triage-labels.md`) are project
+documentation and remain addressable. The same path can be a design record here and project
+documentation in another repository (`docs/architecture.md`, `docs/agents/*`); the guard asks
+whether a target project is guaranteed to have the file, not which layer the path belongs to.
 
 ## Agent execution
 
 The rules and gates a session follows while working in this repository. The tracker files are
-the per-repository outputs of the Matt Pocock integration; the rest are this repository's own
-operating procedure.
+the per-repository outputs of the Matt Pocock integration; the standard and system record are
+this repository's own.
 
 | Document | Contents |
 |---|---|
 | [tech-spec.md](tech-spec.md) | This repository's standard: the numbered rules a change must satisfy (stack, structure and enumerations, naming, errors and contract, configuration, logging, tests and gates, release, project documents), each naming its enforcement, plus the security toolchain and its decision policy. |
 | [architecture.md](architecture.md) | The system record: purpose and boundary, the layered style, module boundaries and the one-way dependency, the data model, the contract, configuration, logging, security boundaries, the canonical directory tree and the vertical slice. Reconstructed from the tree and accepted by the human on 2026-10-30. |
 | [adr/](adr/) | Architecture decision records: one file per durable decision, numbered, with the status vocabulary. |
-| [development.md](agents/development.md) | The operational facts you cannot read off the code: the two build layers (`dist` vs `web/dist`, the offline `web/` build) and the server invariants (one writer per data directory, the bounded stop, lock contention as a 503). Commands and layout live in `CLAUDE.md`. |
-| [docker.md](agents/docker.md) | Why verification and the four-agent-kind installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
-| [contract.md](agents/contract.md) | The contract snapshots — the HTTP API (routes, error codes, wire fields) and the CLI surface (`taskctl` commands, flags, envelope keys): what each freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
-| [migration.md](agents/migration.md) | The append-only SQL schema gate, and the note recording the MCP integration's removal. |
 | [issue-tracker.md](agents/issue-tracker.md) | How this repository's work is tracked as cards: the `taskctl` workflow, the commands the engineering skills expect, and the conventions that differ from a hosted tracker. |
 | [domain.md](agents/domain.md) | How the engineering skills consume this repository's domain documentation (`GLOSSARY.md`, ADRs, `design/`). |
 | [triage-labels.md](agents/triage-labels.md) | The five canonical triage roles and the label strings this repository uses for them. |
+
+## Repository maintenance
+
+How to develop, verify and change this repository. These pages are repository-only: they are
+never installed and a target project does not receive them.
+
+| Document | Contents |
+|---|---|
+| [development.md](maintenance/development.md) | The operational facts you cannot read off the code: the two build layers (`dist` vs `web/dist`, the offline `web/` build) and the server invariants (one writer per data directory, the bounded stop, lock contention as a 503). Commands and layout live in `CLAUDE.md`. |
+| [docker.md](maintenance/docker.md) | Why verification and the four-agent-kind installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
+| [contract.md](maintenance/contract.md) | The contract snapshots — the HTTP API (routes, error codes, wire fields) and the CLI surface (`taskctl` commands, flags, envelope keys): what each freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
+| [migration.md](maintenance/migration.md) | The append-only SQL schema gate, and the note recording the MCP integration's removal. |
 
 ## Design
 
@@ -105,7 +114,7 @@ this repository. Where a topic has a live authority, the citation names it expli
 |---|---|
 | The system design, layers and tree | [architecture.md](architecture.md) (reconstructed from the tree, accepted 2026-10-30) |
 | Project ordering (`ARCHITECTURE §4.6`) | [`../design/DESIGN.md`](../design/DESIGN.md) §20, implemented by `src/foundation/project-order.mjs` |
-| Container verification (`ARCHITECTURE §9.1`) | [docker.md](agents/docker.md) |
+| Container verification (`ARCHITECTURE §9.1`) | [docker.md](maintenance/docker.md) |
 
 **Do not add a new `ARCHITECTURE.md` citation.** Name the live document instead — the system
 record is [architecture.md](architecture.md).
