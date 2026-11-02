@@ -129,9 +129,7 @@ describe("cli/wire — the JSON vocabulary", () => {
         meta: {},
         readme: null,
         task_count: null,
-        // No project-level acceptance; no override means the deployment
-        // reviewer applies, so `reviewer` is null.
-        reviewer: null,
+        // No project-level acceptance and no project reviewer.
         archived_at: null,
         created_at: "t",
         updated_at: "t",

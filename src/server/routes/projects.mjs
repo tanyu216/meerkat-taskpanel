@@ -38,7 +38,6 @@ const CREATE_BODY = shape({
   labels: arr(str()),
   meta: obj(),
   readme: str(),
-  reviewer: str(),
 });
 
 /** `PUT /api/v1/projects/:id` — create if absent; an existing row is untouched. */
@@ -47,7 +46,6 @@ const ENSURE_BODY = shape({
   labels: arr(str()),
   meta: obj(),
   readme: str(),
-  reviewer: str(),
 });
 
 /** `PATCH /api/v1/projects/:id` — a partial update (`meta` merges, F-C3's sibling rule). */
@@ -56,7 +54,6 @@ const PATCH_BODY = shape({
   labels: arr(str()),
   readme: str(),
   meta: obj(),
-  reviewer: str(),
 });
 
 /** `PUT /api/v1/projects/:id/readme` — the whole document replaces whatever was there. */
@@ -95,7 +92,6 @@ export function registerProjectRoutes(router, surface) {
       labels: body.labels,
       meta: body.meta,
       readme: body.readme,
-      reviewer: body.reviewer,
       actor,
     });
     return { project: projectToWire(project) };
@@ -108,7 +104,6 @@ export function registerProjectRoutes(router, surface) {
       labels: body.labels,
       meta: body.meta,
       readme: body.readme,
-      reviewer: body.reviewer,
       actor,
     });
     // Same badge number as the list route, so an ensure response and a later
@@ -134,7 +129,6 @@ export function registerProjectRoutes(router, surface) {
     if (body.name !== undefined) patch.name = body.name;
     if (body.labels !== undefined) patch.labels = body.labels;
     if (body.readme !== undefined) patch.readme = body.readme;
-    if (body.reviewer !== undefined) patch.reviewer = body.reviewer;
     // `--meta k=v` merges, for the same reason it does on a task: a flag is a
     // delta, not a replacement document.
     if (body.meta !== undefined) {

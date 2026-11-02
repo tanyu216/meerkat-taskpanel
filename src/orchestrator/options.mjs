@@ -277,7 +277,6 @@ function defaultOptions(env) {
     recoverStale: undefined,
     recoverWedged: undefined,
     workflow: undefined,
-    reviewer: undefined,
     workflowMaxActions: undefined,
     reviewAgingMinutes: undefined,
     reworkMaxRounds: undefined,
@@ -639,16 +638,16 @@ export function roleIsReviewer(roleSet, agent) {
 
 /**
  * The board identities a poll may claim for: every discovered worker-lane role,
- * plus the configured reviewers (deployment and project-level).
+ * plus every discovered reviewer-lane role.
  *
  * Discovery is the routing, so this is the one scan-set reader: the key that
  * used to list the names by hand is gone, and a writer identity with no role
  * skill can write without ever making its name claimable.
  *
- * @param {{roleSet?: object|null, reviewers?: string[]}} [input]
+ * @param {{roleSet?: object|null}} [input]
  * @returns {string[]}
  */
-export function effectiveScanAgents({ roleSet = null, reviewers = [] } = {}) {
+export function effectiveScanAgents({ roleSet = null } = {}) {
   const scan = [];
   const add = (value) => {
     if (typeof value !== "string") return;
@@ -657,33 +656,7 @@ export function effectiveScanAgents({ roleSet = null, reviewers = [] } = {}) {
   };
   for (const agent of workerAgents(roleSet)) add(agent);
   for (const agent of reviewerAgents(roleSet)) add(agent);
-  for (const reviewer of Array.isArray(reviewers) ? reviewers : []) add(reviewer);
   return scan;
-}
-
-/**
- * Merge the deployment reviewer with the project-level overrides (0031).
- *
- * `resolveLoopConfig` is synchronous and has no board access; the async entries
- * (poll/workflow/patrol) read `project list` and call this to get the effective
- * reviewer set. A reviewer that is also a worker stays in the worker lane and
- * is not scanned twice.
- *
- * @param {object|null} roleSet
- * @param {string[]} projectReviewers
- * @returns {{reviewers: string[], reviewerWorkers: string[], scanAgents: string[]}}
- */
-export function mergeReviewerSets(roleSet, projectReviewers = []) {
-  const reviewers = [];
-  const add = (value) => {
-    if (typeof value !== "string") return;
-    const name = value.trim();
-    if (name !== "" && !reviewers.includes(name)) reviewers.push(name);
-  };
-  for (const reviewer of Array.isArray(projectReviewers) ? projectReviewers : []) add(reviewer);
-
-  const reviewerWorkers = reviewers.filter((reviewer) => roleIsWorker(roleSet, reviewer));
-  return { reviewers, reviewerWorkers, scanAgents: effectiveScanAgents({ roleSet, reviewers }) };
 }
 
 /**
@@ -855,7 +828,7 @@ Options:
   --recover-stale=yes|no    Also recover stale in_progress claims (default: yes).
   --recover-wedged=yes|no   Stop a pool whose tick outlived 2× the turn timeout (default: yes).
   --workflow=yes|no         Run the workflow pass in each tick (default: yes).
-  --reviewer <agent>        The independent reviewer. Unset disables review dispatch.
+  --reviewer <agent>        Deprecated no-op (the review card's assignee picks the role).
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
   --rework-max-rounds <n>   Park a card after this many delivery rounds since its last hold (default: 4).

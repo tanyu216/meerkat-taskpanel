@@ -557,9 +557,6 @@
             },
             "readme": {
               "type": "string"
-            },
-            "reviewer": {
-              "type": "string"
             }
           },
           "required": [],
@@ -597,9 +594,6 @@
             },
             "readme": {
               "type": "string"
-            },
-            "reviewer": {
-              "type": "string"
             }
           },
           "required": [],
@@ -628,9 +622,6 @@
               "type": "string"
             },
             "readme": {
-              "type": "string"
-            },
-            "reviewer": {
               "type": "string"
             }
           },
@@ -1690,7 +1681,6 @@
         "name": "string",
         "prefix": "string",
         "readme": "string",
-        "reviewer": "string",
         "task_count": "number",
         "updated_at": "string"
       },

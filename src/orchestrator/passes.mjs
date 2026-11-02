@@ -28,7 +28,6 @@ import {
   readBoard,
   readHandoffTriage,
   readOpenQuestions,
-  readProjectReviewers,
   readUnownedTodos,
   runSlaPass,
   runWorkflowPass,
@@ -42,7 +41,7 @@ import {
   writeDeferralLedger,
 } from "./deferrals.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
-import { mergeReviewerSets, parseArgs, resolveLoopConfig, roleIsWorker, USAGE } from "./options.mjs";
+import { effectiveScanAgents, parseArgs, resolveLoopConfig, roleIsReviewer, roleIsWorker, USAGE } from "./options.mjs";
 import { isKindAvailable } from "./platforms.mjs";
 import { defaultReviewerAgent, loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
@@ -571,19 +570,7 @@ export async function runPollOnce(opts, env = process.env) {
     kindOrder: opts.kindOrder,
     explicitDir: opts.rolesDir ?? null,
   });
-  // 0031 — project-level reviewer overrides join the deployment reviewer in the
-  // scan/wake set. A failed read falls back to the global reviewer (the board
-  // itself still resolves the effective reviewer per card).
-  const projectRead = readProjectReviewers(opts, log);
-  const projectReviewers = projectRead.ok
-    ? projectRead.projects
-        .map((project) => project.reviewer)
-        .filter((reviewer) => typeof reviewer === "string" && reviewer.trim() !== "")
-    : [];
-  const merged = mergeReviewerSets(roleSet, projectReviewers);
-  config.reviewers = merged.reviewers;
-  config.reviewerWorkers = merged.reviewerWorkers;
-  const agents = merged.scanAgents;
+  const agents = effectiveScanAgents({ roleSet });
   // Publish the discovered set locally through `taskctl` — before the no-pool
   // return, so every poll (resident or not) keeps the catalog fresh. A failure is
   // logged and never blocks a claim: routing does not read this file.
@@ -824,8 +811,9 @@ export async function runPollOnce(opts, env = process.env) {
     config,
     defaultAgent,
     readCandidates: (agent, { claimUnassigned: claimPool }) => {
-      const dedicatedReviewer =
-        merged.reviewers.includes(agent) && !merged.reviewerWorkers.includes(agent);
+      // A role that can review but cannot work never takes the public pool:
+      // handing it an ordinary card would be a self-review waiting to happen.
+      const dedicatedReviewer = roleIsReviewer(roleSet, agent) && !roleIsWorker(roleSet, agent);
       // A dedicated reviewer never takes the public pool, and only sees review
       // cards: handing it an ordinary card would be a self-review waiting to
       // happen.
@@ -1220,30 +1208,13 @@ export async function runWorkflowOnce(opts, env = process.env) {
   }
   config.assignee = defaultAssignee;
 
-  // The loop reads the project rows for the project-override warning below.
-  // There is no project-level acceptance default to validate: every card states
-  // its own mode, and a missing effective assignee is reported per card
-  // (`reviewer_not_configured` / `dispatch_skipped`).
-  const projectRead = readProjectReviewers(opts, log);
-  const projects = projectRead.ok ? projectRead.projects : [];
-
-  // Warn once per reviewer that is also a worker — the review lane and the work
-  // lane share one identity. This covers the catalog default and every project
-  // override (the override layer is removed in the next step).
-  const reviewers = new Set();
-  if (defaultAssignee !== null) reviewers.add(defaultAssignee);
-  for (const project of projects) {
-    if (typeof project.reviewer === "string" && project.reviewer.trim() !== "") {
-      reviewers.add(project.reviewer.trim());
-    }
-  }
-  for (const reviewer of reviewers) {
-    if (roleIsWorker(roleSet, reviewer)) {
-      log(
-        `warning: reviewer ${reviewer} is also a worker — the review lane and the work lane ` +
-          "share one identity; a dedicated reviewer keeps the two apart",
-      );
-    }
+  // Warn once when the catalog default is also a worker — the review lane and
+  // the work lane share one identity.
+  if (defaultAssignee !== null && roleIsWorker(roleSet, defaultAssignee)) {
+    log(
+      `warning: reviewer ${defaultAssignee} is also a worker — the review lane and the work lane ` +
+        "share one identity; a dedicated reviewer keeps the two apart",
+    );
   }
   const result = await runWorkflowPass(opts, config, log);
   return result?.failed > 0 ? 1 : 0;

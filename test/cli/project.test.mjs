@@ -308,25 +308,18 @@ describe("cli/project — the identifier prefix (C-PREFIX-1)", () => {
   });
 });
 
-describe("cli/project — reviewer, and no project-level acceptance (0002)", () => {
-  it("creates and updates the reviewer", async () => {
+describe("cli/project — no project reviewer or acceptance (0031/0002)", () => {
+  it("carries no reviewer on the wire", async () => {
     await withCli(async ({ run }) => {
-      const created = dataOf(
-        run([
-          "project", "create", "--id", "flow", "--name", "Flow",
-          "--reviewer", "jobs", "--json",
-        ]),
-      );
-      assert.equal(created.project.reviewer, "jobs");
-
-      const updated = dataOf(run(["project", "update", "flow", "--reviewer", "", "--json"]));
-      assert.equal(updated.project.reviewer, null);
+      const created = dataOf(run(["project", "create", "--id", "flow", "--name", "Flow", "--json"]));
+      assert.equal(created.project.reviewer, undefined);
+      assert.equal(created.project.acceptance, undefined);
     });
   });
 
-  it("relies on the card for acceptance: the project flags are usage errors", async () => {
+  it("relies on the card and its assignee: the project flags are usage errors", async () => {
     await withCli(async ({ run }) => {
-      for (const flag of ["--acceptance", "--review-policy"]) {
+      for (const flag of ["--acceptance", "--review-policy", "--reviewer"]) {
         const retired = run([
           "project", "create", "--id", "legacy", "--name", "Legacy",
           flag, "sometimes", "--json",

@@ -5657,14 +5657,6 @@
               "required": false,
               "repeat": false,
               "short": null
-            },
-            {
-              "flag": "reviewer",
-              "as": "string",
-              "value": "<agent>",
-              "required": false,
-              "repeat": false,
-              "short": null
             }
           ]
         },
@@ -5732,14 +5724,6 @@
               "flag": "readme",
               "as": "string",
               "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "reviewer",
-              "as": "string",
-              "value": "<agent>",
               "required": false,
               "repeat": false,
               "short": null
@@ -5864,14 +5848,6 @@
               "flag": "readme",
               "as": "string",
               "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "reviewer",
-              "as": "string",
-              "value": "<agent>",
               "required": false,
               "repeat": false,
               "short": null

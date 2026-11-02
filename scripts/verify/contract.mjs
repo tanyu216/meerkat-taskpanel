@@ -238,10 +238,6 @@ const PROBE_PROJECT = {
   // integer on every row the list route serves; only a projection with no count
   // supplied (the local `taskctl project` read) emits `null`.
   taskCount: 1,
-  // Populated so the frozen type is `string` rather than `null`; a project with
-  // no override emits null, which the client treats as "use the deployment
-  // reviewer".
-  reviewer: "probe",
   archivedAt: "probe",
   createdAt: "probe",
   updatedAt: "probe",

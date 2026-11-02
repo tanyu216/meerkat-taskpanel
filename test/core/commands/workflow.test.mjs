@@ -166,7 +166,7 @@ describe("commands/workflowTick — the board's plan", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 0031 — project reviewers and auto-accept in the board snapshot
+// 0031 — the review-card assignee and auto-accept in the board snapshot
 // ---------------------------------------------------------------------------
 
 describe("commands/workflowTick — 0031", () => {
@@ -183,14 +183,9 @@ describe("commands/workflowTick — 0031", () => {
     return task;
   }
 
-  it("uses a project's reviewer override in the dispatch action", async () => {
+  it("dispatches the review card to the reconcile assignee", async () => {
     await board(({ commands }) => {
-      commands.createProject({
-        id: "p2",
-        name: "P2",
-        reviewer: "bob",
-        actor: HUMAN,
-      });
+      commands.createProject({ id: "p2", name: "P2", actor: HUMAN });
       const task = commands.createTask({
         projectId: "p2",
         title: "Needs review",
@@ -204,18 +199,13 @@ describe("commands/workflowTick — 0031", () => {
       const result = commands.workflowTick({ assignee: "jobs" });
       const dispatch = result.workflow.actions.find((action) => action.type === "create_review");
       assert.ok(dispatch, "the required card is dispatched");
-      assert.equal(dispatch.reviewer, "bob");
+      assert.equal(dispatch.reviewer, "jobs");
     });
   });
 
   it("gives the review card requirement, plan and omission items, within the 64 cap", async () => {
     await board(({ commands }) => {
-      commands.createProject({
-        id: "p2",
-        name: "P2",
-        reviewer: "bob",
-        actor: HUMAN,
-      });
+      commands.createProject({ id: "p2", name: "P2", actor: HUMAN });
       const items = Array.from({ length: 60 }, (_, index) => `criterion ${index}`);
       const task = commands.createTask({
         projectId: "p2",
@@ -381,12 +371,12 @@ describe("commands/workflowTick — 0031", () => {
     });
   });
 
-  it("keeps an archived project's reviewer — its in-flight cards still dispatch", async () => {
+  it("keeps an archived project's review gate — its in-flight cards still dispatch", async () => {
     await board(({ db, commands }) => {
       commands.createProject({
         id: "p2",
         name: "P2",
-        reviewer: "bob",
+        meta: { review_gate: "npm run check" },
         actor: HUMAN,
       });
       const task = commands.createTask({
@@ -396,7 +386,7 @@ describe("commands/workflowTick — 0031", () => {
         actor: HUMAN,
       });
       // Archive the project after the card exists: the board must still read
-      // the override, or the card dispatches to the global reviewer instead.
+      // its gate, or the review card is created without the declared check.
       db.prepare("UPDATE projects SET archived_at = ? WHERE id = ?").run(
         "2026-10-19T10:00:00.000Z",
         "p2",
@@ -407,7 +397,7 @@ describe("commands/workflowTick — 0031", () => {
       const result = commands.workflowTick({ assignee: "jobs" });
       const dispatch = result.workflow.actions.find((action) => action.type === "create_review");
       assert.ok(dispatch);
-      assert.equal(dispatch.reviewer, "bob");
+      assert.match(dispatch.description, /Declared gate: npm run check/);
     });
   });
 

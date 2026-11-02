@@ -422,9 +422,10 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.equal(run.status, 0, run.stderr);
     const args = calls(record);
     assert.ok(args.length > 0, "poll must scan");
-    assert.ok(
+    assert.equal(
       args.some((call) => call.includes("project") && call[call.indexOf("project") + 1] === "list"),
-      "the project reviewer overrides are read before the scan",
+      false,
+      "no project override read: discovered roles are the routing",
     );
     const candidateCall = args.find((call) => call.includes("candidates"));
     assert.ok(candidateCall, "the scan is `issue candidates`");
@@ -887,9 +888,10 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     const { run, record } = runWithSentinel("workflow");
     assert.equal(run.status, 0, run.stderr);
     const args = calls(record);
-    assert.ok(
+    assert.equal(
       args.some((call) => call.includes("project") && call[call.indexOf("project") + 1] === "list"),
-      "the required-project reviewer promise is checked before reconcile",
+      false,
+      "no project override read: the role catalog owns the default assignee",
     );
     const callsToReconcile = args.filter((call) => call.includes("issue") && call.includes("reconcile"));
     assert.equal(callsToReconcile.length, 1, "one plan read: the board computes the plan");
