@@ -16,6 +16,7 @@ import { describe, it } from "node:test";
 
 import {
   createCodexPool,
+  skillDeveloperInstructions,
   threadResumeParams,
   threadStartParams,
   turnStartParams,
@@ -139,6 +140,34 @@ describe("codex session params", () => {
       threadId: "th-1",
       input: [{ type: "text", text: "hello" }],
     });
+  });
+
+  it("carries the role skill as developer instructions, with its directory", (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-codex-skill-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const skill = join(dir, "SKILL.md");
+    writeFileSync(skill, "---\nname: jobs\n---\n\nYou are Jobs.\n", "utf8");
+    const instructions = skillDeveloperInstructions(skill);
+    assert.match(instructions, new RegExp(`Skill directory: ${dir.replace(/[/\\]/g, "\\$&")}`));
+    assert.match(instructions, /You are Jobs/);
+    assert.equal(skillDeveloperInstructions(join(dir, "missing.md")), null);
+    assert.equal(skillDeveloperInstructions(null), null);
+
+    assert.equal(
+      threadStartParams({ opts: {}, cwd: "/work/app", developerInstructions: instructions })
+        .developerInstructions,
+      instructions,
+    );
+    assert.equal(
+      threadResumeParams({ opts: {}, threadId: "th-9", developerInstructions: instructions })
+        .developerInstructions,
+      instructions,
+    );
+    assert.equal(
+      "developerInstructions" in threadStartParams({ opts: {}, cwd: "/work/app" }),
+      false,
+      "no skill means no field",
+    );
   });
 });
 

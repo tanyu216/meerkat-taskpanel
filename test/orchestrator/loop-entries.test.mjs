@@ -1001,7 +1001,7 @@ describe("the resident poll dispatch", () => {
     assert.equal(entry.handoff.includes("/meerkat-loop"), false, "a handoff is not a continue turn");
   });
 
-  it("carries the role's platform on the row while the supervisor keeps its own kind", async () => {
+  it("carries the role's platform and an inline envelope while the supervisor keeps its own kind", async () => {
     const f = fixture();
     const turing = {
       id: "turing",
@@ -1051,14 +1051,16 @@ describe("the resident poll dispatch", () => {
     assert.equal(opts.actorKind, "claude", "the supervisor still claims as its own kind");
     assert.match(
       entry.handoff,
-      /\/roles\/codex\/turing\/SKILL\.md/,
-      "codex keeps the role path until its host opener is validated",
+      /Flags: --agent Turing --actor-kind=codex/,
+      "an inline lane gets the attribution line in the envelope, not an opener",
     );
+    assert.match(entry.handoff, /Carry these Flags/);
     assert.doesNotMatch(
       entry.handoff,
-      /Carry the session opener's Flags/,
-      "an unvalidated kind keeps the full handoff",
+      /\/roles\/codex\/turing\/SKILL\.md/,
+      "the adapter loads the skill at open, so the envelope does not repeat its path",
     );
+    assert.doesNotMatch(entry.handoff, /## Team role/, "the role layer is in the loaded skill");
   });
 
   it("refuses to enqueue when no platform carries the role", async () => {

@@ -14,6 +14,8 @@
  */
 
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 import { extractAgentIds } from "../ledger.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
@@ -42,22 +44,54 @@ export function threadPolicy(input = {}) {
 }
 
 /**
+ * The resident role skill as developer instructions.
+ *
+ * Codex has no `/<skill>` message expansion, but `thread/start` (and
+ * `thread/resume`) accept `developerInstructions`. Passing the entry file is
+ * what makes the role permanent for the session; the directory note keeps the
+ * skill's relative `references/...` paths resolvable from the card's cwd.
+ *
+ * @param {string|null|undefined} skillPath
+ * @returns {string|null}
+ */
+export function skillDeveloperInstructions(skillPath) {
+  if (typeof skillPath !== "string" || skillPath === "") return null;
+  try {
+    const body = readFileSync(skillPath, "utf8");
+    return (
+      `Skill directory: ${dirname(skillPath)}.\n` +
+      "Relative paths in this skill resolve against that directory.\n\n" +
+      body
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
  * `thread/start` params for one session.
  *
- * @param {{opts?: object, cwd: string}} input
+ * @param {{opts?: object, cwd: string, developerInstructions?: string|null}} input
  */
 export function threadStartParams(input) {
-  return { cwd: input.cwd, ...threadPolicy(input) };
+  const params = { cwd: input.cwd, ...threadPolicy(input) };
+  if (typeof input.developerInstructions === "string" && input.developerInstructions !== "") {
+    params.developerInstructions = input.developerInstructions;
+  }
+  return params;
 }
 
 /**
  * `thread/resume` params for one stored session.
  *
- * @param {{opts?: object, cwd?: string, threadId: string}} input
+ * @param {{opts?: object, cwd?: string, threadId: string, developerInstructions?: string|null}} input
  */
 export function threadResumeParams(input) {
   const params = { threadId: input.threadId, ...threadPolicy(input) };
   if (typeof input.cwd === "string" && input.cwd !== "") params.cwd = input.cwd;
+  if (typeof input.developerInstructions === "string" && input.developerInstructions !== "") {
+    params.developerInstructions = input.developerInstructions;
+  }
   return params;
 }
 
@@ -95,7 +129,8 @@ function childThreadIds(item) {
 
 class CodexSession {
   /**
-   * @param {{pool: object, opts: object, cwd: string, sessionId?: string|null, role?: string}} input
+   * @param {{pool: object, opts: object, cwd: string, sessionId?: string|null,
+   *   role?: string, skillPath?: string|null}} input
    */
   constructor(input) {
     this.pool = input.pool;
@@ -111,6 +146,7 @@ class CodexSession {
     this.turnIds = [];
     this.current = null;
     this.text = "";
+    this.developerInstructions = skillDeveloperInstructions(input.skillPath ?? null);
     this.ready = this.open(input.sessionId ?? null);
   }
 
@@ -121,8 +157,17 @@ class CodexSession {
   async open(resumeId) {
     try {
       const params = resumeId === null
-        ? threadStartParams({ opts: this.opts, cwd: this.cwd })
-        : threadResumeParams({ opts: this.opts, cwd: this.cwd, threadId: resumeId });
+        ? threadStartParams({
+            opts: this.opts,
+            cwd: this.cwd,
+            developerInstructions: this.developerInstructions,
+          })
+        : threadResumeParams({
+            opts: this.opts,
+            cwd: this.cwd,
+            threadId: resumeId,
+            developerInstructions: this.developerInstructions,
+          });
       const result = await this.pool.request(resumeId === null ? "thread/start" : "thread/resume", params);
       const thread = result?.thread ?? {};
       this.threadId = String(thread.id ?? resumeId ?? "");
@@ -335,7 +380,14 @@ export function createCodexPool(input) {
     log,
     onEvent: input.onEvent ?? null,
     openSession(options) {
-      const session = new CodexSession({ pool, opts, cwd: options.cwd, sessionId: options.sessionId ?? null, role: options.role });
+      const session = new CodexSession({
+        pool,
+        opts,
+        cwd: options.cwd,
+        sessionId: options.sessionId ?? null,
+        role: options.role,
+        skillPath: options.skillPath ?? null,
+      });
       sessions.add(session);
       return session;
     },

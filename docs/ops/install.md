@@ -973,6 +973,17 @@ pi install npm:pi-subagents
 Install it before enabling the supervisor. Without it the pool can start and worker sessions
 still run, but the reviewer lane cannot spawn its subagent, so review cards are never worked.
 
+Pi also needs a **provider and model selected**. The loop does not pass `--provider` or
+`--model`: Pi uses `defaultProvider` / `defaultModel` from `~/.pi/agent/settings.json` (the
+TUI's model picker writes them). A provider that is only registered in
+`~/.pi/agent/models.json` — for example by cc-switch — is available but not the default, so a
+session started without an explicit selection fails at the provider (a 403 is typical). Set
+the default once, then verify with:
+
+```bash
+pi --print --no-session "Reply with OK"
+```
+
 Uninstall:
 
 ```bash

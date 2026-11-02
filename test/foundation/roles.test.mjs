@@ -31,6 +31,8 @@ import {
   selectRole,
   selectWorkerRole,
   skillFingerprint,
+  skillLoadMode,
+  supportsInlineSkill,
   supportsSkillOpener,
 } from "../../src/foundation/roles.mjs";
 
@@ -339,13 +341,28 @@ describe("decision policy", () => {
   });
 });
 
-describe("skill opener support", () => {
+describe("skill loading support", () => {
   it("names only the hosts verified to expand a `/skill` opener, and fails closed", () => {
     assert.equal(supportsSkillOpener("claude"), true);
     assert.equal(supportsSkillOpener("codex"), false);
     assert.equal(supportsSkillOpener("pi"), false);
     assert.equal(supportsSkillOpener(undefined), false);
     assert.equal(supportsSkillOpener(null), false);
+  });
+
+  it("loads the skill inside the adapter on Codex and Pi", () => {
+    assert.equal(supportsInlineSkill("codex"), true);
+    assert.equal(supportsInlineSkill("pi"), true);
+    assert.equal(supportsInlineSkill("claude"), false);
+    assert.equal(supportsInlineSkill("openclaw"), false);
+  });
+
+  it("has one mode per kind", () => {
+    assert.equal(skillLoadMode("claude"), "opener");
+    assert.equal(skillLoadMode("codex"), "inline");
+    assert.equal(skillLoadMode("pi"), "inline");
+    assert.equal(skillLoadMode("openclaw"), "none");
+    assert.equal(skillLoadMode(undefined), "none");
   });
 });
 
