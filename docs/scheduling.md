@@ -949,9 +949,9 @@ A deployment may give its agents named roles — the standard set is **Jobs** (p
 design), **Linus** (architecture, implementation and refactoring), **Turing** (verification),
 a separate **Reviewer**, and the fallback **Worker**. The board never sees a "role":
 Jobs/Linus/Turing/Worker are ordinary board **agent names**, so the creator, the assignee
-and the report author are recorded as those names. Each role's own `SKILL.md` names the work
-shapes it owns; the director's decision authority is
-[`meerkat-director/references/decision-policy.md`](../../skills/meerkat-director/references/decision-policy.md).
+and the report author are recorded as those names. Each role's own workflow names the work
+shapes it owns; the director lane is the only content-decision authority, and no role decides
+its own escalation.
 
 Each role is a standalone **skill**, installed by `install.sh` on claude, codex and pi:
 

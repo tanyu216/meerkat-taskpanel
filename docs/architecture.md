@@ -211,7 +211,7 @@ SSE increment — and it is what the container suite drives end to end
 | Purpose, boundary, quality attributes | `inherited — README.md`, `docs/lifecycle.md` |
 | Layered style, DDD rejected | `reconstructed — src/ import graph; recorded in docs/adr/0001` |
 | Module boundaries and import direction | `reconstructed — src/**; enforced by review` |
-| Team roles and ownership | `inherited — skills/<role>/SKILL.md`, `skills/meerkat-director/references/decision-policy.md` |
+| Team roles and ownership | `reconstructed — skills/<role>/role.json (shapes) and src/foundation/roles.mjs (routing)` |
 | Data model, append-only migrations | `inherited — docs/agents/migration.md`, `src/core/storage/` |
 | Envelope and contract snapshots | `inherited — docs/agents/contract.md` |
 | Configuration inventory and load order | `reconstructed — src/foundation/env-config.mjs; inventoried in .env.example` |

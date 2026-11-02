@@ -273,6 +273,23 @@ describe("skill frontmatter and assets", () => {
   it("mirrors the loop's actor-kind table", () => {
     assert.deepEqual([...LOOP_KINDS].sort(), Object.keys(AGENT_DIRS).sort());
   });
+
+  it("keeps the generated entry free of repository-only design pages", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const stage4 = skill.slice(skill.indexOf("## 4."), skill.indexOf("## 5."));
+    for (const name of [
+      "docs/scheduling.md",
+      "docs/lifecycle.md",
+      "docs/acceptance.md",
+      "docs/sla.md",
+      "docs/projects.md",
+      "docs/access.md",
+      "docs/events.md",
+      "ARCHITECTURE.md",
+    ]) {
+      assert.ok(!stage4.includes(name), `stage 4 must not point at ${name}`);
+    }
+  });
 });
 
 describe("detect.mjs — read-only discovery", () => {
