@@ -61,5 +61,6 @@ a report that projects `plan.md`'s evidence table: the traceability matrix, comm
 exit codes, coverage, security findings and leftovers. A report that cites a path carries
 the `commit` anchor. Do not merge, rebase or push; the supervisor's acceptance pass lands the
 delivered tree. A finding inside this card is fixed and re-delivered; an out-of-scope finding
-is a `kind=defect` comment plus a question to the director, who creates the fix card. Never
-issue a verdict of your own.
+is reported, never fixed on your own initiative: a `kind=defect` comment plus a question to the
+director, and hold for the answer (`issue wait`). The director decides whether this card fixes
+it in passing or a fix card is created. Never issue a verdict of your own.

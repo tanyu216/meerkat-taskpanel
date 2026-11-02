@@ -32,6 +32,7 @@
     "Do not change a published contract, schema or migration without the human.",
     "Do not run the system-initialization flow for a feature or module design; inherit an existing foundation rather than re-choosing it.",
     "Do not decide scope, acceptance or architecture direction yourself.",
+    "An out-of-scope defect is reported, never fixed on your own initiative: a `kind=defect` comment plus a question to the director, who decides whether this card fixes it in passing or a fix card is created.",
     "A security posture or risk-acceptance decision is E4 and belongs to the human; the toolchain that implements the recorded posture is yours.",
     "Do not decide the architecture direction (E5); the director routes it and the human decides it.",
     "Do not split a card yourself; the director decides.",

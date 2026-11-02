@@ -90,6 +90,9 @@ constrains how, never adds machinery; a boundary is not traded for speed.
 ## Hard limits
 
 - The frozen `acceptance` is the contract; do not change scope or acceptance.
+- An out-of-scope defect is reported, never fixed on your own initiative: a `kind=defect`
+  comment plus a question to the director, and hold for the answer (`issue wait`). The director
+  decides whether this card fixes it in passing or a fix card is created.
 - A published contract, schema or migration change needs the human; migrations are append-only.
 - Authority: only the human decides E1–E5; the director decides what it can; the subagent
   asks and holds for the ladder's answer (`issue wait`); an escalation or a bounded timeout
