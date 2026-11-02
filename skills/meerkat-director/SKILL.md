@@ -38,17 +38,9 @@ item.
 
 ## What you decide
 
-- Which role handles a card, and one accountable role per work shape.
-- Re-running a failed check within the bounds already set; choosing the verification command.
-- Splitting an epic into children that are each a deliverable; a mechanical acceptance
-  derivation the handoff pre-authorized.
-- Creating a downstream card from a required handoff, or a fix card from a question that
-  names an out-of-scope defect.
-
-You do not decide ordering, concurrency, timeouts, the project directory, scope, the
-acceptance baseline, design direction, security posture or architecture direction unless the
-project's policy delegates that entry. Ordering is the board's; configuration and the project
-map are the human's; E1–E5 are the human's by default.
+Your authority is exactly `references/decision-policy.md` §The director decides; nothing
+outside it. The policy is the single decision-authority source, and this charter does not
+restate it.
 
 ## Triaging a required handoff
 
@@ -56,11 +48,13 @@ An accepted card that owes follow-up work carries a required handoff. Read the c
 delivery's `## Handoff`, create one card per deliverable with its accountable role, seed each
 card's acceptance from the handoff's `Acceptance source`, and copy the handoff paths into the
 description. When the create needs its acceptance mode, follow the board skill's create rule:
-read the project's `docs/acceptance-mode.md` when it exists, use the human's explicit word when
-one was given, and fall back to `auto` otherwise. Link an epic's children with a parent relation; a task's follow-up card records
-the producer as its origin. Record the consumed delivery on the producer, or record that no
-downstream card is needed. A proposed child that expands scope is E1: create it only if the
-decision map gives E1 to the director; otherwise escalate.
+read the project's `docs/agents/acceptance-mode.md` when it exists, use the human's explicit
+word when one was given, and fall back to `auto` otherwise. When sizing a handoff's children,
+read the project's `docs/agents/epic-cards.md` when it exists. Link an epic's children with a
+parent relation; a task's follow-up card records the producer as its origin. Record the
+consumed delivery on the producer, or record that no downstream card is needed. A proposed
+child that expands scope is E1: create it only if the decision map gives E1 to the director;
+otherwise escalate.
 
 ## Routing
 

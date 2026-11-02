@@ -71,7 +71,7 @@ review, then the loop closes on `APPROVE` (the fallback when the mode is omitted
 means an independent review, then a person closes after it finishes. Before passing
 `--acceptance-mode`, look for the project's own selection rules: resolve the project working
 directory with `taskctl project dir <id> --json`, then read
-`<project-dir>/docs/acceptance-mode.md` when it exists. An explicit instruction from the human
+`<project-dir>/docs/agents/acceptance-mode.md` when it exists. An explicit instruction from the human
 wins over that document. If the file, the directory or the map is absent, use the three
 meanings above; never invent a project default or store one on the project row.
 
@@ -164,7 +164,7 @@ The report must **cover the snapshot**: every item appears by text; `met` or `no
 
 The mode is resolved once, at creation: `--acceptance-mode off|auto|human`; omitted, it falls
 back to `auto`. There is no project default — the create section explains the project's
-`docs/acceptance-mode.md`. An `off` card may go straight from `in_progress` to `done`; `auto`
+`docs/agents/acceptance-mode.md`. An `off` card may go straight from `in_progress` to `done`; `auto`
 and `human` are both reviewed; the loop accepts an `auto` card on `APPROVE`, and a person
 closes a `human` card after its review finishes. An epic is reviewed against its children and
 rollup and closed only after an `APPROVE`. An agent may only tighten a mode

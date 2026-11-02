@@ -16,10 +16,11 @@ only:
   `docs/architecture.md`, `docs/adr/`, `docs/agents/`, `docs/ops/`, `README.md`,
   `CONTRIBUTING.md`, `CHANGELOG.md`, `CLAUDE.md`, `AGENTS.md` and `GLOSSARY.md` are supplied by
   the project and may be read at runtime. A project may also supply
-  `docs/agents/decision-policy.md` to refine the director's default E1–E5 mapping. They are the
-  authority for that project's facts, not for this repository's design. Installed skills may
-  discover `docs/agents/` and `docs/ops/`, but they must not name this repository's
-  maintainer-only files in them.
+  `docs/agents/decision-policy.md` to refine the director's default E1–E5 mapping, and
+  `docs/agents/acceptance-mode.md` / `docs/agents/epic-cards.md` to refine its card-creation
+  rules. They are the authority for that project's facts, not for this repository's design.
+  Installed skills may discover `docs/agents/` and `docs/ops/`, but they must not name this
+  repository's maintainer-only files in them.
 - **Deployed artifacts — `skills/**`, `src/**` and the installer scripts.** Copied to agent homes
   and run. A skill is self-contained after install: it may point at another installed skill or
   at the target project's own documents, never back into this repository's design docs.
@@ -55,6 +56,9 @@ this repository's own.
 | [issue-tracker.md](agents/issue-tracker.md) | How this repository's work is tracked as cards: the `taskctl` workflow, the commands the engineering skills expect, and the conventions that differ from a hosted tracker. |
 | [domain.md](agents/domain.md) | How the engineering skills consume this repository's domain documentation (`GLOSSARY.md`, ADRs, `design/`). |
 | [triage-labels.md](agents/triage-labels.md) | The five canonical triage roles and the label strings this repository uses for them. |
+| [README.md](agents/README.md) | The project-rule discovery contract: the fixed paths under `docs/agents/`, when each is read, and what an absent file means. |
+| [acceptance-mode.md](agents/acceptance-mode.md) | This project's card-creation guidance: the three words and when its creators state `off` or `human`; read by the `meerkat` skill, never board data. |
+| [epic-cards.md](agents/epic-cards.md) | This project's epic sizing and creation guidance: what can land on `dev` alone, and what is a layer rather than a child; read by the `meerkat` skill. |
 
 ## Repository maintenance
 
@@ -76,7 +80,6 @@ How the product behaves, and why.
 |---|---|
 | [lifecycle.md](lifecycle.md) | The card lifecycle: flow A (create, claim, wait, deliver, accept), the delivery round and the delivery gate, flow B (the review card's identity, dispatch, verdict and outcomes), the workflow pass, containers, the enforcement layers, the standing states, and the decisions and limits behind them. |
 | [acceptance.md](acceptance.md) | The acceptance model — who may close a card: the single-layer card vocabulary (`off | auto | human`), resolution at creation and why the fallback is `auto`, the three modes, review's independence from the closer, the standing states, the three enforcement layers, and the known limits. |
-| [acceptance-mode.md](acceptance-mode.md) | This project's own card-creation guidance: the three words and when its creators state `off` or `human`; read by the `meerkat` skill, never board data. |
 | [scheduling.md](scheduling.md) | The scheduling model: the ping/continue clocks, the deterministic loop passes, the fire-only cost gate, the atomic-claim dispatch, the event subscriber, the three-agent-kind trigger differences, and why OpenClaw installs the board skill only. |
 | [sla.md](sla.md) | The SLA design: the wait-time model, why the board computes and the loop notifies, the threshold table and tier ladder, the working-hours basis, the alert tuple, the row detectors, de-duplication and pre-emit re-check, the peer watchdog, and the decisions with their costs. |
 | [events.md](events.md) | The event system's design: the append-only activity log and its revision cursor, the SSE contract and its delivery semantics, each consumer's refresh policy (board, ledger, feed, loop, card watcher), the local event hub, the event catalogue, and the decisions and costs behind them. |

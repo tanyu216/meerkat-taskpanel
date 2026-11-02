@@ -24,7 +24,7 @@ A card carries exactly one acceptance word, chosen by its creator at creation:
 - `human` — an independent review, then only a person closes it, after that review finishes.
 
 Projects carry no acceptance default. A project may document its creators' selection guidance
-in `docs/acceptance-mode.md`; the `meerkat` skill discovers it. That document is not board
+in `docs/agents/acceptance-mode.md`; the `meerkat` skill discovers it. That document is not board
 data: nothing stores or inherits it. The parent/depth restriction is removed: any card may be
 any word. Existing `agent` cards migrate to `auto`.
 
@@ -45,4 +45,4 @@ default without a human or director dependency.
   deliberate tightening, and the reviewer is also refused when it would APPROVE a delivery
   the close gate could never accept.
 - A deployment that used a project-level `human` default must state the mode per card, or
-  document the guidance in `docs/acceptance-mode.md`.
+  document the guidance in `docs/agents/acceptance-mode.md`.

@@ -92,6 +92,9 @@ describe("installed skills: self-contained references", () => {
       "docs/architecture.md",
       "docs/adr/0001-architecture-style.md",
       "docs/agents/decision-policy.md",
+      "docs/agents/README.md",
+      "docs/agents/acceptance-mode.md",
+      "docs/agents/epic-cards.md",
       "Discover docs/agents/ and docs/ops/",
     ]) {
       assert.deepEqual(findRepositoryOnlyRefs(allowed), [], `${allowed} is a project document`);

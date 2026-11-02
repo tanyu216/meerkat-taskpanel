@@ -307,6 +307,15 @@ now has no owner, so it is not a card.
 
 The five canonical triage roles keep their default label strings. See `docs/agents/triage-labels.md`.
 
+### Project card rules
+
+`docs/agents/` is the project-discovery surface. The installed board skill reads two optional
+files from the resolved project working directory: `docs/agents/acceptance-mode.md` (how this
+project's creators choose `off`/`auto`/`human`) and `docs/agents/epic-cards.md` (how this
+project sizes an epic child). An absent file means the skill's built-in default; the director
+reads `docs/agents/decision-policy.md` for E1–E5 refinements. Discovery is by these fixed
+paths, not a directory scan. See `docs/agents/README.md`.
+
 ### Domain docs
 
 Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/agents/domain.md`.
@@ -316,6 +325,7 @@ Single-context: `GLOSSARY.md` at the root, ADRs under `docs/adr/`. See `docs/age
 - `docs/tech-spec.md` — **this repository's standard, read it before the first code change**: the numbered rules (`TS-NN`) a change must satisfy, each naming its enforcement, plus the stack table and the security toolchain with its decision policy.
 - `docs/architecture.md` — the system record: boundaries, the layered style, the data model, the contract, configuration, security, the canonical directory tree (reconstructed from the tree, accepted 2026-10-30).
 - `docs/adr/` — the recorded decisions and their status vocabulary.
+- `docs/agents/README.md` — the project-rule discovery contract: fixed paths, when each is read, and what an absent file means.
 - `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
 - `CONTRIBUTING.md` — how a change lands: isolation, the gate, the PR flow, cleanup. `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
 - `.env.example` — the configuration inventory (every key the application reads, grouped by the file it lands in).

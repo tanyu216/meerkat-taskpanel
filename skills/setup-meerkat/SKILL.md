@@ -209,8 +209,11 @@ Tracker candidates, in order: `docs/agents/issue-tracker.md` (canonical),
 The Matt skill is `disable-model-invocation: true`; it is user-invoked only, so this skill
 cannot invoke it. Say which route was taken; never claim a skill ran when it did not.
 Write only the per-repository outputs (`docs/agents/issue-tracker.md`,
-`docs/agents/domain.md`, optionally `docs/agents/triage-labels.md`, and the
-`## Agent skills` block in the existing `CLAUDE.md`/`AGENTS.md`). The `## Agent skills` block
+`docs/agents/domain.md`, optionally `docs/agents/triage-labels.md`, optionally
+`docs/agents/acceptance-mode.md` and `docs/agents/epic-cards.md` when the project has a
+non-default card rule, and the `## Agent skills` block in the existing
+`CLAUDE.md`/`AGENTS.md`). The card-rule files are optional: an absent file means the
+installed skill's built-in default, so do not write empty boilerplate. The `## Agent skills` block
 is the tracker's; the task entry §4 requires goes in the same instruction file, in that
 file's own shape. Never create board labels: the registry is read-only and grows when a card
 names a label.

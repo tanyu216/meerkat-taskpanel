@@ -643,7 +643,7 @@ then dispatches no review card and a delivery waits for a human to accept it
 
 Acceptance is **not** install configuration: each card states its own mode
 (`off | auto | human`) with `issue create --acceptance-mode …`. There is no project-level
-default; a project may document its creators' guidance in `docs/acceptance-mode.md`.
+default; a project may document its creators' guidance in `docs/agents/acceptance-mode.md`.
 The file is merged, never rewritten.
 
 `MEERKAT_TASKPANEL_ENV_FILE` points the installer and both binaries at a different board

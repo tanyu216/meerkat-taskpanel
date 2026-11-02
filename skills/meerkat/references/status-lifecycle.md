@@ -335,7 +335,7 @@ exception. The mode is the **closer** selector, not a review selector — an `au
 The creator states the mode at creation; an explicit `--acceptance-mode` is the whole
 decision. An unresolved card — task or epic — falls back to `auto`: review is the default,
 and `human` is opt-in. A project may document how its creators choose in
-`docs/acceptance-mode.md` under its working directory; the `meerkat` skill discovers that file
+`docs/agents/acceptance-mode.md` under its working directory; the `meerkat` skill discovers that file
 when it creates a card. It is guidance for the creator, not board data — not stored, not
 inherited, not read by `taskd`. The structural rules:
 

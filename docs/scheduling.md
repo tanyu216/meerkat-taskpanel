@@ -938,7 +938,7 @@ and `in_progress → done` is allowed), `auto` (a current-round `APPROVE`, appli
 supervisor) or `human` (a person only, after the review finishes). A card that names no mode
 falls back to `auto`; there is no project-level default and no local copy to keep in step. A
 project may document its creators' selection guidance in
-`<project-dir>/docs/acceptance-mode.md`, which the `meerkat` skill reads when it creates a
+`<project-dir>/docs/agents/acceptance-mode.md`, which the `meerkat` skill reads when it creates a
 card; that document is not board data. A `human` card is reviewed like an `auto` one; the
 supervisor records the verdict and stops, and it never closes the card itself. A container is
 a card too: an epic is dispatched a review card like any other (its review reads the rollup
