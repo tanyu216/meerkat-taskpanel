@@ -256,7 +256,9 @@ in the same turn. Without an init step, write the requirements yourself.
   wait`); the director answers with an agent `note` and returns the card to `todo`, or escalates E1–E5 to
   `awaiting` (scope, acceptance, design direction, security/data, architecture); only a human
   comment resumes `awaiting`. Point at the installed director skill's
-  `references/decision-policy.md` — never copy the policy into the project file.
+  `references/decision-policy.md`; never copy the policy into the project instruction file.
+  A project may instead add its own refinement at `docs/agents/decision-policy.md`, which the
+  director reads before applying the default E1–E5 map.
 
 Keep the keywords — `/meerkat`, `card`, `claim`, `heartbeat`, `deliver`, `in_review` and
 `done` — because a later session greps for them, and they are what sends it to the board

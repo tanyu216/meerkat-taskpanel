@@ -117,7 +117,7 @@ describe("skill frontmatter and assets", () => {
     assert.match(stage4, /question|lookup|one-off/i, "it names what stays out");
     assert.doesNotMatch(
       stage4,
-      /docs\/agents\//,
+      /docs\/agents\/(?!decision-policy\.md)/,
       "the stage stands alone — no tracker-integration artifact is required",
     );
     assert.match(stage4, /skills\/<role>\//, "the stage names the role-skill discovery path");
@@ -253,6 +253,13 @@ describe("skill frontmatter and assets", () => {
       /`meerkat`[^\n]*(board skill|card operation)/i,
       "SKILL.md must point at the meerkat board skill",
     );
+  });
+
+  it("distinguishes copying the policy from a project refinement", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    assert.match(skill, /never copy the policy into the project instruction file/i);
+    assert.match(skill, /docs\/agents\/decision-policy\.md/, "the refinement path is named");
+    assert.match(skill, /refinement/i, "a refinement is not a copy");
   });
 
   it("ships the role skills as standalone skills, never a team copy", () => {

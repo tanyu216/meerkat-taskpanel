@@ -93,10 +93,15 @@ describe("director skill: SKILL.md", () => {
     assert.doesNotMatch(text, /taskctl/i);
   });
 
-  it("names the ladder and the single decision-authority source", () => {
+  it("names the ladder, the board contract and the single decision-authority source", () => {
     assert.match(text, /worker\s+→\s+director\s+→\s+human/);
     assert.match(text, /single decision-authority source/);
     assert.match(text, /references\/decision-policy\.md/);
+    assert.match(
+      text,
+      /Call the `meerkat` board skill/,
+      "the board contract is a call, not a passive reference",
+    );
   });
 });
 

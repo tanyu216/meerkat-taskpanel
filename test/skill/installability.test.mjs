@@ -122,7 +122,7 @@ describe("installed skills: self-contained references", () => {
     }
     assert.deepEqual(old, [], "the old call-through wording is gone");
     assert.deepEqual(claudeOnly, [], "a shipped skill names a Claude-only tool");
-    assert.ok(canonical >= 18, "every role passage uses the canonical call form");
+    assert.ok(canonical >= 19, "the canonical call form is used across the shipped skills");
   });
 
   it("scans YAML assets as well as prose and code", () => {
