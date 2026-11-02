@@ -30,6 +30,8 @@ import {
   selectReviewerRole,
   selectRole,
   selectWorkerRole,
+  skillFingerprint,
+  supportsSkillOpener,
 } from "../../src/foundation/roles.mjs";
 
 /** A temp home with claude/codex/pi skill trees. */
@@ -298,6 +300,7 @@ describe("decision policy", () => {
       const result = loadRoles({ home: f.home, primaryKind: "claude" });
       assert.equal(result.decisionPolicy.source, "director");
       assert.match(result.decisionPolicy.path, /meerkat-director\/references\/decision-policy\.md$/);
+      assert.match(result.decisionPolicy.skillDir, /skills\/meerkat-director$/);
       assert.match(result.decisionPolicy.text, /policy/);
     } finally {
       f.cleanup();
@@ -330,6 +333,35 @@ describe("decision policy", () => {
       const result = loadRoles({ home: f.home, primaryKind: "claude" });
       assert.equal(result.decisionPolicy.source, null);
       assert.equal(result.decisionPolicy.path, null);
+    } finally {
+      f.cleanup();
+    }
+  });
+});
+
+describe("skill opener support", () => {
+  it("names only the hosts verified to expand a `/skill` opener, and fails closed", () => {
+    assert.equal(supportsSkillOpener("claude"), true);
+    assert.equal(supportsSkillOpener("codex"), false);
+    assert.equal(supportsSkillOpener("pi"), false);
+    assert.equal(supportsSkillOpener(undefined), false);
+    assert.equal(supportsSkillOpener(null), false);
+  });
+});
+
+describe("skill fingerprint", () => {
+  it("changes when any installed skill file changes, and is null for a missing directory", () => {
+    const f = fixture();
+    try {
+      const dir = writeDirector(f, "claude", "# policy\n");
+      const first = skillFingerprint(dir);
+      assert.equal(typeof first, "string");
+      assert.equal(skillFingerprint(dir), first, "the fingerprint is stable");
+      writeFileSync(join(dir, "references", "decision-policy.md"), "# changed\n", "utf8");
+      assert.notEqual(skillFingerprint(dir), first, "a changed file changes the fingerprint");
+      assert.equal(skillFingerprint(null), null);
+      assert.equal(skillFingerprint(join(f.home, "missing")), null);
+      assert.equal(skillFingerprint(join(dir, "SKILL.md")), null, "a file is not a skill directory");
     } finally {
       f.cleanup();
     }

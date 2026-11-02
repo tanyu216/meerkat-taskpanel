@@ -41,7 +41,7 @@ source.
 Settle the whole frontier in one round: numbered Q1..Qn, each with a recommendation, one
 question string per card; look up the facts yourself. Do not build while a frontier item is
 open. After writing the question, hold with `taskctl issue wait`; the complete protocol is the
-`meerkat-director` skill's `references/decision-policy.md` §Decision rounds.
+`meerkat-director` skill's `references/rounds.md`.
 
 ## Hard limits
 

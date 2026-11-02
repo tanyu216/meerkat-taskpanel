@@ -87,7 +87,7 @@ the board back through `taskctl`.
 ┌─────────▼───────────────────────────▼───────────────────────────▼────────┐
 │ ROLE SKILLS (installed per kind, discovered from role.json)              │
 │ jobs · linus · turing · reviewer · worker                                │
-│ the director lane loads `meerkat-director`                               │
+│ Claude lanes open with `/skill` + Flags; director is supervisor-only     │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -463,20 +463,30 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   same `resolveWakeDir` the glue uses). A card whose project is unmapped or names no
   directory is **deferred before the claim**, so the board never shows a claim that has
   nowhere to run. The handoff tells the session it is the card's own worker — not a
-  subagent of a shared conversation — and that the supervisor holds the claim. The
-  session's cwd is the card's admitted worktree, and its id is persisted **before** the
-  turn so a crash can resume it. The key includes the actor kind: a role migrated between
-  platforms never resumes the old platform's native session.
+  subagent of a shared conversation — and that the supervisor holds the claim. On a host
+  whose `/<role>` opener is validated (Claude), the session opens with the skill command and
+  a `Flags:` line, and the handoff is a thin task envelope (brief, plan, board moves, no
+  role layer). Codex/Pi keep the full handoff with the skill path until their host opener is
+  validated. The session's cwd is the card's admitted worktree, and its id is persisted
+  **before** the turn so a crash can resume it. The key includes the actor kind: a role
+  migrated between platforms never resumes the old platform's native session.
 - **Reviewer sessions** — keyed `(actor_kind, reviewer:<dir>)`, opened only when a review
-  card is queued and evicted by the same idle clock. The batch prompt is the reviewer
-  variant: no question ladder, verdict-only. The allowlist is real for Claude and Pi; Codex
-  and other adapters have no per-role tool surface, and the pool logs a one-time warning
-  for them.
+  card is queued and evicted by the same idle clock. On Claude the session opens with
+  `/reviewer` and a `Flags:` line; Codex/Pi keep the batch prompt without an opener until
+  their host opener is validated. The batch prompt is the reviewer variant: no question
+  ladder, verdict-only. Each review card is one subagent with its **full** review handoff — a
+  subagent does not inherit the parent's loaded skill, so the review protocol and the role
+  path must be in that first context. The allowlist is real for Claude and Pi; Codex and
+  other adapters have no per-role tool surface, and the pool logs a one-time warning for
+  them.
 - **Director session** — keyed `(primary, director:<dir>)`, opened only when a question,
   route or escalation row is queued. It is the one LLM decision lane: it assigns unowned
   cards, answers worker questions with a `note` + `todo`, or escalates E1–E5 with
   `awaiting --awaiting-reason --question`. It never claims, never implements and never
-  moves a card to `done`. It runs on the supervisor's primary kind.
+  moves a card to `done`. It runs on the supervisor's primary kind. On Claude it opens with
+  `/meerkat-director` + a `Flags:` line, so the skill is loaded once and each later turn
+  carries only the rows; Codex/Pi keep the decision-policy path in each prompt until their
+  host opener is validated.
 - **Resume and replay** — a same-round re-dispatch (a human answer to an `awaiting`
   question, same-round rework, crash recovery) opens the stored session id **in the same
   actor kind** and sends a **resume** prompt carrying the answer or reason, in the same
@@ -1020,16 +1030,15 @@ does not consume a worker slot. The read is bounded by `--board-limit` and costs
 human. A worker asks and waits; the director decides the collaboration questions and the
 handoff triage, records the decision and releases the card; the human owns E1–E5 and the
 reserved matters. The director skill ships that ladder as its **deployed contract**
-(`references/decision-policy.md`); a role skill or `--roles-dir` cannot override it. The
-contract's E1–E5 mapping and reserved-matters list are defaults: a project's own
-`docs/agents/decision-policy.md` may refine them item by item, but the ladder itself is not
-refinable.
+(`references/decision-policy.md`, the shared core); a role skill or `--roles-dir` cannot
+override it. The contract's E1–E5 mapping and reserved-matters list are defaults in
+`references/escalation.md`: a project's own `docs/agents/decision-policy.md` may refine them
+item by item, but the ladder itself is not refinable.
 
 Questions are asked as one **decision round**: the frontier of decisions whose prerequisites
 are settled, numbered Q1..Qn with a recommendation each, one question string per card, with
-the asker looking up the facts. The director skill ships the full round method as its
-**deployed contract** (`references/decision-policy.md` §Decision rounds); the frontier rule
-above is the design requirement.
+the asker looking up the facts. The director skill ships the full round method as
+`references/rounds.md`; the frontier rule above is the design requirement.
 
 **The scan set.** `MEERKAT_TASKPANEL_AGENTS` is the union of the configured names and every
 discovered role's board name (plus the reviewer and `Worker`). The installed units carry no
@@ -1053,11 +1062,13 @@ role: it receives no card, has no assignee, and never appears in the scan set.
 | `triage` | an accepted producer carries `meta.stage_handoff=required` and has no decision for its delivery round | read the current report's `## Handoff`; create/seed/link the proposed cards, or record `handoff_declined_round`; record `handoff_consumed_round` on the producer |
 | escalation | the director cannot decide | `issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."` |
 
-The prompt is generated by the supervisor: the routing table built from each role's
-`shapes`, the decision-policy path, the decision-round/frontier rules and the exact
-`taskctl` commands. The director never claims a card, never implements, never writes
-`decision`/`confirm`/`change` kinds, never uses `--as-human`, and never moves a card to
-`done`. A question row is capped at two attempts; a route row is enqueued once per window.
+On Claude the session opens with `/meerkat-director` + a `Flags:` line; the host loads the
+skill, whose `references/decision-policy.md` names the decision file for the matter. Codex/Pi
+keep the decision-policy path in each prompt until their host opener is validated. The
+per-decision prompt is generated by the supervisor: the routing table built from each role's
+`shapes`, the rows and the exact `taskctl` commands. The director never claims a card, never
+implements, never writes `decision`/`confirm`/`change` kinds, never uses `--as-human`, and
+never moves a card to `done`. A question row is capped at two attempts; a route row is enqueued once per window.
 A triage row is enqueued **after** the question and route rows: it is post-acceptance work
 and never displaces a held worker. Its completion is the marker on the producer, not a linked
 child; a producer that moved off `done` makes the row stale. A triage that exhausts its two
@@ -2524,8 +2535,9 @@ this boundary: every agent kind gets one — see `docs/ops/install.md`.)
 - [`install.md`](ops/install.md) — the installer flags, including `--claim-unassigned` and the
   opt-in `--supervisor=enable|disable|status`.
 - [`../skills/meerkat-director/SKILL.md`](../skills/meerkat-director/SKILL.md) — the decision
-  hub; its `references/decision-policy.md` is the director's **deployed contract** for the
-  ladder and decision rounds this page designs.
+  hub; its `references/decision-policy.md` is the shared core and `references/rounds.md` the
+  round method this page designs. The skill is supervisor-only: the human console is
+  `meerkat-chat`, never this one.
 - [`../skills/meerkat-chat/SKILL.md`](../skills/meerkat-chat/SKILL.md) — the human's live
   console: progress, awaiting questions, acceptance, `loop doctor` and abnormal cards.
 - [`../skills/jobs/SKILL.md`](../skills/jobs/SKILL.md) and its four siblings — the role

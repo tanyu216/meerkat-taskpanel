@@ -3,9 +3,9 @@
  *
  * The director is opened only for a content decision: a worker question, an unowned
  * card, an accepted card's required handoff, or an E1–E5 escalation. Its charter is
- * decisions only: `SKILL.md` plus `references/decision-policy.md`. The taskctl
- * mechanics, the board's scheduling, and the human console are other surfaces and
- * must not be restated here.
+ * decisions only: `SKILL.md` plus its references, split into the shared core, one
+ * file per decision, and the round method. The taskctl mechanics, the board's
+ * scheduling, and the human console are other surfaces and must not be restated here.
  *
  * The second half of this file holds the board skill's own invariants (they used to
  * live beside the loop tests); a distributed skill's links must resolve where the
@@ -35,10 +35,19 @@ const DIRECTOR_SKILL_NAME = "meerkat-director";
 describe("director skill: docs only", () => {
   it("carries only its decision charter and policy, and no execution body", () => {
     assert.ok(existsSync(join(DIRECTOR_SKILL, "SKILL.md")), "the skill must keep its charter");
-    assert.ok(
-      existsSync(join(DIRECTOR_SKILL, "references/decision-policy.md")),
-      "references/decision-policy.md must land",
-    );
+    for (const name of [
+      "decision-policy.md",
+      "question.md",
+      "route.md",
+      "triage.md",
+      "escalation.md",
+      "rounds.md",
+    ]) {
+      assert.ok(
+        existsSync(join(DIRECTOR_SKILL, "references", name)),
+        `references/${name} must land`,
+      );
+    }
     assert.equal(
       existsSync(join(DIRECTOR_SKILL, "references/operation.md")),
       false,
@@ -106,17 +115,54 @@ describe("director skill: SKILL.md", () => {
 });
 
 describe("director skill: references", () => {
-  it("documents the frontier and the E1-E5 table in the policy", () => {
-    const policy = readFileSync(join(DIRECTOR_SKILL, "references", "decision-policy.md"), "utf8");
-    assert.match(policy, /worker  →  director  →  human/);
-    assert.match(policy, /E1/);
-    assert.match(policy, /awaiting/);
-    assert.match(policy, /Decision rounds/);
-    assert.match(policy, /handoff_consumed_round/, "the triage marker has one home");
+  const refsDir = join(DIRECTOR_SKILL, "references");
+  const ref = (name) => readFileSync(join(refsDir, name), "utf8");
+
+  it("is the shared core plus one file per decision and the round method", () => {
+    assert.deepEqual(
+      readdirSync(refsDir)
+        .filter((name) => name.endsWith(".md"))
+        .sort(),
+      ["decision-policy.md", "escalation.md", "question.md", "rounds.md", "route.md", "triage.md"],
+    );
   });
 
-  it("makes a project's own policy the refinement source for E1-E5", () => {
-    const policy = readFileSync(join(DIRECTOR_SKILL, "references", "decision-policy.md"), "utf8");
+  it("keeps the ladder, the director's authority and the recording in the shared core", () => {
+    const core = ref("decision-policy.md");
+    assert.match(core, /worker  →  director  →  human/);
+    assert.match(core, /The director decides/);
+    assert.match(core, /The reviewer/);
+    assert.match(core, /## Recording/);
+    assert.match(core, /awaiting/);
+    assert.doesNotMatch(core, /## Decision rounds/);
+    assert.doesNotMatch(core, /## The human decides/);
+  });
+
+  it("puts the worker boundary and the question rule in question.md", () => {
+    const question = ref("question.md");
+    assert.match(question, /worker/i);
+    assert.match(question, /escalates only the items the decision map[\s\S]*leaves to the human/i);
+    assert.match(question, /one round is one question per card/i);
+  });
+
+  it("puts the route rule in route.md", () => {
+    const route = ref("route.md");
+    assert.match(route, /one accountable role/i);
+    assert.match(route, /Worker/);
+    assert.match(route, /never invent a role name/i);
+  });
+
+  it("puts the triage markers and the E1 check in triage.md", () => {
+    const triage = ref("triage.md");
+    assert.match(triage, /handoff_consumed_round/, "the triage marker has one home");
+    assert.match(triage, /handoff_declined_round/);
+    assert.match(triage, /create it only if the map gives E1 to the[\s\S]*director/i);
+  });
+
+  it("puts the E1-E5 map and the project refinement in escalation.md", () => {
+    const policy = ref("escalation.md");
+    assert.match(policy, /E1/);
+    assert.match(policy, /awaiting/);
     assert.match(policy, /docs\/agents\/decision-policy\.md/, "the project policy file is named");
     assert.doesNotMatch(
       policy,
@@ -128,19 +174,30 @@ describe("director skill: references", () => {
     assert.match(policy, /`human` or `director`/, "a project entry names its decider");
     assert.match(policy, /unreadable[\s\S]*apply the default/i, "an unusable file falls back");
     assert.match(policy, /cannot add a code/i, "the E-code vocabulary is fixed");
-    assert.match(policy, /ladder above[\s\S]*fixed/i, "the ladder cannot be overridden");
-    assert.match(policy, /escalates only the items the decision map[\s\S]*leaves to the human/i);
-    assert.match(policy, /create it only if the map gives E1 to the[\s\S]*director/i);
+    assert.match(policy, /ladder[\s\S]{0,120}fixed/i, "the ladder cannot be overridden");
     assert.match(policy, /Record which source decided/i, "the deciding source is recorded");
+  });
+
+  it("puts the round protocol in rounds.md", () => {
+    const rounds = ref("rounds.md");
+    assert.match(rounds, /## Decision rounds/);
+    assert.match(rounds, /frontier/);
+    assert.match(rounds, /so "yes" accepts/i);
+    assert.match(rounds, /Facts are the asker's job/i);
+    assert.match(rounds, /outside\s+the\s+roles/i, "the design mode allows an outside worker");
   });
 
   it("carries no human-console or taskctl/scheduler mechanics", () => {
     // The human console is `meerkat-chat`'s, the commands are the board skill's,
     // and the scheduler is the supervisor's. The director's charter must not
     // restate any of them — not even as a pointer.
-    const skill = readFileSync(join(DIRECTOR_SKILL, "SKILL.md"), "utf8");
-    const policy = readFileSync(join(DIRECTOR_SKILL, "references", "decision-policy.md"), "utf8");
-    for (const [name, body] of [["SKILL.md", skill], ["decision-policy.md", policy]]) {
+    const files = [
+      ["SKILL.md", readFileSync(join(DIRECTOR_SKILL, "SKILL.md"), "utf8")],
+      ...readdirSync(refsDir)
+        .filter((name) => name.endsWith(".md"))
+        .map((name) => [`references/${name}`, ref(name)]),
+    ];
+    for (const [name, body] of files) {
       assert.doesNotMatch(
         body,
         /meerkat-chat|human console|TASKCTL_HUMAN|--as-human|loop doctor|loop console/i,
@@ -152,6 +209,24 @@ describe("director skill: references", () => {
         `${name}: commands and scheduling are other surfaces`,
       );
     }
+  });
+
+  it("keeps each file within its line ceiling", () => {
+    const lines = (name) => readFileSync(join(refsDir, name), "utf8").split("\n").length;
+    for (const name of [
+      "decision-policy.md",
+      "question.md",
+      "route.md",
+      "triage.md",
+      "escalation.md",
+      "rounds.md",
+    ]) {
+      assert.ok(lines(name) <= 130, `${name}: ${lines(name)} lines`);
+    }
+    assert.ok(
+      readFileSync(join(DIRECTOR_SKILL, "SKILL.md"), "utf8").split("\n").length <= 90,
+      "SKILL.md stays an index",
+    );
   });
 
   it("keeps installation out of the skill", () => {

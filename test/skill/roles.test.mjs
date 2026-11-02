@@ -633,14 +633,14 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
   });
 
   it("makes the decision policy the single home of the round protocol", () => {
-    const policy = readFileSync(
-      join(SKILLS, "meerkat-director", "references", "decision-policy.md"),
+    const rounds = readFileSync(
+      join(SKILLS, "meerkat-director", "references", "rounds.md"),
       "utf8",
     );
-    assert.match(policy, /## Decision rounds/);
-    assert.match(policy, /frontier/);
-    assert.match(policy, /so "yes" accepts/i);
-    assert.match(policy, /Facts are the asker's job/i);
+    assert.match(rounds, /## Decision rounds/);
+    assert.match(rounds, /frontier/);
+    assert.match(rounds, /so "yes" accepts/i);
+    assert.match(rounds, /Facts are the asker's job/i);
 
     let protocolCopies = 0;
     for (const role of ["jobs", "linus", "turing"]) {
@@ -707,8 +707,8 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     const impl = read("linus", "references/implementation-workflow.md");
     const check = read("linus", "references/self-check.md");
     const setup = readFileSync(join(SKILLS, "setup-meerkat", "SKILL.md"), "utf8");
-    const policy = readFileSync(
-      join(SKILLS, "meerkat-director", "references", "decision-policy.md"),
+    const rounds = readFileSync(
+      join(SKILLS, "meerkat-director", "references", "rounds.md"),
       "utf8",
     );
 
@@ -729,7 +729,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(linus, /refactor-workflow\.md/, "the role routes the refactor branch");
     assert.match(check, /## Refactor branch/, "the self-check covers refactoring");
     assert.match(setup, /Outside the roles is outside the board/i, "the setup interview allows an outside worker");
-    assert.match(policy, /outside\s+the\s+roles/i, "the decision policy allows an outside worker");
+    assert.match(rounds, /outside\s+the\s+roles/i, "the decision policy allows an outside worker");
   });
 
   it("leaves landing, merging and rebasing to the director", () => {

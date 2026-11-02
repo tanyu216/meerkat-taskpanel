@@ -1049,7 +1049,16 @@ describe("the resident poll dispatch", () => {
     const [entry] = readCards(f.dir).value.cards;
     assert.equal(entry.actor_kind, "codex", "the row runs on the kind carrying the role");
     assert.equal(opts.actorKind, "claude", "the supervisor still claims as its own kind");
-    assert.match(entry.handoff, /\/roles\/codex\/turing\/SKILL\.md/);
+    assert.match(
+      entry.handoff,
+      /\/roles\/codex\/turing\/SKILL\.md/,
+      "codex keeps the role path until its host opener is validated",
+    );
+    assert.doesNotMatch(
+      entry.handoff,
+      /Carry the session opener's Flags/,
+      "an unvalidated kind keeps the full handoff",
+    );
   });
 
   it("refuses to enqueue when no platform carries the role", async () => {
