@@ -541,7 +541,7 @@ describe("board skill: the container decision", () => {
 
   it("names the shape limits where the card schema defines them", () => {
     const schema = readFileSync(
-      join(ROOT, "skills/meerkat/references/card-schema.md"),
+      join(ROOT, "skills/meerkat/references/schema/records.md"),
       "utf8",
     );
     assert.match(schema, /\*\*8\*\*\s+children/);

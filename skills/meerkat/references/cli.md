@@ -334,7 +334,7 @@ and `## Report` (one metadata line per file; the bytes stay on the board). The p
 sections) used for round-tripping and CI checks, not a human-readable card detail: use
 `issue get <ref>` for prose and `issue get <ref> --json` for machines. The implicit spelling
 `export --md <ref>` cannot carry a ref; use `export md <ref>`. The file format is in
-[`card-schema.md`](card-schema.md).
+[`schema/records.md`](schema/records.md).
 
 #### `export watch`
 
@@ -730,7 +730,7 @@ one of eight literals — `clarify`, `decision`, `dependency`, `out_of_bounds`, 
 `unknown` is not the spelling of "no reason": it is a writer saying there is a block they
 cannot classify. The reason is stamped while `blocked` and cleared on exit; the card's
 `task_moved` activity keeps it afterwards. The table and import rules are in
-[`card-schema.md`](card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for).
+[`schema/blocked-reason.md`](schema/blocked-reason.md#blocked_reason--what-a-blocked-card-is-waiting-for).
 
 ## Review cards — the declared fields
 
@@ -868,4 +868,4 @@ this envelope.
 | every `loop` verb | its own streamed output, not this envelope |
 
 The card object itself — every key of `data.task`, its nested actor refs and the relation
-between the wire and the markdown card — is [`card-schema.md`](card-schema.md#reading-a-card-as-json).
+between the wire and the markdown card — is [`schema/wire.md`](schema/wire.md#reading-a-card-as-json).

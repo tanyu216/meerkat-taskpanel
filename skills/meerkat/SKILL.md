@@ -30,7 +30,7 @@ Retry only `VERSION_CONFLICT` (re-read once, retry with the fresh `--if-version`
 ## Finding the data you need
 
 One read often answers several questions; the full field list and meanings are
-[`references/card-schema.md#reading-a-card-as-json`](references/card-schema.md#reading-a-card-as-json) and [`references/card-schema.md#field-reference`](references/card-schema.md#field-reference).
+[`references/schema/wire.md#reading-a-card-as-json`](references/schema/wire.md#reading-a-card-as-json) and [`references/schema/records.md#field-reference`](references/schema/records.md#field-reference).
 
 | I need… | Run | Read |
 |---|---|---|
@@ -232,7 +232,7 @@ The review card's `review_round` is the **original's** audited round; its own `d
 
 - A question for the **director** is an agent `question` comment plus a bounded hold: `issue wait <ref> --question <id>`. `answered` continues in the same turn (re-claim if the card is back in `todo`); `escalated`, `moved`, `timeout` and `error` end the turn, and the loop resumes the session when the answer lands.
 - A question for a person is **`awaiting`**, not `blocked` and not a chat message: `issue move <ref> awaiting --awaiting-reason E3 --question "…"`. The reason is one of `E1`–`E5` (scope · acceptance baseline · design direction · security · architecture). **Any human comment** re-queues the card to `todo`; `awaiting → in_progress` resumes the same attempt without a new delivery round.
-- **`blocked`** is for everything else; `--blocked-reason` is optional. Literals: [`references/card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for`](references/card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for).
+- **`blocked`** is for everything else; `--blocked-reason` is optional. Literals: [`references/schema/blocked-reason.md#blocked_reason--what-a-blocked-card-is-waiting-for`](references/schema/blocked-reason.md#blocked_reason--what-a-blocked-card-is-waiting-for).
 
 Full protocols:
 [`references/cli.md#the-awaiting-state--asking-a-human-a-question`](references/cli.md#the-awaiting-state--asking-a-human-a-question), [`references/cli.md#the-blocked-state--what-the-card-is-waiting-for`](references/cli.md#the-blocked-state--what-the-card-is-waiting-for).
@@ -282,6 +282,6 @@ A card exported into a project directory is a **snapshot**. Register it once wit
 | `issue create`, attachments, `export watch` | [create](references/cli.md#issue-create), [attachment](references/cli.md#attachment), [export watch](references/cli.md#export-watch) |
 | awaiting / blocked | [awaiting](references/cli.md#the-awaiting-state--asking-a-human-a-question), [blocked](references/cli.md#the-blocked-state--what-the-card-is-waiting-for) |
 | review protocol and verdict | [§1–§3](references/review-workflow.md#1-two-flows), [§6](references/review-workflow.md#6-what-happens-after-a-delivery) |
-| wire object, export format, identifiers, `blocked_reason` | [reading](references/card-schema.md#reading-a-card-as-json), [fields](references/card-schema.md#field-reference), [identifiers](references/card-schema.md#identifier-syntax), [blocked_reason](references/card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for), [export](references/card-schema.md#export-rules) |
+| wire object, export format, identifiers, `blocked_reason` | [reading](references/schema/wire.md#reading-a-card-as-json), [fields](references/schema/records.md#field-reference), [identifiers](references/schema/identifiers.md#identifier-syntax), [blocked_reason](references/schema/blocked-reason.md#blocked_reason--what-a-blocked-card-is-waiting-for), [export](references/schema/records.md#export-rules) |
 | project ↔ directory map | [managed](references/projects-json.md#managed-by-taskctl), [validation](references/projects-json.md#project--directory-what-is-checked), [unregistered](references/projects-json.md#unregistered-no-fallback--ask) |
 | supervisor bindings, candidate scan, live events | [invocation](references/capabilities.md#the-invocation-rule), [claim](references/capabilities.md#3-candidate-scan-and-atomic-claim), [questions](references/capabilities.md#questions--the-awaiting-protocol), [events](references/capabilities.md#8-live-stream--events-follow-hub--events-tail-direct) |
