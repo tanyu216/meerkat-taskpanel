@@ -20,8 +20,10 @@ board skill, `meerkat-chat`, `meerkat-director` and the five role skills (`jobs`
 managed content (role skills and agent definitions are `unchanged`; the installer may re-copy
 identical runtime bytes); the project's `CLAUDE.md`/`AGENTS.md` states the task entry once,
 naming `/meerkat` and carrying the card scope, with no marker block, and a re-run leaves it
-unchanged; and the same file points at the installed director's decision policy and the
-`worker → director → human` ladder instead of copying it.
+unchanged; the same file carries the compact team contract — each role's shapes, the
+acceptance/landing owner, and the handoff markers with their writers — pointing at the
+installed role skills for detail; and the same file points at the installed director's
+decision policy and the `worker → director → human` ladder instead of copying it.
 
 ## 3. Moving a role between platforms
 

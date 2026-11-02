@@ -26,6 +26,7 @@
         "Each installed role skill carries a role.json with schema \"meerkat-role\".",
         "A second identical run leaves the role skills and native agent definitions unchanged, and every action reports unchanged.",
         "The project's CLAUDE.md (or AGENTS.md) states the task entry once — /meerkat as the entry and the card scope — in the instruction file's own shape, with no marker block, and a second run leaves it unchanged.",
+        "The same file carries the compact team contract: each role's work shapes, the acceptance/landing owner, and the handoff markers with their writers, pointing at the installed role skills for the detail.",
         "The same file points at the installed meerkat-director decision policy and the worker -> director -> human ladder, without copying the policy body."
       ]
     },

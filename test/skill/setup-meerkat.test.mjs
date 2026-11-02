@@ -138,6 +138,30 @@ describe("skill frontmatter and assets", () => {
       "it writes a pointer, not a second copy of the policy",
     );
 
+    assert.match(stage4, /team contract/i, "the entry carries the team contract");
+    for (const marker of [
+      "stage_handoff=required",
+      "design_stage",
+      "product_change=none",
+      "review_gate",
+      "handoff_consumed_round",
+      "handoff_declined_round",
+    ]) {
+      assert.ok(stage4.includes(marker), `the contract names the marker ${marker}`);
+    }
+    assert.match(stage4, /supervisor[^.]{0,80}(land|merge|clean)/i, "landing is the supervisor's");
+    assert.match(stage4, /reviewer is never routed/i, "the reviewer takes no ordinary card");
+    assert.match(
+      stage4,
+      /index, not a copy|not a copy/i,
+      "the contract is an index, not a second copy of the role workflows",
+    );
+    assert.doesNotMatch(
+      stage4,
+      /team-roles\.md/,
+      "the contract points at the installed role skills, not a removed repository document",
+    );
+
     assert.match(
       skill,
       /second run|re-run|idempoten/i,
@@ -145,6 +169,7 @@ describe("skill frontmatter and assets", () => {
     );
     const verify = skill.slice(skill.indexOf("## 7. Verify"));
     assert.match(verify, /task entry/i, "the verify stage checks the entry is stated once");
+    assert.match(verify, /team contract/i, "it verifies the team contract landed");
     assert.match(verify, /decision policy|decision-policy/i, "it verifies the director policy exists");
 
     const team = evals.evals.find((entry) => entry.name === "standard-team");
