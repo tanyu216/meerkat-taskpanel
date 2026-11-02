@@ -58,6 +58,7 @@ const PLANNED_CLI = [
   "commands/export.mjs",
   "commands/token.mjs",
   "commands/loop.mjs",
+  "commands/role.mjs",
 ];
 
 const PLANNED_SERVER = [

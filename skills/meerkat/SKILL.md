@@ -75,13 +75,19 @@ directory with `taskctl project dir <id> --json`, then read
 wins over that document. If the file, the directory or the map is absent, use the three
 meanings above; never invent a project default or store one on the project row.
 
-**Route the card at creation.** The create *is* the routing decision, not a step after it. When a role skill fits the card's work shape (each role's `SKILL.md` lists its shapes), name that one accountable role in the same call:
+**Route the card at creation.** The create *is* the routing decision, not a step after it. Read the role catalog first — it is the valid range:
+
+```bash
+taskctl role list --json     # data.roles[].agent | id | title | summary | lanes | shapes
+```
+
+Name one worker-lane role in the same call (never the reviewer; a reviewer-lane role is not routed ordinary work):
 
 ```bash
 taskctl issue create --project <p> --title "…" --assignee <role> --assignee-kind agent --acceptance "…"
 ```
 
-An unassigned card is **unowned**, not handed off: the supervisor's pool claim can take it as the Worker role, or the `meerkat-director` routes it. A shape no role describes goes to the Worker role, named explicitly. **With no role installed, do not invent a role name** — leave the card unassigned (the public pool) or name your own worker identity. Ambiguous between two shapes: split it into one card per **role** shape — a handoff boundary, not a technical layer — or leave the routing to the director.
+When the catalog is non-empty, the CLI refuses an `--assignee` outside it (`ASSIGNEE_NOT_IN_CATALOG`) — tell the human the valid names rather than guessing; `--force-create` is only for an explicit human instruction to use a name outside the range. An unassigned card is **unowned**, not handed off: the supervisor's pool claim can take it as the Worker role, or the `meerkat-director` routes it. A shape no role describes goes to the Worker role, named explicitly. **With no role installed — including before the supervisor's first sync, when `role list` is empty — do not invent a role name**; leave the card unassigned (the public pool) or name your own worker identity. Ambiguous between two shapes: split it into one card per **role** shape — a handoff boundary, not a technical layer — or leave the routing to the director.
 
 **File a card in the human's name when you are in an interactive session with the human, or when the instruction to create this card comes explicitly from them.** Either one is enough: `--as-human` records that human as both the writer and the reporter. Do not use it when you are working from a loop handoff or a card brief with no explicit human instruction, when you file a card yourself outside a human conversation, or for your own claim, heartbeat, delivery or review. If the human asked but `--as-human` is unavailable, pass `--reporter <name>` for the create.
 

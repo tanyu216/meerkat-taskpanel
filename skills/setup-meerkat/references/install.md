@@ -21,9 +21,11 @@ agent's default everywhere.
 
 ## `--target`
 
-`all` means **six actor kinds + the server**; an explicit comma list is literal;
-`--no-server` removes the server. The server is dispatched first because the agent shims
-and per-kind config name it.
+`all` means **four actor kinds (`claude`, `openclaw`, `codex`, `pi`) + the server**; an
+explicit comma list is literal, and its **order becomes the loop kind preference**
+(first loop kind = the supervisor's primary), persisted as
+`MEERKAT_TASKPANEL_AGENT_KIND_ORDER`. `--no-server` removes the server. The server is
+dispatched first because the agent shims and per-kind config name it.
 
 | Intent | Invocation |
 |---|---|

@@ -73,6 +73,10 @@ no `design/`, no `node_modules`). The image:
   recreate. An install that uses the map in a container should set
   `MEERKAT_TASKPANEL_CONFIG_DIR=/app/.data` (the same directory the `.env` comes from), so
   `<config root>/projects.json` lands on the volume.
+- likewise has no host role catalog. `roles.json` is in `.dockerignore` (discovered host
+  state), and it lands at `<config root>/roles.json` — the same `MEERKAT_TASKPANEL_CONFIG_DIR`
+  answer puts it on the volume. A container that has never synced reads an empty range and
+  accepts any assignee, which is the documented bootstrap behaviour.
 
 ## Base image cache
 

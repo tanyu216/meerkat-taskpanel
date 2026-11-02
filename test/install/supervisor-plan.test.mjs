@@ -43,6 +43,21 @@ function runCommon(snippet, { input = "" } = {}) {
 // 0 — the request resolver: flag beats env beats the TTY question (default N)
 // ---------------------------------------------------------------------------
 
+describe("_common.sh: the install-time kind order", () => {
+  it("a direct per-kind run makes its own kind primary and appends the rest", () => {
+    for (const [kind, agentDir, expected] of [
+      ["claude", ".claude", "claude,codex,pi"],
+      ["codex", ".codex", "codex,claude,pi"],
+      ["pi", ".agents", "pi,claude,codex"],
+    ]) {
+      const result = runCommon(
+        `unset MEERKAT_TASKPANEL_AGENT_KIND_ORDER; export MEERKAT_TASKPANEL_DRY_RUN=1; export_tp_env ${JSON.stringify(agentDir)} ${JSON.stringify(kind)}; printf '%s\\n' "$TP_KIND_ORDER"`,
+      );
+      assert.equal(result.stdout.trim(), expected, result.stderr);
+    }
+  });
+});
+
 describe("_common.sh: supervisor_value decides the opt-in", () => {
   it("returns an explicit action verbatim", () => {
     for (const action of ["enable", "disable", "status"]) {
@@ -261,22 +276,43 @@ describe("supervisor: the scheduler and the identifiers", () => {
 // 1b — the two facts `--supervisor=status` adds: the scan set and the machine view
 // ---------------------------------------------------------------------------
 
-describe("supervisor: the per-kind scan set and the machine-level view", () => {
-  it("reads the scan set from the per-kind config, never the installer's own env", () => {
-    const dir = makeTempDir();
-    const path = join(dir, ".env.claude");
+describe("supervisor: the discovered scan set and the machine-level view", () => {
+  it("discovers the scan set from the target home, never the installer's own env", () => {
+    const home = makeTempDir();
+    const path = join(home, ".env.claude");
+    const role = (id, agent, lanes) => {
+      const dir = join(home, ".claude", "skills", id);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), `---\nname: ${id}\n---\n`, "utf8");
+      writeFileSync(
+        join(dir, "role.json"),
+        JSON.stringify({ schema: "meerkat-role", id, agent, lanes }),
+        "utf8",
+      );
+    };
 
-    assert.deepEqual(scanSetFromConfig(path), { agents: [], source: "unset" });
+    assert.deepEqual(scanSetFromConfig(path, { home, actorKind: "claude" }), {
+      agents: [],
+      source: "none",
+    });
 
-    writeFileSync(path, "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing\n", "utf8");
-    assert.deepEqual(scanSetFromConfig(path), { agents: ["Jobs", "Linus", "Turing"], source: "config" });
+    role("jobs", "Jobs", ["worker"]);
+    role("linus", "Linus", ["worker"]);
+    role("reviewer", "Reviewer", ["reviewer"]);
+    const discovered = scanSetFromConfig(path, { home, actorKind: "claude" });
+    assert.equal(discovered.source, "discovered");
+    assert.deepEqual(
+      [...discovered.agents].sort(),
+      ["Jobs", "Linus"],
+      "a reviewer-lane role is not a worker and is not scanned unconfigured",
+    );
 
-    // Whitespace-separated is accepted too, and the last occurrence wins (agentConfigValue's rule).
-    writeFileSync(path, "MEERKAT_TASKPANEL_AGENTS=Jobs Linus\nMEERKAT_TASKPANEL_AGENTS=Turing\n", "utf8");
-    assert.deepEqual(scanSetFromConfig(path), { agents: ["Turing"], source: "config" });
-
-    writeFileSync(path, "MEERKAT_TASKPANEL_AGENTS=\n", "utf8");
-    assert.deepEqual(scanSetFromConfig(path), { agents: [], source: "unset" });
+    // The configured reviewer joins the scan; it is not discovered as a worker.
+    writeFileSync(path, "MEERKAT_TASKPANEL_REVIEWER=Reviewer\n", "utf8");
+    assert.deepEqual(
+      [...scanSetFromConfig(path, { home, actorKind: "claude" }).agents].sort(),
+      ["Jobs", "Linus", "Reviewer"],
+    );
   });
 
   it("names every loop kind loaded on the machine, across mechanisms", () => {
@@ -400,7 +436,7 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
     const built = cronContentLines(paths);
     assert.equal(built.length, 3);
     assert.match(built[0], /^PATH=\S+$/);
-    assert.match(built[1], /^\* \* \* \* \* \/home\/op\/\.claude\/bin\/taskctl loop run --ping-once --actor-kind claude /);
+    assert.match(built[1], /^\* \* \* \* \* \/home\/op\/\.claude\/bin\/taskctl loop run --ping-once --actor-kind claude --agent alice /);
     assert.match(built[2], /^\*\/10 \* \* \* \* .* loop run --continue-once /);
     assert.match(built[1], />\/dev\/null 2>&1$/);
 
@@ -421,8 +457,8 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
     exported.cronFile = join(makeTempDir(), "meerkat-taskpanel.cron");
     assert.deepEqual(cronContentLines(exported), [
       "PATH=/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
-      "* * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --ping-once --actor-kind claude --log /home/op/.meerkat-taskpanel/logs/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
-      "*/10 * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --continue-once --actor-kind claude --log /home/op/.meerkat-taskpanel/logs/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
+      "* * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log /home/op/.meerkat-taskpanel/logs/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
+      "*/10 * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log /home/op/.meerkat-taskpanel/logs/supervisor.log --state-dir /home/op/.claude/meerkat-taskpanel >/dev/null 2>&1",
     ]);
 
     // Once the installer has written the unit, that file is the source: the enable path

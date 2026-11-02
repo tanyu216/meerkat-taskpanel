@@ -175,10 +175,12 @@ export async function main(argv, env = process.env, io = {}) {
       const roleSet = loadRoles({
         home: typeof opts.home === "string" ? opts.home : null,
         primaryKind: opts.actorKind,
+        kindOrder: opts.kindOrder,
         explicitDir: opts.rolesDir ?? null,
       });
       const lines = describeRolePlatforms(roleSet.roles, {
         primaryKind: opts.actorKind,
+        order: opts.kindOrder,
         available: availableKinds({ env }),
       });
       log(lines.length > 0 ? `roles: ${lines.join("; ")}` : "roles: none discovered");

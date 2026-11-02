@@ -340,8 +340,8 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
     const log = join(home, ".meerkat-taskpanel", "logs", "supervisor.log");
     const expected = [
       `PATH=${unitPath(NODE_DIR, { cliDir: bin, shimDir: join(home, ".claude", "bin"), scheduler: "cron" })}`,
-      `* * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ${log} --state-dir ${loop} >/dev/null 2>&1`,
-      `*/10 * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --continue-once --actor-kind claude --log ${log} --state-dir ${loop} >/dev/null 2>&1`,
+      `* * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log ${log} --state-dir ${loop} >/dev/null 2>&1`,
+      `*/10 * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log ${log} --state-dir ${loop} >/dev/null 2>&1`,
     ];
 
     const dry = runInstall(

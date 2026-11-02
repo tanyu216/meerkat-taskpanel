@@ -2653,52 +2653,33 @@ describe("the workflow plan survives the wire and executes", () => {
   });
 });
 
-describe("parseArgs — the team scan set and roles root", () => {
-  it("takes MEERKAT_TASKPANEL_AGENTS from the environment", () => {
+describe("parseArgs — the writer identity and roles root", () => {
+  it("takes the writer identity from TASKCTL_AGENT, never from a scan list", () => {
     const opts = parseArgs(
       ["--actor-kind", "claude", "--home", "/tmp/tp-team-home"],
-      { HOME: "/tmp/tp-team-home", MEERKAT_TASKPANEL_AGENTS: "Jobs, Linus turing" },
-    );
-    assert.deepEqual(opts.agents, ["Jobs", "Linus", "turing"]);
-  });
-
-  it("takes the list from the agent config, and the environment still wins", () => {
-    const dir = mkdtempSync(join(tmpdir(), "tp-team-"));
-    try {
-      const config = join(dir, "meerkat-taskpanel.env");
-      writeFileSync(config, "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus\n", "utf8");
-      const fromFile = parseArgs(
-        ["--actor-kind", "claude", "--home", dir, "--config", config],
-        { HOME: dir },
-      );
-      assert.deepEqual(fromFile.agents, ["Jobs", "Linus"]);
-      const fromEnv = parseArgs(
-        ["--actor-kind", "claude", "--home", dir, "--config", config],
-        { HOME: dir, MEERKAT_TASKPANEL_AGENTS: "Turing" },
-      );
-      assert.deepEqual(fromEnv.agents, ["Turing"]);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("keeps explicit --agent flags above the configured list", () => {
-    const opts = parseArgs(
-      ["--actor-kind", "claude", "--home", "/h", "--agent", "alice"],
-      { MEERKAT_TASKPANEL_AGENTS: "Jobs,Linus" },
+      {
+        HOME: "/tmp/tp-team-home",
+        TASKCTL_AGENT: "alice",
+        // The retired key is inert: the claimable set is discovered, not configured.
+        MEERKAT_TASKPANEL_AGENTS: "Jobs, Linus turing",
+      },
     );
     assert.deepEqual(opts.agents, ["alice"]);
   });
 
-  it("falls back to one default agent when no team list is configured", () => {
-    // setup-meerkat is optional: without a team env/config the loop still needs
-    // one identity to scan with. The empty config path is the point of the temp
-    // home — a developer's installed agent config must not leak in.
-    //
-    // The team list also comes from `<config root>/.env.<kind>`, and the config
-    // root is *not* `--home`: unset, it falls back to the program root — this
-    // checkout, where a gitignored `.env.claude` would answer for the team and
-    // turn this case into a test of the developer's machine. Pin it.
+  it("keeps explicit --agent flags above TASKCTL_AGENT", () => {
+    const opts = parseArgs(
+      ["--actor-kind", "claude", "--home", "/h", "--agent", "alice"],
+      { TASKCTL_AGENT: "shim", MEERKAT_TASKPANEL_AGENTS: "Jobs,Linus" },
+    );
+    assert.deepEqual(opts.agents, ["alice"]);
+  });
+
+  it("falls back to one default writer identity when nothing names one", () => {
+    // setup-meerkat is optional: without TASKCTL_AGENT the loop still needs one
+    // identity to write as. The empty config path is the point of the temp home —
+    // a developer's installed agent config must not leak in. The config root is
+    // *not* `--home`: unset, it falls back to the program root, so pin it.
     const dir = mkdtempSync(join(tmpdir(), "tp-team-unset-"));
     try {
       const agentsFor = (env) =>

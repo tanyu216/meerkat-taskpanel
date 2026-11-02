@@ -50,6 +50,10 @@ describe("the review-card protocol", () => {
     );
     // The one meta key that is genuinely the loop's own marker stays.
     assert.equal(flagValue(args, "--meta"), "flow=B");
+    // The configured reviewer is an explicit automation identity, not a role the
+    // card creator routed to: outside the local role catalog by design, and this
+    // one argv builder is the escape.
+    assert.ok(args.includes("--force-create"), JSON.stringify(args));
     // The loop files in its own voice, never the human's: no reporter flag and
     // no --as-human, or an automated card would count as a leader event.
     assert.equal(

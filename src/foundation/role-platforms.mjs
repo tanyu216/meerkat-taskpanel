@@ -21,17 +21,20 @@
  * Node builtins only; no I/O.
  */
 
-import { ROLE_KINDS } from "./roles.mjs";
+import { ROLE_KINDS, effectiveKindOrder } from "./roles.mjs";
 
 /**
  * The kinds carrying a role, preferred first: the supervisor's primary kind when
- * it carries the role, then the fixed order claude → codex → pi.
+ * it carries the role, then the configured kind order (default claude → codex →
+ * pi). A kind the configured order omits is appended by `effectiveKindOrder`, so
+ * it remains a carrier rather than disappearing.
  *
  * @param {{installedOn?: string[], platform?: string}|null|undefined} role
  * @param {string|null|undefined} primaryKind
+ * @param {string|string[]|null|undefined} [kindOrder]
  * @returns {string[]}
  */
-export function platformChain(role, primaryKind) {
+export function platformChain(role, primaryKind, kindOrder) {
   const installed = Array.isArray(role?.installedOn) && role.installedOn.length > 0
     ? role.installedOn.filter((kind) => ROLE_KINDS.includes(kind))
     : role?.platform && ROLE_KINDS.includes(role.platform)
@@ -39,11 +42,7 @@ export function platformChain(role, primaryKind) {
       : [];
   const unique = [...new Set(installed)];
   if (unique.length === 0) return [];
-  const primary = unique.includes(primaryKind) ? primaryKind : null;
-  return [
-    ...(primary === null ? [] : [primary]),
-    ...ROLE_KINDS.filter((kind) => unique.includes(kind) && kind !== primary),
-  ];
+  return effectiveKindOrder(primaryKind, kindOrder).filter((kind) => unique.includes(kind));
 }
 
 /** @param {unknown} available */
@@ -57,11 +56,11 @@ function availability(available) {
  * Resolve the effective kind for one role.
  *
  * @param {{installedOn?: string[], platform?: string}|null|undefined} role
- * @param {{primaryKind?: string|null, available?: ((kind: string) => boolean)|Set<string>|null}} [input]
+ * @param {{primaryKind?: string|null, order?: string|string[]|null, available?: ((kind: string) => boolean)|Set<string>|null}} [input]
  * @returns {{preferred: string|null, effective: string|null, fallback: string|null, chain: string[]}}
  */
 export function resolveRolePlatform(role, input = {}) {
-  const chain = platformChain(role, input.primaryKind ?? null);
+  const chain = platformChain(role, input.primaryKind ?? null, input.order);
   const preferred = chain[0] ?? null;
   const isAvailable = availability(input.available);
   const effective = chain.find((kind) => isAvailable(kind)) ?? null;
@@ -77,7 +76,7 @@ export function resolveRolePlatform(role, input = {}) {
  * The same resolution for a whole role set.
  *
  * @param {object[]} roles
- * @param {{primaryKind?: string|null, available?: ((kind: string) => boolean)|Set<string>|null}} [input]
+ * @param {{primaryKind?: string|null, order?: string|string[]|null, available?: ((kind: string) => boolean)|Set<string>|null}} [input]
  * @returns {Map<string, {preferred: string|null, effective: string|null, fallback: string|null, chain: string[]}>}
  */
 export function resolveRolePlatforms(roles, input = {}) {
@@ -95,7 +94,7 @@ export function resolveRolePlatforms(roles, input = {}) {
  * is installed, where it will run, and any fallback or unavailability.
  *
  * @param {object[]} roles
- * @param {{primaryKind?: string|null, available?: ((kind: string) => boolean)|Set<string>|null}} [input]
+ * @param {{primaryKind?: string|null, order?: string|string[]|null, available?: ((kind: string) => boolean)|Set<string>|null}} [input]
  * @returns {string[]}
  */
 export function describeRolePlatforms(roles, input = {}) {

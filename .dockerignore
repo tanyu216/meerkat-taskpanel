@@ -44,6 +44,8 @@ web/dist
 
 # the machine-local project map — host paths must never be baked into the image
 /projects.json
+# the machine-local role catalog — discovered host state, never image content
+/roles.json
 
 # parallel-task worktrees (CLAUDE.md keeps them inside the checkout) — another branch's
 # whole tree must never enter this build context

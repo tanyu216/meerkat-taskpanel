@@ -42,7 +42,8 @@ import {
   writeDeferralLedger,
 } from "./deferrals.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
-import { mergeReviewerSets, parseArgs, resolveLoopConfig, USAGE } from "./options.mjs";
+import { mergeReviewerSets, parseArgs, resolveLoopConfig, roleIsWorker, USAGE } from "./options.mjs";
+import { isKindAvailable } from "./platforms.mjs";
 import { loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
 import { parseWorkerKey, readWorkerSessions } from "./worker-session.mjs";
@@ -67,6 +68,7 @@ import {
   runPollTick,
   runQuestionTick,
 } from "./runners.mjs";
+import { syncRoleCatalog } from "./role-sync.mjs";
 import {
   createLogger,
   isProcessAlive,
@@ -553,6 +555,16 @@ export async function runPollOnce(opts, env = process.env) {
   const deferralNow = Date.now();
   const deferralCards = readDeferralLedger(stateDir).value.cards;
 
+  // Discovery is the routing: the scan set is every discovered worker-lane role,
+  // plus the configured reviewers. A role installed on this kind sees its cards
+  // without being listed anywhere; a writer identity with no role skill can
+  // write but is never claimable.
+  const roleSet = opts.roles ?? loadRoles({
+    home: typeof opts.home === "string" ? opts.home : null,
+    primaryKind: opts.actorKind,
+    kindOrder: opts.kindOrder,
+    explicitDir: opts.rolesDir ?? null,
+  });
   // 0031 — project-level reviewer overrides join the deployment reviewer in the
   // scan/wake set. A failed read falls back to the global reviewer (the board
   // itself still resolves the effective reviewer per card).
@@ -562,23 +574,17 @@ export async function runPollOnce(opts, env = process.env) {
         .map((project) => project.reviewer)
         .filter((reviewer) => typeof reviewer === "string" && reviewer.trim() !== "")
     : [];
-  const merged = mergeReviewerSets(opts, config, projectReviewers);
+  const merged = mergeReviewerSets(roleSet, config, projectReviewers);
   config.reviewers = merged.reviewers;
   config.reviewerWorkers = merged.reviewerWorkers;
-  // The scan set is the configured names plus every discovered worker-lane role.
-  // A role installed on this kind but missing from `MEERKAT_TASKPANEL_AGENTS` would
-  // otherwise never see its cards; discovery is the routing, so it joins the scan.
-  // Reviewer-lane roles are not added here — a dedicated reviewer is configured,
-  // and adding it would let it claim the public pool.
-  const roleSet = opts.roles ?? loadRoles({
-    home: typeof opts.home === "string" ? opts.home : null,
-    primaryKind: opts.actorKind,
-    explicitDir: opts.rolesDir ?? null,
-  });
-  const discoveredWorkers = roleSet.roles
-    .filter((role) => Array.isArray(role.lanes) ? role.lanes.includes("worker") : true)
-    .map((role) => role.agent);
-  const agents = [...new Set([...merged.scanAgents, ...discoveredWorkers])];
+  const agents = merged.scanAgents;
+  // Publish the discovered set locally through `taskctl` — before the no-pool
+  // return, so every poll (resident or not) keeps the catalog fresh. A failure is
+  // logged and never blocks a claim: routing does not read this file.
+  syncRoleCatalog({ opts, roleSet, log });
+  // Dispatch honesty: a role whose carrying CLIs cannot start is not claimed.
+  // The supervisor already sets this probe; a bare poll gets the same PATH probe.
+  const kindAvailable = opts.kindAvailable ?? ((kind) => isKindAvailable(kind, { env }));
 
   const pool = poolStatus({ opts, isAlive: isProcessAlive });
   if (!pool.live) {
@@ -643,7 +649,9 @@ export async function runPollOnce(opts, env = process.env) {
           role: "question",
           card: row.ref,
           project: row.project,
-          agent: agents[0] ?? "agent",
+          // The director turn is the loop's own write, so its identity is the
+          // writer, never the first discovered role the loop scans for.
+          agent: opts.agents[0] ?? "agent",
           target_dir: resolved.dir,
           route: true,
           // The attempt cap reads the dispatch key; a route row has no
@@ -685,7 +693,9 @@ export async function runPollOnce(opts, env = process.env) {
           role: "triage",
           card: row.ref,
           project: row.project_id,
-          agent: agents[0] ?? "agent",
+          // The director turn is the loop's own write, so its identity is the
+          // writer, never the first discovered role the loop scans for.
+          agent: opts.agents[0] ?? "agent",
           target_dir: resolved.dir,
           triage: true,
           question_id: rowId,
@@ -845,6 +855,22 @@ export async function runPollOnce(opts, env = process.env) {
       return claimed.ok ? { ok: true } : { ok: false, error: claimed.error };
     },
     dispatch,
+    // A card whose role has no available carrying kind must not be claimed: the
+    // dispatch would refuse it and the card would sit `in_progress` until the
+    // stale recovery. This uses the same role resolution dispatch uses.
+    authorize: (action, card) => {
+      const target = resolveRoleTarget(
+        { ...opts, roles: roleSet, kindAvailable },
+        config,
+        action,
+        card,
+      );
+      if (target.actorKind !== null) return { ok: true };
+      return {
+        ok: false,
+        why: `role ${target.role?.agent ?? action.agent ?? "?"} is installed on no available kind`,
+      };
+    },
     admit: admission.admit,
     release: admission.release,
     recordDefer: (identifier, failure) => deferrals.record(identifier, failure),
@@ -1148,7 +1174,15 @@ export async function runPatrolOnce(opts, env = process.env) {
 export async function runWorkflowOnce(opts, env = process.env) {
   const log = createLogger(opts);
   const { config } = resolveLoopConfig(opts, env);
-  const reviewerIsWorker = config.reviewer !== null && opts.agents.includes(config.reviewer);
+  // "Reviewer is also a worker" is a property of the discovered role, never of
+  // the writer identity the unit happens to run as.
+  const roleSet = opts.roles ?? loadRoles({
+    home: typeof opts.home === "string" ? opts.home : null,
+    primaryKind: opts.actorKind,
+    kindOrder: opts.kindOrder,
+    explicitDir: opts.rolesDir ?? null,
+  });
+  const reviewerIsWorker = roleIsWorker(roleSet, config.reviewer);
 
   // The channel is the one that writes cards, so its policy is stated up
   // front: a deployment must never have to infer who reviews or who closes a
@@ -1184,7 +1218,7 @@ export async function runWorkflowOnce(opts, env = process.env) {
     }
   }
   for (const reviewer of reviewers) {
-    if (opts.agents.includes(reviewer)) {
+    if (roleIsWorker(roleSet, reviewer)) {
       log(
         `warning: reviewer ${reviewer} is also a worker — the review lane and the work lane ` +
           "share one identity; a dedicated reviewer keeps the two apart",

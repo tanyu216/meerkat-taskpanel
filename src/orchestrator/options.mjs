@@ -246,6 +246,7 @@ function defaultOptions(env) {
   return {
     agents: [],
     actorKind: "claude",
+    kindOrder: null,
     repo: null,   // resolved below: --repo, else defaultRepo()
     pingInterval: undefined,     // resolved below: flag > env > per-kind config > 60
     continueInterval: undefined, // resolved below: flag > env > per-kind config > 600
@@ -370,7 +371,11 @@ export function parseArgs(argv, env = process.env) {
   opts.kindConfigDefault = resolveKindConfigPath({ actorKind: opts.actorKind, env });
   opts.config ??= opts.kindConfigDefault;
   opts.configFile = readConfigFile(opts.config);
-  opts.agents = resolveScanSet(opts.agents, opts, env);
+  opts.agents = resolveWriterIdentity(opts.agents, env);
+  // The install-time kind order: process env wins, then the per-kind config.
+  // `loadRoles` normalizes it to a full permutation; an absent/empty value is
+  // the fixed default. There is deliberately no flag: install writes the order.
+  opts.kindOrder = env.MEERKAT_TASKPANEL_AGENT_KIND_ORDER ?? opts.configFile.MEERKAT_TASKPANEL_AGENT_KIND_ORDER ?? null;
   const rolesDir = opts.rolesDir ?? env.MEERKAT_TASKPANEL_ROLES_DIR ?? opts.configFile.MEERKAT_TASKPANEL_ROLES_DIR;
   opts.rolesDir = typeof rolesDir === "string" && rolesDir.trim() !== "" ? resolve(rolesDir.trim()) : null;
   // One concurrency cap for the whole fleet of subagents: workers and reviewers
@@ -580,19 +585,57 @@ export function selectMode(opts) {
 }
 
 /**
- * The agents one poll scans: the configured workers, plus a dedicated reviewer
- * when one is configured. A reviewer that is also a worker keeps the normal
- * worker lane and is not scanned twice.
+ * The worker-lane agents discovery found on this host, in discovery order.
  *
- * @param {object} opts
- * @param {{workflow: boolean, reviewer: string|null}} workflow
- * @param {boolean} reviewerIsWorker
+ * @param {object|null} roleSet
  * @returns {string[]}
  */
-function buildScanAgents(opts, workflow, reviewerIsWorker) {
-  return workflow.workflow && workflow.reviewer !== null && !reviewerIsWorker
-    ? [...opts.agents, workflow.reviewer]
-    : [...opts.agents];
+export function workerAgents(roleSet) {
+  return (Array.isArray(roleSet?.roles) ? roleSet.roles : [])
+    .filter((role) => !Array.isArray(role.lanes) || role.lanes.includes("worker"))
+    .map((role) => role.agent)
+    .filter((agent) => typeof agent === "string" && agent.trim() !== "");
+}
+
+/**
+ * Whether a board identity is a worked role — the review lane and the work lane
+ * share one identity when it is.
+ *
+ * @param {object|null} roleSet
+ * @param {string|null} agent
+ * @returns {boolean}
+ */
+export function roleIsWorker(roleSet, agent) {
+  if (typeof agent !== "string" || agent.trim() === "") return false;
+  const key = agent.trim().toLowerCase();
+  return (Array.isArray(roleSet?.roles) ? roleSet.roles : []).some(
+    (role) =>
+      (!Array.isArray(role.lanes) || role.lanes.includes("worker")) &&
+      (role.agent.toLowerCase() === key || role.id.toLowerCase() === key),
+  );
+}
+
+/**
+ * The board identities a poll may claim for: every discovered worker-lane role,
+ * plus the configured reviewers (deployment and project-level).
+ *
+ * Discovery is the routing, so this is the one scan-set reader: the key that
+ * used to list the names by hand is gone, and a writer identity with no role
+ * skill can write without ever making its name claimable.
+ *
+ * @param {{roleSet?: object|null, reviewers?: string[]}} [input]
+ * @returns {string[]}
+ */
+export function effectiveScanAgents({ roleSet = null, reviewers = [] } = {}) {
+  const scan = [];
+  const add = (value) => {
+    if (typeof value !== "string") return;
+    const name = value.trim();
+    if (name !== "" && !scan.includes(name)) scan.push(name);
+  };
+  for (const agent of workerAgents(roleSet)) add(agent);
+  for (const reviewer of Array.isArray(reviewers) ? reviewers : []) add(reviewer);
+  return scan;
 }
 
 /**
@@ -603,13 +646,12 @@ function buildScanAgents(opts, workflow, reviewerIsWorker) {
  * reviewer set. A reviewer that is also a worker stays in the worker lane and
  * is not scanned twice.
  *
- * @param {object} opts
+ * @param {object|null} roleSet
  * @param {{reviewer: string|null}} config
  * @param {string[]} projectReviewers
  * @returns {{reviewers: string[], reviewerWorkers: string[], scanAgents: string[]}}
  */
-export function mergeReviewerSets(opts, config, projectReviewers = []) {
-  const workers = Array.isArray(opts.agents) ? opts.agents : [];
+export function mergeReviewerSets(roleSet, config, projectReviewers = []) {
   const reviewers = [];
   const add = (value) => {
     if (typeof value !== "string") return;
@@ -619,12 +661,8 @@ export function mergeReviewerSets(opts, config, projectReviewers = []) {
   add(config?.reviewer);
   for (const reviewer of Array.isArray(projectReviewers) ? projectReviewers : []) add(reviewer);
 
-  const reviewerWorkers = reviewers.filter((reviewer) => workers.includes(reviewer));
-  const scanAgents = [
-    ...workers,
-    ...reviewers.filter((reviewer) => !workers.includes(reviewer)),
-  ];
-  return { reviewers, reviewerWorkers, scanAgents };
+  const reviewerWorkers = reviewers.filter((reviewer) => roleIsWorker(roleSet, reviewer));
+  return { reviewers, reviewerWorkers, scanAgents: effectiveScanAgents({ roleSet, reviewers }) };
 }
 
 /**
@@ -633,28 +671,23 @@ export function mergeReviewerSets(opts, config, projectReviewers = []) {
  *
  * @param {object} opts
  * @param {NodeJS.ProcessEnv} [env]
- * @returns {{config: object, reviewerIsWorker: boolean, scanAgents: string[], continueEnabled: boolean}}
+ * @returns {{config: object, continueEnabled: boolean, eventContinueEnabled: boolean}}
  */
 /**
- * The scan set — the board identities the loop may claim for.
+ * The loop's own board identity — the writer, never the claim set.
  *
- * A team is a list of board identities, not a second config surface: the explicit
- * `--agent` flags win, else `MEERKAT_TASKPANEL_AGENTS` (env, then the per-kind config),
- * else one default identity. One reader, because a status view and the tick must never
- * disagree about who is scanned.
+ * Explicit `--agent` flags win (the installer renders one into every scheduling
+ * unit); else `TASKCTL_AGENT` (the shim supplies it); else the OS user. A writer
+ * identity with no role skill still writes, but its name is not scanned: what
+ * the loop claims for is {@link effectiveScanAgents}.
  *
  * @param {string[]|undefined} agents the `--agent` flags already parsed
- * @param {{configFile?: Record<string, string>}} opts
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {string[]}
  */
-export function resolveScanSet(agents, opts, env = process.env) {
+export function resolveWriterIdentity(agents, env = process.env) {
   if (Array.isArray(agents) && agents.length > 0) return [...agents];
-  const configured = env.MEERKAT_TASKPANEL_AGENTS ?? opts.configFile?.MEERKAT_TASKPANEL_AGENTS;
-  const listed = typeof configured === "string"
-    ? configured.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean)
-    : [];
-  return listed.length > 0 ? listed : [env.TASKCTL_AGENT || env.USER || env.LOGNAME || "agent"];
+  return [env.TASKCTL_AGENT || env.USER || env.LOGNAME || "agent"];
 }
 
 export function resolveLoopConfig(opts, env = process.env) {
@@ -686,7 +719,6 @@ export function resolveLoopConfig(opts, env = process.env) {
     env,
     file: configFile,
   });
-  const reviewerIsWorker = workflow.reviewer !== null && opts.agents.includes(workflow.reviewer);
   const config = {
     maxConcurrency: opts.maxConcurrency,
     claimUnassigned,
@@ -696,15 +728,12 @@ export function resolveLoopConfig(opts, env = process.env) {
     actorKind: opts.actorKind,
     workflow: workflow.workflow,
     reviewer: workflow.reviewer,
-    reviewerIsWorker,
     maxActions: workflow.maxActions,
     reviewAgingMs: workflow.reviewAgingMs,
     reworkMaxRounds: workflow.reworkMaxRounds,
   };
   return {
     config,
-    reviewerIsWorker,
-    scanAgents: buildScanAgents(opts, workflow, reviewerIsWorker),
     continueEnabled: resolveContinueEnabled({
       flag: opts.continue,
       env: env.MEERKAT_TASKPANEL_CONTINUE,
@@ -740,9 +769,10 @@ connection and asks for a tick when a dispatch-relevant event arrives.
 The clocks stay as the fallback (and as the only path for time-based work).
 
 Options:
-  --agent <name>            Agent(s) to work for. Repeatable / comma-separated.
-                            Default: MEERKAT_TASKPANEL_AGENTS, then $TASKCTL_AGENT,
-                            then $USER.
+  --agent <name>            The loop's own board identity — the writer, not the
+                            claim set. Repeatable / comma-separated. Default:
+                            $TASKCTL_AGENT, then $USER. What the loop claims for
+                            is every discovered worker role (plus the reviewer).
   --roles-dir <path>        Optional team roles root. Default: the project's
                             .meerkat/roles, then the loop skill's roles/.
   --actor-kind claude|codex|pi

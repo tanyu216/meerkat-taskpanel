@@ -46,6 +46,42 @@ const ROLE_SCHEMA = "meerkat-role";
 export const ROLE_KINDS = Object.freeze(["claude", "codex", "pi"]);
 
 /**
+ * A full preference permutation from a configured order. Unknown entries are
+ * dropped, duplicates are removed, and every kind the order omits is appended
+ * in the fixed order, so a later-installed kind is never lost from discovery.
+ *
+ * @param {string|string[]|null|undefined} value
+ * @returns {string[]}
+ */
+export function normalizeKindOrder(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[,\s]+/)
+      : [];
+  const listed = [];
+  for (const entry of raw) {
+    const kind = String(entry ?? "").trim().toLowerCase();
+    if (ROLE_KINDS.includes(kind) && !listed.includes(kind)) listed.push(kind);
+  }
+  return [...listed, ...ROLE_KINDS.filter((kind) => !listed.includes(kind))];
+}
+
+/**
+ * The order the supervisor actually scans: its own primary kind first, then the
+ * configured order for the rest. Install writes the primary as the first
+ * configured element, so the two agree in the normal case.
+ *
+ * @param {string|null|undefined} primaryKind
+ * @param {string|string[]|null|undefined} kindOrder
+ * @returns {string[]}
+ */
+export function effectiveKindOrder(primaryKind, kindOrder) {
+  const primary = ROLE_KINDS.includes(primaryKind) ? primaryKind : "claude";
+  return [primary, ...normalizeKindOrder(kindOrder).filter((kind) => kind !== primary)];
+}
+
+/**
  * The kinds whose host is verified to expand a `/<skill>` opener as a user
  * message. Resident lanes on every other kind keep the full handoff with the
  * skill path, so an unexpanded command cannot run as a stray instruction.
@@ -83,7 +119,7 @@ export function skillLoadMode(kind) {
   return "none";
 }
 
-const ROLES_LIMITS = Object.freeze({
+export const ROLES_LIMITS = Object.freeze({
   roleJsonBytes: 32 * 1024,
   workflowBytes: 64 * 1024,
   policyBytes: 64 * 1024,
@@ -93,8 +129,11 @@ const ROLES_LIMITS = Object.freeze({
   shapes: 16,
 });
 
-const ROLE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const LANES = Object.freeze(["worker", "reviewer"]);
+export const ROLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+export const ROLE_LANES = Object.freeze(["worker", "reviewer"]);
+
+const ROLE_ID = ROLE_ID_PATTERN;
+const LANES = ROLE_LANES;
 
 /** @param {unknown} value */
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -188,14 +227,16 @@ function lanesOf(value) {
 }
 
 /**
- * The agent kinds to scan, primary first then the fixed order.
+ * The agent kinds to scan, primary first then the configured order. This is a
+ * full permutation: a role moved to a kind the order omits is still discovered,
+ * because omission is a preference, not an exclusion.
  *
  * @param {string|null|undefined} primaryKind
+ * @param {string|string[]|null|undefined} kindOrder
  * @returns {string[]}
  */
-function kindsToScan(primaryKind) {
-  const primary = ROLE_KINDS.includes(primaryKind) ? primaryKind : "claude";
-  return [primary, ...ROLE_KINDS.filter((kind) => kind !== primary)];
+function kindsToScan(primaryKind, kindOrder) {
+  return effectiveKindOrder(primaryKind, kindOrder);
 }
 
 /**
@@ -310,7 +351,7 @@ function scanRoleDirectory(dir, kind, warnings) {
  *   home?: string|null,
  *   primaryKind?: string|null,
  *   explicitDir?: string|null,
- *   kinds?: string[]|null,
+ *   kindOrder?: string|string[]|null,
  * }} input
  * @returns {{
  *   ok: boolean,
@@ -329,9 +370,7 @@ function scanRoleDirectory(dir, kind, warnings) {
 export function loadRoles(input = {}) {
   const warnings = [];
   const primaryKind = ROLE_KINDS.includes(input.primaryKind) ? input.primaryKind : "claude";
-  const kinds = Array.isArray(input.kinds) && input.kinds.length > 0
-    ? input.kinds.filter((kind) => ROLE_KINDS.includes(kind))
-    : kindsToScan(primaryKind);
+  const kinds = kindsToScan(primaryKind, input.kindOrder);
 
   const collected = [];
   let source = null;

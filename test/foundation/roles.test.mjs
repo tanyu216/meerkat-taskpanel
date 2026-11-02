@@ -146,6 +146,52 @@ describe("loadRoles — discovery", () => {
     }
   });
 
+  it("uses the configured kind order when the primary kind does not carry the role", () => {
+    const f = fixture();
+    try {
+      writeRole(f, "codex", "linus");
+      writeRole(f, "pi", "linus");
+      const result = loadRoles({
+        home: f.home,
+        primaryKind: "claude",
+        kindOrder: ["pi", "claude", "codex"],
+      });
+      assert.equal(result.roles[0].platform, "pi");
+      assert.deepEqual(result.roles[0].installedOn, ["pi", "codex"]);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("appends missing kinds and still discovers a role on an unlisted kind", () => {
+    const f = fixture();
+    try {
+      writeRole(f, "codex", "linus");
+      const result = loadRoles({ home: f.home, primaryKind: "claude", kindOrder: ["pi"] });
+      assert.equal(result.roles.length, 1);
+      assert.equal(result.roles[0].platform, "codex");
+      assert.deepEqual(result.roles[0].installedOn, ["codex"]);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("falls back to the fixed order for an invalid configured order", () => {
+    const f = fixture();
+    try {
+      writeRole(f, "codex", "linus");
+      const result = loadRoles({
+        home: f.home,
+        primaryKind: "claude",
+        kindOrder: ["nope", "claude"],
+      });
+      assert.equal(result.roles[0].platform, "codex");
+      assert.deepEqual(result.roles[0].installedOn, ["codex"]);
+    } finally {
+      f.cleanup();
+    }
+  });
+
   it("keeps each kind's copy so a fallback dispatch points at that copy", () => {
     const f = fixture();
     try {

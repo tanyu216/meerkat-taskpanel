@@ -13,7 +13,7 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
@@ -29,6 +29,26 @@ const read = (role, rel = "SKILL.md") => readFileSync(join(roleDir(role), rel), 
 const roleJson = (role) => JSON.parse(read(role, "role.json"));
 
 describe("role skills: identity, discovery and model invocation", () => {
+  it("validates every discovered role, not only the standard five", () => {
+    // Discovery, not a list, is the inventory: a role added under `skills/` is
+    // installed and routed, so it must also satisfy the identity contract.
+    const discovered = readdirSync(SKILLS, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((name) => existsSync(join(SKILLS, name, "role.json")))
+      .sort();
+    for (const role of ROLES) {
+      assert.ok(discovered.includes(role), `${role} is missing from the discovered roles`);
+    }
+    for (const name of discovered) {
+      const identity = JSON.parse(readFileSync(join(SKILLS, name, "role.json"), "utf8"));
+      assert.equal(identity.schema, "meerkat-role", `${name}: schema marker`);
+      assert.match(identity.id, /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/, `${name}: id grammar`);
+      assert.ok(typeof identity.agent === "string" && identity.agent.trim() !== "", `${name}: agent`);
+      assert.ok(existsSync(join(SKILLS, name, "SKILL.md")), `${name}: SKILL.md`);
+    }
+  });
+
   it("ships SKILL.md, role.json and references for every role", () => {
     for (const role of ROLES) {
       assert.ok(existsSync(join(roleDir(role), "SKILL.md")), `${role}: SKILL.md must exist`);

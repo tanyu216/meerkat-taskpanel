@@ -41,6 +41,10 @@
       "http": 409
     },
     {
+      "code": "ASSIGNEE_NOT_IN_CATALOG",
+      "http": 400
+    },
+    {
       "code": "ATTACHMENT_TOO_LARGE",
       "http": 413
     },

@@ -1901,3 +1901,140 @@ describe("cli/issue — the delivery artifact contract", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// The assignee range is the local role catalog (a CLI guard, never board state)
+// ---------------------------------------------------------------------------
+
+describe("cli/issue — the assignee range is the local role catalog", () => {
+  const role = (id, agent, extra = {}) => ({
+    id,
+    agent,
+    title: "",
+    summary: "",
+    lanes: ["worker"],
+    shapes: [],
+    responsibilities: [],
+    boundaries: [],
+    installed_on: ["claude"],
+    default_reviewer: false,
+    ...extra,
+  });
+
+  function seedCatalog(dir, roles) {
+    writeFileSync(
+      join(dir, "roles.json"),
+      JSON.stringify({
+        schema: "meerkat-role-catalog/1",
+        source: "skills",
+        primary_kind: "claude",
+        updated_at: "2026-01-01T00:00:00.000Z",
+        roles,
+      }),
+      "utf8",
+    );
+  }
+
+  const envFor = (dir) => ({ env: { MEERKAT_TASKPANEL_CONFIG_DIR: dir } });
+  const create = (run, extra, env) =>
+    run(["issue", "create", "--project", "demo", "--title", "Catalog card", ...extra, "--json"], env);
+
+  it("refuses an unknown assignee before the board write, naming the catalog", async () => {
+    await board(async ({ run }) => {
+      const dir = makeTempDir();
+      seedCatalog(dir, [role("jobs", "Jobs")]);
+
+      const refused = create(run, ["--assignee", "Nobody"], envFor(dir));
+      assert.equal(refused.status, 1);
+      const error = errorOf(refused);
+      assert.equal(error.code, "ASSIGNEE_NOT_IN_CATALOG");
+      assert.equal(error.details.field, "assignee");
+      assert.deepEqual(error.details.roles, ["Jobs"]);
+      assert.match(error.hint.fix, /taskctl role list/);
+      assert.match(error.hint.fix, /--force-create/);
+      assert.deepEqual(
+        dataOf(run(["issue", "list", "--project", "demo", "--json"], envFor(dir))).tasks,
+        [],
+        "the refusal happens before the card exists",
+      );
+    });
+  });
+
+  it("admits a discovered role by agent or id, case-insensitively", async () => {
+    await board(async ({ run }) => {
+      const dir = makeTempDir();
+      seedCatalog(dir, [role("jobs", "Jobs")]);
+      for (const name of ["Jobs", "jobs", "JOBS"]) {
+        const created = dataOf(create(run, ["--assignee", name], envFor(dir)));
+        assert.equal(created.task.assignee.display_name, "Jobs");
+      }
+    });
+  });
+
+  it("escapes with --force-create, a human assignee, an empty or absent catalog", async () => {
+    await board(async ({ run }) => {
+      const forcedDir = makeTempDir();
+      seedCatalog(forcedDir, [role("jobs", "Jobs")]);
+      const forced = dataOf(create(run, ["--assignee", "Nobody", "--force-create"], envFor(forcedDir)));
+      assert.equal(forced.task.assignee.display_name, "Nobody");
+
+      const humanDir = makeTempDir();
+      seedCatalog(humanDir, [role("jobs", "Jobs")]);
+      const human = dataOf(
+        create(run, ["--assignee", "Terry", "--assignee-kind", "human"], envFor(humanDir)),
+      );
+      assert.equal(human.task.assignee.display_name, "Terry");
+
+      const emptyDir = makeTempDir();
+      seedCatalog(emptyDir, []);
+      assert.ok(dataOf(create(run, ["--assignee", "Anyone"], envFor(emptyDir))).task.identifier);
+
+      // No file at all is the bootstrap state: the range is open until a poll
+      // publishes a catalog.
+      const absentDir = makeTempDir();
+      assert.ok(dataOf(create(run, ["--assignee", "Anyone"], envFor(absentDir))).task.identifier);
+    });
+  });
+
+  it("exempts the structural --assignee-id spelling", async () => {
+    await board(async ({ run }) => {
+      const dir = makeTempDir();
+      seedCatalog(dir, [role("jobs", "Jobs")]);
+      // Materialize an actor outside the catalog with the documented escape, then
+      // address it structurally — the id path is explicitly exempt.
+      const first = dataOf(create(run, ["--assignee", "Nobody", "--force-create"], envFor(dir)));
+      const actorId = first.task.assignee.id;
+      const second = dataOf(create(run, ["--assignee-id", actorId], envFor(dir)));
+      assert.equal(second.task.assignee.id, actorId);
+    });
+  });
+
+  it("applies to reassignment as well as creation", async () => {
+    await board(async ({ run }) => {
+      const dir = makeTempDir();
+      seedCatalog(dir, [role("jobs", "Jobs"), role("turing", "Turing")]);
+      const card = dataOf(create(run, ["--assignee", "Jobs"], envFor(dir)));
+      const ref = card.task.identifier;
+
+      const refused = run(["issue", "assign", ref, "--assignee", "Nobody", "--json"], envFor(dir));
+      assert.equal(refused.status, 1);
+      assert.equal(errorOf(refused).code, "ASSIGNEE_NOT_IN_CATALOG");
+
+      const moved = dataOf(run(["issue", "assign", ref, "--assignee", "Turing", "--json"], envFor(dir)));
+      assert.equal(moved.task.assignee.display_name, "Turing");
+    });
+  });
+
+  it("never checks the writer identity — a system writer naming a worker is checked", async () => {
+    await board(async ({ run }) => {
+      const dir = makeTempDir();
+      seedCatalog(dir, [role("jobs", "Jobs")]);
+      const refused = run(
+        ["issue", "create", "--project", "demo", "--title", "System writer", "--assignee", "Nobody", "--json"],
+        { ...envFor(dir), actorKind: "system" },
+      );
+      assert.equal(refused.status, 1);
+      assert.equal(errorOf(refused).code, "ASSIGNEE_NOT_IN_CATALOG");
+    });
+  });
+});

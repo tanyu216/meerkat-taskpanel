@@ -22,6 +22,7 @@ import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs"
 import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
 import {
   loadRoles,
+  roleVariant,
   selectReviewerRole,
   selectRole,
   selectWorkerRole,
@@ -954,6 +955,7 @@ export function createSessionPool(input = {}) {
       const roleSet = loadRoles({
         home: opts.home,
         primaryKind: opts.actorKind,
+        kindOrder: opts.kindOrder,
         explicitDir: opts.rolesDir ?? null,
       });
       const directorKind = String(opts.actorKind ?? roleSet?.primaryKind ?? "claude");
@@ -1364,6 +1366,7 @@ export function createSessionPool(input = {}) {
       const roleSet = loadRoles({
         home: opts.home,
         primaryKind: opts.actorKind,
+        kindOrder: opts.kindOrder,
         explicitDir: opts.rolesDir ?? null,
       });
       for (const warning of roleSet.warnings) {
@@ -1378,9 +1381,10 @@ export function createSessionPool(input = {}) {
           : (selectRole(roleSet, row.agent, "worker") ?? selectWorkerRole(roleSet));
       const sessionKind = String(row.actor_kind ?? opts.actorKind ?? "claude");
       const skillMode = skillLoadMode(sessionKind);
-      const skillReady = typeof role?.workflow === "string";
-      const roleSkillPath = role === null ? null : join(role.skillDir, "SKILL.md");
-      const fingerprint = role === null ? null : skillFingerprint(role.skillDir);
+      const files = role === null ? null : roleVariant(role, sessionKind);
+      const skillReady = typeof files?.workflow === "string";
+      const roleSkillPath = files?.skillDir ? join(files.skillDir, "SKILL.md") : null;
+      const fingerprint = files?.skillDir ? skillFingerprint(files.skillDir) : null;
       const skill =
         role === null || !skillReady
           ? null
@@ -1390,7 +1394,7 @@ export function createSessionPool(input = {}) {
               opener:
                 skillMode === "opener"
                   ? {
-                      command: `/${basename(role.skillDir)}`,
+                      command: `/${basename(files.skillDir)}`,
                       flags:
                         `${row.agent ? `--agent ${row.agent} ` : ""}` +
                         `--actor-kind=${sessionKind}`,
@@ -1888,15 +1892,17 @@ export function createSessionPool(input = {}) {
       const roleSet = loadRoles({
         home: opts.home,
         primaryKind: opts.actorKind,
+        kindOrder: opts.kindOrder,
         explicitDir: opts.rolesDir ?? null,
       });
       const reviewerName = String(subagents[0]?.role ?? subagents[0]?.agent ?? "Reviewer");
       const role = selectReviewerRole(roleSet, reviewerName);
       const sessionKind = String(subagents[0]?.actorKind ?? opts.actorKind ?? "claude");
       const skillMode = skillLoadMode(sessionKind);
-      const skillReady = typeof role?.workflow === "string";
-      const roleSkillPath = role === null ? null : join(role.skillDir, "SKILL.md");
-      const fingerprint = role === null ? null : skillFingerprint(role.skillDir);
+      const files = role === null ? null : roleVariant(role, sessionKind);
+      const skillReady = typeof files?.workflow === "string";
+      const roleSkillPath = files?.skillDir ? join(files.skillDir, "SKILL.md") : null;
+      const fingerprint = files?.skillDir ? skillFingerprint(files.skillDir) : null;
       const skill =
         role === null || !skillReady
           ? null
@@ -1906,7 +1912,7 @@ export function createSessionPool(input = {}) {
               opener:
                 skillMode === "opener"
                   ? {
-                      command: `/${basename(role.skillDir)}`,
+                      command: `/${basename(files.skillDir)}`,
                       flags: `--agent ${reviewerName} --actor-kind=${sessionKind}`,
                       fingerprint,
                       skillPath: roleSkillPath,

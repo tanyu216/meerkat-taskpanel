@@ -155,9 +155,9 @@ describe("install.sh: scheduling units", () => {
     assert.ok(!cron.includes("--patrol-only"));
     assert.doesNotMatch(cron, /supervisor\.mjs/, "the retired executor must not be named");
 
-    // Identity is the per-kind config's, never the unit's: a unit that pins
-    // `--agent` outranks MEERKAT_TASKPANEL_AGENTS, so a team's roles could never
-    // be scanned (the defect that left TP-0027…34 unclaimed).
+    // The unit carries the loop's *writer* identity: launchd/systemd/cron start
+    // with a minimal environment, so without `--agent` the writes would fall back
+    // to the OS user. The claimable set is discovered separately.
     for (const [name, body] of [
       ["pingPlist", pingPlist],
       ["continuePlist", continuePlist],
@@ -169,12 +169,12 @@ describe("install.sh: scheduling units", () => {
       ["sessionService", sessionService],
       ["cron", cron],
     ]) {
-      assert.doesNotMatch(body, /--agent\b/, `${name} must not pin an agent identity`);
+      assert.match(body, /--agent[\s\S]{0,40}?alice/, `${name} must carry the writer identity`);
     }
-    assert.match(
+    assert.doesNotMatch(
       readFileSync(join(kindConfigDirFor(home), ".env.claude"), "utf8"),
-      /^MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing,Worker,alice$/m,
-      "the installer seeds the union scan set plus the installing agent",
+      /^MEERKAT_TASKPANEL_AGENTS=/m,
+      "the retired scan-set key is not seeded",
     );
 
     for (const [name, path] of Object.entries(unitPaths(home, ".claude", "claude"))) {
@@ -270,7 +270,7 @@ describe("install.sh: scheduling units", () => {
     assert.equal(readFileSync(paths.pingPlist, "utf8"), before);
   });
 
-  it("seeds the loop's scan set once and never clobbers a team list", () => {
+  it("writes no scan-set key — the claimable set is discovered — and keeps operator keys", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
@@ -278,19 +278,18 @@ describe("install.sh: scheduling units", () => {
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], env).status, 0);
 
     const configPath = join(kindConfigDirFor(home), ".env.claude");
-    assert.match(readFileSync(configPath, "utf8"), /^MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing,Worker,alice$/m);
+    const text = readFileSync(configPath, "utf8");
+    assert.doesNotMatch(text, /^MEERKAT_TASKPANEL_AGENTS=/m, "the retired key is not seeded");
+    assert.match(text, /^MEERKAT_TASKPANEL_AGENT_KIND_ORDER=claude$/m);
 
-    // setup-meerkat's team list is the operator's choice; a reinstall keeps it.
-    writeFileSync(
-      configPath,
-      readFileSync(configPath, "utf8").replace(
-        /^MEERKAT_TASKPANEL_AGENTS=.*$/m,
-        "MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing",
-      ),
-      "utf8",
-    );
+    // A key the installer does not own is the operator's; a reinstall keeps it.
+    writeFileSync(configPath, `${text}MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing\n`, "utf8");
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], env).status, 0);
-    assert.match(readFileSync(configPath, "utf8"), /^MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing$/m);
+    assert.match(
+      readFileSync(configPath, "utf8"),
+      /^MEERKAT_TASKPANEL_AGENTS=Jobs,Linus,Turing$/m,
+      "a hand-written key survives a reinstall",
+    );
   });
 });
 

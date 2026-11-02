@@ -199,7 +199,9 @@ describe("cli/commands — the registry", () => {
       // `sla` is the board's computed SLA read — the loop patrol's transport
       // and a read-only surface for a human. `events` is the live activity
       // stream the loop's subscriber consumes; it is the one NDJSON command.
-      ["project", "issue", "comment", "relation", "attachment", "session", "actors", "labels", "report", "export", "token", "sla", "events", "loop"],
+      // `role` is the local role catalog the supervisor publishes for humans and
+      // the `meerkat` skill: host-local state, never a board request.
+      ["project", "issue", "comment", "relation", "attachment", "session", "actors", "labels", "report", "export", "token", "sla", "events", "loop", "role"],
     );
     for (const { group, command } of allCommands()) {
       assert.equal(

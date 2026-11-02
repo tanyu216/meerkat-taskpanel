@@ -152,7 +152,7 @@ taskctl issue create --project <id> --title <t> [flags]
 | `--title <t>` | **Required.** The one-line summary. |
 | `--acceptance-mode off\|auto\|human` | The card's acceptance decision. `off`: no review; the deliverer may close it directly (`in_progress → done`). `auto`: an independent review card must APPROVE before the loop closes it; this is the fallback when the mode is omitted. `human`: a human closes it after the current-round review finishes. Any explicit value is the whole decision — there is no project default; a project may document its selection guidance in `docs/acceptance-mode.md`, which this skill discovers at creation. A review card is always `off`. |
 | `--acceptance <text>` | One acceptance item; repeat for each. |
-| `--assignee <text>` / `--assignee-id <id>` / `--assignee-kind <agent\|human>` | Route the card. `--assignee-id` bypasses the dictionary. |
+| `--assignee <text>` / `--assignee-id <id>` / `--assignee-kind <agent\|human>` | Route the card. `--assignee-id` bypasses the dictionary. When the local role catalog is non-empty, `--assignee` must name a role in it (see [`role`](#role)); `--force-create` is the documented escape. |
 | `--reporter <text>` / `--reporter-id <id>` / `--reporter-kind <agent\|human>` | Set the reporter. |
 | `--description <md>` | The markdown description. |
 | `--priority <low\|medium\|high\|urgent>` | Urgency; a card with none reads as `medium`. |
@@ -162,15 +162,18 @@ taskctl issue create --project <id> --title <t> [flags]
 | `--parent <ref>` | Fills the idempotency key's source slot; it **links nothing** — use `relation add --type parent`. |
 | `--status <s>` | Initial status; see [`status-lifecycle.md` §8](status-lifecycle.md#8-creating-a-card-in-a-status). |
 | `--idem <key>` | Creation idempotency key; a match returns the existing card, keeping its acceptance mode. |
-| `--allow-dup` / `--force-create` | Skip the duplicate guard / the fuzzy dictionary step. |
+| `--allow-dup` / `--force-create` | Skip the duplicate guard / the fuzzy dictionary step. On `issue create` and `issue assign`, `--force-create` also admits an assignee outside the local role catalog — use it only on an explicit human instruction. |
 | `--review-of <ref> [--review-round <n>]` | Create a review card for that original and round. |
 
 **Routing is the handoff.** In a team project `--assignee` is part of the create, not a later
-step: the supervisor scans the role skills it discovers plus `MEERKAT_TASKPANEL_AGENTS`, so a
-card assigned to a name nobody scans is never claimed. Read the role skill whose shapes fit
-the work and pass that one accountable role (`--assignee <role> --assignee-kind agent`) in the
+step: the supervisor scans **the role skills it discovers** — installation location is the
+routing — so a card assigned to a name nobody scans is never claimed. Read `taskctl role list
+--json` first and pick a worker-lane role from `roles[].agent`, using `title`/`summary`/`shapes`
+to choose. Pass that one accountable role (`--assignee <role> --assignee-kind agent`) in the
 same call. An unassigned card is claimed as `Worker`, or routed by `meerkat-director`; never
-invent a role name.
+invent a role name. With no catalog yet (the supervisor has not run), the range is open and
+the same rule applies: name a discovered role. A reviewer-lane role is never routed an
+ordinary card; a person is named with `--assignee-kind human`.
 
 ### The weight order (every task list)
 
@@ -562,6 +565,23 @@ The retired single-purpose flags are gone: `--once` (bare poll), `--poll-interva
 `--ping-only`, `--continue-only`, `--patrol-only`, `--subscribe` and `--session` are the
 verbs (`loop poll`, `loop run --ping-once`, `loop subscribe`, `loop session`). `--state` is
 still accepted; `--state-dir` is the documented spelling.
+
+### `role`
+
+The **local role catalog** — a host-local projection of the roles the supervisor discovered
+(`<config root>/roles.json`), never board state. Both verbs are local: no board, no token, no
+`--actor-kind`.
+
+| Command | What it does |
+|---|---|
+| `role list [--json]` | Print `data.roles[].agent`, `id`, `title`, `lanes` and `installed_on`. This is the valid `--assignee` range for `issue create`/`issue assign`. An absent or malformed file reads as no roles (with a warning), never as a partial range. |
+| `role sync --file <path\|->` | **Supervisor-only.** Replace the catalog with a discovered set (stdin with `-`). Identical content is a no-op; a removed role disappears. |
+
+A card's assignee is checked against this catalog when it is non-empty (`ASSIGNEE_NOT_IN_CATALOG`,
+exit 1). The check is a **CLI guard**, not a board invariant: a direct HTTP write bypasses it.
+The writer identity (`system`/`Orchestrator`) is never exempt — the guard looks at the
+assignee, and the loop's own review card carries `--force-create` because its configured
+reviewer is an automation identity.
 
 ## Editing a card: status, priority, description, attachments, dependencies
 

@@ -41,6 +41,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AGENT_DIRS, resolveKindConfigPath } from "../../../src/foundation/agent-paths.mjs";
+import { loadRoles } from "../../../src/foundation/roles.mjs";
+import { effectiveScanAgents } from "../../../src/orchestrator/options.mjs";
 import {
   LIVE_STATUSES,
   QUEUE_FILES,
@@ -118,21 +120,33 @@ function agentConfigValue(path, key) {
 }
 
 /**
- * The scan set one agent kind's loop will actually use: `MEERKAT_TASKPANEL_AGENTS` from its
- * per-kind config. `unset` means the loop falls back to `$TASKCTL_AGENT` / the OS user, which
- * is exactly the silent case this line exists to make visible.
+ * The scan set one agent kind's loop will actually use: every role skill
+ * discovered under the install's agent kinds, plus the configured reviewer.
+ *
+ * There is no scan-set key any more, so this reads the target home rather than
+ * the per-kind config — the same discovery the loop performs at runtime.
+ * `none` is the finding: no role skill is installed, so nothing can be claimed.
  *
  * @param {string} path the per-kind config (`<program root>/.env.<kind>`)
- * @returns {{agents: string[], source: "config"|"unset"}}
+ * @param {{home?: string|null, actorKind?: string|null}} [options]
+ * @returns {{agents: string[], source: "discovered"|"none"}}
  */
-export function scanSetFromConfig(path) {
-  const value = agentConfigValue(path, "MEERKAT_TASKPANEL_AGENTS");
-  if (value === null) return { agents: [], source: "unset" };
-  const agents = value
-    .split(/[,\s]+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return agents.length > 0 ? { agents, source: "config" } : { agents: [], source: "unset" };
+export function scanSetFromConfig(path, options = {}) {
+  let roleSet = null;
+  try {
+    roleSet = loadRoles({
+      home: options.home ?? null,
+      primaryKind: options.actorKind ?? null,
+      explicitDir: agentConfigValue(path, "MEERKAT_TASKPANEL_ROLES_DIR"),
+    });
+  } catch {
+    // Discovery is deliberately soft; an unreadable tree means no roles.
+  }
+  const reviewer = agentConfigValue(path, "MEERKAT_TASKPANEL_REVIEWER");
+  const reviewers =
+    typeof reviewer === "string" && reviewer.trim() !== "" ? [reviewer.trim()] : [];
+  const agents = effectiveScanAgents({ roleSet, reviewers });
+  return agents.length > 0 ? { agents, source: "discovered" } : { agents: [], source: "none" };
 }
 
 /**
@@ -453,8 +467,9 @@ export function cronContentLines(paths) {
       "run",
       once,
       `--actor-kind ${paths.actorKind}`,
-      // No `--agent`: the scan set is the per-kind config's
-      // MEERKAT_TASKPANEL_AGENTS, and a flag here would outrank it.
+      // The loop's writer identity. A unit started by cron has no shell
+      // `TASKCTL_AGENT` to inherit, so the flag is what keeps its writes attributable.
+      `--agent ${paths.agent}`,
       `--log ${paths.log}`,
       `--state-dir ${paths.stateDir}`,
       ">/dev/null 2>&1",
@@ -1113,14 +1128,17 @@ export function runSupervisorAction(options) {
     log(`supervisor: status (kind=${paths.actorKind})`);
     // The platform and the scan set are the two facts a user cannot infer from the unit
     // load state: which agent platform this loop is, and which board names it will claim.
-    // The scan set is read from the per-kind config (what the units read), never from the
-    // installer's process env.
-    const scan = scanSetFromConfig(paths.config);
+    // The scan set is discovered from the target home (the same tree the loop scans),
+    // never from the installer's process env.
+    const scan = scanSetFromConfig(paths.config, {
+      home: dirname(paths.agentBase),
+      actorKind: paths.actorKind,
+    });
     log(`supervisor:   platform: ${paths.actorKind} (~/${paths.agentDir})`);
     log(
-      scan.source === "config"
-        ? `supervisor:   scan set: ${scan.agents.join(",")} (from ${paths.config})`
-        : "supervisor:   scan set: not configured (the loop falls back to its default agent)",
+      scan.source === "discovered"
+        ? `supervisor:   scan set: ${scan.agents.join(",")} (discovered roles + reviewer)`
+        : "supervisor:   scan set: none — no role skill is installed (run setup-meerkat)",
     );
     const names = scheduler === "auto" ? ["launchd", "systemd", "cron"] : [requested];
     let subscribeUnitLoaded = null;

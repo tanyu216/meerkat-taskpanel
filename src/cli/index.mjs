@@ -226,6 +226,8 @@ export async function run(argv, io) {
         env: config.env,
         cwd: io.cwd ?? process.cwd(),
         readFile: io.readFile ?? ((file) => readFileSync(file, "utf8")),
+        // `role sync --file -` is stdin, exactly like `comment add --file -`.
+        readStdin: io.stdin ?? (() => readStdin()),
         out,
         err,
       };

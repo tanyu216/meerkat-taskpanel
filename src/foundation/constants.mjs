@@ -227,7 +227,7 @@ export const PER_KIND_CONFIG_KEYS = Object.freeze([
  * only the board path's subset of this surface.
  */
 export const LOOP_CONFIG_KEYS = Object.freeze([
-  "MEERKAT_TASKPANEL_AGENTS",
+  "MEERKAT_TASKPANEL_AGENT_KIND_ORDER",
   "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS",
   "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON",
   "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED",

@@ -23,9 +23,32 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { parseArgs } from "node:util";
 import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
+import { listRoleSkills } from "../install/lib/role-skills.mjs";
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+/**
+ * The role skill directories this repository ships, discovered from the same
+ * `role.json` marker the supervisor reads. A tarball without a role's
+ * `role.json` has no role at runtime even though its `SKILL.md` is there, so
+ * **both** files are required for every discovered role.
+ *
+ * @param {string} [repo]
+ * @returns {string[]}
+ */
+export function discoverRoleSkillDirs(repo = REPO_ROOT) {
+  return listRoleSkills(repo).map((role) => role.dir);
+}
+
+const ROLE_REQUIRED = discoverRoleSkillDirs().flatMap((name) => [
+  `skills/${name}/SKILL.md`,
+  `skills/${name}/role.json`,
+]);
 
 /** Files a publishable tarball must contain. */
 export const REQUIRED = Object.freeze([
@@ -37,9 +60,14 @@ export const REQUIRED = Object.freeze([
   "install.sh",
   "src/cli/index.mjs",
   "src/cli/commands/loop.mjs",
+  "src/cli/commands/role.mjs",
+  "src/foundation/role-catalog.mjs",
+  "src/foundation/role-catalog-file.mjs",
   "src/orchestrator/supervisor.mjs",
+  "src/orchestrator/role-sync.mjs",
   "src/server/main.mjs",
   "scripts/install/cli.mjs",
+  "scripts/install/lib/role-skills.mjs",
   "scripts/install/templates/server/taskd",
   "scripts/install/templates/server/taskctl",
   "web/dist/index.html",
@@ -47,11 +75,7 @@ export const REQUIRED = Object.freeze([
   "skills/meerkat-chat/SKILL.md",
   "skills/meerkat-director/SKILL.md",
   "skills/setup-meerkat/SKILL.md",
-  "skills/jobs/SKILL.md",
-  "skills/linus/SKILL.md",
-  "skills/turing/SKILL.md",
-  "skills/reviewer/SKILL.md",
-  "skills/worker/SKILL.md",
+  ...ROLE_REQUIRED,
   ".claude-plugin/plugin.json",
   ".claude-plugin/marketplace.json",
   ".pi/extensions/meerkat-taskpanel.ts",

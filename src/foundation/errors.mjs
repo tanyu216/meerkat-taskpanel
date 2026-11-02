@@ -260,6 +260,17 @@ export const ERROR_CODES = Object.freeze({
   // wrong" (exit 2) from "the board refused" (exit 1) without parsing prose.
   CLI_USAGE: spec(400, "Invalid command usage."),
   CLI_IO: spec(400, "Could not talk to the task board."),
+  // The assignee range is the local role catalog, which `taskd` never learns.
+  // This is a CLI-side guard, so a direct HTTP writer bypasses it by design.
+  ASSIGNEE_NOT_IN_CATALOG: spec(
+    400,
+    "The assignee is not a role in the local role catalog.",
+    {
+      fix:
+        "use a discovered role name from `taskctl role list`, or pass " +
+        "--force-create to allow an assignee outside the catalog",
+    },
+  ),
 });
 
 /** Codes the migration SQL must raise, verbatim, via `RAISE(ABORT,'CODE')`. */
@@ -380,6 +391,8 @@ export const JS_ONLY_CODES = Object.freeze([
   // CLI-only: no database trigger and no SQLite constraint can raise these.
   "CLI_USAGE",
   "CLI_IO",
+  // The role catalog is a local file; the board schema never learns roles.
+  "ASSIGNEE_NOT_IN_CATALOG",
 ]);
 
 /**

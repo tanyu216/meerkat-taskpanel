@@ -22,11 +22,12 @@ import {
   LOOP_KINDS,
   PLATFORM_CAPABILITIES,
   ROLE_CAPABILITY_TAGS,
-  ROLE_PLATFORM_PREFERENCE,
   agentBase,
+  effectiveKindOrder,
   isAgentKind,
   kindConfigFile,
   loopStateDir,
+  normalizeKindOrder,
   serverRoot,
   shimFile,
   skillDir,
@@ -398,13 +399,15 @@ function roleSkillsAt(home, kind) {
 
 /**
  * Installation location is the routing: the same role may sit on several kinds.
- * `installedOn` records every carrier; `effective` is the primary kind when it
- * carries the role, else the first fixed-order carrier.
+ * `installedOn` records every carrier in the effective kind order (primary
+ * first, then the install-time order); `effective` is its first element. With
+ * no availability probe here, `fallback` is null — the runtime fallback is the
+ * supervisor's, and `rolePlatforms` below reports the capability proposal.
  */
-function discoverRoles(home, primaryKind) {
+function discoverRoles(home, primaryKind, kindOrder) {
   const installedOn = {};
   const byId = new Map();
-  for (const kind of LOOP_KINDS) {
+  for (const kind of effectiveKindOrder(primaryKind, kindOrder)) {
     const roles = roleSkillsAt(home, kind);
     installedOn[kind] = roles.map((role) => role.agent);
     for (const role of roles) {
@@ -418,10 +421,8 @@ function discoverRoles(home, primaryKind) {
   }
   const list = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
   for (const role of list) {
-    role.effective = role.installedOn.includes(primaryKind)
-      ? primaryKind
-      : role.installedOn[0] ?? null;
-    role.fallback = role.effective !== role.installedOn[0] ? role.effective : null;
+    role.effective = role.installedOn[0] ?? null;
+    role.fallback = null;
   }
   return {
     source: list.length > 0 ? "skills" : null,
@@ -469,13 +470,16 @@ function splitList(value) {
  *
  * @param {Array<{id: string, agent: string, lanes?: string[]}>} roles
  * @param {Record<string, {available?: boolean, capabilities?: string[]}>} platforms
+ * @param {string|string[]|null|undefined} [kindOrder]
  * @returns {{status: "split"|"single"|"no-platform", byPlatform: Record<string, string[]>,
  *            assignments: Array<{roleId: string, agent: string, platform: string, tags: string[]}>,
  *            singlePlatform: string|null, singlePlatformAgents: string[]}}
  */
-export function recommendRolePlatforms(roles, platforms) {
+export function recommendRolePlatforms(roles, platforms, kindOrder) {
   const list = Array.isArray(roles) ? roles : [];
   const available = LOOP_KINDS.filter((kind) => platforms?.[kind]?.available === true);
+  const order = normalizeKindOrder(kindOrder).filter((kind) => available.includes(kind));
+  const preference = order.length > 0 ? order : available;
   const capabilities = (kind) => new Set(platforms?.[kind]?.capabilities ?? []);
   const tagsFor = (role) => {
     const known = ROLE_CAPABILITY_TAGS[String(role?.id ?? "").toLowerCase()];
@@ -490,19 +494,20 @@ export function recommendRolePlatforms(roles, platforms) {
 
   const allTags = [...new Set(list.flatMap(tagsFor))];
   const singlePlatform =
-    available.find((kind) => allTags.every((tag) => capabilities(kind).has(tag))) ?? available[0];
+    preference.find((kind) => allTags.every((tag) => capabilities(kind).has(tag))) ??
+    available.find((kind) => allTags.every((tag) => capabilities(kind).has(tag))) ??
+    preference[0];
 
   const assignments = [];
   for (const role of list) {
     const tags = tagsFor(role);
     const capable = available.filter((kind) => tags.every((tag) => capabilities(kind).has(tag)));
-    const preferred = ROLE_PLATFORM_PREFERENCE[String(role.id ?? "").toLowerCase()] ?? available;
-    const platform = preferred.find((kind) => capable.includes(kind)) ?? capable[0] ?? singlePlatform;
+    const platform = preference.find((kind) => capable.includes(kind)) ?? capable[0] ?? singlePlatform;
     assignments.push({ roleId: role.id ?? "", agent: role.agent ?? role.id ?? "", platform, tags });
   }
 
   const byPlatform = {};
-  for (const kind of available) {
+  for (const kind of preference) {
     const agents = assignments.filter((row) => row.platform === kind).map((row) => row.agent);
     if (agents.length > 0) byPlatform[kind] = agents;
   }
@@ -682,6 +687,13 @@ async function main(argv) {
   }
   const loopState = detectLoopState(opts.home, kind);
   const supervisor = detectSupervisor(opts.home, kind);
+  // The install-time kind order lives in the primary kind's per-kind config.
+  // `--actor-kind all` has no single primary, so the first loop kind is used.
+  const primaryKind = LOOP_KINDS.includes(kind) ? kind : LOOP_KINDS[0];
+  const primaryConfigRoot = resolveKindConfigDir(opts, opts.home, primaryKind, env);
+  const primaryConfigPath = primaryConfigRoot.dir === null ? null : kindConfigFile(primaryConfigRoot.dir, primaryKind);
+  const primaryConfig = parseEnvText(readText(primaryConfigPath) ?? "");
+  const kindOrder = normalizeKindOrder(primaryConfig.get("MEERKAT_TASKPANEL_AGENT_KIND_ORDER"));
   // Role discovery: installation location is the routing, so there is no roles
   // root to resolve. Retired trees are reported for migration, never read.
   // An explicit roles directory (the `--roles-dir` / env form) still selects a
@@ -693,23 +705,24 @@ async function main(argv) {
       ? resolve(env.MEERKAT_TASKPANEL_ROLES_DIR.trim())
       : null);
   const legacy = legacyRoles(opts.home, opts.project, kind, env, opts.rolesDir);
-  let roles = discoverRoles(opts.home, kind);
+  let roles = discoverRoles(opts.home, primaryKind, kindOrder);
   if (explicitRolesDir !== null && existsSync(explicitRolesDir)) {
-    const explicit = roleSkillsIn(explicitRolesDir, kind);
+    const explicit = roleSkillsIn(explicitRolesDir, primaryKind);
     if (explicit.length > 0) {
       const list = explicit.map((role) => ({
         ...role,
-        installedOn: [kind],
-        effective: kind,
+        installedOn: [primaryKind],
+        effective: primaryKind,
         fallback: null,
       }));
-      roles = { source: "explicit", installedOn: { [kind]: list.map((role) => role.agent) }, list, effective: true };
+      roles = { source: "explicit", installedOn: { [primaryKind]: list.map((role) => role.agent) }, list, effective: true };
       // A usable explicit directory is not a retired structure.
       for (let i = legacy.length - 1; i >= 0; i -= 1) {
         if (legacy[i].kind.startsWith("roles-dir")) legacy.splice(i, 1);
       }
     }
   }
+  roles.kindOrder = kindOrder;
   const human = detectHuman(opts, opts.home, kind, env, envFile, config);
   const mattPocock = detectMatt(opts.project, opts.home);
   const piSubagents = detectPiSubagents(opts.home);
@@ -742,7 +755,8 @@ async function main(argv) {
       config: {
         path: platformConfigPath,
         present: platformConfigPath !== null && existsSync(platformConfigPath),
-        agents: splitList(platformConfig.get("MEERKAT_TASKPANEL_AGENTS")),
+        // No scan-set key: the claimable set is the discovered role skills above.
+        kindOrder: splitList(platformConfig.get("MEERKAT_TASKPANEL_AGENT_KIND_ORDER")),
         reviewer: typeof reviewer === "string" && reviewer.trim() !== "" ? reviewer.trim() : null,
       },
       roles: roleSkillsAt(opts.home, candidate).map((role) => role.agent),
@@ -751,7 +765,7 @@ async function main(argv) {
       available: kindSkills.director === true && (candidate !== "pi" || kindSubagents.installed === true),
     };
   }
-  const rolePlatforms = recommendRolePlatforms(roles.list, platforms);
+  const rolePlatforms = recommendRolePlatforms(roles.list, platforms, kindOrder);
 
   const missing = [];
   if (!taskctl.found) missing.push("taskctl");

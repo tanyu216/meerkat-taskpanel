@@ -219,8 +219,25 @@ chat_skill_name() { printf '%s\n' "meerkat-chat"; }
 director_skill_name() { printf '%s\n' "meerkat-director"; }
 setup_skill_name() { printf '%s\n' "setup-meerkat"; }
 
-# role_skill_names — the five standalone role skills, installed beside the director.
-role_skill_names() { printf '%s\n' jobs linus turing reviewer worker; }
+# role_skill_names — the role skills this repository ships, discovered from
+# `role.json` under `skills/` (the same `meerkat-role` marker the supervisor and
+# the native-agent generator read). The list is data, not a second inventory: a
+# new role is installed with no edit here.
+#
+# Deliberately shell-only: the node-check tests run the whole installer under a
+# fake `node` that answers `-v` and nothing else, so spawning node here would
+# read that fake and install a version string as a role name.
+role_skill_names() {
+  local dir marker
+  for dir in "$(repo_root)"/skills/*/; do
+    [ -d "$dir" ] || continue
+    marker="$dir/role.json"
+    [ -f "$marker" ] || continue
+    if grep -Eq '"schema"[[:space:]]*:[[:space:]]*"meerkat-role"' "$marker"; then
+      basename "$dir"
+    fi
+  done
+}
 
 # legacy_board_skill_name <skill> — the directory the board skill had before it was
 # renamed to `meerkat`. Empty for the other two skills, which were never renamed.
@@ -344,17 +361,21 @@ export_tp_env() {
   # renders as `KEY=`, which the supervisor reads as "not configured".
   TP_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-yes}"
   TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-Reviewer}"
-  # The initial scan set: the five role skills plus the installing agent's own
-  # identity. Discovery adds every installed role skill regardless; this key is
-  # what makes a custom agent name (one with no role skill) scannable from the
-  # first tick. An existing value is never overwritten without --force.
-  TP_SCAN_AGENTS="${MEERKAT_TASKPANEL_AGENTS:-}"
-  if [ -z "$TP_SCAN_AGENTS" ]; then
-    TP_SCAN_AGENTS="Jobs,Linus,Turing,Worker"
-    case ",$TP_SCAN_AGENTS," in
-      *",$TP_AGENT,"*) ;;
-      *) TP_SCAN_AGENTS="$TP_SCAN_AGENTS,$TP_AGENT" ;;
-    esac
+  # The claimable identities are the discovered role skills; there is no scan-set
+  # key to seed. `TP_AGENT` stays the loop's *writer* identity, rendered into
+  # every scheduling unit (a unit started by launchd/systemd/cron has no shell
+  # `TASKCTL_AGENT` to inherit).
+  # The install-time kind preference order. `install.sh` passes the normalized
+  # --target order; a direct per-kind run makes its own kind primary and appends
+  # the fixed rest. The supervisor appends a kind the order omits, so this is a
+  # preference, not an exclusion.
+  TP_KIND_ORDER="${MEERKAT_TASKPANEL_AGENT_KIND_ORDER:-}"
+  if [ -z "$TP_KIND_ORDER" ]; then
+    TP_KIND_ORDER="$label"
+    for kind in claude codex pi; do
+      [ "$kind" = "$label" ] && continue
+      TP_KIND_ORDER="$TP_KIND_ORDER,$kind"
+    done
   fi
   # The scheduler's two clocks. Ping only prunes dead worker pids; continue is
   # the tick that runs patrol -> workflow -> poll in-process.
@@ -442,7 +463,7 @@ export_tp_env() {
   fi
 
   export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK
-  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_STATE_DIR TP_CLI TP_LOG TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED TP_SCAN_AGENTS
+  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_STATE_DIR TP_CLI TP_LOG TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED TP_KIND_ORDER
   export TP_CONFIG_DIR TP_LEGACY_ENV
   export TP_RECOVER_STALE TP_WORKFLOW TP_REVIEWER
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
@@ -996,12 +1017,9 @@ seed_env_file() {
 # ensure_agent_config_keys — add the installer-owned keys when missing, never overwrite.
 # Requires export_tp_env first.
 ensure_agent_config_keys() {
-  # The loop's scan set. The scheduling units deliberately carry no `--agent`
-  # (a flag would outrank this key), so this is the identity the loop runs as.
-  # It is seeded with the standard role names plus the installing identity;
-  # discovered role skills are added by the supervisor, and an existing value is
-  # never clobbered here.
-  ensure_env_key "MEERKAT_TASKPANEL_AGENTS" "$TP_SCAN_AGENTS"
+  # No scan-set key: the scheduler units carry `--agent`, and discovery owns the
+  # claimable set. An install that predates the kind-order key learns it here.
+  ensure_env_key "MEERKAT_TASKPANEL_AGENT_KIND_ORDER" "$TP_KIND_ORDER"
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
   ensure_env_key "MEERKAT_TASKPANEL_RECOVER_STALE" "$TP_RECOVER_STALE"
   ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
@@ -1269,7 +1287,11 @@ install_skill() {
 install_director_skill() {
   install_skill "$1" "$2" "$(director_skill_name)" copy
   install_skill "$1" "$2" "$(chat_skill_name)" copy
-  for role in $(role_skill_names); do
+  role_names="$(role_skill_names)" || {
+    echo "$2: cannot read the role skills from $(script_dir)/../skills" >&2
+    return 1
+  }
+  for role in $role_names; do
     install_skill "$1" "$2" "$role" copy
   done
   install_native_agents "$2"

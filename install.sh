@@ -754,6 +754,36 @@ for target in $TARGETS; do
   esac
 done
 
+# The install-time role-kind order: the loop kinds in normalized --target order,
+# with the selected primary kind first. Persisted in every loop kind's per-kind
+# config; the supervisor appends a kind the order omits, so it is a preference,
+# not an exclusion. An enable's --supervisor-actor-kinds selects the primary; a
+# plain install's first loop kind already leads the target order.
+PRIMARY_KIND=""
+if [ "$SUPERVISOR" = "enable" ]; then
+  for kind in $SUPERVISOR_ACTOR_KINDS; do
+    PRIMARY_KIND="$kind"
+    break
+  done
+fi
+KIND_ORDER=""
+order_sep=""
+for target in $TARGETS; do
+  case "$target" in
+    claude | codex | pi) ;;
+    *) continue ;;
+  esac
+  if [ -n "$PRIMARY_KIND" ] && [ "$target" = "$PRIMARY_KIND" ]; then
+    continue
+  fi
+  KIND_ORDER="$KIND_ORDER$order_sep$target"
+  order_sep=","
+done
+if [ -n "$PRIMARY_KIND" ]; then
+  KIND_ORDER="$PRIMARY_KIND${KIND_ORDER:+,$KIND_ORDER}"
+fi
+[ -n "$KIND_ORDER" ] && echo "install.sh: agent kind order: $KIND_ORDER"
+
 if [ -n "$SUPERVISOR" ] && [ -n "$supervisor_kinds_csv" ]; then
   echo "install.sh: supervisor: $SUPERVISOR (kinds:$supervisor_kinds_csv, scheduler: $SCHEDULER)"
   if [ "$SUPERVISOR" = "enable" ] && [ "$supervisor_loop_kind_count" -gt 1 ] && [ -z "$SUPERVISOR_ACTOR_KINDS_FLAG" ]; then
@@ -802,6 +832,7 @@ FAIL $target — installer not found"
 
   if MEERKAT_TASKPANEL_TARGET_HOME="$TARGET_HOME" \
       MEERKAT_TASKPANEL_AGENT_NAME="$AGENT_NAME" \
+      MEERKAT_TASKPANEL_AGENT_KIND_ORDER="$KIND_ORDER" \
       MEERKAT_TASKPANEL_NO_AUTOMATION="$NO_AUTOMATION" \
       MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
       MEERKAT_TASKPANEL_RECOVER_STALE="$RECOVER_STALE" \

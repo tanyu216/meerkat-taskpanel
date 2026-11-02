@@ -1105,6 +1105,7 @@ export function resolveRoleTarget(opts, config, action, card) {
   const roleSet = opts.roles ?? loadRoles({
     home: typeof opts.home === "string" ? opts.home : null,
     primaryKind,
+    kindOrder: opts.kindOrder,
     explicitDir: opts.rolesDir ?? null,
   });
   const role = isReview
@@ -1116,7 +1117,11 @@ export function resolveRoleTarget(opts, config, action, card) {
   // caller must not claim or dispatch (the skill would not be there).
   const platform = role === null
     ? { effective: primaryKind, fallback: null }
-    : resolveRolePlatform(role, { primaryKind, available: opts.kindAvailable ?? null });
+    : resolveRolePlatform(role, {
+        primaryKind,
+        order: opts.kindOrder,
+        available: opts.kindAvailable ?? null,
+      });
   const actorKind = platform.effective;
   return {
     isReview,

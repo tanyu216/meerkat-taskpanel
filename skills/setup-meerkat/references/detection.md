@@ -114,9 +114,11 @@ the per-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the render
 `roles` is the discovery report: `source` is `skills` (or `null`), `installedOn` lists the
 roles found per kind, and `list` carries each role's `id`, `agent`, `lanes`, `installedOn`,
 `effective` and `fallback`. `legacy` names any retired `meerkat-loop` skill, roles tree or
-`MEERKAT_TASKPANEL_ROLES_DIR` value — reported, never read or deleted. `--no-network` leaves
-`server.probed` false and does not mark the server missing. `--fail-on-missing` exits 1 when
-`missing` is non-empty.
+old-shape `MEERKAT_TASKPANEL_ROLES_DIR` value — reported, never read or deleted. An explicit
+`MEERKAT_TASKPANEL_ROLES_DIR` that names a directory of `role.json` directories is still
+honored by the supervisor as a discovery override; only a tree without those markers is
+retired. `--no-network` leaves `server.probed` false and does not mark the server missing.
+`--fail-on-missing` exits 1 when `missing` is non-empty.
 
 ## Platforms and the role split
 
@@ -127,8 +129,9 @@ interview needs before it can ask **which platform runs which role**:
 - `skills.names` — the installed skills under `<agent-dir>/skills/` that carry a `SKILL.md`
   (facts, not a score);
 - `loopState` and `supervisor` — whether this kind can run the loop at all;
-- `config.agents` / `config.reviewer` — this platform's *current* scan set and reviewer from
-  its own `<program root>/.env.<kind>`, so a proposal only names real diffs;
+- `config.kindOrder` / `config.reviewer` — this platform's kind preference and reviewer from
+  its own `<program root>/.env.<kind>`, so a proposal only names real diffs. There is no
+  scan-set field: the claim set is the `roles` below plus the reviewer;
 - `roles` — the role skills this kind carries (`<agent-dir>/skills/<role>/role.json` with
   the `meerkat-role` marker), as agent names; installation location is the routing;
 - `capabilities` — a static heuristic table (`PLATFORM_CAPABILITIES`), not detection;
@@ -136,8 +139,9 @@ interview needs before it can ask **which platform runs which role**:
 - `available` — director skill present, plus the pi-subagent gate.
 
 `roles` (top level) is the discovery report: every role with `installedOn`, `effective` and
-`fallback`, plus `legacy` for a retired `meerkat-loop` skill, roles tree or
-`MEERKAT_TASKPANEL_ROLES_DIR` value — reported, never read or deleted.
+`fallback`, plus `legacy` for a retired `meerkat-loop` skill, old-shape roles tree or
+`MEERKAT_TASKPANEL_ROLES_DIR` value — reported, never read or deleted. A `MEERKAT_TASKPANEL_ROLES_DIR`
+of `role.json` directories is not legacy; it is the explicit discovery override.
 
 `rolePlatforms` is the capability proposal only. `status` is `single` (one platform for the
 whole team), `split` (more than one), or `no-platform`; `singlePlatform` is always a valid

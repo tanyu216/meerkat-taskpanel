@@ -78,7 +78,11 @@ export const SPELLING = Object.freeze({
     reporter: { value: "<text>" },
     reporter_id: { value: "<id>" },
     reporter_kind: { value: "<agent|human>" },
-    force_create: { summary: "Skip dictionary fuzzy matching." },
+    force_create: {
+      summary:
+        "Skip dictionary fuzzy matching, and allow an assignee outside the local role catalog " +
+        "(`taskctl role list`).",
+    },
     idem: { value: "<key>", summary: "Explicit idempotency key; a match re-uses the existing task." },
     allow_dup: { summary: "Bypass the idempotency guard and create a duplicate anyway." },
     target: {
@@ -157,10 +161,15 @@ export const SPELLING = Object.freeze({
     seg: { value: "<seg>" },
   }),
   [TASK_OPS.assign]: Object.freeze({
-    assignee: { value: "<text>" },
+    assignee: { value: "<text>", summary: "Free text; resolved against the dictionary and the local role catalog." },
     assignee_id: { value: "<id>" },
     reporter: { value: "<text>" },
     reporter_id: { value: "<id>" },
+    force_create: {
+      summary:
+        "Skip dictionary fuzzy matching, and allow an assignee outside the local role catalog " +
+        "(`taskctl role list`).",
+    },
   }),
   [TASK_OPS.archive]: Object.freeze({
     days: { value: "<n>", summary: "Override the 7-day window." },

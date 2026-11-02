@@ -30,6 +30,8 @@ what a change must comply with.
 | [0009](0009-a-cycle-stops-at-a-human-decision.md) | A card that keeps coming back is parked as `blocked(decision)`, never auto-cancelled; the board decides, the loop executes | Accepted |
 | [0010](0010-director-consumes-the-required-handoff.md) | An accepted card's required handoff is a director triage decision: create/seed/link the downstream cards or record that none is needed | Accepted |
 | [0011](0011-card-acceptance-is-one-word.md) | A card carries one acceptance word (`off` · `auto` · `human`); projects carry no default; `human` may close after the review finishes | Proposed |
+| [0012](0012-role-kind-order-comes-from-the-install.md) | The install-time `--target` order is the role kind preference; a kind the order omits is appended, never excluded | Accepted |
+| [0013](0013-the-role-catalog-is-a-local-taskctl-file.md) | The discovered role set is published as a local `roles.json`; the scan set is the discovered worker roles; the scan-set key is removed | Accepted |
 
 ## Writing one
 
