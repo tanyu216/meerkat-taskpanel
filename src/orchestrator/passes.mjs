@@ -947,7 +947,16 @@ export async function runPatrolOnce(opts, env = process.env) {
     ...liveSubagents(readLedger(stateDir).value).map((row) => row.sessionKey),
   ]);
   if (opts.dryRun !== true) {
-    sweepWorkspaces({ stateDir, tasks, isBusy: (path) => busyPaths.has(path), log });
+    sweepWorkspaces({
+      stateDir,
+      tasks,
+      isBusy: (path) => busyPaths.has(path),
+      entryFor: (project) => {
+        const target = resolveWakeTarget({ project, projectsJson: opts.projectsJson });
+        return target.ok === true ? (target.entry ?? null) : null;
+      },
+      log,
+    });
     // A deferral entry is evidence, not a queue row: terminal cards and streaks
     // past retention are the only ones dropped. An unknown card is kept.
     const ledger = readDeferralLedger(stateDir);

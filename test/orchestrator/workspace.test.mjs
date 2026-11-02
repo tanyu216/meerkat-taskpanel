@@ -591,6 +591,72 @@ describe("orchestrator/workspace — sweeping the registry", () => {
     assert.equal(result.removed.length, 0);
     assert.notEqual(ws.findWorkspace(dir, { identifier: "TP-0001" }), null);
   });
+
+  const doneRun = (branch) => {
+    const calls = [];
+    const run = (cmd, argv) => {
+      const line = argv.join(" ");
+      calls.push(line);
+      if (line.includes("status --porcelain")) return { status: 0, stdout: "", stderr: "" };
+      if (line.includes("rev-parse --abbrev-ref HEAD")) {
+        return { status: 0, stdout: `${branch}\n`, stderr: "" };
+      }
+      return { status: 0, stdout: "", stderr: "" };
+    };
+    return { calls, run };
+  };
+
+  it("keeps a done record when its project has no registered merge target", () => {
+    const dir = stateDir();
+    ws.upsertWorkspaceRecord(dir, { ...record, project: "P" });
+    const { calls, run } = doneRun("dev");
+    const lines = [];
+    const result = ws.sweepWorkspaces({
+      stateDir: dir,
+      tasks: [{ identifier: "TP-0001", status: "done" }],
+      run,
+      exists: (path) => path === record.path,
+      entryFor: () => null,
+      log: (line) => lines.push(line),
+    });
+    assert.equal(result.removed.length, 0);
+    assert.match(lines.join("\n"), /has no registered merge target/);
+    assert.equal(calls.some((line) => line.includes("merge --no-ff")), false);
+  });
+
+  it("refuses to land a done record when the project is on another branch", () => {
+    const dir = stateDir();
+    ws.upsertWorkspaceRecord(dir, { ...record, project: "P" });
+    const { calls, run } = doneRun("feature");
+    const lines = [];
+    const result = ws.sweepWorkspaces({
+      stateDir: dir,
+      tasks: [{ identifier: "TP-0001", status: "done" }],
+      run,
+      exists: (path) => path === record.path,
+      entryFor: () => ({ merge_ref: "dev" }),
+      log: (line) => lines.push(line),
+    });
+    assert.equal(result.removed.length, 0);
+    assert.match(lines.join("\n"), /MERGE_TARGET_MISMATCH/);
+    assert.equal(calls.some((line) => line.includes("merge --no-ff")), false);
+    assert.notEqual(ws.findWorkspace(dir, { identifier: "TP-0001" }), null);
+  });
+
+  it("lands a done record through the project's declared merge_ref", () => {
+    const dir = stateDir();
+    ws.upsertWorkspaceRecord(dir, { ...record, project: "P" });
+    const { calls, run } = doneRun("dev");
+    const result = ws.sweepWorkspaces({
+      stateDir: dir,
+      tasks: [{ identifier: "TP-0001", status: "done" }],
+      run,
+      exists: (path) => path === record.path,
+      entryFor: () => ({ merge_ref: "dev" }),
+    });
+    assert.equal(result.removed.length, 1);
+    assert.equal(calls.some((line) => line.includes("merge --no-ff")), true);
+  });
 });
 
 // One real-git leg. Skipped when git is absent (the container image may strip

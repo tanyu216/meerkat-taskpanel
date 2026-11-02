@@ -621,12 +621,17 @@ export function listPreviousWorkspaces(stateDir, { identifier, round }) {
  * already reads the board; never from a turn's completion (the reviewer may
  * still need the tree).
  *
+ * `entryFor` resolves the board project's rules for a record, so a human close
+ * lands under the same `merge_ref` check as the acceptance pass; without it the
+ * sweep would merge into whatever happens to be checked out.
+ *
  * @param {{
  *   stateDir: string,
  *   tasks: object[],
  *   run?: Function,
  *   isBusy?: (path: string) => boolean,
  *   exists?: Function,
+ *   entryFor?: (project: string) => object|null,
  *   log?: (line: string) => void,
  * }} input
  */
@@ -636,6 +641,7 @@ export function sweepWorkspaces({
   run = runGit,
   isBusy = () => false,
   exists = existsSync,
+  entryFor = () => null,
   log = () => {},
 }) {
   const registry = readWorkspaceRegistry(stateDir);
@@ -677,7 +683,19 @@ export function sweepWorkspaces({
     // and the cleanup) is caught here. Merging an already-merged branch is a
     // no-op ("Already up to date"). A conflict keeps the tree for a human.
     if (task.status === "done") {
-      const merged = mergeWorkspace({ workspace: record, run });
+      const entry = record.project ? entryFor(record.project) : null;
+      if (record.project && entry === null) {
+        // Landing needs the project's own rules. Without a registered entry the
+        // checked-out branch is only a guess, and a guess here merges work into
+        // whatever branch a human happens to be on.
+        kept.push(record);
+        log(
+          `workspace: ${record.identifier} is done but project ${record.project} ` +
+            `has no registered merge target; keeping ${record.path} for a human`,
+        );
+        continue;
+      }
+      const merged = mergeWorkspace({ workspace: record, run, entry });
       if (merged.ok !== true) {
         kept.push(record);
         log(

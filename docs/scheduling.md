@@ -541,6 +541,9 @@ not one directory. Acceptance **lands** the work: the lane branch is merged into
 project's current branch before the card reaches `done`; a dirty project checkout or a
 merge conflict keeps the card in `in_review` and leaves the worktree and branch for a human.
 Cleanup (worktree first, then the merged branch) happens only when the card is terminal.
+A card a human closes directly is merged by the patrol before cleanup, under the same
+`merge_ref` check; a project on another branch, or with no registered target, keeps the
+worktree and is logged for a human rather than merged on a guess.
 
 Landing covers the lanes **admission created and registered** in `workspaces.json`. A worktree
 a session makes for itself (`using-git-worktrees`, any `.worktrees/<slug>`) is never in that
@@ -1052,7 +1055,9 @@ A triage row is enqueued **after** the question and route rows: it is post-accep
 and never displaces a held worker. Its completion is the marker on the producer, not a linked
 child; a producer that moved off `done` makes the row stale. A triage that exhausts its two
 attempts records a note on the `done` producer and becomes a `loop doctor`
-`handoff_unconsumed` finding; it is never parked.
+`handoff_unconsumed` finding; it is never parked. Both the triage read and that finding
+look back over the archive window (seven days): an older accepted handoff is not re-offered,
+though its marker stays on the producer's archived row.
 The director skill is a start-up requirement of the pool; when it is missing the pool
 refuses to start rather than silently dropping decision rows. A missing
 `references/decision-policy.md` is different: the supervisor logs one warning and the
