@@ -1160,6 +1160,14 @@
           "positionals": [],
           "flags": [
             {
+              "flag": "assignee",
+              "as": "string",
+              "value": "<agent>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "board-limit",
               "as": "string",
               "value": "<n>",

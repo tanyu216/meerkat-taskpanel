@@ -1562,6 +1562,9 @@
         "body": {
           "additionalProperties": true,
           "properties": {
+            "assignee": {
+              "type": "string"
+            },
             "board_limit": {
               "type": "integer"
             },
@@ -1573,9 +1576,6 @@
             },
             "review_aging_ms": {
               "type": "integer"
-            },
-            "reviewer": {
-              "type": "string"
             },
             "rework_max_rounds": {
               "type": "integer"

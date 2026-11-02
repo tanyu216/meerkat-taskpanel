@@ -138,7 +138,7 @@ validates it and stops to ask rather than guessing; `project map` is the only wr
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue meta <ref> --meta <k>=<v>…` | Merge metadata keys into a card, leaving other keys intact. The read-modify-write form with `--if-version` CAS. |
 | `issue deliver <ref> --report-file <file\|-> [--to done] [--no-report --reason "<why>"] [--seg <seg>]` | **Write the report and move, in one transaction.** The default destination is `in_review`; `--to done` is the `off` card's **direct acceptance** (any other `--to`, and a waiver with `--to done`, are usage errors). The two report forms are mutually exclusive. On an **epic** the report is its rollup: it must name every live child by `ref` (`ROLLUP_STALE` otherwise) and is stored with `is_rollup = 1`; `--no-report` is refused for an epic (`ROLLUP_REQUIRED`). |
-| `issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] [--review-aging-ms <n>] [--rework-max-rounds <n>] [--max-actions <n>] [--board-limit <n>]` | Without `--workflow`: replay the epic rules over every non-terminal container. With it: return the board's workflow plan (see below). `--dry-run` writes nothing. `--rework-max-rounds` bounds the delivery rounds before a loop hold. Idempotent. |
+| `issue reconcile [--dry-run] [--workflow] [--assignee <agent>] [--review-aging-ms <n>] [--rework-max-rounds <n>] [--max-actions <n>] [--board-limit <n>]` | Without `--workflow`: replay the epic rules over every non-terminal container. With it: return the board's workflow plan (see below). `--dry-run` writes nothing. `--assignee` is the review card's assignee (the role catalog's `default_reviewer`, normally `Reviewer`); `--reviewer` is a deprecated alias. `--rework-max-rounds` bounds the delivery rounds before a loop hold. Idempotent. |
 
 #### `issue create`
 
@@ -543,7 +543,8 @@ whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) 
 claim pool; `--recover-stale <yes|no>` recovers stale in-progress claims, and
 `--recover-wedged <yes|no>` lets the ping clock stop a pool whose dispatch tick outlived
 twice the turn timeout (the service manager restarts it). `--workflow <yes|no>` applies the
-board's plan and `--reviewer <agent>` names the independent reviewer;
+board's plan; the review card's assignee selects the reviewer role, and `--reviewer` is a
+deprecated no-op;
 `--workflow-max-actions` and `--review-aging-minutes` bound workflow execution and
 silent-review escalation, and `--rework-max-rounds` sets how many delivery rounds since the
 last hold before the loop parks a card as `blocked`/`decision`. `--workspace <worktree|shared>` says where a card runs: its own
@@ -780,7 +781,7 @@ cannot be moved directly to `canceled`; cancel it with
 ## reconcile --workflow — the board's workflow plan
 
 ```bash
-taskctl issue reconcile --workflow --reviewer jobs \
+taskctl issue reconcile --workflow --assignee Reviewer \
   --review-aging-ms 3600000 --rework-max-rounds 4 --max-actions 20 --board-limit 500 --json
 ```
 

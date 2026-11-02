@@ -34,7 +34,6 @@ import {
   AGENT_DIRS,
   effectiveScanAgents,
   parseArgs,
-  resolveLoopConfig,
 } from "./options.mjs";
 import { loadRoles, normalizeKindOrder } from "../foundation/roles.mjs";
 import { describeRolePlatforms } from "../foundation/role-platforms.mjs";
@@ -194,14 +193,8 @@ export function probeSupervisor(opts, deps = {}) {
   // tells a team install whether its roles can ever be claimed — a name outside
   // this list is never scanned, and its cards strand. `--agent` here names the
   // units (the shim supplies one), never the claim set.
-  let agents = [];
-  try {
-    const { config } = resolveLoopConfig(opts);
-    const reviewers = config.reviewer === null ? [] : [config.reviewer];
-    agents = effectiveScanAgents({ roleSet, reviewers });
-  } catch {
-    // A config it cannot resolve leaves the scan set empty rather than failing.
-  }
+  // The scan set is every discovered worker-lane and reviewer-lane role.
+  const agents = effectiveScanAgents({ roleSet });
 
   let roles = [];
   try {

@@ -44,7 +44,7 @@ import {
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { mergeReviewerSets, parseArgs, resolveLoopConfig, roleIsWorker, USAGE } from "./options.mjs";
 import { isKindAvailable } from "./platforms.mjs";
-import { loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
+import { defaultReviewerAgent, loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
 import { parseWorkerKey, readWorkerSessions } from "./worker-session.mjs";
 import {
@@ -580,7 +580,7 @@ export async function runPollOnce(opts, env = process.env) {
         .map((project) => project.reviewer)
         .filter((reviewer) => typeof reviewer === "string" && reviewer.trim() !== "")
     : [];
-  const merged = mergeReviewerSets(roleSet, config, projectReviewers);
+  const merged = mergeReviewerSets(roleSet, projectReviewers);
   config.reviewers = merged.reviewers;
   config.reviewerWorkers = merged.reviewerWorkers;
   const agents = merged.scanAgents;
@@ -1192,36 +1192,46 @@ export async function runWorkflowOnce(opts, env = process.env) {
     kindOrder: opts.kindOrder,
     explicitDir: opts.rolesDir ?? null,
   });
-  const reviewerIsWorker = roleIsWorker(roleSet, config.reviewer);
+  const defaultAssignee = defaultReviewerAgent(roleSet);
+  const assigneeIsWorker = defaultAssignee !== null && roleIsWorker(roleSet, defaultAssignee);
 
   // The channel is the one that writes cards, so its policy is stated up
   // front: a deployment must never have to infer who reviews or who closes a
   // review card from a quiet board.
   log(
     `workflow: ${config.workflow ? "on" : "off"} ` +
-      `reviewer=${config.reviewer === null ? "not configured" : `${config.reviewer}${reviewerIsWorker ? " (also a worker)" : ""}`} ` +
+      `assignee=${defaultAssignee === null ? "no reviewer-lane role" : `${defaultAssignee}${assigneeIsWorker ? " (also a worker)" : ""}`} ` +
       `max_actions=${config.maxActions} ` +
       `review_aging=${Math.round(config.reviewAgingMs / 60_000)}m`,
   );
   if (!config.workflow) {
-    if (config.reviewer !== null) {
-      log(`warning: reviewer ${config.reviewer} is configured but workflow is off — no review card will be dispatched`);
+    if (defaultAssignee !== null) {
+      log(
+        `warning: reviewer-lane role ${defaultAssignee} is installed but workflow is off — ` +
+          "no review card will be dispatched",
+      );
     }
     return 0;
   }
+  if (defaultAssignee === null) {
+    log(
+      "warning: reviewer_role_unavailable — no installed reviewer-lane role; review-card dispatch is paused",
+    );
+  }
+  config.assignee = defaultAssignee;
 
-  // The loop reads the project rows for the reviewer merge and the worker/reviewer
-  // warning below. There is no project-level acceptance default to validate:
-  // every card states its own mode, and a missing effective reviewer is reported
-  // per card (`reviewer_not_configured` / `dispatch_skipped`).
+  // The loop reads the project rows for the project-override warning below.
+  // There is no project-level acceptance default to validate: every card states
+  // its own mode, and a missing effective assignee is reported per card
+  // (`reviewer_not_configured` / `dispatch_skipped`).
   const projectRead = readProjectReviewers(opts, log);
   const projects = projectRead.ok ? projectRead.projects : [];
 
   // Warn once per reviewer that is also a worker — the review lane and the work
-  // lane share one identity. This covers the deployment reviewer and every
-  // project override.
+  // lane share one identity. This covers the catalog default and every project
+  // override (the override layer is removed in the next step).
   const reviewers = new Set();
-  if (config.reviewer !== null) reviewers.add(config.reviewer);
+  if (defaultAssignee !== null) reviewers.add(defaultAssignee);
   for (const project of projects) {
     if (typeof project.reviewer === "string" && project.reviewer.trim() !== "") {
       reviewers.add(project.reviewer.trim());

@@ -1075,7 +1075,7 @@ export const COMMANDS = [
     name: "reconcile",
     summary: "Replay the epic rules and, with --workflow, return the board's workflow plan.",
     usage:
-      'issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] ' +
+      'issue reconcile [--dry-run] [--workflow] [--assignee <agent>] ' +
       "[--review-aging-ms <n>] [--rework-max-rounds <n>] [--max-actions <n>] [--board-limit <n>]",
     positionals: [],
     flags: [
@@ -1092,11 +1092,18 @@ export const COMMANDS = [
         summary: "Also return the board's workflow plan (reconcile → outcomes → dispatch).",
       },
       {
-        flag: "reviewer",
-        key: "reviewer",
+        flag: "assignee",
+        key: "assignee",
         as: "string",
         value: "<agent>",
-        summary: "The independent reviewer the plan dispatches to.",
+        summary: "The review card's assignee the plan dispatches to.",
+      },
+      {
+        flag: "reviewer",
+        key: "assignee",
+        as: "string",
+        value: "<agent>",
+        summary: "Deprecated alias for --assignee.",
       },
       {
         flag: "review-aging-ms",
@@ -1140,7 +1147,7 @@ export const COMMANDS = [
       const payload = await ctx.client.post("/api/v1/tasks/reconcile", {
         dry_run: ctx.flags.dryRun === true,
         workflow: ctx.flags.workflow === true ? true : undefined,
-        reviewer: ctx.flags.reviewer,
+        assignee: ctx.flags.assignee,
         review_aging_ms: integerFlag("--review-aging-ms", ctx.flags.reviewAgingMs),
         rework_max_rounds: integerFlag("--rework-max-rounds", ctx.flags.reworkMaxRounds),
         max_actions: integerFlag("--max-actions", ctx.flags.maxActions),

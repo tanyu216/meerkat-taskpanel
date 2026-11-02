@@ -94,9 +94,9 @@ export function workflowTick(ctx, input = {}) {
     verdicts[ref] = parseReviewVerdict(reports, roundOf(card));
   }
 
-  const reviewer =
-    typeof input.reviewer === "string" && input.reviewer.trim() !== ""
-      ? input.reviewer.trim()
+  const assignee =
+    typeof input.assignee === "string" && input.assignee.trim() !== ""
+      ? input.assignee.trim()
       : null;
 
   // 0031 — a project may override the deployment-level reviewer. Read every
@@ -121,7 +121,7 @@ export function workflowTick(ctx, input = {}) {
     reportsByRef,
     reconcileActions: reconcile.actions,
     config: {
-      reviewer,
+      assignee,
       projectReviewers,
       projectGates,
       reviewAgingMs: input.reviewAgingMs,

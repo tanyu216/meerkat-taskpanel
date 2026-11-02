@@ -201,7 +201,9 @@ flag("--assignee-only", (opts) => { opts.claimUnassigned = "no"; }, "switch");
 flag("--recover-stale", (opts, value) => { opts.recoverStale = value; });
 flag("--recover-wedged", (opts, value) => { opts.recoverWedged = value; });
 flag("--workflow", (opts, value) => { opts.workflow = value; });
-flag("--reviewer", (opts, value) => { opts.reviewer = value; });
+// Deprecated no-op for one release: installed units still pass it. The review
+// card's assignee selects the reviewer role; this value is never consulted.
+flag("--reviewer", (opts, value) => { opts.reviewerDeprecated = value; });
 flag("--workflow-max-actions", (opts, value) => { opts.workflowMaxActions = value; });
 flag("--review-aging-minutes", (opts, value) => { opts.reviewAgingMinutes = value; });
 flag("--rework-max-rounds", (opts, value) => { opts.reworkMaxRounds = number("--rework-max-rounds", value); });
@@ -615,6 +617,26 @@ export function roleIsWorker(roleSet, agent) {
   );
 }
 
+/** The reviewer-lane agents discovery found on this host, in discovery order. */
+export function reviewerAgents(roleSet) {
+  return (Array.isArray(roleSet?.roles) ? roleSet.roles : [])
+    .filter((role) => Array.isArray(role.lanes) && role.lanes.includes("reviewer"))
+    .map((role) => role.agent)
+    .filter((agent) => typeof agent === "string" && agent.trim() !== "");
+}
+
+/** Whether a board identity names an installed reviewer-lane role. */
+export function roleIsReviewer(roleSet, agent) {
+  if (typeof agent !== "string" || agent.trim() === "") return false;
+  const key = agent.trim().toLowerCase();
+  return (Array.isArray(roleSet?.roles) ? roleSet.roles : []).some(
+    (role) =>
+      Array.isArray(role.lanes) &&
+      role.lanes.includes("reviewer") &&
+      (role.agent.toLowerCase() === key || role.id.toLowerCase() === key),
+  );
+}
+
 /**
  * The board identities a poll may claim for: every discovered worker-lane role,
  * plus the configured reviewers (deployment and project-level).
@@ -634,6 +656,7 @@ export function effectiveScanAgents({ roleSet = null, reviewers = [] } = {}) {
     if (name !== "" && !scan.includes(name)) scan.push(name);
   };
   for (const agent of workerAgents(roleSet)) add(agent);
+  for (const agent of reviewerAgents(roleSet)) add(agent);
   for (const reviewer of Array.isArray(reviewers) ? reviewers : []) add(reviewer);
   return scan;
 }
@@ -647,18 +670,16 @@ export function effectiveScanAgents({ roleSet = null, reviewers = [] } = {}) {
  * is not scanned twice.
  *
  * @param {object|null} roleSet
- * @param {{reviewer: string|null}} config
  * @param {string[]} projectReviewers
  * @returns {{reviewers: string[], reviewerWorkers: string[], scanAgents: string[]}}
  */
-export function mergeReviewerSets(roleSet, config, projectReviewers = []) {
+export function mergeReviewerSets(roleSet, projectReviewers = []) {
   const reviewers = [];
   const add = (value) => {
     if (typeof value !== "string") return;
     const name = value.trim();
     if (name !== "" && !reviewers.includes(name)) reviewers.push(name);
   };
-  add(config?.reviewer);
   for (const reviewer of Array.isArray(projectReviewers) ? projectReviewers : []) add(reviewer);
 
   const reviewerWorkers = reviewers.filter((reviewer) => roleIsWorker(roleSet, reviewer));
@@ -711,7 +732,6 @@ export function resolveLoopConfig(opts, env = process.env) {
   const workflow = resolveWorkflowConfig({
     flags: {
       workflow: opts.workflow,
-      reviewer: opts.reviewer,
       workflowMaxActions: opts.workflowMaxActions,
       reviewAgingMinutes: opts.reviewAgingMinutes,
       reworkMaxRounds: opts.reworkMaxRounds,
@@ -727,7 +747,6 @@ export function resolveLoopConfig(opts, env = process.env) {
     patrolLlm: opts.patrolLlm,
     actorKind: opts.actorKind,
     workflow: workflow.workflow,
-    reviewer: workflow.reviewer,
     maxActions: workflow.maxActions,
     reviewAgingMs: workflow.reviewAgingMs,
     reworkMaxRounds: workflow.reworkMaxRounds,

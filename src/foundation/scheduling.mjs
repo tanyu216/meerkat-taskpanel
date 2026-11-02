@@ -234,7 +234,7 @@ export const DEFAULT_REVIEW_AGING_MINUTES = DEFAULT_REVIEW_AGING_MS / 60_000;
  * in flight.
  *
  * @param {{flags?: object, env?: object, file?: Record<string, string>|null}} [input]
- * @returns {{workflow: boolean, reviewer: string|null, maxActions: number, reviewAgingMs: number}}
+ * @returns {{workflow: boolean, maxActions: number, reviewAgingMs: number}}
  */
 export function resolveWorkflowConfig(input = {}) {
   const flags = input.flags ?? {};
@@ -245,14 +245,6 @@ export function resolveWorkflowConfig(input = {}) {
     for (const value of values) {
       const parsed = parseYesNo(value);
       if (parsed !== null) return parsed;
-    }
-    return null;
-  };
-  const firstText = (...values) => {
-    for (const value of values) {
-      if (typeof value !== "string") continue;
-      const trimmed = value.trim();
-      if (trimmed !== "") return trimmed;
     }
     return null;
   };
@@ -268,11 +260,6 @@ export function resolveWorkflowConfig(input = {}) {
       firstYesNo(flags.workflow, env.MEERKAT_TASKPANEL_WORKFLOW, file.MEERKAT_TASKPANEL_WORKFLOW) ?? true,
     // 0038 — the card's own acceptance mode is the whole decision; the loop no
     // longer carries an advisory copy of a board policy or a review-close flag.
-    reviewer: firstText(
-      flags.reviewer,
-      env.MEERKAT_TASKPANEL_REVIEWER,
-      file.MEERKAT_TASKPANEL_REVIEWER,
-    ),
     maxActions:
       firstPositive(
         flags.workflowMaxActions,

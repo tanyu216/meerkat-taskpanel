@@ -676,3 +676,21 @@ export function selectReviewerRole(roleSet, agent) {
   if (direct !== null) return direct;
   return roleSet?.defaultReviewer ?? null;
 }
+
+/**
+ * The catalog's default review-card assignee: the declared `default_reviewer`,
+ * else the first reviewer-lane role. `null` means no reviewer role is installed.
+ *
+ * @param {object|null} roleSet
+ * @returns {string|null}
+ */
+export function defaultReviewerAgent(roleSet) {
+  const declared = roleSet?.defaultReviewer;
+  if (declared && typeof declared.agent === "string" && declared.agent.trim() !== "") {
+    return declared.agent.trim();
+  }
+  const role = (Array.isArray(roleSet?.roles) ? roleSet.roles : []).find(
+    (candidate) => Array.isArray(candidate.lanes) && candidate.lanes.includes("reviewer"),
+  );
+  return role && typeof role.agent === "string" && role.agent.trim() !== "" ? role.agent.trim() : null;
+}

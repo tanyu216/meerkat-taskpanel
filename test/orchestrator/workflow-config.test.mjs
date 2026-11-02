@@ -36,10 +36,9 @@ describe("resolveWorkflowConfig", () => {
     assert.equal(config.reviewAgingMs, DEFAULT_REVIEW_AGING_MS);
   });
 
-  it("defaults to on, no reviewer, 20 writes", () => {
+  it("defaults to on, 20 writes", () => {
     assert.deepEqual(resolveWorkflowConfig(), {
       workflow: true,
-      reviewer: null,
       maxActions: 20,
       reviewAgingMs: 3_600_000,
       reworkMaxRounds: 4,
@@ -49,19 +48,16 @@ describe("resolveWorkflowConfig", () => {
   it("prefers flag > env > file > default", () => {
     const file = {
       MEERKAT_TASKPANEL_WORKFLOW: "no",
-      MEERKAT_TASKPANEL_REVIEWER: "file-reviewer",
       MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS: "7",
       MEERKAT_TASKPANEL_REWORK_MAX_ROUNDS: "6",
     };
     const env = {
       MEERKAT_TASKPANEL_WORKFLOW: "yes",
-      MEERKAT_TASKPANEL_REVIEWER: "env-reviewer",
       MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS: "9",
       MEERKAT_TASKPANEL_REWORK_MAX_ROUNDS: "5",
     };
     assert.deepEqual(resolveWorkflowConfig({ env, file }), {
       workflow: true,
-      reviewer: "env-reviewer",
       maxActions: 9,
       reviewAgingMs: 3_600_000,
       reworkMaxRounds: 5,
@@ -70,7 +66,6 @@ describe("resolveWorkflowConfig", () => {
       resolveWorkflowConfig({
         flags: {
           workflow: "no",
-          reviewer: "flag-reviewer",
           workflowMaxActions: "3",
           reviewAgingMinutes: "30",
           reworkMaxRounds: "2",
@@ -80,7 +75,6 @@ describe("resolveWorkflowConfig", () => {
       }),
       {
         workflow: false,
-        reviewer: "flag-reviewer",
         maxActions: 3,
         reviewAgingMs: 1_800_000,
         reworkMaxRounds: 2,
@@ -88,7 +82,6 @@ describe("resolveWorkflowConfig", () => {
     );
     assert.deepEqual(resolveWorkflowConfig({ file }), {
       workflow: false,
-      reviewer: "file-reviewer",
       maxActions: 7,
       reviewAgingMs: 3_600_000,
       reworkMaxRounds: 6,
@@ -97,11 +90,10 @@ describe("resolveWorkflowConfig", () => {
 
   it("ignores an unreadable value and falls through", () => {
     const resolved = resolveWorkflowConfig({
-      flags: { workflow: "maybe", reviewer: "   ", workflowMaxActions: "0" },
+      flags: { workflow: "maybe", workflowMaxActions: "0" },
       file: { MEERKAT_TASKPANEL_WORKFLOW: "no" },
     });
     assert.equal(resolved.workflow, false, "the file's value is the next readable one");
-    assert.equal(resolved.reviewer, null, "whitespace is not a name");
     assert.equal(resolved.maxActions, 20, "a non-positive cap is not a cap");
   });
 });

@@ -130,20 +130,23 @@ describe("supervisor status", () => {
     assert.equal(report.units.launchd.any, true);
   });
 
-  it("reports the scan set discovery produces — the worker roles, plus the reviewer", () => {
+  it("reports the scan set discovery produces — every worker and reviewer role", () => {
     // A team install has one question status must answer: can the role my card is
-    // assigned to ever be claimed? That is the discovered worker roles plus the
-    // reviewer; a name outside it strands its cards.
+    // assigned to ever be claimed? That is every discovered role in the worker or
+    // reviewer lane; a name outside it strands its cards.
     const dir = tempDir();
-    // Written before `optsFor`: `parseArgs` reads the config once, at parse time.
-    writeFileSync(join(dir, "config.env"), "MEERKAT_TASKPANEL_REVIEWER=Reviewer\n");
-    for (const [skill, agent] of [["jobs", "Jobs"], ["linus", "Linus"], ["turing", "Turing"]]) {
+    for (const [skill, agent, lanes] of [
+      ["jobs", "Jobs", ["worker"]],
+      ["linus", "Linus", ["worker"]],
+      ["turing", "Turing", ["worker"]],
+      ["reviewer", "Reviewer", ["reviewer"]],
+    ]) {
       const roleDir = join(dir, ".claude", "skills", skill);
       mkdirSync(roleDir, { recursive: true });
       writeFileSync(join(roleDir, "SKILL.md"), `---\nname: ${skill}\n---\n`);
       writeFileSync(
         join(roleDir, "role.json"),
-        JSON.stringify({ schema: "meerkat-role", id: skill, agent, lanes: ["worker"] }),
+        JSON.stringify({ schema: "meerkat-role", id: skill, agent, lanes }),
       );
     }
 

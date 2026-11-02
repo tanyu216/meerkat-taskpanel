@@ -65,7 +65,7 @@ export function acceptanceModeOf(task) {
  * deployment-level reviewer passed in the reconcile request.
  *
  * @param {object} task a wire task
- * @param {{reviewer?: string|null, projectReviewers?: object|Map<string,string>|null}} [config]
+ * @param {{assignee?: string|null, projectReviewers?: object|Map<string,string>|null}} [config]
  * @returns {string|null}
  */
 function effectiveReviewerFor(task, config) {
@@ -78,7 +78,7 @@ function effectiveReviewerFor(task, config) {
         ? nonEmpty(projectReviewers.get(projectId))
         : nonEmpty(projectReviewers[projectId]);
   }
-  return override ?? nonEmpty(config?.reviewer);
+  return override ?? nonEmpty(config?.assignee);
 }
 
 /** How long a childless epic may exist before `empty_epic` is worth a notice. */
@@ -1150,13 +1150,11 @@ export function planReviewOutcomes(input = {}) {
     // The verdict must come from the card's own reviewer. The board has no
     // per-agent ACL, so this is the loop's half of the separation: a report
     // written by anybody else is not a verdict, whatever it says.
-    // The review card's assignee is the effective reviewer (the dispatch action
-    // set it from `project.reviewer ?? global`). The global value is only a
-    // fallback for a card created before per-project overrides existed.
+    // The review card's own assignee is the reviewer; the board has no config
+    // fallback to invent one.
     const expectedReviewer =
       nonEmpty(review.assignee?.display_name)
-      ?? nonEmpty(review.assignee_id)
-      ?? nonEmpty(input.config?.reviewer);
+      ?? nonEmpty(review.assignee_id);
     if (expectedReviewer !== null && !reportAuthorMatches(verdict.report, expectedReviewer)) {
       alerts.push({
         type: "review_report_not_by_reviewer",

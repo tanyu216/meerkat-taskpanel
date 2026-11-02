@@ -511,7 +511,7 @@ function strandedTodoAlerts(opts, config, invoke, log) {
     unassignedPool,
     workers,
     agents,
-    reviewer: config.reviewer,
+    reviewer: config.assignee,
     claimUnassigned: config.claimUnassigned,
     now: Date.now(),
   });
@@ -525,7 +525,7 @@ export async function runWorkflowPass(opts, config, log) {
   // One call does the board's container reconcile and returns the plan.
   const args = ["issue", "reconcile", "--workflow"];
   if (opts.dryRun) args.push("--dry-run");
-  if (config.reviewer !== null) args.push("--reviewer", config.reviewer);
+  if (config.assignee !== null) args.push("--assignee", config.assignee);
   args.push("--review-aging-ms", String(config.reviewAgingMs));
   args.push("--rework-max-rounds", String(config.reworkMaxRounds));
   args.push("--max-actions", String(config.maxActions));
