@@ -1134,6 +1134,7 @@ describe("server/routes — candidates (the poll read)", () => {
         "status",
         "target",
         "title",
+        "version",
       ],
       "the card's fields, its opaque meta, and `reason`",
     );

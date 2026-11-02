@@ -386,6 +386,7 @@ describe("task-order — the candidate projection is unchanged by the order", ()
       "status",
       "target",
       "title",
+      "version",
     ]);
     assert.equal(currentRevision(db()), before, "the ordered poll read is still read-only");
   });
