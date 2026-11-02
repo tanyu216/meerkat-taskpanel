@@ -84,7 +84,8 @@ records `n/a` and does not run them.
 - **A15.** The release and deploy paths are recorded separately, each with its `n/a` when
   absent; a published version is immutable (fix forward), and every deploy has a healthcheck, a
   post-deploy check and a recorded rollback, with the data-recovery step when the release
-  changes stored data.
+  changes stored data. The one command the independent reviewer re-runs is recorded as the
+  project's `meta.review_gate`.
 - **A16.** The baseline states the **working agreement**, the **change and integration policy**
   and the **operational invariants**.
 - **A17.** The baseline names where a card **starts from** and **lands into**, the protected

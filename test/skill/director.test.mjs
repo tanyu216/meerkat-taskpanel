@@ -346,6 +346,7 @@ describe("board skill: the acceptance matrix has one home", () => {
   const copies = [
     ["status-lifecycle.md", join(ROOT, "skills/meerkat/references/status-lifecycle.md")],
     ["review-workflow.md", join(ROOT, "skills/meerkat/references/review-workflow.md")],
+    ["docs/acceptance.md", join(ROOT, "docs/acceptance.md")],
   ];
 
   /** The raw block between the markers, asserting the markers appear exactly once. */
@@ -361,7 +362,7 @@ describe("board skill: the acceptance matrix has one home", () => {
   const cells = (line) =>
     line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
 
-  it("keeps both copies byte-identical after whitespace normalisation", () => {
+  it("keeps every copy byte-identical after whitespace normalisation", () => {
     const blocks = copies.map(([, path]) => marked(path));
     for (let i = 1; i < blocks.length; i += 1) {
       assert.equal(

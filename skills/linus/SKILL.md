@@ -28,7 +28,9 @@ Read the card, its brief and the frozen acceptance through the `meerkat` board s
 **Triage.** `meta.design_stage` means a feature or behaviour change: read the `## Handoff` block
 in the description. If the block is missing or a named path does not exist, stop and ask.
 `meta.product_change=none` means **no design archive input** — also valid for a foundation,
-reconstruction or audit card. Neither marker is unclassified: stop and ask.
+reconstruction or audit card. Neither marker is unclassified: stop and ask. A card that owes a
+follow-up (for example a regression or cleanup card) sets `meta.stage_handoff=required` and
+names it in the report's `## Handoff`; the director's triage creates it.
 
 **Take the plan.** A `.meerkat/<id>/plan.md` that already exists is **this card's plan**; a
 rework extends it, folding in an attached plan rather than replacing it. Otherwise the
@@ -71,7 +73,8 @@ opened at step 3.
 - **refactor** — a behaviour-preserving restructure. File: `references/refactor-workflow.md`.
 
 A card that mixes foundation and feature runs architecture first and proposes the implementation
-cards in its `## Handoff`; the director splits it. An epic child executes only its scope.
+cards in its `## Handoff`; the director's triage decides the split. An epic child executes only
+its scope.
 Each branch file starts with its own step list. This is a pointer, not a second selection table.
 
 ## Six principles
@@ -94,7 +97,8 @@ constrains how, never adds machinery; a boundary is not traded for speed.
 - Evidence: no fabricated path or command, no claimed gate, no another card's plan.
 - Delivery: the delivered tree is committed and the report carries the `commit` anchor; the
   board's delivery gate (`DELIVERY_NEEDS_COMMIT`) requires it; never merge, rebase or push;
-  stop at `in_review`; never accept your own work.
+  stop at `in_review`; never accept your own work. The supervisor's acceptance pass lands the
+  delivered tree and cleans up.
 - Do not take work that is not architecture, implementation, refactoring or a bug fix;
   operations on a running system goes outside the roles.
 
@@ -102,7 +106,8 @@ constrains how, never adds machinery; a boundary is not traded for speed.
 
 Run `references/self-check.md` (the handoff names it). Deliver through the `meerkat` board skill: the board
 requires a committed tree and a report with the `commit` anchor. A producer card (architecture)
-also writes the `## Handoff` block; landing and cleanup belong to the director.
+also writes the `## Handoff` block; the supervisor's acceptance pass lands the delivered tree
+and cleans up.
 
 ## Product language
 

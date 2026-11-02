@@ -58,5 +58,7 @@ answers in the branch artifact. Do not execute while a frontier item is open.
 Commit the work on the card's branch. Run `references/self-check.md`, then deliver at `in_review` with
 a report that projects `plan.md`'s evidence table: the traceability matrix, commands and
 exit codes, coverage, security findings and leftovers. A report that cites a path carries
-the `commit` anchor. Do not merge, rebase or push; landing is the director's. A
-finding creates a fix/rework card through the director, never a verdict of your own.
+the `commit` anchor. Do not merge, rebase or push; the supervisor's acceptance pass lands the
+delivered tree. A finding inside this card is fixed and re-delivered; an out-of-scope finding
+is a `kind=defect` comment plus a question to the director, who creates the fix card. Never
+issue a verdict of your own.

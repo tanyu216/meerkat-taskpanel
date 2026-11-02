@@ -242,7 +242,7 @@ The board enforces the mode; `ACCEPTANCE_FORBIDDEN` carries `mode` and `reviewCa
 ```text
 worker delivers            original in_review (round N)
 board dispatches           review card created, review_round = N
-reviewer wakes             claims the review card, reads, delivers VERDICT
+reviewer wakes             the loop already claimed it; reads, delivers VERDICT
 loop applies               APPROVE → accept (agent) / record (human); REJECT → rework round N+1
 loop closes last           review card → done (or canceled if the original was canceled)
 ```

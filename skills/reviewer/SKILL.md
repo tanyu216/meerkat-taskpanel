@@ -32,7 +32,7 @@ block APPROVE. Full rules: `references/audit-playbook.md`; the snapshot is the r
 **Watch for.** The original is not `in_review`, its `delivery_round` is not this card's
 `review_round`, or the round's `commit` anchor **no longer resolves** — a rebase or force-push
 rewrote the evidence.
-**Essentials.** Say so and stop; do not rebuild the review from the live tree.
+**Essentials.** Leave a `note` saying why the review no longer stands, then stop; do not rebuild it from the live tree.
 
 ### 2. Read the handoff and the sources
 **Purpose.** Judge from the sources, not from the report's summary of them.
@@ -43,7 +43,8 @@ artifacts; neither marker means unclassified. A loop-created rework/fix child
 (`meta.rework_of`) inherits its parent epic's handoff.
 **Essentials.** Description, every comment, the frozen acceptance, the brief and `plan.md`,
 this round's report and evidence, and the open decision/defect/change entries. A missing
-block, field or path — or an unclassified card — is a `REJECT`.
+block, field or path — or an unclassified card — is a `REJECT`. A missing `plan.md` is not
+itself a `REJECT`: fall back to the description and the frozen acceptance.
 
 ### 3. Build the requirement ledger
 **Purpose.** Enumerate the requirements before judging any implementation.
@@ -121,9 +122,8 @@ delivering; delivery is the `meerkat` skill's.
 ## Limits
 
 Read-only: no Edit or Write; `git -C <targetDir> show`, `git diff` and the declared gate are the
-lane. The loop claims the review card; do not claim it again; heartbeat only it; move neither
-card. Multiple reviewers run in parallel: stay on the target card's worktree/branch; never use
-the primary checkout or another card's worktree; never write the shared tree. Never enter
-`awaiting` — insufficient evidence is a `REJECT`. Product, scope, acceptance, design, security
-and architecture decisions are not yours; when one is needed, `REJECT` and record the finding.
-Not limited to the checklists: any read-only method that finds a problem is in scope.
+lane. A dispatched review card is already claimed — heartbeat it, do not re-claim; one you pick up
+interactively from `issue candidates` is claimed like any todo card. Move neither card. Stay on the
+target card's worktree/branch; never use the primary checkout, another worktree or the shared tree.
+Never enter `awaiting` — insufficient evidence is a `REJECT`. Product, scope, acceptance, design,
+security and architecture decisions are not yours; `REJECT` and record it. Any read-only method is in scope.

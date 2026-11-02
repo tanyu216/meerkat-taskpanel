@@ -25,7 +25,7 @@ Refresh the brief through the `meerkat` board skill before you start.
 | Gate | Threshold |
 |---|---|
 | Suites | unit, integration, API and browser: 100% pass |
-| Coverage | line, branch and function >80% (or the project's stricter floor) |
+| Coverage | line, branch and function ≥80% (or the project's stricter floor) |
 | Mocks | only at http/websocket/db/redis and comparable external boundaries; never internal; none in integration |
 | Security scan | dependency audit (default `osv-scanner`), secret scan and SAST run, or `n/a — <reason>`; no unaddressed high/critical |
 
@@ -33,8 +33,8 @@ Branch deltas:
 - **test-design**: `test-plan.md` has the matrix, entry/exit criteria and frontier answers;
   every acceptance item has a test; the test-case review is recorded.
 - **regression**: the original fails before and passes after; the blast radius is covered; a
-  production bug records its observation window and rollback trigger; the fix card is still in
-  the verified round.
+  production bug records its observation window and rollback trigger; the fix card's delivered
+  round is still current.
 - **performance**: metric, load, baseline and threshold are stated; multiple runs report
   variance; bottleneck, noise and soak/leak are checked.
 
