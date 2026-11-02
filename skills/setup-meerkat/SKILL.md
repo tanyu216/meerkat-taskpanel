@@ -1,6 +1,6 @@
 ---
 name: setup-meerkat
-description: Idempotently install and configure Meerkat TaskPanel for this machine — detect the server, taskctl, board/chat/director skills, role skills and supervisor, install what is missing, offer the Matt Pocock issue-tracker integration, move a Jobs/Linus/Turing/Reviewer/Worker role skill between agent platforms, and initialize a project's decision rights. Use when the user runs /setup-meerkat or asks to set up, repair, or add role skills to Meerkat TaskPanel.
+description: Idempotently install and configure Meerkat TaskPanel for this machine — detect the server, taskctl, board/chat/director skills, role skills and supervisor, install what is missing, offer the Matt Pocock issue-tracker integration, move a Jobs/Linus/Turing/Reviewer/Worker role skill between agent platforms, and initialize a project's decision rights, ownership map and handoff markers. Use when the user runs /setup-meerkat or asks to set up, repair, or add role skills to Meerkat TaskPanel.
 disable-model-invocation: true
 ---
 
@@ -14,9 +14,10 @@ One idempotent pass over the things a working Meerkat TaskPanel deployment needs
    choice before anything starts.
 3. **Offer the Matt Pocock integration** (`/setup-matt-pocock-skills`) when that skill is
    present, without overwriting an unrelated tracker.
-4. **Leave the task entry** — run the host's init step (`/init`), then give it the required
-   content (the `/meerkat` keywords and the card scope) so every later session starts from
-   the board. The host owns where it lands.
+4. **Leave the task entry and the team contract** — run the host's init step (`/init`), then
+   give it the required content (the `/meerkat` keywords, the card scope, the ownership map
+   and the handoff markers) so every later session starts from the board knowing who owns
+   what. The host owns where it lands.
 5. **Install and route role skills** — Jobs/Linus/Turing/Reviewer/Worker are standalone
    skills; wherever each is installed is the platform it runs on. Move one between kinds only
    on request.
@@ -218,9 +219,9 @@ names a label.
 
 The board is the entry only when the project's own instruction file says so. Run the host's
 init step over `--project` first — `/init` where the host has one (Claude Code and Codex do) —
-so the file describes the real tree. That step reads the code, not the board, and does not
-carry the task entry: give it the requirements below in the same turn. Without an init step,
-write the requirements yourself.
+so the file describes the real tree. That step reads the code, not the board or the installed
+role skills, and does not carry the task entry or the team contract: give it both requirements
+in the same turn. Without an init step, write the requirements yourself.
 
 **What the file must say** — requirements, not a template:
 
@@ -236,6 +237,19 @@ write the requirements yourself.
   session that takes work a role owns reads that role's `SKILL.md` and follows its workflow.
   The supervisor injects the handoff only for cards it dispatches; the installed copy is
   authoritative. The card is still created and delivered through `/meerkat`.
+- **The team contract** — one compact map of ownership and handoff, generated from the
+  installed role skills, not a copy of their workflows:
+  - each role and the work shapes it owns (Jobs / Linus / Turing / Reviewer / Worker), read
+    from the installed `role.json`; the Reviewer is never routed an ordinary card;
+  - who lands and cleans up: the supervisor's acceptance pass merges the lane and removes
+    the worktree; the card's `acceptance_mode` names who may close it; no role creates a
+    downstream or fix card — the director does;
+  - the handoff markers and their writers: `stage_handoff=required` (the producer role),
+    `design_stage` and `product_change=none` (the creator or the director's triage), the
+    project's `review_gate` (Linus), and `handoff_consumed_round` / `handoff_declined_round`
+    (the director's triage).
+  Point at each installed `skills/<role>/SKILL.md` and the director's
+  `references/decision-policy.md` for the detail; the map is an index, not a copy.
 - **Decision rights**, initialized here and owned by `meerkat-director`: the ladder is
   worker → director → human; a worker asks with an agent `question` and holds (`issue
   wait`); the director answers with an agent `note` and returns the card to `todo`, or escalates E1–E5 to
@@ -358,10 +372,11 @@ and follow its printed commands with the user's consent.
    A name the loop does not scan can never claim its cards, so a mismatch is a **finding to
    report**, never "ready".
 5. Re-read the host's instruction file: the task entry is stated once, names `/meerkat`, and
-   carries the card scope and the decision-rights pointer.
+   carries the card scope, the team contract (role shapes and the marker writers) and the
+   decision-rights pointer.
 6. Summarize: what was installed, where, each role's effective platform (and any fallback),
-   the human name, the instruction file that received the task entry, and what was skipped
-   and why.
+   the human name, the instruction file that received the task entry and the team contract,
+   and what was skipped and why.
 7. A second run must change **no managed content**: role skills, native definitions and env
    keys report `unchanged`, and the task entry reports `unchanged` rather than being restated
    or duplicated; `install.sh` may re-copy identical runtime bytes, which is still idempotent.
