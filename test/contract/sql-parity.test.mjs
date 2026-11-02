@@ -67,15 +67,26 @@ describe("contract/sql-parity — migration files", () => {
   });
 
   it("keeps the baseline in place; a later migration may rebuild", () => {
-    assert.deepEqual(files.map((f) => f.file), ["0001_init.sql", "0002_card_acceptance_model.sql"]);
+    assert.deepEqual(files.map((f) => f.file), [
+      "0001_init.sql",
+      "0002_card_acceptance_model.sql",
+      "0003_drop_project_reviewer.sql",
+    ]);
     const baseline = files.find((f) => f.file === "0001_init.sql");
     assert.deepEqual(addedColumns(baseline.sql), [], "the baseline declares every column in its CREATE TABLE");
     assert.equal(/DROP\s+TABLE/i.test(baseline.sql), false, "the baseline drops no table");
     assert.equal(/ALTER\s+TABLE\s+\S+\s+RENAME\s+TO/i.test(baseline.sql), false, "the baseline renames no table");
-    // 0002 is the first post-baseline rebuild; it must say so on its face.
+    // Both post-baseline rebuilds say so on their face.
     assert.match(files.find((f) => f.file === "0002_card_acceptance_model.sql").sql, /^-- @foreign-keys: off$/m);
+    assert.match(files.find((f) => f.file === "0003_drop_project_reviewer.sql").sql, /^-- @foreign-keys: off$/m);
     assert.match(allSql, /report_latest_id/);
     assert.match(allSql, /delivery_round/);
+    // 0031 — the project reviewer column is retired; neither the live table nor
+    // its revision trigger names it.
+    const rebuiltDdl = files
+      .find((f) => f.file === "0003_drop_project_reviewer.sql")
+      .sql.replace(/--[^\n]*/g, " ");
+    assert.doesNotMatch(rebuiltDdl, /\breviewer\b/i);
   });
 
   it("wires a revision trigger for every write table", () => {
