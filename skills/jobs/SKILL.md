@@ -28,10 +28,10 @@ flow's decisions; a prototype or UI card follows `references/ui-workflow.md`, en
 
 ## Before work — the plan
 
-Read the card and its brief through the `meerkat` board skill; the frozen `acceptance` is the
+Call the `meerkat` board skill to read the card and its brief; the frozen `acceptance` is the
 baseline. Take the plan: an existing `.meerkat/<id>/plan.md` is this card's plan (extend it,
-folding in an attached plan); otherwise read the card's **attachments** through the `meerkat`
-board skill and adopt `plan.md` (transcribing a non-text plan), or, with **no plan attached**,
+folding in an attached plan); otherwise call the `meerkat` board skill to read the card's
+**attachments** and adopt `plan.md` (transcribing a non-text plan), or, with **no plan attached**,
 write it from the card and the acceptance. **Audit the plan**: every requirement and frozen
 acceptance item maps to a step and its proof; order and inputs hold; assumptions, risks and
 open questions are written; no step widens the acceptance. Fix it; keep the unsettled items

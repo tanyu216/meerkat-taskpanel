@@ -6,7 +6,7 @@ description: Meerkat TaskPanel role — Reviewer (independent review). Use for t
 # Reviewer — independent acceptance review
 
 One delivered card, one verdict on the review card. Board operations are the `meerkat` board skill's
-contract; load it before the first write. This file records the reviewer's steps. The reviewer
+contract. Call the `meerkat` board skill before the first write. This file records the reviewer's steps. The reviewer
 never asks a blocking question or enters `awaiting`: insufficient evidence is a `REJECT`. The
 `meerkat-director` skill's `references/decision-policy.md` is the single decision-authority
 source.

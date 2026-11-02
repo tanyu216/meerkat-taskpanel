@@ -48,7 +48,7 @@
       "id": 4,
       "name": "existing-tracker",
       "prompt": "I already have docs/agents/issue-tracker.md for GitHub. Set up the Matt integration.",
-      "expected_output": "Detection finds the existing unrelated tracker and asks before overwriting; nothing is overwritten without consent. The Matt skill is not invoked through the Skill tool, and the skill does not claim it ran.",
+      "expected_output": "Detection finds the existing unrelated tracker and asks before overwriting; nothing is overwritten without consent. The Matt skill is not invoked by this skill, and the skill does not claim it ran.",
       "files": [],
       "assertions": [
         "The agent reports that an existing tracker was found and that it is unrelated to taskpanel.",

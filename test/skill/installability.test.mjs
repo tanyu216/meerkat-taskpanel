@@ -104,6 +104,27 @@ describe("installed skills: self-contained references", () => {
     assert.deepEqual(findRepositoryOnlyRefs("docs/ops/install.md"), ["docs/ops/install.md"]);
   });
 
+  it("uses the runtime-neutral call form for the meerkat board skill", () => {
+    // Codex, pi and OpenClaw have no `Skill` tool: their skills are reached by
+    // `$name`, `/skill:name` or a read, and the Claude worker/reviewer lanes do
+    // not carry the tool either. The shared call is therefore "Call the
+    // `meerkat` board skill …", never a Claude mechanism name.
+    const old = [];
+    const claudeOnly = [];
+    let canonical = 0;
+    for (const file of filesUnder(SKILLS)) {
+      const text = readFileSync(file, "utf8");
+      const rel = relative(ROOT, file);
+      if (/through the `meerkat` board skill/i.test(text)) old.push(rel);
+      if (/\bLoad it before the first write\b/i.test(text)) old.push(rel);
+      if (/Skill tool/.test(text)) claudeOnly.push(rel);
+      canonical += (text.match(/call the `meerkat` board skill/gi) ?? []).length;
+    }
+    assert.deepEqual(old, [], "the old call-through wording is gone");
+    assert.deepEqual(claudeOnly, [], "a shipped skill names a Claude-only tool");
+    assert.ok(canonical >= 18, "every role passage uses the canonical call form");
+  });
+
   it("scans YAML assets as well as prose and code", () => {
     assert.ok(SCANNED.has(".yml"));
     assert.ok(SCANNED.has(".yaml"));

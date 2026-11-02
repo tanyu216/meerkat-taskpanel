@@ -20,7 +20,7 @@ Prototype design and validation
 
 ## Before work — the plan
 
-Take the card's plan through the `meerkat` board skill: an existing `.meerkat/<id>/plan.md` is
+Call the `meerkat` board skill to take the card's plan: an existing `.meerkat/<id>/plan.md` is
 this card's plan (extend it), an attached plan is adopted, and **no plan attached** writes one
 from the card. Audit it; the prototype plan links to the card index.
 
