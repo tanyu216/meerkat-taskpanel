@@ -32,6 +32,15 @@ import {
 
 after(cleanupTempDirs);
 
+/**
+ * The verification image is the *runtime* image and ships no git, so the
+ * validated-against-a-repository cases skip there (visible in the run's `skipped`
+ * count) and run on the host and in CI's `check` job, which have one — the rule
+ * `test/release/prep.test.mjs` already follows.
+ */
+const hasGit = spawnSync("git", ["--version"], { encoding: "utf8" }).status === 0;
+const gitIt = hasGit ? it : it.skip;
+
 /** A config root holding a map, plus the CLI env that points at it. */
 function writeMap(entries, configDir = makeTempDir("meerkat-taskpanel-map-")) {
   const file = join(configDir, "projects.json");
@@ -302,7 +311,7 @@ describe("cli/project map — the local writer", () => {
     assert.equal(dataOf(result).dir, target);
   });
 
-  it("writes base_ref and merge_ref with the directory in one call, and validates both", () => {
+  gitIt("writes base_ref and merge_ref with the directory in one call, and validates both", () => {
     const { dir, git } = makeGitRepo();
     git("tag", "v1");
     const { env, file } = emptyConfig();
@@ -329,7 +338,7 @@ describe("cli/project map — the local writer", () => {
     assert.equal(errorOf(missing).code, "PROJECT_REF_UNRESOLVED");
   });
 
-  it("warns but writes when merge_ref is not the checked-out branch", () => {
+  gitIt("warns but writes when merge_ref is not the checked-out branch", () => {
     const { dir, git } = makeGitRepo();
     git("branch", "feature");
     git("checkout", "-q", "feature");
@@ -358,7 +367,7 @@ describe("cli/project map — the local writer", () => {
     assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).projects[0], { project: "demo" });
   });
 
-  it("refuses --no-dir while refs are declared, and clears a single ref explicitly", () => {
+  gitIt("refuses --no-dir while refs are declared, and clears a single ref explicitly", () => {
     const { dir } = makeGitRepo();
     const { env, file } = writeMap([
       { project: "demo", local_path: dir, base_ref: "dev", merge_ref: "dev" },
@@ -378,7 +387,7 @@ describe("cli/project map — the local writer", () => {
     });
   });
 
-  it("shows both refs", () => {
+  gitIt("shows both refs", () => {
     const { dir } = makeGitRepo();
     const { env } = writeMap([
       { project: "demo", local_path: dir, base_ref: "dev", merge_ref: "dev" },
