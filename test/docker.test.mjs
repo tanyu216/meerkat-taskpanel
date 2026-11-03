@@ -870,7 +870,11 @@ describe("static: docker-compose.yml", () => {
     assert.match(text, /TASKD_HOST[:=]\s*"?0\.0\.0\.0"?/);
     assert.match(text, /TASKD_PORT[:=]\s*"?9527"?/);
     assert.match(text, /9527:9527/);
-    assert.match(text, /\.\.\/\.data:\/app\/\.data/);
+    // A named volume, not a bind mount of `../.data`: on a fresh checkout the bind
+    // source is created root-owned and the `node` user can neither write nor chmod
+    // it, so taskd died with EPERM before the healthcheck could pass.
+    assert.match(text, /taskd-data:\/app\/\.data/);
+    assert.match(text, /^volumes:\n\s+taskd-data:/m);
     // The deploy service runs the real daemon, not the retired M0 skeleton: a
     // healthcheck against a liveness-only placeholder is not a gate.
     assert.match(text, /command:\s*\["node","src\/server\/main\.mjs"\]/);

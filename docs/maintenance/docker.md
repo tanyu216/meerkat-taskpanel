@@ -246,9 +246,14 @@ The daemon's `/health` is unauthenticated and always 200 (`src/server/index.mjs`
 The `503`-capable `/health` in `docs/ops/observability.md` is the **metrics sidecar's** SLO
 verdict, a different process on a different port — do not read the two as one endpoint.
 
-The board's runtime state is bind-mounted from the repository (`../.data` →
-`/app/.data`), so `docker compose down -v` never destroys it. Only named volumes are
-removed; the bind mount is a host directory.
+The board's runtime state lives in the **named volume** `taskd-data` → `/app/.data`.
+It is a named volume rather than a bind mount of `../.data` because a first `up` on a
+fresh checkout has no `../.data`: Docker creates the bind source root-owned, the daemon
+runs as `node`, and it could neither write there nor chmod it to 0700 — `taskd` died with
+`EPERM` and the healthcheck never passed. An empty named volume is initialised from the
+image's `/app/.data`, which the Dockerfile already owns as `node`. The cost is explicit:
+`docker compose down -v` removes the board, so stop a deployment with plain `down`;
+`-v` is for the throwaway smoke test.
 
 ## Dev / manual preview (Vite HMR)
 
