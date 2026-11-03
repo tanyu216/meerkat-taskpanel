@@ -187,9 +187,11 @@ function readSessionsState(stateDir) {
  * pass in another process (the supervisor's `passes.mjs poll`) asks the
  * same question the pool answers — no IPC, no network.
  *
- * Liveness is the pool manager's pid **and** a fresh heartbeat. The heartbeat is
- * written on its own timer, not by `tick()`, so a long turn does not read as a
- * dead pool.
+ * Liveness is the shared pool verdict: a live pid whose start token still matches
+ * is live, and the phase and timestamps decide which kind of live it is (`busy`,
+ * `starting`, `unresponsive`, `wedged`); only a dead pid or a mismatched start
+ * token is `gone`. A stale heartbeat makes a live pool `unresponsive`; it never
+ * turns a live pid into an absent one.
  *
  * @param {{
  *   opts?: object,
@@ -198,11 +200,18 @@ function readSessionsState(stateDir) {
  * }} [input]
  * @returns {{
  *   live: boolean,
+ *   verdict: string|null,
  *   reason: string|null,
  *   file: string,
  *   poolPid: number|null,
  *   projects: Record<string, object>,
+ *   workers: Record<string, object>,
+ *   capabilities: string[],
+ *   phase: string|null,
  *   heartbeatAgeMs?: number,
+ *   tickAgeMs?: number,
+ *   startAgeMs?: number,
+ *   turnTimeoutMs?: number,
  * }}
  */
 export function poolStatus(input = {}) {
