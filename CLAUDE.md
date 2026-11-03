@@ -36,13 +36,15 @@ cost, never a silent drift.
 - Decompose first when a request is more than a couple of tool calls; a step is done when its own
   check is green, not when the edit lands.
 - TDD by default: failing test first, then the smallest change. Extend the test file that already
-  owns the behaviour — `test/contract/**` for invariants, `test/core/**`, `test/server/**`,
-  `test/concurrency/**`, `test/web/**`, `test/install/**`. Add browser legs to
-  `test/web/blocks.dom.test.mjs`; a second browser file flakes the shared harness.
-- Iterate with the host-static checks (`npm run check`); `npm run verify:docker` is the
-  authoritative gate and runs from `.githooks/pre-push` on every branch push. It bakes the
-  **working tree** at build start, so **commit before you push**; `SKIP_CONTAINER_VERIFY=1`
-  skips it for one push.
+  owns the behaviour — `test/contract/**` for invariants, then the layer's own directory
+  (`test/core/**`, `test/server/**`, `test/cli/**`, `test/orchestrator/**`, `test/concurrency/**`,
+  `test/web/**`, `test/install/**`). Add browser legs to `test/web/blocks.dom.test.mjs`; a second
+  browser file flakes the shared harness.
+- Iterate with the host-static checks (`npm run check`). `npm run verify:docker` is the
+  **push-time gate, not a work step**: `.githooks/pre-push` runs it on every branch push and CI
+  runs the same container suite. Run it by hand only as a deliberate final check, not in the
+  edit loop. It bakes the **working tree** at build start, so **commit before you push**;
+  `SKIP_CONTAINER_VERIFY=1` skips it for one push.
 - Report, then wait: do not call the task complete, integrate it or delete anything without the
   user's confirmation.
 
@@ -103,7 +105,8 @@ these matter:
 
 - **Verification runs inside Docker, not the host.** Everything that *runs* — tests, serving the
   app, the CLI, skill/plugin installs, migration rehearsals — runs in the container
-  (`npm run verify:docker`). The host-allowed static checks are listed in
+  (`npm run verify:docker`), normally as the `pre-push`/CI gate rather than a by-hand session
+  command. The host-allowed static checks are listed in
   `docs/maintenance/docker.md` §Host-allowed checks.
 - **Runtime zero-dependency, no network.** The engine and every script/test use Node builtins and
   work offline. Never run `npm install` at the root; there is no root lockfile or `node_modules/`.
