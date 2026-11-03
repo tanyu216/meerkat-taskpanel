@@ -33,6 +33,7 @@ authority and the refusal is the instruction.
 |---|---|
 | creating a card | [`references/scenarios/create.md`](references/scenarios/create.md) |
 | claiming and delivering | [`references/scenarios/execute.md`](references/scenarios/execute.md) |
+| adding or changing requirements on an existing card | [`references/scenarios/edit.md`](references/scenarios/edit.md) |
 | splitting or building an epic | [`references/scenarios/epic.md`](references/scenarios/epic.md) |
 | reviewing a delivered card | [`references/scenarios/review.md`](references/scenarios/review.md) |
 | waiting on the director, a human, or blocked | [`references/scenarios/wait.md`](references/scenarios/wait.md) |

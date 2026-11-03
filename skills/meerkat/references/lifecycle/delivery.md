@@ -53,7 +53,8 @@ in [`cli/issue.md#the-delivery-gate`](../cli/issue.md#the-delivery-gate).
 Each card carries a frozen acceptance baseline: `tasks.acceptance_json` (`acceptance[]` on the
 wire) plus a monotonically increasing `acceptance_revision`. `meta.acceptance` is only the
 **seed** — `create` and the first claim copy it (and the imported `acceptance_legacy` texts)
-into the snapshot; the gates never read meta.
+into the snapshot; the gates never read meta. The end-to-end edit sequence (append,
+description replacement, human prune) is [`../scenarios/edit.md`](../scenarios/edit.md).
 
 - **Append only.** `issue update <ref> --acceptance "…"` appends; duplicates (normalized text)
   are ignored. There is no replace. Removing an item is a **human-only audited prune**:

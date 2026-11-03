@@ -21,7 +21,7 @@ const SKILL = join(ROOT, "skills/meerkat");
 const SCENARIOS = join(SKILL, "references/scenarios");
 const SKILL_MD = join(SKILL, "SKILL.md");
 const CLI_MD = join(SKILL, "references/cli.md");
-const NAMES = ["create", "execute", "epic", "review", "wait", "setup"];
+const NAMES = ["create", "edit", "execute", "epic", "review", "wait", "setup"];
 
 const read = (path) => readFileSync(path, "utf8");
 const tokens = (bytes) => Math.ceil(bytes / 4);
@@ -213,6 +213,7 @@ describe("board skill: the scenario layout", () => {
   it("keeps the scenario pages self-contained for their operation", () => {
     const phrases = {
       create: ["--as-human", "attachment add", "plan.md", "docs/agents/acceptance-mode.md"],
+      edit: ["--as-human", "--acceptance", "--description", "ACCEPTANCE_LOCKED", "issue assign"],
       execute: ["heartbeat", "--no-report", "depends_on", "evidence[n]"],
       epic: ["land on the base branch alone", "same card", "relation add --type parent"],
       review: ["review_of_id", "VERDICT: APPROVE", "move neither card"],
