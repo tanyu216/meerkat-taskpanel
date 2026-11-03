@@ -23,6 +23,7 @@
 import { dirname } from "node:path";
 
 import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
+import { processStartToken } from "../foundation/daemon-state.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import {
   EVENT_CONTINUE_MIN_MS,
@@ -411,6 +412,7 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
   const state = {
     version: 1,
     pid: process.pid,
+    pidStart: processStartToken(process.pid),
     startedAt: new Date(now()).toISOString(),
     connectedAt: null,
     lastEventAt: null,

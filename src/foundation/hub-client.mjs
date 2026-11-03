@@ -26,6 +26,7 @@ import {
   ensurePrivateDir,
   lockIsStale,
   pidAlive,
+  pidMatches,
   readJsonFile,
   releaseLock,
   removeFile,
@@ -411,7 +412,11 @@ export async function stopHub(pointer, paths, options = {}) {
   } = options;
   const pid = Number.isInteger(pointer?.pid) && pointer.pid > 1 ? pointer.pid : null;
   if (pid === null) return { stopped: false, pid: null, reason: "no-pointer", signal: null };
-  if (!pidAlive(pid)) return { stopped: false, pid, reason: "not-running", signal: null };
+  // The pid must still be the hub that wrote the pointer: a reused pid is not
+  // ours to signal.
+  if (!pidMatches(pid, pointer.pidStart)) {
+    return { stopped: false, pid, reason: "not-running", signal: null };
+  }
   const owner = readJsonFile(paths.owner);
   // A live hub always holds its owner lock (it claims the lock before it
   // publishes the pointer). A pointer without one is a fossil; one naming a
@@ -565,7 +570,7 @@ export async function ensureHub(input) {
     releaseLock(paths.lock);
     return { pointer: current, paths, spawned: false };
   }
-  if (current !== null && current.protocol !== HUB_PROTOCOL && pidAlive(current.pid)) {
+  if (current !== null && current.protocol !== HUB_PROTOCOL && pidMatches(current.pid, current.pidStart)) {
     let outcome;
     try {
       outcome = await stopHub(current, paths, { log });

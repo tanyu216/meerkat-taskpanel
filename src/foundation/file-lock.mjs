@@ -36,6 +36,8 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
+import { pidMatches, processStartToken } from "./daemon-state.mjs";
+
 export const FILE_LOCK_VERSION = 1;
 /** A fresh unreadable lock is a holder between create and write. */
 export const UNREADABLE_STALE_MS = 10_000;
@@ -115,6 +117,10 @@ function staleReason(path, existing, input) {
   }
   const alive = input.isAlive(Number(existing.pid));
   if (!alive) return "holder-gone";
+  // A reused pid is alive but is not this holder; its start token says so.
+  if (!pidMatches(Number(existing.pid), existing.pidStart, { isAlive: input.isAlive })) {
+    return "pid-reused";
+  }
   if (input.stealAlive) return "stolen";
   if (input.maxAgeMs > 0) {
     const started = Date.parse(String(existing.at ?? ""));
@@ -177,6 +183,7 @@ export function acquireFileLock(path, options = {}) {
     const holder = {
       version: FILE_LOCK_VERSION,
       pid: process.pid,
+      pidStart: processStartToken(process.pid),
       token,
       at: new Date(now).toISOString(),
     };

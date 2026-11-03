@@ -28,6 +28,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
+import { pidMatches } from "../foundation/daemon-state.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 import {
@@ -153,12 +154,14 @@ export function probeSupervisor(opts, deps = {}) {
   const controlMode = sessions?.controlMode === "external" ? "external" : "internal";
   const lock = readJson(join(stateDir, SESSION_LOCK_FILE));
   const starting =
-    pool.live !== true && Number.isInteger(lock?.pid) && isAlive(lock.pid);
+    pool.live !== true &&
+    Number.isInteger(lock?.pid) &&
+    pidMatches(lock.pid, lock.pidStart, { isAlive });
 
   const oneShot = loadContinueLock(opts.continueState);
+  const oneShotLive = oneShot !== null && pidMatches(oneShot.pid, oneShot.pidStart, { isAlive });
   const subscribeState = loadSubscribeState(subscribeStatePath(stateDir));
-  const subscribeLive =
-    Number.isInteger(subscribeState?.pid) && isAlive(subscribeState.pid);
+  const subscribeLive = pidMatches(subscribeState?.pid, subscribeState?.pidStart, { isAlive });
 
   const units = probeUnits(opts, deps);
   const record = readJson(recordPath(opts));
@@ -166,7 +169,7 @@ export function probeSupervisor(opts, deps = {}) {
     record !== null && Number.isInteger(record.poolPid) && isAlive(record.poolPid);
 
   let verdict;
-  if (oneShot !== null) verdict = "busy";
+  if (oneShotLive) verdict = "busy";
   else if (pool.live === true) verdict = "running";
   else if (starting) verdict = "starting";
   else if (units.any) verdict = "configured-idle";

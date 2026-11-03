@@ -7,7 +7,15 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
@@ -18,6 +26,8 @@ import {
   ensurePrivateDir,
   lockIsStale,
   pidAlive,
+  pidMatches,
+  processStartToken,
   readJsonFile,
   releaseLock,
   removeFile,
@@ -96,6 +106,78 @@ describe("daemon-state — pids and locks", () => {
     writeJsonFile(file, { pid: process.pid, startedAt: Date.now() });
     assert.equal(lockIsStale(file), false);
 
+    // A live pid is not proof on its own: the OS can reuse a pid for a
+    // different process. When the stored start token differs, the owner is dead.
+    if (processStartToken(process.pid) !== null) {
+      writeJsonFile(file, { pid: process.pid, pidStart: "another-process", startedAt: Date.now() });
+      assert.equal(lockIsStale(file), true, "the pid was reused by another process");
+    }
+
     assert.equal(lockIsStale(join(tempDir(), "absent.lock")), true);
+  });
+
+  it("writes the owner's start token into a new lock", () => {
+    const file = join(tempDir(), "writer.lock");
+    assert.equal(acquireLock(file).ok, true);
+    const held = JSON.parse(readFileSync(file, "utf8"));
+    assert.equal(Object.hasOwn(held, "pidStart"), true, "the record carries the token field");
+    releaseLock(file);
+  });
+});
+
+describe("daemon-state — durable publish", () => {
+  it("fsyncs the temp file before the rename publishes it", () => {
+    const file = join(tempDir(), "state.json");
+    const calls = [];
+    writeJsonFile(file, { round: 1 }, {
+      fsyncSync: () => calls.push("fsync"),
+      renameSync: (from, to) => {
+        calls.push("rename");
+        renameSync(from, to);
+      },
+    });
+    assert.deepEqual(calls, ["fsync", "rename"], "data reaches the disk before it is visible");
+    assert.deepEqual(readJsonFile(file), { round: 1 });
+  });
+
+  it("keeps the previous value readable when the publish fails", () => {
+    const file = join(tempDir(), "state.json");
+    writeJsonFile(file, { round: 1 });
+    assert.throws(
+      () =>
+        writeJsonFile(file, { round: 2 }, {
+          renameSync: () => {
+            throw Object.assign(new Error("injected publish failure"), { code: "EIO" });
+          },
+        }),
+      /injected publish failure/,
+    );
+    assert.deepEqual(readJsonFile(file), { round: 1 }, "the published value was never replaced");
+  });
+});
+
+describe("daemon-state — process start tokens", () => {
+  it("reads a stable token for a live pid and nothing for a dead one", () => {
+    const token = processStartToken(process.pid);
+    if (token === null) {
+      // A platform without /proc or ps degrades to pid-only liveness; there is
+      // no token behaviour to assert.
+      return;
+    }
+    assert.equal(typeof token, "string");
+    assert.notEqual(token, "");
+    assert.equal(processStartToken(process.pid), token, "a live process keeps its token");
+    assert.equal(processStartToken(2147483646), null, "a dead pid has no token");
+    assert.equal(processStartToken(0), null);
+  });
+
+  it("treats a live pid with a mismatched token as dead", () => {
+    const token = processStartToken(process.pid);
+    if (token === null) return;
+    assert.equal(pidMatches(process.pid, token), true);
+    assert.equal(pidMatches(process.pid, `${token}-other`), false, "the pid was reused");
+    assert.equal(pidMatches(process.pid, null), true, "no stored token degrades to pid-only");
+    assert.equal(pidMatches(process.pid, ""), true);
+    assert.equal(pidMatches(2147483646, token), false, "a dead pid stays dead");
   });
 });
