@@ -18,7 +18,7 @@
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -44,6 +44,9 @@ import {
   wakeCommand,
 } from "../../src/foundation/scheduling.mjs";
 import { emptySlaLedger, planSlaPatrol } from "../../src/foundation/sla-patrol.mjs";
+import { processStartToken } from "../../src/foundation/daemon-state.mjs";
+import { POOL_KILL_GRACE_MS, sendDeadlineMs } from "../../src/foundation/loop-state.mjs";
+import { main as supervisorMain } from "../../src/orchestrator/supervisor.mjs";
 import { agentPaths, defaultRepo, parseArgs, selectMode } from "../../src/orchestrator/options.mjs";
 import { loadSlaLedger, readPeerLastOk, readPeerMarker, saveLastOk, saveSlaLedger } from "../../src/orchestrator/runtime.mjs";
 import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick } from "../../src/orchestrator/runners.mjs";
@@ -2333,6 +2336,100 @@ describe("the scheduler's two clocks", () => {
     const opts = parseArgs(["--actor-kind", "claude", "--state", "/tmp/state.json"], ENV);
     assert.equal(opts.continueState, "/tmp/continue.state.json");
     assert.notEqual(opts.continueState, opts.state);
+  });
+});
+
+/** `kill(pid, 0)`, the liveness probe the ping itself uses. */
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Poll a predicate; the SIGKILL is delivered asynchronously. */
+async function waitUntil(predicate, ms = 3_000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (predicate()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return predicate();
+}
+
+describe("the ping is the pool's single kill authority", () => {
+  it("SIGTERMs once, then SIGKILLs a pool that survives, and acts no further", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-ping-kill-"));
+    // A SIGTERM-trapping pool: the blocked-pool case the second signal exists for.
+    const child = spawn(
+      process.execPath,
+      ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);"],
+      { stdio: "ignore" },
+    );
+    try {
+      const statePath = join(dir, "supervisor.state.json");
+      const sessionPath = join(dir, "sessions.state.json");
+      const logPath = join(dir, "supervisor.log");
+      const markerPath = join(dir, "pool-wedge.json");
+      writeFileSync(statePath, `${JSON.stringify({ version: 1, running: {} })}\n`);
+      const turn = 30 * 60 * 1_000;
+      writeFileSync(
+        sessionPath,
+        JSON.stringify({
+          version: 3,
+          poolPid: child.pid,
+          poolPidStart: processStartToken(child.pid),
+          phase: "running",
+          tickStartedAt: new Date(
+            Date.now() - (sendDeadlineMs(turn) + POOL_KILL_GRACE_MS + 5_000),
+          ).toISOString(),
+          heartbeatAt: new Date().toISOString(),
+          turnTimeoutMs: turn,
+          projects: {},
+        }),
+      );
+      const argv = [
+        "--ping-only",
+        "--once",
+        "--actor-kind",
+        "claude",
+        "--agent",
+        "alice",
+        "--state",
+        statePath,
+        "--session-state",
+        sessionPath,
+        "--log",
+        logPath,
+      ];
+      const env = { ...process.env, HOME: dir };
+      const io = { out: () => {}, err: () => {} };
+
+      assert.equal(await supervisorMain(argv, env, io), 0);
+      const first = JSON.parse(readFileSync(markerPath, "utf8"));
+      assert.ok(Number.isFinite(Date.parse(first.wedgedKillAt)), "the SIGTERM is recorded");
+      assert.equal(alive(child.pid), true, "the trapped SIGTERM does not stop the pool");
+
+      assert.equal(await supervisorMain(argv, env, io), 0);
+      assert.ok(await waitUntil(() => !alive(child.pid)), "the later ping escalates to SIGKILL");
+      const second = JSON.parse(readFileSync(markerPath, "utf8"));
+      assert.equal(second.wedgedKillAt, first.wedgedKillAt, "one SIGTERM per wedge");
+      assert.ok(Number.isFinite(Date.parse(second.wedgedSigkillAt)), "the escalation is recorded");
+
+      // A third pass finds a gone pid: the marker must not move.
+      const before = readFileSync(markerPath, "utf8");
+      assert.equal(await supervisorMain(argv, env, io), 0);
+      assert.equal(readFileSync(markerPath, "utf8"), before);
+    } finally {
+      try {
+        process.kill(child.pid, "SIGKILL");
+      } catch {
+        /* already gone */
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

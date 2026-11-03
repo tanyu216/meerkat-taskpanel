@@ -875,11 +875,11 @@ export const DEFAULT_REWORK_MAX_ROUNDS = 4;
  * The CLI's own HTTP call is bounded at 30 s (`foundation/transport/http.mjs`),
  * so this is a second, outer bound: a `taskctl` that hangs before or after the
  * HTTP call must not wedge the tick, which would hold the continue lock until
- * its two-hour staleness bound. It is deliberately four times the inner bound —
- * a slow board is not a hung one. No configuration key: a deployment that needs
- * a different value is a recorded decision, not a knob.
+ * its two-hour staleness bound. Twice the inner bound is the tolerance: a slow
+ * board is not a hung one. No configuration key: a deployment that needs a
+ * different value is a recorded decision, not a knob.
  */
-export const DEFAULT_CLI_TIMEOUT_MS = 120_000;
+export const CLI_TIMEOUT_MS = 60_000;
 
 /**
  * How long a review card may sit without a readable verdict before the loop

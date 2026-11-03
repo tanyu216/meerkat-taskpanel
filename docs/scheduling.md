@@ -259,8 +259,9 @@ is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `1800
 | tick interval (the `continue` unit) | 10 min | `src/orchestrator/options.mjs` |
 | queue `recoverStaleCards` | `2 × turn` | `src/orchestrator/session.mjs` |
 | pool `wedged` verdict | `turn + POOL_WEDGE_MARGIN_MS` (default 32 min) | `src/foundation/loop-state.mjs` |
+| ping kill deadline (the only authority) | `wedged + POOL_KILL_GRACE_MS` (60 s); starting at `POOL_START_BUDGET_MS + 60 s` | `src/foundation/loop-state.mjs`, `src/orchestrator/supervisor.mjs` |
 | pool start budget / reattach bound | 5 min / `min(turn, 120 s)` | `src/foundation/loop-state.mjs`, `src/orchestrator/session.mjs` |
-| `runCli` spawn bound | 120 s (`DEFAULT_CLI_TIMEOUT_MS`) | `src/orchestrator/runtime.mjs` |
+| `runCli` spawn bound | 60 s (`CLI_TIMEOUT_MS`) | `src/orchestrator/runtime.mjs` |
 | admission deferral backoff | 30 s → 1 h, from the 3rd failure | `src/orchestrator/deferrals.mjs` |
 | ledger live-row reap | 2 h (`LEDGER_STALE_MS`) | `src/foundation/scheduling.mjs` |
 | pool heartbeat / stale | 15 s / 90 s (6 beats) | `src/foundation/loop-state.mjs` |
@@ -274,6 +275,11 @@ The contract:
   pulse windows and still ends before the ledger reclaims a live row.
 - `CONTINUE_INTERVAL < TURN_DEFAULT`; `PATROL_STALE_MS = CLAIM_STALE_SAME_MS`;
   `POOL_STALE_MS > POOL_HEARTBEAT_MS`.
+- `sendDeadlineMs > turn` and `killDeadlineMs = sendDeadlineMs + POOL_KILL_GRACE_MS`; the
+  starting phase's kill deadline is `POOL_START_BUDGET_MS + POOL_KILL_GRACE_MS`. A legitimate
+  turn is never a kill, and the ping waits one more minute after the verdict says `wedged`.
+- `CLI_TIMEOUT_MS = 60 s` is the outer child bound and is longer than the CLI's own 30 s HTTP
+  bound (`REQUEST_TIMEOUT_MS`), so a slow board is not a hung one.
 
 **`awaiting` is exempt from three scans**, by design:
 
@@ -313,8 +319,8 @@ policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
 | Worker session unrestorable | session record | first failure | row failed, claim released, `blocked/resource` |
 | Question turn | director row dispatches | 2 | left for the human; `question_stale` + doctor |
 | Route turn | route row dispatches | 2 | the card is parked `blocked/decision` (never assigned) |
-| Wedged pool | `sessions.state.json` `tickStartedAt` / `startStartedAt` | `turn + POOL_WEDGE_MARGIN_MS` / start budget | ping sends SIGTERM; the unit restarts it |
-| Hung `taskctl` | `runCli` | 120 s | the pass fails and releases the tick lock |
+| Wedged pool | `sessions.state.json` `tickStartedAt` / `startStartedAt` | verdict at `turn + POOL_WEDGE_MARGIN_MS` / start budget; ping acts 60 s later | one `pool_killed` + SIGTERM, recorded in `pool-wedge.json`; SIGKILL on a later ping if it survives; the unit restarts it |
+| Hung `taskctl` | `runCli` | 60 s (`CLI_TIMEOUT_MS`) | the child is killed with SIGKILL; the pass fails and releases the tick lock |
 
 **The hold is an epoch, not a latch.** `meta.loop_hold_round` records the round the card was
 held at; the next hold is due only after another full bound. A human who moves the card back
@@ -332,10 +338,16 @@ The requested E-code rides in the `question` comment and `meta.loop_hold_e_code`
 `wedged` (`starting` past the start budget, or `tickStartedAt` past `turn +
 POOL_WEDGE_MARGIN_MS`) say which kind of live it is. Only `gone` — a dead pid or a start-token
 mismatch — is absent, and the heartbeat never decides it. A second pool is refused in every
-one of them, and only `wedged` is stopped by the ping clock — `starting` and `unresponsive` may
-still recover. A row whose agent child is alive is never recovered: `recoverStaleCards` reads
-the session record, so a SIGKILLed pool cannot put a second worker on a card its orphan still
-holds. The one decision is `poolVerdict` in `src/foundation/loop-state.mjs`.
+one of them, and only `wedged` is acted on by the ping clock — `starting` and `unresponsive` may
+still recover. The verdict is not yet permission to kill: the ping acts one minute later
+(`POOL_KILL_GRACE_MS`), SIGTERMs once, and SIGKILLs only if the same pool survives to a later
+ping; the wedge identity is recorded in `pool-wedge.json` so one wedge is acted on once. No
+in-process timer kills or exits a pool — a blocked event loop would not run it, so the ping,
+a separate process, is the sole authority. `lastTickOkAt` is display only: a fast-failing tick
+is degraded, not wedged. A row whose agent child is alive is never recovered:
+`recoverStaleCards` reads the session record, so a SIGKILLed pool cannot put a second worker on
+a card its orphan still holds. The one verdict is `poolVerdict` and the one kill decision is
+`wedgeKillAction`, both in `src/foundation/loop-state.mjs`.
 
 ## Atomic claim = the single dispatch source
 
@@ -632,7 +644,7 @@ Every dependency's failure is named; nothing degrades silently.
 | worker session cannot be restored | row failed, claim released, card `blocked/resource` with a question — never a 30-minute re-dispatch loop |
 | dispatch failed after the claim | the claim is handed back to `todo` immediately; at three consecutive failures the card is parked |
 | a card keeps coming back | the board's plan emits `hold_card`; the card is `blocked/decision` with a question, and a human move starts a fresh epoch |
-| resident pool wedged | `loop doctor`/`status` report `wedged`; the ping clock SIGTERMs it (`--recover-wedged=no` opts out) |
+| resident pool wedged | `loop doctor`/`status` report `wedged`; one minute later the ping clock SIGTERMs it once and SIGKILLs on a later ping if needed (`--recover-wedged=no` opts out) |
 | stale claim | `--recover-stale` offers it; the claim itself is `issue claim` |
 | old roles tree / old `ROLES_DIR` shape | a directory with no `role.json` is reported as deprecated by `/setup-meerkat`; never deleted automatically. A directory of role directories is a valid custom team and replaces discovery |
 
@@ -1898,6 +1910,7 @@ directory**:
 ├── cards.queue.json              runtime (claim → handoff/decision dispatch queue)
 ├── workspaces.json               runtime (per-card worktree/branch records)
 ├── deferrals.json                runtime (consecutive admission failures per card)
+├── pool-wedge.json               runtime (ping-owned: the wedge it signalled, `wedgedKillAt`/`wedgedSigkillAt`)
 ├── subagents.state.json          runtime (ledger: worker/reviewer/director id → project, actor kind, role, card, status)
 └── worker-transcripts/           runtime (bounded worker turn transcript per (kind, worker:<card>:r<round>),
                                   used only to replay a session the native CLI can no longer resume)

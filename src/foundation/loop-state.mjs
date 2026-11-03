@@ -40,6 +40,9 @@ export const STATE_FILES = Object.freeze({
   sessionLock: "session.lock",
   runLock: "run.lock",
   sessionRecord: "supervisor.session.json",
+  // Ping-owned: the last wedge it acted on (`wedgedKillAt`). Kept out of
+  // `sessions.state.json` because the pool's heartbeat rewrites that file.
+  poolWedge: "pool-wedge.json",
 });
 
 /** Statuses a legacy ledger row may carry while it still claims a concurrency slot. */
@@ -81,6 +84,13 @@ export const POOL_WEDGE_MARGIN_MS = 2 * 60_000;
 /** The most the background reattach pass may spend, even on a long turn. */
 export const POOL_REATTACH_MAX_MS = 2 * 60_000;
 
+/**
+ * The grace an outside authority gives a wedged phase before it acts. The
+ * verdict calls a phase `wedged` at its deadline; the ping waits one more
+ * minute so a legitimate turn that is merely finishing is never killed.
+ */
+export const POOL_KILL_GRACE_MS = 60_000;
+
 /** The six states, in one closed list. */
 export const POOL_VERDICTS = Object.freeze([
   "running",
@@ -115,13 +125,23 @@ export function sendDeadlineMs(turnTimeoutMs) {
 
 /**
  * When an outside authority may act on a wedged pool: after the send has had
- * its own grace. The in-process watchdog (TP-0030) observes only.
+ * its own grace. The ping clock is the only authority that reads it; no
+ * in-process timer acts on a pool.
  *
  * @param {unknown} turnTimeoutMs
  * @returns {number}
  */
 export function killDeadlineMs(turnTimeoutMs) {
-  return sendDeadlineMs(turnTimeoutMs) + 60_000;
+  return sendDeadlineMs(turnTimeoutMs) + POOL_KILL_GRACE_MS;
+}
+
+/**
+ * When the outside authority may act on a pool stuck in the starting phase.
+ *
+ * @returns {number}
+ */
+export function startKillDeadlineMs() {
+  return POOL_START_BUDGET_MS + POOL_KILL_GRACE_MS;
 }
 
 /**
@@ -245,11 +265,153 @@ export function poolVerdict(input = {}) {
   return { ...base, verdict: "running", live: true, reason: null };
 }
 
+/** A timestamp as canonical ISO, or `null` when it is not a time. */
+function isoOf(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const at = typeof value === "number" ? value : Date.parse(String(value));
+  return Number.isFinite(at) ? new Date(at).toISOString() : null;
+}
+
+/**
+ * The ping's one kill decision — the only authority allowed to stop a pool.
+ *
+ * A phase is *wedged* at its deadline (the same threshold `poolVerdict` uses);
+ * the ping acts only after one more `POOL_KILL_GRACE_MS`, so a turn that is
+ * merely finishing is never killed. The two phases have separate deadlines:
+ * the starting phase at `POOL_START_BUDGET_MS` and a tick in flight at
+ * `sendDeadlineMs`. `lastTickOkAt` is deliberately not an input: a fast-failing
+ * tick is degraded, not wedged.
+ *
+ * The marker makes the decision act at most once per wedge. A wedge's identity
+ * is the pool (`poolPid` + start token) and the phase timestamp; a restarted
+ * pool or a new phase is a new wedge, so a stale marker never applies. The
+ * first due ping returns `sigterm`; a later ping for the same live wedge
+ * returns `sigkill`, and after that the wedge is closed.
+ *
+ * @param {{
+ *   poolPid?: unknown,
+ *   poolPidStart?: unknown,
+ *   phase?: unknown,
+ *   startStartedAt?: unknown,
+ *   tickStartedAt?: unknown,
+ *   turnTimeoutMs?: unknown,
+ *   marker?: object|null,
+ *   now?: () => number,
+ *   isAlive?: (pid: number) => boolean,
+ * }} [input]
+ * @returns {{
+ *   action: "none"|"sigterm"|"sigkill",
+ *   reason: string,
+ *   poolPid: number|null,
+ *   phase: "starting"|"tick"|null,
+ *   startedAt: string|null,
+ *   ageMs: number|null,
+ *   deadlineMs: number|null,
+ *   marker: object|null,
+ * }}
+ */
+export function wedgeKillAction(input = {}) {
+  const now = input.now ?? Date.now;
+  const isAlive = input.isAlive ?? pidAlive;
+  const nowMs = typeof now === "function" ? now() : Number(now);
+  const poolPid = integerOrNull(input.poolPid);
+  const poolPidStart = input.poolPidStart ?? null;
+  const marker = input.marker !== null && typeof input.marker === "object" ? input.marker : null;
+  const none = (reason, extra = {}) => ({
+    action: "none",
+    reason,
+    poolPid: poolPid ?? null,
+    phase: null,
+    startedAt: null,
+    ageMs: null,
+    deadlineMs: null,
+    marker: null,
+    ...extra,
+  });
+
+  if (poolPid === null || !pidMatches(poolPid, poolPidStart, { isAlive })) {
+    return none("the pool is gone");
+  }
+
+  // The starting phase is the stronger fact: a pool that has not finished
+  // starting has no tick to judge.
+  let wedge;
+  let rawStartedAt;
+  let phaseDeadline;
+  if (input.phase === "starting") {
+    wedge = "starting";
+    rawStartedAt = input.startStartedAt;
+    phaseDeadline = POOL_START_BUDGET_MS;
+  } else {
+    wedge = "tick";
+    rawStartedAt = input.tickStartedAt;
+    phaseDeadline = sendDeadlineMs(input.turnTimeoutMs);
+  }
+  const startedAt = isoOf(rawStartedAt);
+  const age = ageMs(rawStartedAt, nowMs);
+  if (age === null || startedAt === null) {
+    return none(
+      wedge === "tick"
+        ? "no tick in flight; lastTickOkAt is not a kill signal"
+        : "no start time; the deadline cannot be proven",
+    );
+  }
+  const deadlineMs = phaseDeadline + POOL_KILL_GRACE_MS;
+  if (age <= phaseDeadline) {
+    return none("inside the phase deadline", { phase: wedge, startedAt, ageMs: age, deadlineMs });
+  }
+  if (age <= deadlineMs) {
+    return none("inside the 60 s grace", { phase: wedge, startedAt, ageMs: age, deadlineMs });
+  }
+
+  const identity = { poolPid, poolPidStart, phase: wedge, startedAt };
+  const sameWedge =
+    marker !== null &&
+    Number(marker.poolPid) === poolPid &&
+    String(marker.poolPidStart ?? "") === String(poolPidStart ?? "") &&
+    marker.phase === wedge &&
+    marker.startedAt === startedAt;
+  if (sameWedge) {
+    if (typeof marker.wedgedSigkillAt === "string" && marker.wedgedSigkillAt !== "") {
+      return none("already killed", { phase: wedge, startedAt, ageMs: age, deadlineMs });
+    }
+    const killedAt = Date.parse(String(marker.wedgedKillAt ?? ""));
+    if (Number.isFinite(killedAt) && nowMs <= killedAt) {
+      return none("waiting for the next ping", { phase: wedge, startedAt, ageMs: age, deadlineMs });
+    }
+    return {
+      action: "sigkill",
+      reason: `still alive ${Math.round(age / 1000)}s into the ${wedge} wedge`,
+      poolPid,
+      phase: wedge,
+      startedAt,
+      ageMs: age,
+      deadlineMs,
+      marker: {
+        ...identity,
+        wedgedKillAt: marker.wedgedKillAt,
+        wedgedSigkillAt: new Date(nowMs).toISOString(),
+      },
+    };
+  }
+
+  return {
+    action: "sigterm",
+    reason: `${wedge} wedge for ${Math.round(age / 1000)}s`,
+    poolPid,
+    phase: wedge,
+    startedAt,
+    ageMs: age,
+    deadlineMs,
+    marker: { ...identity, wedgedKillAt: new Date(nowMs).toISOString() },
+  };
+}
+
 /**
  * The state siblings that live beside `continue.state.json`.
  *
  * @param {string} stateDir
- * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string}}
+ * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string, poolWedge: string}}
  */
 export function statePathsForDir(stateDir) {
   const dir = String(stateDir);
@@ -259,5 +421,6 @@ export function statePathsForDir(stateDir) {
     workflowLedger: join(dir, STATE_FILES.workflowLedger),
     slaLastOk: join(dir, STATE_FILES.slaLastOk),
     deferrals: join(dir, STATE_FILES.deferrals),
+    poolWedge: join(dir, STATE_FILES.poolWedge),
   };
 }

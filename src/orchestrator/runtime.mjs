@@ -24,8 +24,9 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { DEFAULT_CLI_TIMEOUT_MS, EVENT_STREAM_LINE } from "../foundation/constants.mjs";
+import { CLI_TIMEOUT_MS, EVENT_STREAM_LINE } from "../foundation/constants.mjs";
 import { pidMatches, processStartToken } from "../foundation/daemon-state.mjs";
+import { wedgeKillAction } from "../foundation/loop-state.mjs";
 import {
   createFileSink,
   createLogger as createFoundationLogger,
@@ -158,12 +159,12 @@ export function runCli(opts, agent, args, { input = null, actorKind = null } = {
     encoding: "utf8",
     input,
     env,
-    timeout: Number(opts.cliTimeoutMs ?? DEFAULT_CLI_TIMEOUT_MS),
+    timeout: Number(opts.cliTimeoutMs ?? CLI_TIMEOUT_MS),
     killSignal: "SIGKILL",
   });
   if (run.error) {
     if (run.error.code === "ETIMEDOUT") {
-      return { ok: false, error: `taskctl timed out after ${opts.cliTimeoutMs ?? DEFAULT_CLI_TIMEOUT_MS}ms` };
+      return { ok: false, error: `taskctl timed out after ${opts.cliTimeoutMs ?? CLI_TIMEOUT_MS}ms` };
     }
     return { ok: false, error: run.error.message };
   }
@@ -683,38 +684,86 @@ export function createLogger(opts) {
 // ---------------------------------------------------------------------------
 
 /**
- * Stop a **wedged** resident pool so the service manager restarts it.
+ * The ping's only enforcement: stop a pool whose phase has outlived its
+ * deadline plus the one-minute grace.
  *
- * Only `wedged` qualifies. `starting` is a legitimate startup, `unresponsive`
- * is a blocked event loop that may still recover, and `running` is healthy —
- * none of them is stopped by this function. The killed pool's agent children
- * are protected from re-dispatch by `recoverStaleCards`' live-owner check, so a
- * restart cannot put a second worker on a card the orphan is still holding.
+ * This is the **single kill authority** in the loop. It runs in the ping
+ * process, so it still works when the pool's event loop is blocked and no
+ * in-process timer can fire. The pure decision (`wedgeKillAction`) owns the
+ * thresholds and the once-per-wedge identity; this function signals, records
+ * the marker and logs. A failed signal logs one `error` and leaves the marker
+ * unwritten, so the next ping retries; a failed marker write costs a repeated
+ * SIGTERM, never a second process.
  *
  * @param {{
- *   pool: object,
+ *   state?: object|null,
+ *   marker?: object|null,
+ *   now?: () => number,
+ *   isAlive?: (pid: number) => boolean,
  *   kill?: (pid: number, signal: string) => void,
+ *   saveMarker?: (marker: object) => void,
  *   log?: (line: string, meta?: object) => void,
- * }} input
- * @returns {{killed: boolean, pid?: number, reason?: string}}
+ * }} [input]
+ * @returns {{acted: boolean, action: string, signal?: string, poolPid?: number, phase?: string, ageMs?: number, reason?: string, error?: string}}
  */
-export function recoverWedgedPool(input = {}) {
-  const { pool, kill = (pid, signal) => process.kill(pid, signal), log = () => {} } = input;
-  if (pool?.live !== true || pool?.verdict !== "wedged" || !Number.isInteger(pool?.poolPid)) {
-    return { killed: false, reason: "not wedged" };
+export function killWedgedPool(input = {}) {
+  const {
+    state = null,
+    marker = null,
+    now = Date.now,
+    isAlive = isProcessAlive,
+    kill = (pid, signal) => process.kill(pid, signal),
+    saveMarker = () => {},
+    log = () => {},
+  } = input;
+  const decision = wedgeKillAction({
+    ...(state !== null && typeof state === "object" ? state : {}),
+    marker,
+    now,
+    isAlive,
+  });
+  if (decision.action === "none") {
+    return { acted: false, action: "none", reason: decision.reason };
+  }
+  const signal = decision.action === "sigterm" ? "SIGTERM" : "SIGKILL";
+  try {
+    kill(decision.poolPid, signal);
+  } catch (err) {
+    log(`ping: could not stop wedged pool ${decision.poolPid} with ${signal}: ${err.message}`, {
+      level: "error",
+      event: "pool_killed",
+    });
+    return {
+      acted: false,
+      action: decision.action,
+      signal,
+      poolPid: decision.poolPid,
+      error: err.message,
+    };
   }
   try {
-    kill(pool.poolPid, "SIGTERM");
-    log(
-      `ping: pool pid ${pool.poolPid} is wedged (${pool.reason ?? "unknown"}) — ` +
-        "sent SIGTERM; the service manager restarts it",
-      { level: "warn" },
-    );
-    return { killed: true, pid: pool.poolPid };
+    saveMarker(decision.marker);
   } catch (err) {
-    log(`ping: could not stop wedged pool ${pool.poolPid}: ${err.message}`, { level: "error" });
-    return { killed: false, pid: pool.poolPid, reason: err.message };
+    log(`ping: could not record the wedge for pid ${decision.poolPid}: ${err.message}`, {
+      level: "error",
+      event: "pool_killed",
+    });
   }
+  log(
+    decision.action === "sigterm"
+      ? `ping: pool pid ${decision.poolPid} is wedged (${decision.reason}) — ` +
+          "sent SIGTERM; the service manager restarts it"
+      : `ping: pool pid ${decision.poolPid} survived SIGTERM (${decision.reason}) — sent SIGKILL`,
+    { level: "error", event: "pool_killed", phase: decision.phase, age_ms: decision.ageMs },
+  );
+  return {
+    acted: true,
+    action: decision.action,
+    signal,
+    poolPid: decision.poolPid,
+    phase: decision.phase,
+    ageMs: decision.ageMs,
+  };
 }
 
 /**

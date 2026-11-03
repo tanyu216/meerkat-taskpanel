@@ -21,6 +21,7 @@ import { describe, it } from "node:test";
 import {
   CLAIM_STALE_ANY_MS,
   CLAIM_STALE_SAME_MS,
+  CLI_TIMEOUT_MS,
   HEARTBEAT_FRESH_MS,
 } from "../../src/foundation/constants.mjs";
 import {
@@ -29,10 +30,14 @@ import {
   planPatrol,
 } from "../../src/foundation/scheduling.mjs";
 import {
+  POOL_KILL_GRACE_MS,
+  POOL_START_BUDGET_MS,
   POOL_VERDICTS,
   killDeadlineMs,
   sendDeadlineMs,
+  startKillDeadlineMs,
 } from "../../src/foundation/loop-state.mjs";
+import { REQUEST_TIMEOUT_MS } from "../../src/foundation/transport/http.mjs";
 import { POOL_HEARTBEAT_MS, POOL_STALE_MS } from "../../src/orchestrator/session.mjs";
 
 /** The documented turn default and the bounds `src/orchestrator/options.mjs` enforces. */
@@ -88,6 +93,25 @@ describe("scheduling/time-contract — the clocks relate", () => {
       "wedged",
       "gone",
     ]);
+  });
+
+  it("the CLI child bound is 60 s, above the CLI's own HTTP bound", () => {
+    assert.equal(CLI_TIMEOUT_MS, 60_000);
+    assert.ok(CLI_TIMEOUT_MS > REQUEST_TIMEOUT_MS, "the outer bound outlasts the inner one");
+  });
+
+  it("the ping's kill grace sits after both phase deadlines", () => {
+    assert.equal(POOL_KILL_GRACE_MS, 60_000);
+    assert.equal(
+      startKillDeadlineMs(),
+      POOL_START_BUDGET_MS + POOL_KILL_GRACE_MS,
+      "the starting phase gets the same grace as a tick",
+    );
+    for (const turn of [TURN_MIN_MS, TURN_DEFAULT_MS, TURN_MAX_EXCLUSIVE_MS - 1]) {
+      assert.equal(killDeadlineMs(turn), sendDeadlineMs(turn) + POOL_KILL_GRACE_MS);
+      assert.ok(killDeadlineMs(turn) > sendDeadlineMs(turn));
+      assert.ok(killDeadlineMs(turn) > turn, "the grace never shortens a legitimate turn");
+    }
   });
 
   it("patrol never reports an awaiting card as stale — it holds a dormant claim", () => {

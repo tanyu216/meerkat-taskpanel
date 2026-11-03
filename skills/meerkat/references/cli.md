@@ -541,8 +541,9 @@ records who opened the loop; `--resident <auto|no>` says whether a resident pool
 `--project-concurrency` and `--project-idle-ms` bound the pool. `--max-concurrency` caps the
 whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) decides the
 claim pool; `--recover-stale <yes|no>` recovers stale in-progress claims, and
-`--recover-wedged <yes|no>` lets the ping clock stop a pool whose dispatch tick outlived
-its send deadline (`turn + 2 min`; the service manager restarts it). `--workflow <yes|no>` applies the
+`--recover-wedged <yes|no>` lets the ping clock stop a wedged pool one minute past its
+phase deadline (`turn + 3 min`, or the 5-minute start budget plus one); it SIGTERMs once per
+wedge, SIGKILLs on a later ping if the pool survives, and the service manager restarts it. `--workflow <yes|no>` applies the
 board's plan; the review card's assignee selects the reviewer role, and `--reviewer` is a
 deprecated no-op;
 `--workflow-max-actions` and `--review-aging-minutes` bound workflow execution and

@@ -98,6 +98,7 @@ export const EVENT_LEVELS = Object.freeze({
   // Exception boundaries.
   process_crash: "error",
   pool_start_failed: "error",
+  pool_killed: "error",
   server_error: "error",
   sse_stream_failed: "error",
   container_sweep_failed: "error",
