@@ -27,6 +27,7 @@ import {
   DEFAULT_REVIEW_AGING_MS,
   DEFAULT_REWORK_MAX_ROUNDS,
   DEFAULT_WORKFLOW_MAX_ACTIONS,
+  DIRECTOR_ACTOR_ID,
 } from "./constants.mjs";
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
@@ -903,13 +904,18 @@ export function buildReviewEnvelope(input) {
 }
 
 /**
- * The prompt the director lane gets for the **question lane**.
+ * The prompt the Director lane gets for the **question lane**.
  *
  * A worker that cannot decide writes an agent `question` comment and holds with
- * `taskctl issue wait`, and the loop hands the question here. The director
+ * `taskctl issue wait`, and the loop hands the question here. The Director
  * answers with a `note` and releases the card to the queue, or escalates E1–E5
  * to the human. The release is what the worker waits for. It never spawns a
  * subagent for this row and never moves a card to `done`.
+ *
+ * Every row's `--agent` is `DIRECTOR_ACTOR_ID`: the lane signs its own writes,
+ * exactly as a worker signs its card. A row's `agent` field is the asking
+ * worker (its origin), not attribution. `input.actorKind` is the kind actually
+ * running the lane, so a kind-fallback install names itself honestly.
  *
  * `rows` carry the queue row's fields: `card` (the ref), `project`,
  * `target_dir`, `agent`, `question_id`, `question`, `asked_at`.
@@ -924,13 +930,13 @@ export function buildQuestionPrompt(rows, input = {}) {
   const project = String(first.project ?? "the project");
   const dir = String(first.target_dir ?? "");
   const lines = [
-    `You are the director for ${project} at ${dir}.`,
+    `You are the Director for ${project} at ${dir}.`,
     "These rows need a decision. Answer or route them here — never spawn a subagent,",
     "never claim a card and never move one to done.",
     "",
   ];
   rows.forEach((row, index) => {
-    const flags = `--agent ${row.agent} --actor-kind ${actorKind}`;
+    const flags = `--agent ${DIRECTOR_ACTOR_ID} --actor-kind ${actorKind}`;
     if (row.triage === true) {
       const round = Number(row.round ?? row.delivery_round ?? 1);
       const title = row.title ? ` — ${row.title}` : "";
@@ -992,7 +998,7 @@ export function buildQuestionPrompt(rows, input = {}) {
       `   Then re-read the trail: taskctl comment list ${row.card} --limit 20 --json ${flags}`,
       "   If a later comment already answers it and the card is still `in_progress`,",
       `   do NOT answer again — release the card: taskctl issue move ${row.card} todo ${flags}`,
-      "   (A director that writes a note without releasing leaves the question open and this",
+      "   (A Director that writes a note without releasing leaves the question open and this",
       "   row is retried; the release is what the worker waits for.)",
       `   Answer you can decide: taskctl comment add ${row.card} --kind note --body "decision: ..." ${flags}`,
       `   then release the card to the queue: taskctl issue move ${row.card} todo ${flags}`,

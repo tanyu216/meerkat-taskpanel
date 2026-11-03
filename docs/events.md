@@ -367,7 +367,10 @@ A name neither list knows is a newer board and is ignored, never an error.
 **Suppression is by actor identity, not by a role word:**
 
 - a `human` event is never suppressed;
-- events authored by the board itself (`actor_id` is `system` or the workflow pass's `Orchestrator`) are ignored;
+- events authored by the board itself (`actor_id` is `system` or the workflow pass's `Orchestrator`)
+  are ignored;
+- events authored by the decision lane (`actor_id` is `Director`) are ignored, except the
+  `in_progress → todo` release, which is that lane's answer and wakes the worker;
 - events authored by this loop's own agents (`actor_id ∈ --agent`, non-human) are ignored, which
   covers claims and the workflow pass.
 
@@ -660,7 +663,8 @@ surface.
 
 This matters to the stream because suppression is by actor, not by a role word:
 
-- the loop ignores its own agents' writes and the board's housekeeping by `actor_id`;
+- the loop ignores its own agents' writes, the decision lane's `Director` writes, and the
+  board's housekeeping by `actor_id`;
 - a human's write is never suppressed;
 - an unknown actor kind is still a valid actor: it simply is not `human` and not `system`.
 

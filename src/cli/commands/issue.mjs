@@ -914,9 +914,10 @@ export const COMMANDS = [
         if (status !== null && status !== "in_progress" && status !== "todo") return show("moved");
         if (status === "in_progress" && !ownedByMe) return show("moved");
 
-        // The release is the answer. A note — the director's or the worker's own
-        // — does not end the hold: the two share one board identity, so a comment
-        // can never prove the ladder answered, and the retry turn owns the release.
+        // The release is the answer. A note — the Director's or the worker's own
+        // — does not end the hold: the settle is the release, not the author, so
+        // a comment can never prove the ladder answered, and the retry turn owns
+        // the release.
         const released = status === "todo" || releasedAfterQuestion(task, question);
         if (released) {
           const answer = waitAnswerText(comments);

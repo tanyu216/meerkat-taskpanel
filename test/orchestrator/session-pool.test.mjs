@@ -601,10 +601,12 @@ describe("session pool", () => {
     assert.ok(director, "a question wakes the director lane, not the reviewer lane");
     assert.equal(
       director.prompts[0],
-      "/meerkat-director\nFlags: --actor-kind=claude",
-      "a fresh director session opens by loading its skill",
+      "/meerkat-director\nFlags: --agent Director --actor-kind=claude",
+      "a fresh director session opens by loading its skill with the lane's own attribution",
     );
-    assert.match(director.prompts[1], /You are the director/);
+    assert.match(director.prompts[1], /You are the Director/);
+    assert.match(director.prompts[1], /--agent Director --actor-kind claude/);
+    assert.doesNotMatch(director.prompts[1], /--agent alice/);
     assert.match(director.prompts[1], /Which option\?/);
     assert.match(director.prompts[1], /never spawn a subagent/);
     assert.match(director.prompts[1], /--kind note/);
@@ -645,7 +647,8 @@ describe("session pool", () => {
     assert.equal(director.skillPath, join(skillDir, "SKILL.md"));
     assert.equal(director.prompts.length, 1, "the skill is loaded at open, not by an extra turn");
     assert.doesNotMatch(director.prompts[0], /^\/meerkat-director/);
-    assert.match(director.prompts[0], /You are the director/);
+    assert.match(director.prompts[0], /You are the Director/);
+    assert.match(director.prompts[0], /--agent Director --actor-kind codex/);
     assert.doesNotMatch(director.prompts[0], /Decision policy:/);
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
 
@@ -695,7 +698,9 @@ describe("session pool", () => {
     assert.ok(director, "the director lane opens");
     assert.equal(director.skillPath, join(skillDir, "SKILL.md"), "the codex skill is loaded at open");
     assert.doesNotMatch(director.prompts[0], /^\/meerkat-director/, "not the Claude opener");
-    assert.match(director.prompts[0], /You are the director/);
+    assert.match(director.prompts[0], /You are the Director/);
+    assert.match(director.prompts[0], /--agent Director --actor-kind codex/);
+    assert.doesNotMatch(director.prompts[0], /--actor-kind claude/);
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
     await pool.stop();
   });
@@ -1008,8 +1013,9 @@ describe("session pool", () => {
     await pool.routeQuestionsNow();
     const director = fake.opened.find((handle) => handle.role === "director" && handle.cwd === f.app);
     assert.ok(director, "a route row wakes the director");
-    assert.equal(director.prompts[0], "/meerkat-director\nFlags: --actor-kind=claude");
+    assert.equal(director.prompts[0], "/meerkat-director\nFlags: --agent Director --actor-kind=claude");
     assert.match(director.prompts[1], /unowned todo/);
+    assert.match(director.prompts[1], /--agent Director --actor-kind claude/);
     assert.match(director.prompts[1], /issue assign T-7 --assignee <role>/);
     assert.match(director.prompts[1], /goes to the Worker role/);
     enqueueCard(join(f.dir), {
@@ -1030,6 +1036,7 @@ describe("session pool", () => {
       "the resident director session loads its skill once",
     );
     assert.match(director.prompts[2], /unowned todo/);
+    assert.match(director.prompts[2], /--agent Director --actor-kind claude/);
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
     await pool.stop();
   });

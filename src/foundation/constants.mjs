@@ -802,6 +802,16 @@ export const SYSTEM_KIND = "system";
 export const ORCHESTRATOR_ACTOR_ID = "Orchestrator";
 
 /**
+ * The Director lane's board identity — an **actor id, never a kind**.
+ *
+ * The lane runs on the kind that carries `meerkat-director`, but every board
+ * command it issues signs as `Director` — the same capitalized-role convention
+ * as Jobs, Linus, Turing, Reviewer and Worker. Identity is not authority: the
+ * question settle is the release, never the author.
+ */
+export const DIRECTOR_ACTOR_ID = "Director";
+
+/**
  * The SLA mechanism label.
  *
  * Not an actor kind: it names *which mechanism* computed an SLA row, and it is

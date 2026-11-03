@@ -94,15 +94,16 @@ It is skipped when:
 - `--force-create` is set — the documented escape, also meaning "allow an assignee outside the
   catalog".
 
-**It looks at the assignee, never the writer.** `system` / `Orchestrator` are writer identities
-for closure work (verdict, move, acceptance, comment, reconcile) and are never assignees. The
+**It looks at the assignee, never the writer.** `system` / `Orchestrator` / `Director` are
+writer identities for closure work (verdict, move, acceptance, comment, reconcile) and are
+never assignees; `Director` is the decision lane's signature even though it is not a role. The
 two system-created cards are the review card (the catalog's `default_reviewer`, named by
 `--assignee` at that one argv builder) and the rework child (`--assignee-id`). A system
 writer that names a worker assignee is checked like anyone else.
 
 **A CLI guard, not a board invariant.** A caller that speaks HTTP directly bypasses it by
 design, because the board never learns roles. Every supported surface — the `meerkat` skill, a
-worker, the director, a human — goes through `taskctl`.
+worker, the Director, a human — goes through `taskctl`.
 
 ## How this differs from the `actors` dictionary
 

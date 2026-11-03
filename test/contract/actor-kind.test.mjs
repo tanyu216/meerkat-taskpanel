@@ -29,6 +29,7 @@ import test, { describe, it } from "node:test";
 import { BOARD_ACTOR } from "../../src/core/commands/context.mjs";
 import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";
 import {
+  DIRECTOR_ACTOR_ID,
   HUMAN_KIND,
   ORCHESTRATOR_ACTOR_ID,
   SLA_MECHANISM,
@@ -122,5 +123,6 @@ describe("contract/actor-kind — concrete writers, not vague roles", () => {
     // exactly the drift this rule exists to prevent.
     assert.equal("TASKD_KIND" in constants, false);
     assert.equal(ORCHESTRATOR_ACTOR_ID, "Orchestrator");
+    assert.equal(DIRECTOR_ACTOR_ID, "Director");
   });
 });
