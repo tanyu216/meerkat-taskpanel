@@ -7,6 +7,141 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-03
+
+### Added
+
+- **worktree:** project-owned branch rules and a session lifecycle
+- **setup-meerkat:** split setup into six rounds and delegate the instruction entry
+- **skill:** keep the watch out of the conversation
+- **loop:** remove subagent capability
+- **skill:** watch the human queue on an event clock
+- **loop:** split card-session failure, status and doctor by lane
+- **loop:** run every review card in its own session
+- **storage:** drop the project reviewer column
+- **project:** remove the project reviewer override
+- **install:** remove the deployment reviewer config
+- **loop:** resolve the review assignee from the role catalog
+- **loop:** make a review card's assignee authoritative
+- **install:** place team skills on the primary agent kind
+- **skill:** review any delivered card, with shape floors as refinements
+- **loop:** route roles by the install kind order and publish a local catalog
+- **loop:** load the role skill inline on Codex and Pi
+- **loop:** load the lane skill at session open and slim the handoff
+- **acceptance:** one card word, off | auto | human
+- **setup:** initialize the team contract with the task entry
+- **loop:** let the director consume an accepted handoff
+- **loop:** bound every cycle and park what cannot advance
+- **skill:** audit every card shape with a floor, not a ceiling
+- **loop:** hold a worker for the ladder and settle on the release
+- **skill:** split the human console out of the director
+- **team:** roles are skills, the director decides, installation routes
+- **loop:** run each card in its own worker session and resume it by id
+- **doctor:** report deferred admission and stale workspaces
+- **doctor:** report the cards that keep looping
+- **export:** carry the landing markers a card is accepted with
+- **doctor:** list the done cards whose lane never landed
+- **doctor:** name the acceptances the board refused
+- **loop:** manual mode is a human session agenda
+- **loop:** expose doctor on the CLI surface and in the docs
+- **loop:** add a read-only daily-inspection doctor command
+- **crash:** one process-level crash boundary for the loop entries
+- **setup-meerkat:** propose which platform runs which role
+- **install:** run one loop supervisor per machine by default
+- **setup-meerkat:** plan and write the CI job that closes a security arm
+- **scripts:** add the loop-acceptance comment repair
+- **deliver:** refuse an unanchored `met` before the report is written
+- **loop:** add a bounded routing fallback for a card left unowned
+- **loop:** report a todo card no scan can claim, and make a team assignee-only
+- **skill:** route a team card at creation from the ownership guide
+- **security:** add a free security toolchain, CI gates and a reviewer checklist
+- **setup-meerkat:** route a session's own work through the team's ownership guide
+- **web:** the Acceptance tab can accept or send back
+- **cli:** close the tokenizer's switch set and gate --as-human
+- **loop:** one worktree per card, and acceptance lands the branch
+- **delivery:** a path anchor must name its commit
+- **web:** a waiting row opens the drawer on the tab its reason names
+- **create:** a human's card names its reporter
+- **cli:** add --prefix to project create/ensure and make --id optional
+- **web:** guide the create-project prefix and name the 1-4 refusal
+- **waiting:** a row states the action and the ask, not only the state
+- **prefix:** enforce a 1-4 [A-Z0-9] project prefix on every create path
+- **skill:** record a standard technical specification at docs/tech-spec.md
+- **acceptance:** review every card; the mode selects the closer
+- **skill:** create queues the card, and a plan travels as plan.md
+- **order:** make the assignee weight order the only task-list order
+- **setup-meerkat:** ask the card scope and own the task entry
+- **meerkat:** decide a card's language from the conversation
+- **cli:** let issue get include the trail, reports, edges and sessions
+- **review:** make a review prove its claims instead of asserting them
+- **projects:** keep one local map at the config root, managed by taskctl
+- **setup-meerkat:** ship an ownership guide instead of a team decision policy
+- **config:** move the per-kind config to the taskctl program root
+
+### Changed
+
+- **loop:** remove the board-interface gate
+- **actor:** retire the taskd kind — the board writes as system, acceptance by evidence
+- **team:** scope the roles and make the self-check prove its claims
+- **team:** keep role workflows to task process and quality
+- **roles:** make the loop policy authoritative and load ownership.md
+- **skills:** rename the board skill to meerkat
+- **roles:** drop the stale stateDir parameter type
+
+### Fixed
+
+- **verify:** skip real-git worktree cases in the git-less image
+- **loop:** claim an assigned card as its assignee
+- **loop:** keep the resident pool alive on an idle board
+- **loop:** keep worker sessions out of the lane pool count
+- **loop:** land a human-closed lane under the project's merge target
+- **loop:** read the wire's project_id in the director lanes
+- **loop:** make the worker hold real and settle only on release
+- **loop:** count admission deferrals and escalate a looping card
+- **admission:** reconcile stale workspaces and refuse a doomed review target
+- **workspace:** repair a worktree instead of re-deferring
+- **workspace:** probe a rework base instead of trusting it
+- **verify:** rebuild the frontend stage on every gate run
+- **install:** stop the local hub before the taskd guard restarts the board
+- **loop:** one supervisor log at the config root, tagged with actor_kind
+- **hub:** replace a hub from another protocol generation and stop it on install
+- **loop:** say when an acceptance has no lane to land
+- **loop:** route a refused acceptance back as a new round
+- **acceptance:** refuse an APPROVE the board can never act on
+- **install:** restart the services an install just made stale
+- **loop:** settle what is knowable before asking the human
+- **loop:** escalate a workflow action that keeps failing
+- **loop:** a stand-down is a completed handoff, and history rows are terminal
+- **loop:** a container is not a stale worker
+- **loop:** cap each log line in the doctor digest
+- **loop:** report in_review as facts, not as aged review cards
+- **taskd:** close on a failed pointer write and on a server error; derive the shutdown exit code
+- **session:** a failed pool start is a recorded return, not an unhandled rejection
+- **install:** retry a bootstrap refused while the old job is going away
+- **install:** enable reloads a unit whose loaded definition changed
+- **install:** keep the recorded human name across a forced reinstall
+- **loop:** make every action's note retry-idempotent
+- **scripts:** use the canonical entry-point guard in the repair
+- **loop:** make the approve action retry-idempotent
+- **install:** let the loop's scan set come from the per-kind config, not a unit flag
+- **core:** record the claimant as assignee when claiming from the public pool
+- **cli:** drain a large --json payload before exiting
+- **install:** detect pi-subagents in pi 1.x's npm layout
+- **verify:** give install-e2e a command anchor the delivery gate accepts
+- **loop:** landing honours the project's declared integration branch
+- **loop:** the card brief cannot block its worktree's cleanup
+- **web:** the acceptance empty copy names verdicts only
+- **web:** board filters must not narrow the waiting queue
+- **loop:** admit review cards when the original brief is already watched
+- **web:** split the drawer's acceptance criteria from delivery verdicts
+- **loop:** let the control turn run the command its prompt names
+- **install:** keep the mode when stripping the retired project-map key
+- **install:** leave a symlinked legacy skill alone
+- **install:** force replaces the installer's files, not the operator's
+- **roles:** drop the loop state directory as a roles root
+- **ci:** drop the invalid setup-node input
+- **release:** hand npm an absolute tarball path
+
 ## [0.1.2] - 2026-10-27
 
 ### Added
@@ -155,5 +290,6 @@ First public release.
 
 [0.1.1]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.1
 [0.1.2]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.2
-[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v0.1.2...HEAD
+[0.2.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.2.0
+[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v0.2.0...HEAD
 [0.1.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.0
