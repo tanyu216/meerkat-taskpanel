@@ -48,8 +48,10 @@ web/dist
 /roles.json
 
 # parallel-task worktrees (CLAUDE.md keeps them inside the checkout) — another branch's
-# whole tree must never enter this build context
+# whole tree must never enter this build context. Claude's native EnterWorktree root is
+# never the project's, but it is ignored for the same reason.
 .worktrees
+.claude/worktrees
 
 # test / coverage output
 coverage

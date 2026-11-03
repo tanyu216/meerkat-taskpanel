@@ -29,8 +29,11 @@ dist/
 /roles.json
 
 # parallel-task worktrees — the convention in CLAUDE.md keeps them inside the checkout,
-# so they must never appear as untracked files in the primary one
+# so they must never appear as untracked files in the primary one. The second path is
+# Claude's native EnterWorktree root; it is never the project's, but a stray one must
+# not become a commit either.
 .worktrees/
+.claude/worktrees/
 
 # test / coverage output
 coverage/

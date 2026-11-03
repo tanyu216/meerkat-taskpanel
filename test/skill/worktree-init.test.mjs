@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import {
+  hasLegacyGuard,
   main,
   mergeHooksData,
   mergeHooksFile,
@@ -36,6 +37,28 @@ const OPTIONS = {
   statusCommand: "'/bin/taskctl' worktree status",
   matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash",
 };
+
+describe("hasLegacyGuard", () => {
+  it("detects the hand-installed guard and ignores an absent file", () => {
+    const dir = tempDir();
+    const file = join(dir, "settings.json");
+    assert.equal(hasLegacyGuard(file), false);
+    writeFileSync(
+      file,
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: "Edit|Write",
+              hooks: [{ type: "command", command: "~/.claude/hooks/meerkat-taskpanel-worktree-guard.sh" }],
+            },
+          ],
+        },
+      }),
+    );
+    assert.equal(hasLegacyGuard(file), true);
+  });
+});
 
 describe("mergeHooksData", () => {
   it("adds both entries and preserves every unrelated key", () => {
@@ -155,6 +178,44 @@ describe("main", () => {
       assert.equal(report.results.claude.status, "unchanged");
       assert.equal(report.results.codex.status, "unchanged");
       assert.equal(report.results.pi.status, "unchanged");
+    } finally {
+      console.log = original;
+    }
+  });
+
+  it("reports an older ad-hoc guard and leaves it in place", () => {
+    const home = tempDir("worktree-home-");
+    const project = tempDir("worktree-project-");
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    const cli = join(home, "taskctl");
+    writeFileSync(cli, "#!/bin/sh\n");
+    const settings = join(home, ".claude", "settings.json");
+    const legacy = {
+      hooks: {
+        PreToolUse: [
+          { matcher: "Edit|Write", hooks: [{ type: "command", command: "/h/meerkat-taskpanel-worktree-guard.sh" }] },
+        ],
+      },
+    };
+    writeFileSync(settings, JSON.stringify(legacy));
+
+    const logs = [];
+    const original = console.log;
+    console.log = (...args) => logs.push(args.join(" "));
+    try {
+      assert.equal(
+        main(["--home", home, "--project", project, "--cli", cli, "--runtime", "claude", "--json"]),
+        0,
+      );
+      const report = JSON.parse(logs.at(-1));
+      assert.ok(report.warnings.some((warning) => /older ad-hoc guard/.test(warning)));
+      const saved = JSON.parse(readFileSync(settings, "utf8"));
+      assert.ok(
+        saved.hooks.PreToolUse.some((entry) =>
+          entry.hooks.some((hook) => hook.command.endsWith("meerkat-taskpanel-worktree-guard.sh")),
+        ),
+        "the legacy entry survives",
+      );
     } finally {
       console.log = original;
     }

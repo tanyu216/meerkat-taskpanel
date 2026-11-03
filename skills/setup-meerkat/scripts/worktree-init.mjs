@@ -47,6 +47,15 @@ function readJson(path) {
   }
 }
 
+/** The hand-installed hook this round supersedes, when one is still present. */
+const LEGACY_GUARD = "meerkat-taskpanel-worktree-guard.sh";
+
+/** Does this settings document still carry the older ad-hoc guard? */
+export function hasLegacyGuard(path) {
+  const read = readJson(path);
+  return read.ok && JSON.stringify(read.data).includes(LEGACY_GUARD);
+}
+
 /** Does this hook list already carry our command? */
 function hasCommand(list, command) {
   return Array.isArray(list) && list.some(
@@ -261,9 +270,11 @@ export function main(argv) {
   const guard = `${quote(cli)} worktree guard`;
   const status = `${quote(cli)} worktree status`;
   const results = {};
+  const warnings = [];
 
   if (runtimes.includes("claude")) {
     const file = opts.claudeSettings ?? join(home, ".claude", "settings.json");
+    const legacy = hasLegacyGuard(file);
     results.claude = mergeHooksFile(
       file,
       {
@@ -273,6 +284,12 @@ export function main(argv) {
       },
       { dryRun: opts.dryRun },
     );
+    if (legacy) {
+      warnings.push(
+        `claude: the older ad-hoc guard (${LEGACY_GUARD}) is still installed; ` +
+          "remove its entry or keep it as a second layer",
+      );
+    }
   }
 
   if (runtimes.includes("codex")) {
@@ -297,7 +314,6 @@ export function main(argv) {
     });
   }
 
-  const warnings = [];
   if (results.codex !== undefined && results.codex.status !== "unchanged") {
     warnings.push(
       "codex: open /hooks, review the entry, and trust it; until then the guard is inert",

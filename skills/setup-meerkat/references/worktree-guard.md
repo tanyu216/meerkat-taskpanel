@@ -58,6 +58,11 @@ It merges every hook (never replacing an unrelated one), is idempotent, and
 reports `written` / `unchanged` / `skipped` / `conflict` per kind. A second run
 reports `unchanged`.
 
+If the settings still carry an older hand-installed guard
+(`meerkat-taskpanel-worktree-guard.sh`), the writer reports it as a warning. Do not delete it
+silently: the new guard supersedes its dirty-file heuristic, and keeping both is allowed as a
+second layer. The project's own opt-in is still `docs/agents/worktrees.md`.
+
 After the write:
 
 1. **Codex:** open `/hooks` in Codex, review the entry, and trust it. Until then
