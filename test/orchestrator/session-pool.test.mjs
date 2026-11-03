@@ -1962,6 +1962,81 @@ describe("worker session resume", () => {
       "workers are bounded by max-concurrency, not by sessionPoolMax",
     );
   });
+
+  it("does not count resident worker sessions against the lane pool", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f, { sessionPoolMax: 1 }),
+      kindPool: fake,
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    enqueueCard(join(f.dir), card(f, "T-2", f.api));
+    await pool.tick();
+    assert.equal(
+      fake.opened.filter((handle) => handle.role === "worker").length,
+      2,
+      "two resident worker sessions",
+    );
+
+    const third = join(f.dir, "third");
+    mkdirSync(third, { recursive: true });
+    enqueueCard(join(f.dir), {
+      id: "question:T-3:q-1",
+      queue_kind: "question",
+      role: "question",
+      card: "T-3",
+      project: "P",
+      agent: "alice",
+      target_dir: third,
+      question_id: "q-1",
+      question: "Which option?",
+      asked_at: "2026-01-01T00:00:00Z",
+    });
+    await pool.routeQuestionsNow();
+    assert.ok(
+      fake.opened.some((handle) => handle.role === "director" && handle.cwd === third),
+      "resident worker sessions do not consume the non-worker lane pool",
+    );
+  });
+
+  it("still bounds the non-worker lanes by the lane pool", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f, { sessionPoolMax: 1 }),
+      kindPool: fake,
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    for (const [ref, dir] of [["T-1", f.app], ["T-2", f.api]]) {
+      enqueueCard(join(f.dir), {
+        id: `question:${ref}:q-1`,
+        queue_kind: "question",
+        role: "question",
+        card: ref,
+        project: "P",
+        agent: "alice",
+        target_dir: dir,
+        question_id: "q-1",
+        question: "Which option?",
+        asked_at: "2026-01-01T00:00:00Z",
+      });
+    }
+    await pool.routeQuestionsNow();
+    assert.equal(
+      fake.opened.filter((handle) => handle.role === "director").length,
+      1,
+      "one resident lane fills the pool",
+    );
+    assert.equal(
+      readCards(f.dir).value.cards.filter((row) => row.status === "pending").length,
+      1,
+      "the second decision row waits for a free lane",
+    );
+  });
 });
 
 describe("worker session resume — handoff triage verification", () => {

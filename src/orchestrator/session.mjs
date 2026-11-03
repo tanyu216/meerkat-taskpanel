@@ -831,9 +831,13 @@ export function createSessionPool(input = {}) {
         continue;
       }
       // The director lane draws no worker slot, but it is still a session: the
-      // pool's global bound applies before a new project lane is opened. A lane
-      // that already exists is counted there and stays reachable.
-      if (!sessions.has(dir) && poolMax > 0 && sessions.size >= poolMax) {
+      // pool's global bound applies before a new project lane is opened. Only
+      // non-worker conversations hold lane slots — worker sessions are bounded
+      // by `--max-concurrency` through their processing rows, and counting them
+      // here would let card work starve the director lane. Recomputed per group
+      // so a lane opened earlier in this loop fills the pool for the next one.
+      const laneSessions = [...sessions.keys()].filter((key) => !isWorkerKey(key)).length;
+      if (!sessions.has(dir) && poolMax > 0 && laneSessions >= poolMax) {
         log(`session: lane session pool is full (${poolMax}) — leaving ${cards.length} decision row(s) pending`);
         continue;
       }
