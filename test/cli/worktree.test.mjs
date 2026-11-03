@@ -26,6 +26,15 @@ import {
 
 after(cleanupTempDirs);
 
+/**
+ * The verification image is the *runtime* image and ships no git, so these
+ * cases skip there (visible in the run's `skipped` count) and run on the host
+ * and in CI's `check` job, which have one — the rule
+ * `test/release/prep.test.mjs` already follows.
+ */
+const hasGit = spawnSync("git", ["--version"], { encoding: "utf8" }).status === 0;
+const gitDescribe = hasGit ? describe : describe.skip;
+
 /** A real repository on `dev`, with `.worktrees/` ignored and one commit. */
 function makeRepo({ ignoreWorktrees = true } = {}) {
   const dir = join(makeTempDir("meerkat-taskpanel-wt-"), "checkout");
@@ -61,7 +70,7 @@ function commitIn(tree, file = "work.txt", text = "work\n") {
   git("commit", "-q", "-m", "work");
 }
 
-describe("cli/worktree create", () => {
+gitDescribe("cli/worktree create", () => {
   it("creates .worktrees/<slug> on a new branch from the current branch", () => {
     const { dir } = makeRepo();
     const result = wt(dir, ["create", "a", "--json"]);
@@ -114,7 +123,7 @@ describe("cli/worktree create", () => {
   });
 });
 
-describe("cli/worktree leave", () => {
+gitDescribe("cli/worktree leave", () => {
   it("removes a clean, merged tree and its branch", () => {
     const { dir, git } = makeRepo();
     const created = wt(dir, ["create", "a", "--json"]);
@@ -169,7 +178,7 @@ describe("cli/worktree leave", () => {
   });
 });
 
-describe("cli/worktree guard", () => {
+gitDescribe("cli/worktree guard", () => {
   it("prints each runtime's deny shape and stays silent on allow", () => {
     const { dir } = makeRepo();
     mkdirSync(join(dir, "docs", "agents"), { recursive: true });
@@ -213,7 +222,7 @@ describe("cli/worktree guard", () => {
   });
 });
 
-describe("cli/worktree sweep", () => {
+gitDescribe("cli/worktree sweep", () => {
   it("removes clean+merged trees and reports the rest", () => {
     const { dir, git } = makeRepo();
     const a = dataOf(wt(dir, ["create", "a", "--json"])).path;

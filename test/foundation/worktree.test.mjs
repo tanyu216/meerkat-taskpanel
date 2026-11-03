@@ -28,6 +28,15 @@ import {
   sweepSessionWorktrees,
 } from "../../src/foundation/worktree.mjs";
 
+/**
+ * The verification image is the *runtime* image and ships no git, so only the
+ * real-repository cases skip there (visible in the run's `skipped` count); the
+ * pure, injected-runner cases above run everywhere — the rule
+ * `test/release/prep.test.mjs` already follows.
+ */
+const hasGit = spawnSync("git", ["--version"], { encoding: "utf8" }).status === 0;
+const gitDescribe = hasGit ? describe : describe.skip;
+
 const tempDirs = [];
 function tempDir(prefix = "worktree-foundation-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -190,7 +199,7 @@ describe("isMerged", () => {
   });
 });
 
-describe("create/leave/sweep — real git", () => {
+gitDescribe("create/leave/sweep — real git", () => {
   it("creates, lists, keeps, then removes a merged tree", () => {
     const { dir, git } = makeRepo();
     const created = create(dir, "a", { projectEntry: { base_ref: "dev" } });
