@@ -171,6 +171,11 @@ export function listRelations(ctx, input) {
     relations: ctx.repos.relations.listByTask(task.id),
     children: ctx.repos.relations.listChildren(task.id),
     ancestors: ctx.repos.relations.listAncestors(task.id),
+    // The epic drawer lists **every** card below this one, not just the one-hop
+    // `children` edges: the walk is the recursive mirror of `ancestors`, so a
+    // grandchild is a row too. Kept beside the edge reads because it is the same
+    // graph answered as cards (id + title) rather than as relations.
+    descendants: ctx.repos.relations.listDescendants(task.id),
     blockedBy: ctx.repos.relations.listBlockerOf(task.id),
     blocks: ctx.repos.relations.listBlockedBy(task.id),
     parentChain: parentChainOf(ctx.repos.relations.listParentEdges(), task.id),

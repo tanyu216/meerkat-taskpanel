@@ -1613,9 +1613,11 @@ the ones the controls already had:
 
 | Field | Commits when | Hook |
 |---|---|---|
-| Assignee | focus leaves the input and the value moved, or a roster row is accepted | `[data-detail-assignee-label]` · `[data-assignee-option]` |
-| Reporter | same rule | `[data-detail-reporter-label]` · `[data-reporter-option]` |
+| Assignee | focus leaves the input and the value moved, or a roster row is accepted — **only while the card is `backlog`/`todo`** (TP-0075 round 2) | `[data-detail-assignee-label]` · `[data-assignee-option]` |
 | Labels | a chip arrives or is dropped | `[data-detail-label-option]` · `[data-detail-label-remove]` |
+
+**Round 2 (2026-11-04):** the reporter left this surface — it is decided at creation and
+the drawer shows it read-only (name + avatar), so it has no commit row.
 
 The field names travel on the rows themselves (`data-detail-save-field`), so a reader can
 tell which row a state belongs to without a second lookup. Three deliberate properties:
@@ -1807,7 +1809,7 @@ abbreviation, not the id. Measured: with the slice removed and only `.td-id` in 
 |---|---|
 | Text | `[data-detail-identifier]` is written from the card's own `data-identifier`, verbatim — the `identifierText()` call is removed from `openDetail()` |
 | Width | the span adds **`.td-id-full`** beside `.td-id`: `max-width: none; overflow: visible; text-overflow: clip` |
-| Unchanged | `title` = the full id; the drawer root's `data-identifier` = the full id; `[data-detail-id]` (the internal `td_…`) is not touched |
+| Unchanged | `title` = the full id; the drawer root's `data-identifier` = the full id; `[data-detail-id]` (the internal `td_…`) is not touched *by R12* — **TP-0075 later withdrew that property row** (with `[data-detail-version]`), which removes a render point and leaves the identity attribute rule intact (`design/BLOCKS.md` §B09, TP-0075 supplement) |
 
 `.td-id` itself is untouched, because it is **shared** — B07's cards and B08's rows are
 exactly where an eight-character abbreviation is wanted, and an abbreviation is what the
@@ -1846,7 +1848,7 @@ declaration and the measurement disagree, and the measurement is what the contra
 | Truncate with a middle ellipsis (`TD-202…2353`) | Invents a second display format and a second rule; the drawer is the one place with room to show the id as it is |
 | Let the head wrap onto a second line | An id is one unbroken token; wrapping splits an indivisible string, which reads worse than the width it saves |
 | Make the head a horizontally scrollable box | "Fully visible" would become "fully reachable", which is a different promise; it also adds a scroll region to a two-line header |
-| Give the head a copy button | The drawer's internal id row already has `[data-detail-id-copy]`; a second copy control for a value that is now fully on screen is chrome |
+| Give the head a copy button | The drawer's internal id row already has `[data-detail-id-copy]`; a second copy control for a value that is now fully on screen is chrome. **Postscript (TP-0075):** the internal id row was later withdrawn, so that premise no longer holds — the decision stands on the remaining half (a copy control on a value fully on screen is chrome), and no copy affordance was added |
 
 ### 28.4 Checked
 

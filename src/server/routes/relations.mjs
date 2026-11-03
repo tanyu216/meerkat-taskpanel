@@ -23,6 +23,11 @@ export function registerRelationRoutes(router, surface) {
       relations: listing.relations.map(relationToWire),
       children: listing.children.map(relationToWire),
       ancestors: listing.ancestors.map(relationToWire),
+      // The epic drawer's recursive list. Card rows (`id` / `identifier` /
+      // `title` / `status` / `kind`), already the projection the client renders,
+      // so they cross the wire as they are — the drawer must not have to page the
+      // roster to learn an epic's grandchildren.
+      descendants: listing.descendants,
       blocked_by: listing.blockedBy.map(relationToWire),
       blocks: listing.blocks.map(relationToWire),
       // Task **ids** on this card's parent chain, either direction — what the

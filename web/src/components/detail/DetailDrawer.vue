@@ -39,7 +39,6 @@ import {
   removeAttachment,
   removeDepends,
   reopenTask,
-  reporterRoster,
   saveDetailField,
   uploadAttachment,
 } from "../../stores/board.js";
@@ -51,9 +50,17 @@ import { activityLine, relativeTime } from "../../lib/activity.js";
 import { newestFirst } from "../../lib/time.js";
 import { attachmentRows } from "../../lib/attachments.js";
 import { errorTextKey } from "../../i18n/messages.mjs";
+import {
+  descendantRows,
+  detailKind,
+  parentRowOf,
+  relatedRowsOf,
+  relationsEmptyOf,
+} from "../../lib/detail-relations.js";
+import { assigneeEditable } from "../../lib/detail-edit.js";
 import { api, ApiError } from "../../services/api.js";
 import { pushToast } from "../../stores/ui.js";
-import { has, t } from "../../i18n/index.js";
+import { t } from "../../i18n/index.js";
 
 import ComboField from "../combo/ComboField.vue";
 import MarkdownEditor from "../create/MarkdownEditor.vue";
@@ -62,10 +69,14 @@ const commentDraft = ref("");
 /** One comment at a time: the button is disabled while the POST is in flight. */
 const commentBusy = ref(false);
 const assigneeDraft = ref("");
-const reporterDraft = ref("");
 const labelDraft = ref([]);
-/** The `depends_on` chips' identifiers (the edge itself lives on the board). */
-const dependsDraft = ref([]);
+/**
+ * The add box's draft (TP-0075). `depends_on` is no longer a multi-chip set:
+ * each existing prerequisite is its own row with a delete button, and this is
+ * the one value an add gesture produces. It is the **only** commit trigger —
+ * `update:modelValue` — so a blur can never write the same edge twice.
+ */
+const dependsAddDraft = ref("");
 /** Description is the one section with two faces; the attribute is the switch. */
 const descriptionMode = ref("read");
 const descriptionDraft = ref("");
@@ -127,8 +138,6 @@ const identifier = computed(() => task.value?.identifier ?? "");
 const title = computed(() => task.value?.title ?? "");
 const status = computed(() => task.value?.status ?? "backlog");
 const priority = computed(() => priorityOf(task.value));
-const versionText = computed(() => task.value?.version ?? "");
-const idText = computed(() => task.value?.id ?? "");
 const assigneeName = computed(() => task.value?.assignee?.display_name ?? "");
 const reporterName = computed(() => task.value?.reporter?.display_name ?? "");
 // A kind is a platform since 0023, so "is this an agent" is "is it not the human".
@@ -179,6 +188,14 @@ const PRIORITY_MENU = ["none", "low", "medium", "high", "urgent"];
  * one).
  */
 const readonly = computed(() => status.value === "done" || status.value === "canceled");
+
+/**
+ * TP-0075 round 2 — the assignee settles when work starts. The window itself
+ * is `lib/detail-edit.js#assigneeEditable`; this alias exists so the template
+ * and the commit guard read one value. `awaiting` is an overlay on an
+ * in-flight card, so it is read-only like every other post-`todo` status.
+ */
+const canEditAssignee = computed(() => assigneeEditable(status.value));
 
 /**
  * The status combo keeps all seven stage rows (the prototype's fixed menu, and
@@ -434,33 +451,49 @@ const leftoverRows = computed(() =>
 );
 
 const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: kindLabel(entry.kind), platform: platformOf(entry.display_name) })));
-const reporterOptions = computed(() => reporterRoster.value.map((name) => ({ name })));
 const labelOptions = computed(() => labelRoster.value.map((name) => ({ name })));
 
 const descriptionHtml = computed(() => (task.value?.description ? renderMarkdown(task.value.description) : ""));
 
-/** Identifier of a related task when the board knows it, else the raw id. */
-function identifierOf(id) {
-  return board.tasks.find((item) => item.id === id)?.identifier ?? id;
-}
+/**
+ * TP-0075 — the Relations area's projections. The area is four explicit groups
+ * now: Parent, Children (epic only, the **whole** descendant tree from the
+ * server), Depends on (rows plus an add-only box) and Related. `lib/
+ * detail-relations.js` owns the pure half (grouping, roster fallbacks, empty
+ * predicate); this component only feeds it the current card's reads.
+ *
+ * The roster is the same one the drawer has always resolved ids against; a card
+ * off the loaded page still renders its identifier (the title half is empty),
+ * which is the honest fallback rather than a second read.
+ */
+const rosterLookup = (id) => board.tasks.find((item) => item.id === id);
+
+/** The head badge's word: `epic` for an epic, `task` for every ordinary/review card. */
+const kindValue = computed(() => detailKind(task.value?.kind));
+const isEpic = computed(() => kindValue.value === "epic");
+const relationEdges = computed(() => detail.value?.relations?.relations ?? []);
+const parentRow = computed(() => parentRowOf(relationEdges.value, task.value?.id, rosterLookup));
+const childRows = computed(() => descendantRows(detail.value?.relations?.descendants));
+const relatedRows = computed(() => relatedRowsOf(relationEdges.value, task.value?.id, rosterLookup));
+const dependsRows = computed(() => detailDepends.value);
+const relationsEmpty = computed(() =>
+  relationsEmptyOf({
+    parent: parentRow.value,
+    children: childRows.value,
+    depends: dependsRows.value,
+    related: relatedRows.value,
+  }),
+);
 
 /**
- * R14 ① — the category word is the catalogue's, the way every other word in the
- * drawer is: `relations.<type>` over the three kinds the domain allows
- * (`parent`, `blocks`, `related` — `RELATION_TYPES`,
- * `src/core/domain/enums.mjs`). The wire's `type` is vocabulary, not copy, so it
- * used to reach the UI verbatim as a bare enum word. A kind the catalogue has
- * not named keeps its own wire value rather than rendering a bare
- * `relations.<type>` key — the same "read as its own name" fallback
- * `lib/activity.js` gives an unnamed event.
+ * The add box's candidates: the same prerequisite roster the old chip control
+ * offered (the card itself and its parent chain removed, `dependsCandidates`),
+ * minus the prerequisites the card already has. An already-taken card in the
+ * menu would be a no-op the reader cannot see.
  */
-const relationLinks = computed(() => {
-  const rel = detail.value?.relations ?? {};
-  return (rel.relations ?? []).map((row) => {
-    const other = row.source === task.value?.id ? row.target : row.source;
-    const key = `relations.${row.type}`;
-    return { key: row.id, type: row.type, category: has(key) ? t(key) : row.type, label: identifierOf(other) };
-  });
+const dependsAddOptions = computed(() => {
+  const taken = new Set(dependsRows.value.map((row) => row.identifier));
+  return dependsCandidates.value.filter((entry) => !taken.has(entry.identifier));
 });
 
 /* ----------------------------------------- R14 §2.1 C2 · focus enters the drawer */
@@ -586,37 +619,6 @@ watch(open, (isOpen) => {
 
 onBeforeUnmount(clearFocusTimer);
 
-/**
- * R14 D37 / BLOCKS.md §R14 — the relations row groups its links by kind, one
- * `.td-rel-item` per kind, each led by that kind's own catalogue name. The order
- * is the domain's own vocabulary order (`parent`, `blocks`, `related` —
- * `RELATION_TYPES`, `src/core/domain/enums.mjs`, which the web may not import
- * and therefore spells here, as the board store spells its transitions); a kind
- * outside the vocabulary still gets a group of its own, after the three, named
- * by its wire value so nothing goes missing. Groups merge links of one kind in
- * the order the wire returned them.
- */
-const RELATION_ORDER = ["parent", "blocks", "related"];
-/** The vocabulary rank of a kind; anything the vocabulary does not name sorts after it. */
-const relationRank = (type) => {
-  const index = RELATION_ORDER.indexOf(type);
-  return index === -1 ? RELATION_ORDER.length : index;
-};
-const relationGroups = computed(() => {
-  const groups = new Map();
-  for (const link of relationLinks.value) {
-    // T-20261014-212017-3 §4.4 — the `blocks` group is no longer a read-only
-    // row. It is the card's `depends_on`, and the drawer owns it as an editable
-    // chip control below; leaving the row in place would be a second source for
-    // the same fact. The prototype withdraws exactly this one group and keeps
-    // `parent` / `related` read-only.
-    if (link.type === "blocks") continue;
-    if (!groups.has(link.type)) groups.set(link.type, { type: link.type, category: link.category, links: [] });
-    groups.get(link.type).links.push(link);
-  }
-  return [...groups.values()].sort((a, b) => relationRank(a.type) - relationRank(b.type));
-});
-
 /** `data-status` on the status chip/prop falls back to a valid domain value at rest. */
 const statusValue = computed(() => status.value);
 
@@ -647,8 +649,11 @@ let savedTimer = null;
  * What each field said when the drawer was opened. A commit is "the value
  * moved", not "the field was touched": the drawer is opened, read and closed
  * constantly and none of that is a write (contract ②-11).
+ *
+ * TP-0075 round 2 — the reporter left the save surface: it is decided at
+ * creation and the drawer only shows it, so there is no baseline for it.
  */
-let saveBaseline = { assignee: "", reporter: "", labels: [] };
+let saveBaseline = { assignee: "", labels: [] };
 /**
  * The version the drawer opened with. When a remote edit arrives while a draft
  * is dirty, this deliberately stays behind: the next save carries the older
@@ -658,14 +663,19 @@ let saveBaseline = { assignee: "", reporter: "", labels: [] };
 let saveBaselineVersion = null;
 
 /**
- * `assignee` and `reporter` are committed on focus loss; `labels` on a chip
- * arriving or leaving. A single-valued field that is blank after trimming is the
- * one failure the drawer can decide on its own, with no server involved — and it
- * is the only deterministic failure path a pure-frontend check can drive
- * (contract §2.2). A blank that did **not** move the field is not a failure: an
- * empty value left empty is a no-op, not an error.
+ * `assignee` is committed on focus loss; `labels` on a chip arriving or
+ * leaving. A single-valued field that is blank after trimming is the one
+ * failure the drawer can decide on its own, with no server involved — and it is
+ * the only deterministic failure path a pure-frontend check can drive (contract
+ * §2.2). A blank that did **not** move the field is not a failure: an empty
+ * value left empty is a no-op, not an error.
+ *
+ * TP-0075 round 2 — the reporter left this surface entirely (read-only at
+ * creation), and the assignee's window closes with its `disabled` control; the
+ * guard here keeps a programmatic draft change from writing past it.
  */
 function commitField(field, raw) {
+  if (field === "assignee" && !canEditAssignee.value) return;
   const value = String(raw ?? "").trim();
   if (value === saveBaseline[field]) return;
   if (value === "") return failSave();
@@ -900,26 +910,29 @@ async function saveDescription() {
 /* ------------------------------------------------- depends_on (the DAG edge) */
 
 /**
- * The chips are the card's `depends_on`, and the board stores each one as a
- * `blocks` edge. A change is therefore an **edge add or remove**, not a value:
- * the diff between what the control now holds and what the board returned is
- * replayed one edge at a time, and a refusal (a cycle, a self-reference, a
- * cross-project edge) stops the walk and lands on `error` with a sentence.
+ * Add one prerequisite. `depends_on` is a `blocks` edge (source = the
+ * prerequisite), so this is an **edge write**, and a refusal (a cycle, a
+ * self-reference, a cross-project edge) lands on `error` with a sentence
+ * through `runCommit`.
  *
- * The draft is re-read from the board afterwards rather than trusted, so what
- * the chips show is what is stored even when a refusal left the walk half done.
+ * The add box emits exactly once, through `update:modelValue`; there is no
+ * `@blur` commit here, so a successful pick cannot be written twice. A landed
+ * write clears the draft (the box is for the next add); a refusal keeps it, so
+ * the reader can retry without retyping.
+ *
+ * @param {unknown} value the accepted roster identifier
  */
-async function commitDepends(next) {
-  const current = detailDepends.value;
-  const had = current.map((row) => row.identifier);
-  const added = next.filter((x) => !had.includes(x));
-  const removed = current.filter((row) => !next.includes(row.identifier));
-  if (added.length === 0 && removed.length === 0) return;
-  await runCommit(async () => {
-    for (const id of added) await addDepends(id);
-    for (const row of removed) await removeDepends(row.relationId);
-  });
-  dependsDraft.value = detailDepends.value.map((row) => row.identifier);
+async function addDependsRow(value) {
+  const identifier = String(value ?? "").trim();
+  if (identifier === "" || readonly.value) return;
+  const landed = await runCommit(() => addDepends(identifier));
+  if (landed) dependsAddDraft.value = "";
+}
+
+/** Remove one prerequisite by its relation id — the row's own delete button. */
+async function removeDependsRow(row) {
+  if (readonly.value || !row) return;
+  await runCommit(() => removeDepends(row.relationId));
 }
 
 /* ------------------------------------------------------- attachments (files) */
@@ -1093,7 +1106,7 @@ function sameSet(a, b) {
 }
 
 /**
- * Opening a card resets the state and takes that card's assignee and reporter as
+ * Opening a card resets the state and takes that card's assignee and labels as
  * the baseline, so the first edit is measured against what the card actually
  * said (`design/fidelity-r10.md` §2.2, "打开卡片即复位"). The drafts and the
  * baseline are written in the same act, which is what makes a re-fill — setting
@@ -1104,7 +1117,7 @@ function resetSave() {
   clearTimeout(savedTimer);
   saveToken += 1;
   saveState.value = "idle";
-  saveBaseline = { assignee: assigneeName.value, reporter: reporterName.value, labels: [...labelNames.value] };
+  saveBaseline = { assignee: assigneeName.value, labels: [...labelNames.value] };
   saveBaselineVersion = task.value?.version ?? null;
 }
 
@@ -1113,7 +1126,6 @@ watch(
   () => task.value?.id,
   () => {
     assigneeDraft.value = assigneeName.value;
-    reporterDraft.value = reporterName.value;
     labelDraft.value = [...labelNames.value];
     commentDraft.value = "";
     // T-20261014-212017-4 — opening a card also resets the round's own four
@@ -1123,7 +1135,9 @@ watch(
     // no resetting — it cannot outlive the card it belongs to (§4.5, "关抽屉即清除").
     descriptionMode.value = "read";
     descriptionDraft.value = task.value?.description ?? "";
-    dependsDraft.value = detailDepends.value.map((row) => row.identifier);
+    // The add box is per-card: a half-typed prerequisite about another card
+    // must never be one Enter away from being written.
+    dependsAddDraft.value = "";
     closePropMenus();
     busyAttachment.value = "";
     resetSave();
@@ -1139,7 +1153,6 @@ watch(
 watch(
   () => [
     task.value?.assignee?.display_name ?? "",
-    task.value?.reporter?.display_name ?? "",
     (task.value?.labels ?? []).join("\u0000"),
     task.value?.description ?? "",
   ],
@@ -1149,12 +1162,6 @@ watch(
     if (!assigneeDirty) {
       saveBaseline = { ...saveBaseline, assignee: nextAssignee };
       assigneeDraft.value = nextAssignee;
-    }
-    const nextReporter = reporterName.value;
-    const reporterDirty = reporterDraft.value !== saveBaseline.reporter;
-    if (!reporterDirty) {
-      saveBaseline = { ...saveBaseline, reporter: nextReporter };
-      reporterDraft.value = nextReporter;
     }
     const nextLabels = [...labelNames.value];
     const labelsDirty = !sameSet(labelDraft.value, saveBaseline.labels);
@@ -1170,20 +1177,9 @@ watch(
     // No dirty draft: the drawer is a pure view of the new card, so its next
     // save may use the new version. A dirty draft keeps the old version and
     // will be refused visibly by the server.
-    if (!assigneeDirty && !reporterDirty && !labelsDirty && !descriptionDirty) {
+    if (!assigneeDirty && !labelsDirty && !descriptionDirty) {
       saveBaselineVersion = task.value?.version ?? saveBaselineVersion;
     }
-  },
-);
-
-// The chips follow the board's own relations whenever they are re-read (an
-// upload's SSE refresh can re-open the detail), so the control never shows a
-// set the board does not have.
-watch(
-  () => detailDepends.value.map((row) => row.identifier).join("\u0000"),
-  () => {
-    const next = detailDepends.value.map((row) => row.identifier);
-    if (next.join("\u0000") !== dependsDraft.value.join("\u0000")) dependsDraft.value = next;
   },
 );
 
@@ -1194,9 +1190,7 @@ watch(assigneeDraft, () => commitField("assignee", assigneeDraft.value));
 // If the note landed but the move was refused, a retry after an edit must post
 // the edited note — only an *unchanged* draft is skipped as already written.
 watch(sendBackReason, () => { sendBackCommentSent.value = false; });
-watch(reporterDraft, () => commitField("reporter", reporterDraft.value));
 watch(labelDraft, () => commitLabels(), { deep: true });
-watch(dependsDraft, () => commitDepends(dependsDraft.value), { deep: true });
 
 async function submitComment() {
   const body = commentDraft.value.trim();
@@ -1213,10 +1207,6 @@ async function submitComment() {
   }
 }
 
-/** The prototype reports a toast without touching the clipboard; so do we. */
-function copyId() {
-  pushToast(t("toast.copied"), "info");
-}
 </script>
 
 <template>
@@ -1274,9 +1264,14 @@ function copyId() {
         <span class="td-sr">{{ $t("drawer.loading") }}</span>
         <span class="skeleton" style="height: 16px; width: 60%; display: block" aria-hidden="true"></span>
       </h2>
+      <!-- TP-0075 — the tab strip now lives in the head (see the real branch);
+           the skeleton mirrors it so the card's arrival does not move the tabs. -->
+      <div class="flex flex-wrap items-center gap-2 mt-2">
+        <span v-for="n in 6" :key="n" class="skeleton" style="height: 26px; width: 64px; border-radius: var(--radius-field)"></span>
+      </div>
     </header>
 
-    <header v-else class="td-drawer-head">
+    <header v-else class="td-drawer-head td-drawer-head-tabs">
       <!-- R7 ④ — identifier, chip and the close button share one flex row, with
            the close pushed to its inline end (`ml-auto`). It used to be the
            header's third line, *below* the title: the prototype puts it in the
@@ -1299,6 +1294,13 @@ function copyId() {
         <span class="badge badge-sm td-chip td-chip-status" data-detail-status-chip :data-status="statusValue">
           <span class="td-status-dot" aria-hidden="true"></span>
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
+        </span>
+        <!-- TP-0075 ① — what the card *is*, on the identifier/status row. An
+             epic reads Epic; every ordinary card, and every review card (which
+             is `kind=task` and only carries `review_of`), reads Task. The word
+             is the catalogue's, so the badge is never colour-only. -->
+        <span class="badge badge-sm td-chip" data-detail-kind :data-kind="kindValue">
+          <span data-detail-kind-label>{{ $t(`kind.${kindValue}`) }}</span>
         </span>
         <!-- E-2 (T-20261014-212017-3) — a terminal card's drawer is read-only:
              the root states it, this badge says so, and every field control
@@ -1353,14 +1355,33 @@ function copyId() {
            78.59 vs implementation 81). `--leading-title` is this layer's name
            for the design's 1.35, so the pair is whole again with no new value. -->
       <h2 id="td-detail-title" class="text-[16px] leading-(--leading-title) font-semibold" data-detail-title>{{ title }}</h2>
+      <!-- TP-0075 ⑥ — the six tabs move out of the scrolling body into the head,
+           directly under the title, so they stay visible while the body scrolls.
+           `td-drawer-head-tabs` withdraws the head's bottom padding; the head's
+           own border is the strip's divider (the strip no longer draws one). -->
+      <div class="tabs td-drawer-tabs" role="tablist" :aria-label="$t('drawer.tabs.label')" data-detail-tabs @keydown="onTabKeydown">
+        <button
+          v-for="tab in tabs"
+          :key="tab.name"
+          v-show="tab.visible"
+          :ref="(el) => setTabRef(tab.name, el)"
+          type="button"
+          class="tab td-drawer-tab"
+          role="tab"
+          :id="`td-dv-tab-${tab.name}`"
+          :data-detail-tab="tab.name"
+          :aria-controls="`td-dv-panel-${tab.name}`"
+          :aria-selected="activeTab === tab.name ? 'true' : 'false'"
+          :tabindex="activeTab === tab.name ? 0 : -1"
+          @click="selectTab(tab.name)"
+        >{{ $t(tab.key) }}</button>
+      </div>
     </header>
 
     <div v-if="loadingDetail" class="td-drawer-body" data-detail-skeleton="body" aria-hidden="true">
-      <!-- The six tab pills, six property rows, a description and two comments —
-           the page the real branch will draw, at the same metrics. -->
-      <div class="flex flex-wrap items-center gap-2">
-        <span v-for="n in 6" :key="n" class="skeleton" style="height: 26px; width: 64px; border-radius: var(--radius-field)"></span>
-      </div>
+      <!-- Six property rows, a description and two comments — the page the real
+           branch will draw, at the same metrics. (The six tab pills moved into
+           the skeleton head with the strip itself, TP-0075.) -->
       <div class="flex flex-col gap-3 mt-5">
         <div v-for="n in 6" :key="n" class="td-skel-row">
           <span class="skeleton" style="height: 12px; width: 72px"></span>
@@ -1421,27 +1442,10 @@ function copyId() {
       <span data-detail-save :data-save-state="saveState" hidden></span>
       <span class="td-save-error" data-detail-save-error :hidden="!saveError" role="alert" data-i18n="detail.saveError">{{ $t("detail.saveError") }}</span>
 
-      <!-- v4 — the drawer's tab shell. The panels stay in the DOM (`hidden`,
-           not `v-if`): the contract counts hooks while the drawer is closed.
-           Sessions is hidden by data (`hasSessions`), not by assignee kind. -->
-      <div class="tabs td-drawer-tabs" role="tablist" :aria-label="$t('drawer.tabs.label')" data-detail-tabs @keydown="onTabKeydown">
-        <button
-          v-for="tab in tabs"
-          :key="tab.name"
-          v-show="tab.visible"
-          :ref="(el) => setTabRef(tab.name, el)"
-          type="button"
-          class="tab td-drawer-tab"
-          role="tab"
-          :id="`td-dv-tab-${tab.name}`"
-          :data-detail-tab="tab.name"
-          :aria-controls="`td-dv-panel-${tab.name}`"
-          :aria-selected="activeTab === tab.name ? 'true' : 'false'"
-          :tabindex="activeTab === tab.name ? 0 : -1"
-          @click="selectTab(tab.name)"
-        >{{ $t(tab.key) }}</button>
-      </div>
-
+      <!-- v4 — the drawer's tab shell lives in the head (TP-0075 ⑥). The panels
+           stay in the DOM (`hidden`, not `v-if`): the contract counts hooks while
+           the drawer is closed. Sessions is hidden by data (`hasSessions`), not
+           by assignee kind. -->
       <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-details" data-detail-panel="details" aria-labelledby="td-dv-tab-details" tabindex="0" :hidden="activeTab !== 'details'">
 
       <section class="td-section">
@@ -1563,15 +1567,21 @@ function copyId() {
           </div>
 
           <span class="td-prop-label" data-i18n="prop.assignee">{{ $t("prop.assignee") }}</span>
-          <!-- R14 D26/B13 — the people rows are combos: the value box carries
+          <!-- R14 D26/B13 — the assignee is a combo: the value box carries
                `data-assignee-kind`, and its avatar carries it too (A19), so the
                dashed agent ring resolves on both. The platform badge is the row's
-               own `[data-agent-platform]` seat. -->
+               own `[data-agent-platform]` seat.
+
+               TP-0075 round 2 — the window closes when work starts: past
+               `backlog`/`todo` the control is disabled (its box still shows the
+               name, as the terminal drawer's controls do) and `commitField`
+               refuses the same write. -->
           <div class="td-prop-value" data-detail-assignee data-detail-save-field="assignee" :data-assignee-kind="assigneeKind">
             <span class="avatar"><span class="td-avatar" data-detail-assignee-avatar :data-assignee-kind="assigneeKind">{{ initial(assigneeName) }}</span></span>
             <ComboField
               v-model="assigneeDraft"
               :options="peopleOptions"
+              :disabled="!canEditAssignee"
               seed
               hook-input="data-assignee-input"
               hook-label="data-detail-assignee-label"
@@ -1588,21 +1598,12 @@ function copyId() {
           </div>
 
           <span class="td-prop-label" data-i18n="prop.reporter">{{ $t("prop.reporter") }}</span>
-          <div class="td-prop-value" data-detail-reporter data-detail-save-field="reporter">
+          <!-- TP-0075 round 2 — the reporter is decided at creation, so the
+               drawer shows it and nothing else: name and avatar, no box and no
+               menu. The create dialog keeps the editable control (B22). -->
+          <div class="td-prop-value" data-detail-reporter>
             <span class="avatar"><span class="td-avatar" data-detail-reporter-avatar>{{ initial(reporterName) }}</span></span>
-            <ComboField
-              v-model="reporterDraft"
-              :options="reporterOptions"
-              seed
-              hook-input="data-reporter-input"
-              hook-label="data-detail-reporter-label"
-              hook-menu="data-reporter-menu"
-              hook-option="data-reporter-option"
-              hook-value="data-reporter-value"
-              placeholder-key="combo.reporterPlaceholder"
-              aria-key="prop.reporter"
-              @blur="(value) => commitField('reporter', value)"
-            />
+            <span data-detail-reporter-label>{{ reporterName }}</span>
           </div>
 
           <span class="td-prop-label" data-i18n="prop.project">{{ $t("prop.project") }}</span>
@@ -1641,19 +1642,12 @@ function copyId() {
             />
           </div>
 
-          <span class="td-prop-label" data-i18n="prop.id">{{ $t("prop.id") }}</span>
-          <!-- R14 D28/B17 — the copy control is `.td-copy` and holds two things:
-               the internal id and the `svg.td-icon-sm` glyph (the prototype's
-               two children; a text `⧉` is the shape it replaces). -->
-          <button type="button" class="td-copy" data-detail-id-copy :data-copy-value="idText" :aria-label="$t('toast.copied')" @click="copyId">
-            <span data-detail-id>{{ idText }}</span>
-            <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M8 8h11v11H8zM5 16V5h11" />
-            </svg>
-          </button>
-
-          <span class="td-prop-label" data-i18n="prop.version">{{ $t("prop.version") }}</span>
-          <span class="td-prop-value td-mono" data-detail-version>{{ versionText }}</span>
+          <!-- TP-0075 ④ — the internal UUID and the row's version counter are
+               gone from the reader's face. The human identifier in the head is
+               the card's identity; `version` stays a wire field (the optimistic
+               lock the drawer sends), not a property row. The catalogue keeps
+               `prop.id` / `prop.version` / `toast.copied` (it is byte-locked to
+               the prototype), they simply have no consumer here. -->
         </div>
       </section>
 
@@ -1717,66 +1711,90 @@ function copyId() {
 
       <section class="td-section">
         <h3 class="td-section-title" data-i18n="drawer.relations">{{ $t("drawer.relations") }}</h3>
-        <!-- R14 D37 / BLOCKS.md §R14 — the prototype groups its links by kind:
-             one `.td-rel-item` per kind, holding that kind's `.td-copy` links,
-             and **each group is led by that kind's own name** — not just the
-             first two. The board's relation vocabulary is `parent` / `blocks` /
-             `related` (`src/core/domain/enums.mjs`) and all three are named in
-             the catalogue (`relations.parent|blocks|related`), so `related` gets
-             its own labelled group here rather than the bare link 154930-2
-             shipped while the third key was still being written (082533 named
-             it; 082552 consumes it). A kind outside the vocabulary keeps its own
-             wire value rather than rendering a bare catalogue key — the same
-             "read as its own name" fallback `lib/activity.js` gives an unnamed
-             event. -->
+        <!-- TP-0075 ②③ — four explicit groups, one card row each (identifier +
+             title). Parent and Related read the card's own edges; Children is
+             the epic's whole recursive descendant tree, served by the relations
+             route (`relations.descendants`), so a grandchild is a row without
+             paging the browser roster; Depends on is the card's `blocked_by`
+             rows plus an add-only box, whose row ✕ is the delete. The group
+             hooks are stable: `[data-rel-group]` names the containers, each row
+             carries `-value` (the identifier) and `-title`. -->
         <div class="td-rel" data-detail-relations>
-          <template v-if="relationGroups.length">
-            <span v-for="group in relationGroups" :key="group.type" class="td-rel-item">
-              <span class="text-xs text-(--brand-text-3)" :data-i18n="`relations.${group.type}`">{{ group.category }}</span>
-              <button v-for="link in group.links" :key="link.key" type="button" class="td-copy" data-relation-link>{{ link.label }}</button>
-            </span>
-          </template>
-          <!-- The empty state is the card that has **nothing at all** — no
-               read-only edge and no dependency. A card whose only relation was
-               `blocks` reads as an empty group here, exactly as the prototype's
-               own `fill()` leaves it once its Blocks row is withdrawn in favour
-               of the chips below. -->
-          <span v-else-if="dependsDraft.length === 0" class="text-xs text-(--brand-text-3)" data-i18n="relations.none">{{ $t("relations.none") }}</span>
-        </div>
+          <!-- The area's own empty state: no parent, no descendant, no
+               dependency and no related edge. The Depends group still renders
+               below because it owns the add box — this span describes what the
+               card has, not what the section draws. -->
+          <span v-if="relationsEmpty" class="td-rel-empty" data-i18n="relations.none">{{ $t("relations.none") }}</span>
 
-        <!-- T-20261014-212017-3 §4.4 — `depends_on` ⇄ the `blocks` edge.
-             The card's prerequisites are an editable multi-select
-             of this project's cards; the value the control holds is each
-             prerequisite's **identifier**, and the store resolves it to a task id
-             to write the edge (`stores/board.js#addDepends`). A cycle, a
-             self-reference or a cross-project edge is refused by the board's
-             relation guards, and the refusal is a sentence, not a stack.
-             The candidates are `dependsCandidates`, not the whole roster: the
-             board's own parent chain of this card is left out, so a card the
-             `blocks` guard would refuse is not offered in the first place
-             (T-20261015-104813) — and so is this card's own row, which
-             `normalizeRelation` refuses with `SELF_REFERENCE` (T-20261015-132952). -->
-        <div class="td-combo td-prop-combo" data-detail-depends data-detail-save-field="depends">
-          <span class="td-prop-label" data-i18n="relations.blocks">{{ $t("relations.blocks") }}</span>
-          <ComboField
-            v-model="dependsDraft"
-            :options="dependsCandidates"
-            multi
-            task-mode
-            :free-text="false"
-            :disabled="readonly"
-            hook-input="data-detail-depends-input"
-            hook-menu="data-detail-depends-menu"
-            hook-option="data-detail-depends-option"
-            hook-value="data-detail-depends-value"
-            hook-chips="data-detail-depends-chips"
-            hook-chip="data-detail-depends-chip"
-            hook-chip-value="data-detail-depends-value"
-            hook-chip-remove="data-detail-depends-remove"
-            placeholder-key="combo.dependsPlaceholder"
-            empty-key="combo.noTasks"
-            aria-key="relations.blocks"
-          />
+          <div v-if="parentRow" class="td-rel-group" data-rel-group="parent">
+            <span class="td-rel-group-title" data-i18n="relations.parent">{{ $t("relations.parent") }}</span>
+            <div class="td-rel-row" data-detail-parent-row>
+              <span class="td-rel-id td-mono" data-detail-parent-value>{{ parentRow.identifier }}</span>
+              <span class="td-rel-title" data-detail-parent-title :title="parentRow.title">{{ parentRow.title }}</span>
+            </div>
+          </div>
+
+          <div v-if="isEpic" class="td-rel-group" data-rel-group="children" data-detail-children>
+            <span class="td-rel-group-title" data-i18n="drawer.children">{{ $t("drawer.children") }}</span>
+            <div v-for="row in childRows" :key="row.id" class="td-rel-row" data-detail-child>
+              <span class="td-rel-id td-mono" data-detail-child-value>{{ row.identifier }}</span>
+              <span class="td-rel-title" data-detail-child-title :title="row.title">{{ row.title }}</span>
+            </div>
+            <span v-if="childRows.length === 0" class="td-rel-empty" data-i18n="drawer.childrenEmpty">{{ $t("drawer.childrenEmpty") }}</span>
+          </div>
+
+          <div class="td-rel-group" data-rel-group="depends" data-detail-depends data-detail-save-field="depends">
+            <span class="td-rel-group-title" data-i18n="relations.depends">{{ $t("relations.depends") }}</span>
+            <!-- The list is unconditional: the contract's count rule runs while
+                 the drawer is closed too, where it holds zero rows. Only the
+                 rows are data-driven. -->
+            <div data-detail-depends-list>
+              <div v-for="row in dependsRows" :key="row.relationId" class="td-rel-row" data-detail-depends-row>
+                <span class="td-rel-id td-mono" data-detail-depends-value>{{ row.identifier }}</span>
+                <span class="td-rel-title" data-detail-depends-title :title="row.title">{{ row.title }}</span>
+                <button
+                  type="button"
+                  class="td-chip-remove td-rel-remove"
+                  data-detail-depends-remove
+                  :aria-label="$t('combo.clear')"
+                  :title="$t('combo.clear')"
+                  :disabled="readonly"
+                  :aria-disabled="readonly ? 'true' : undefined"
+                  @click="removeDependsRow(row)"
+                >
+                  <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M6 6l12 12M18 6 6 18" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <!-- T-20261014-212017-3 §4.4 — one `depends_on` is one `blocks` edge
+                 (source = the prerequisite). The candidates are
+                 `dependsCandidates` minus what the card already has: the board's
+                 own parent chain and the card itself are already excluded, so an
+                 edge the guards would refuse is never offered. The box emits
+                 once (`update:modelValue`); there is no blur commit. -->
+            <ComboField
+              v-model="dependsAddDraft"
+              :options="dependsAddOptions"
+              task-mode
+              :free-text="false"
+              :disabled="readonly"
+              hook-input="data-detail-depends-input"
+              hook-menu="data-detail-depends-menu"
+              hook-option="data-detail-depends-option"
+              hook-value="data-detail-depends-value"
+              placeholder-key="combo.dependsPlaceholder"
+              empty-key="combo.noTasks"
+              aria-key="relations.depends"
+              @update:model-value="addDependsRow"
+            />
+          </div>
+
+          <div v-if="relatedRows.length" class="td-rel-group" data-rel-group="related">
+            <span class="td-rel-group-title" data-i18n="relations.related">{{ $t("relations.related") }}</span>
+            <button v-for="row in relatedRows" :key="row.key" type="button" class="td-copy" data-relation-link>{{ row.identifier }}</button>
+          </div>
         </div>
       </section>
 

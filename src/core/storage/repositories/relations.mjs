@@ -136,6 +136,48 @@ export function createRelationsRepository(db) {
     },
 
     /**
+     * Descendants of `taskId` through the `parent` edges — the mirror of
+     * `listAncestors`, nearest level first.
+     *
+     * A card has at most one parent but may have many children, so the walk
+     * cannot be the single `byChild` lookup the ancestor read uses: it is the
+     * same recursive CTE run in the other direction (source → target), bounded
+     * at the same depth as `ancestorsOf`/`listAncestors`. Within one depth the
+     * board's own card order (`sort_order`, then the identifier for a stable
+     * tie-break) decides, so an epic's drawer lists its children the way every
+     * other card list does.
+     *
+     * The row shape is `listAncestors`'s — `{id, identifier, title, status,
+     * kind}` — because the caller renders a card row, not an edge. Archived
+     * cards are included, exactly as the ancestor walk includes them.
+     *
+     * @param {string} taskId
+     */
+    listDescendants(taskId) {
+      return db
+        .prepare(
+          `WITH RECURSIVE desc(id, depth) AS (
+             SELECT t.id, 0 FROM tasks t WHERE t.id = ?
+             UNION ALL
+             SELECT r.target_task_id, desc.depth + 1
+               FROM task_relations r JOIN desc ON r.source_task_id = desc.id
+              WHERE r.relation_type = 'parent' AND desc.depth < 64
+           )
+           SELECT t.* FROM desc JOIN tasks t ON t.id = desc.id
+            WHERE desc.depth > 0
+            ORDER BY desc.depth, t.sort_order, t.identifier`,
+        )
+        .all(taskId)
+        .map((row) => ({
+          id: String(row.id),
+          identifier: String(row.identifier),
+          title: String(row.title),
+          status: String(row.status),
+          kind: String(row.kind),
+        }));
+    },
+
+    /**
      * Who blocks `taskId` directly.
      * @param {string} taskId
      */
