@@ -46,3 +46,9 @@ default without a human or director dependency.
   the close gate could never accept.
 - A deployment that used a project-level `human` default must state the mode per card, or
   document the guidance in `docs/agents/acceptance-mode.md`.
+
+## Amendment (2026-11-03)
+
+The project guidance file is now `docs/agents/create-card.md`, which also records the
+project's card scope and epic boundary. The decision above is unchanged: one acceptance word,
+chosen at creation, with `auto` as the fallback.

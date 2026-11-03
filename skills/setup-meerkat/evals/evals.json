@@ -138,11 +138,13 @@
       "id": 10,
       "name": "card-scope",
       "prompt": "Set up meerkat here. Not everything should become a task card — we mostly want features, bugs and design work tracked; quick questions and one-off commands are just chat.",
-      "expected_output": "Round 4 asks the card scope with a recommended answer (the work a role owns), records the user's narrower answer, and hands it to the init skill; the instruction entry the init skill writes carries that answer rather than the default. A second run reports it unchanged.",
+      "expected_output": "Round 4 reads the installed meerkat skill's references/create-card.md so it knows the default, asks the card scope with a recommended answer (the work a role owns), and writes the user's narrower answer as a thin docs/agents/create-card.md — the choices only, not a copy of the manual. The answer also reaches the instruction entry through the init skill. A second run reports it unchanged.",
       "files": [],
       "assertions": [
+        "The installed meerkat skill's references/create-card.md is read before the questions, so the default is known rather than invented.",
         "The card scope is asked as its own question with a recommended default, not silently assumed.",
         "The recommended default is the work the role skills' shapes assign to a role — product design, development, bug fixes — and work with no owner (questions, lookups, one-off commands) is stated as not becoming a card.",
+        "docs/agents/create-card.md records the user's choices only; it is not a copy of the manual, its commands or its epic patterns.",
         "The user's narrower answer is passed to the init skill, not written into the instruction entry by setup itself.",
         "The answer reaches the project's agent-instruction entry through the init skill.",
         "A second run reports the entry unchanged rather than restating or duplicating it."

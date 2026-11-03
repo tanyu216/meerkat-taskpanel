@@ -676,7 +676,7 @@ Reviewer selection is **not** install or config state: the local role catalog's
 
 Acceptance is **not** install configuration: each card states its own mode
 (`off | auto | human`) with `issue create --acceptance-mode …`. There is no project-level
-default; a project may document its creators' guidance in `docs/agents/acceptance-mode.md`.
+default; a project may document its creators' guidance in `docs/agents/create-card.md`.
 The file is merged, never rewritten.
 
 `MEERKAT_TASKPANEL_ENV_FILE` points the installer and both binaries at a different board
