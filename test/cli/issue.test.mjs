@@ -518,6 +518,14 @@ describe("cli/issue — update, move, assign, archive", () => {
       assert.equal(nothing.status, 0, "nothing to do is not an error");
       assert.equal(nothing.stdout, "");
       assert.match(nothing.stderr, /nothing to update/);
+
+      // The guard is not a change of its own: a call that carries only a fresh
+      // --if-version has nothing to write, and still refuses locally.
+      const version = dataOf(run(["issue", "get", "DEMO-0001", "--json"])).task.version;
+      const casOnly = run(["issue", "update", "DEMO-0001", "--if-version", String(version)]);
+      assert.equal(casOnly.status, 0, "a guard with nothing to change is not a write");
+      assert.equal(casOnly.stdout, "");
+      assert.match(casOnly.stderr, /nothing to update/);
     });
   });
 
@@ -554,6 +562,42 @@ describe("cli/issue — update, move, assign, archive", () => {
       const withStatus = run(["issue", "update", "DEMO-0001", "--status", "done", "--json"]);
       assert.equal(withStatus.status, 2);
       assert.match(JSON.parse(withStatus.stdout).error.message, /unknown option --status/);
+    });
+  });
+
+  it("issue update forwards if_version and refuses a stale write", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      // The card moves from version 1 to 2, so version 1 is stale below.
+      const first = dataOf(run(["issue", "update", "DEMO-0001", "--title", "T2", "--json"]));
+      assert.equal(first.task.version, 2);
+      assert.equal(first.task.title, "T2");
+
+      const stale = run(["issue", "update", "DEMO-0001", "--title", "STALE", "--if-version", "1", "--json"]);
+      assert.equal(stale.status, 1);
+      assert.equal(errorOf(stale).code, "VERSION_CONFLICT");
+      assert.equal(
+        dataOf(run(["issue", "get", "DEMO-0001", "--json"])).task.title,
+        "T2",
+        "a refused update writes nothing",
+      );
+
+      // The acceptance append is updateTask's first write; a stale caller CAS
+      // must guard it too, not be bypassed by the append's own revision check.
+      const acceptanceStale = run([
+        "issue", "update", "DEMO-0001", "--acceptance", "a", "--if-version", "1", "--json",
+      ]);
+      assert.equal(acceptanceStale.status, 1);
+      assert.equal(errorOf(acceptanceStale).code, "VERSION_CONFLICT");
+      assert.deepEqual(
+        dataOf(run(["issue", "get", "DEMO-0001", "--json"])).task.acceptance,
+        [],
+        "no criterion was frozen",
+      );
+
+      const fresh = dataOf(run(["issue", "update", "DEMO-0001", "--title", "T3", "--if-version", "2", "--json"]));
+      assert.equal(fresh.task.title, "T3");
+      assert.equal(fresh.task.version, 3);
     });
   });
 
@@ -807,6 +851,26 @@ describe("cli/issue — every flag the command declares", () => {
 
       const assigned = dataOf(run(["issue", "assign", "DEMO-0001", "--assignee", "lin", "--force-create", "--json"]));
       assert.equal(assigned.task.assignee.display_name, "lin");
+
+      // `assign` is `update` with the dictionary in play, so its CAS is the same
+      // wire guard. `task.version` is the pre-move version 1; the move and the
+      // assign above have both bumped it.
+      const assignStale = run([
+        "issue", "assign", "DEMO-0001",
+        "--assignee-id", assigned.task.assignee.id,
+        "--if-version", String(task.version),
+        "--json",
+      ]);
+      assert.equal(assignStale.status, 1);
+      assert.equal(errorOf(assignStale).code, "VERSION_CONFLICT");
+
+      const assignFresh = dataOf(run([
+        "issue", "assign", "DEMO-0001",
+        "--assignee-id", assigned.task.assignee.id,
+        "--if-version", String(assigned.task.version),
+        "--json",
+      ]));
+      assert.equal(assignFresh.task.version, assigned.task.version + 1);
     });
   });
 
