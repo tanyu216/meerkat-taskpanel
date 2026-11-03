@@ -1,145 +1,114 @@
 # Eval prompts
 
 Run each prompt with the skill and without it (baseline), using a throwaway HOME and
-project, `TASKD_NO_AUTOSTART=1`, and `--no-network` where the board is not under test.
+project, `TASKD_NO_AUTOSTART=1`, and `--no-network` where the board is not under test. The
+machine-readable twin is `evals/evals.json`; this page is the human-readable index.
 
 ## 1. Remote board
 
 > Set up meerkat for Claude on this repo. The board is at `http://board.internal:9527`.
 
-Assert: detection reports `class: "remote"`, asks before configuring, never starts a
-local taskd, chooses `--target claude --no-automation`, and `--dry-run` writes nothing.
+Round 1 classifies the board as remote, installs only `taskctl` and the agent bundle with
+`--no-automation`, and never starts a local taskd or writes its guard. Round 2 skips the
+taskd-side keys. A `--dry-run` writes nothing, and no secret is printed.
 
 ## 2. Standard team
 
-> Install meerkat here and build the standard team.
+> Install meerkat here with the standard team.
 
-Assert: `--dry-run` prints the install plan and writes nothing; the real run installs the
-board skill, `meerkat-chat`, `meerkat-director` and the five role skills (`jobs`, `linus`,
-`turing`, `reviewer`, `worker`) for Claude, and the native agent definitions; the second run changes no
-managed content (role skills and agent definitions are `unchanged`; the installer may re-copy
-identical runtime bytes); the project's `CLAUDE.md`/`AGENTS.md` states the task entry once,
-naming `/meerkat` and carrying the card scope, with no marker block, and a re-run leaves it
-unchanged; the same file carries the compact team contract — each role's shapes, the
-acceptance/landing owner, and the handoff markers with their writers — pointing at the
-installed role skills for detail; and the same file points at the installed director's
-decision policy and the `worker → director → human` ladder instead of copying it.
+The board, director and five role skills land for the detected kind; one supervisor is
+recommended; round 4 points the project's agent-instruction entry at `/meerkat` and
+`docs/agents/`. A second run reports `unchanged`.
 
 ## 3. Moving a role between platforms
 
 > Turing should run on codex, not on Claude. Move it.
 
-Assert: detection reports Turing's `installedOn`, `effective` and `fallback` first; the skill
-is copied into `<home>/.codex/skills/turing/`; the Claude copy is deleted only after an
-explicit yes; a re-run reports `unchanged`; detection afterwards reports codex as effective;
-a retired `meerkat-loop` tree is reported as legacy and not deleted.
+Round 5 reports Turing's `installedOn`, `effective` and `fallback`; the skill is copied into
+the codex tree; the Claude copy is deleted only after an explicit yes; the scan set names the
+roles that can be claimed; a retired `meerkat-loop` tree is reported and kept.
 
 ## 4. Existing tracker
 
 > I already have `docs/agents/issue-tracker.md` for GitHub. Set up the Matt integration.
 
-Assert: the skill detects an unrelated tracker and asks before overwriting; a tracker
-that already mentions taskpanel is skipped; the Matt skill is not invoked by this skill.
+Round 4 detects an unrelated tracker and asks before overwriting; setup does not write the
+tracker's agent-skills block; a tracker that mentions taskpanel is skipped.
 
-## 5. Decision ladder
+## 5. Config conflicts
 
-> A worker session asks an operational question, an epic-split question, and an E2 acceptance
-> question. Show how the supervisor and director handle each.
+> Check this machine's Meerkat configuration and fix the conflicts you find. The board is
+> remote at `http://board.internal:9527`.
 
-Assert: the three items are one round (one question string per card, not one comment per
-item); the operational and epic-split items are answered by the director in a `note` (no
-decision kind), and the card's single move is the E2 escalation to `awaiting` with options
-and a recommendation; an epic split is the director's call only while the deliverable is
-unchanged, and an E1 scope expansion goes to the human; the worker writes no decision; the
-director never uses `--as-human` for its own answer.
+Round 2 runs the read-only audit, reports each conflict with its file and line, and repairs
+only through the env writer. A loop key in the shared file is a hard error, a per-kind
+duplicate is a silent last-wins, the token pair is an error, and no secret is printed. With
+a remote board the taskd-side keys are skipped.
 
-## 6. Identity
-
-> Show who is recorded as creator, assignee and report author for a Jobs card, and what a
-> human decision records.
-
-Assert: the role names `Jobs`/`Linus`/`Turing` are the agent identities, `--assignee-kind
-agent` / `--reporter-kind agent` are used where applicable, and `--as-human` signs the
-fixed `TASKCTL_HUMAN`, never a role name.
-
-## 7. Setup interview
+## 6. Setup interview
 
 > Set up Meerkat TaskPanel for Claude on this repo. The board is remote at
-> `http://board.internal:9527`, I want a project-scoped team, and I am not sure the standard
-> team fits. Do not install or write anything — show me the setup interview you would run
-> first.
+> `http://board.internal:9527`, and I am not sure the five roles fit. Do not install or
+> write anything — show me the setup interview you would run first.
 
-Assert: detection runs first and its facts are used rather than re-asked; the open decisions
-are one numbered round (Q1..Qn) with a recommendation each, worded so "yes" accepts it; the
-team question is adversarial and asks for a counterexample card; the interview states that
-installation, writes and daemon starts wait until the frontier is empty and the answers are
-confirmed; `--yes` accepts only recommended non-destructive answers.
+Detection first, used as facts. Six rounds in order, one at a time. Each round's listed
+questions are mandatory — the floor — and the facts raise follow-ups — the ceiling is not
+the list. The routing question is adversarial: it asks for a counterexample card shape, a
+shape none describes goes to Worker, and the reviewer is independent. No install, write or
+daemon before the round's frontier closes. `--yes` accepts only recommended non-destructive
+answers.
 
-## 8. Role routing and fallback
+## 7. Role routing and fallback
 
 > We will run Jobs and Linus on Claude, Turing on Codex, and Reviewer wherever it is
 > available. Explain how the supervisor decides where each role runs, and what happens when
 > Codex is not installed on this machine.
 
-Assert: the effective platform comes from the role's `installedOn` and the supervisor's
-primary kind, not from a config mapping key; a role installed on several kinds reports its
-fallback instead of being silently reassigned; an unavailable Codex makes Turing fall back to
-another kind that also carries its skill, and the fallback is reported once in status/doctor;
-when no carrying kind is available the card is not claimed and the gap is reported — the
-handoff is never pointed at a skill that is not installed; the director is found by scanning
-the installed kinds (primary first) and is not routed by role discovery.
+Installation location is the routing; the supervisor's primary kind wins; an unavailable
+kind falls back only to a kind that carries the role; a role with no carrier is not claimed
+and the gap is reported.
 
-## 9. Decision round
+## 8. Decision round
 
 > A Jobs card has four open decisions: the design register, the mobile breakpoint, a
-> terminology conflict, and whether to expand scope to cover a second persona. Show the
-> decision round Jobs sends and how the director handles each answer.
+> terminology conflict, and whether to expand scope to cover a second persona.
 
-Assert: one agent `question` comment carries the frontier (Q1..Qn) with recommendations; a
-dependent decision is deferred to the next round and a fact-closable item is closed by
-lookup; every authorized item is settled in one `note` (or the lookup) and the card is moved
-at most once; the E3 register and the E1 scope expansion go to the human in one `awaiting`
-string; the worker writes no decision kind and never enters awaiting; the director does the
-work only of deciding; only a human comment resumes, and an incomplete answer is not consent.
+One question comment (Q1..Qn) with a recommendation each; the director answers what it can
+in one note and one move; E3 and E1 escalate to `awaiting`; the worker writes no decision;
+only a human comment resumes.
 
-## 10. Reviewer catches an omission
+## 9. Reviewer catches an omission
 
-> Review card T-2 (round 1) audits delivered card T-1, acceptance_mode auto, project gate
-> `npm run verify:docker`. T-1's description asks for five things: a retry with backoff, a
-> timeout, a metric, a CLI flag and a regression test. Its delivery report lists four
-> acceptance items and marks them met; the fifth (the CLI flag) appears in no acceptance
-> item, and one `met` note says only "implemented". Show the verdict the reviewer delivers
-> and the report it writes.
+> Review card T-2 (round 1) audits delivered card T-1 … the CLI flag appears in no
+> acceptance item …
 
-Assert: the verdict's first line is exactly `VERDICT: REJECT`; the requirement ledger names
-the uncovered CLI-flag requirement rather than answering one generic "requirements covered"
-line; the anchorless `met` is refused as unverifiable (`not_met`), not accepted on the
-strength of its note; the audit reads the delivered `commit` (`git show` / `git diff` at that
-sha) rather than only the live working tree; the report records the declared gate with its
-command and exit code, run by the reviewer; every must-fix item is numbered and carries
-file/line, reproduction, expected versus actual and the missing case (the loop appends them
-to T-1's acceptance); the reviewer moves neither card and never enters awaiting.
+`VERDICT: REJECT`; the ledger names the uncovered requirement; the anchorless `met` is not
+verifiable; the report verifies at the delivered commit and records the gate command and
+exit code.
 
-## 11. Card scope
+## 10. Card scope
 
 > Set up meerkat here. Not everything should become a task card — we mostly want features,
 > bugs and design work tracked; quick questions and one-off commands are just chat.
 
-Assert: the card scope is one frontier question with a recommended default — the work a role
-owns, read from the role skills' shapes (product design, development, bug fixes, refactors,
-tests and review) — and work with no owner (questions, lookups, one-off
-commands) is named as not becoming a card; the user's narrower answer replaces the default
-scope statement in the instruction file the init step updated, so it is persisted for later
-sessions; a second run reports the entry unchanged instead of restating it.
+Round 4 asks the scope with a recommended default (the work a role owns), records the
+narrower answer, and hands it to the init skill; the instruction entry the init skill writes
+carries it. A second run reports `unchanged`.
+
+## 11. The init skill writes the requirements
+
+> Set up meerkat here and initialize this project's agent-instruction entry. Use a temporary
+> HOME; do not touch the real one.
+
+Round 4 writes `docs/agents/*.md`, then calls the `init` skill once with the brief: `/meerkat`
+is the card entry, the board rules live in `docs/agents/`, and the card scope is stated. The
+`init` skill writes the project's instruction entry; setup does not edit it, and the file has
+no marker block. This leg is **blocked**, not passed, when the host has no `init` skill.
 
 ## 12. Security toolchain belongs to Linus
 
 > Set up meerkat in this repo. It has a GitHub Actions workflow that runs the tests, but
 > nothing else — no dependency audit, no secret scan, no SAST.
 
-Assert: setup does not run a security check, install a scanner or write a CI security file;
-it names the Linus role skill as the owner of both the decision and the mechanism
-(`skills/linus/references/security-tools.md`, `skills/linus/scripts/security-tools.mjs`); it
-does not ask the user to approve security arms during setup; a missing Linus on every
-available kind is reported as the reason the toolchain cannot be initialized; any state it
-mentions is a detection fact, not something it started.
+Setup does not check, install or write security tooling. It names the Linus role skill as the
+owner, points at the installed Linus material, and does not add a CI file.

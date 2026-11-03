@@ -4,20 +4,22 @@
  *
  * `--file` is the target (the install-root `.env` or a per-kind config). A different
  * existing value is a conflict unless `--force`; the value is never echoed. Use
- * `--value-file` for a token so it does not appear in the process list.
+ * `--value-file` for a token so it does not appear in the process list. `--remove`
+ * deletes every line for the key — the repair for a mislaid or duplicated key.
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { isEntryPoint } from "./lib/entry-guard.mjs";
 import { writeAtomic } from "./lib/atomic.mjs";
-import { mergeEnvKey } from "./lib/env-merge.mjs";
+import { mergeEnvKey, removeEnvKey } from "./lib/env-merge.mjs";
 
-const USAGE = `configure-env — merge one key into a KEY=VALUE file
+const USAGE = `configure-env — merge or remove one key in a KEY=VALUE file
 
   node configure-env.mjs --file <path> --key <KEY> (--value <V> | --value-file <path>)
                          [--dry-run] [--force] [--mode 0600] [--json]
+  node configure-env.mjs --file <path> --key <KEY> --remove [--dry-run] [--json]
 
-Exit: 0 wrote/unchanged, 3 conflict (a different value without --force), 2 usage.`;
+Exit: 0 wrote/unchanged/removed, 3 conflict (a different value without --force), 2 usage.`;
 
 function parse(argv) {
   const opts = {
@@ -27,6 +29,7 @@ function parse(argv) {
     valueFile: null,
     dryRun: false,
     force: false,
+    remove: false,
     mode: 0o600,
     json: false,
     help: false,
@@ -46,6 +49,7 @@ function parse(argv) {
       case "--mode": opts.mode = Number.parseInt(take(), 8); break;
       case "--dry-run": opts.dryRun = true; break;
       case "--force": opts.force = true; break;
+      case "--remove": opts.remove = true; break;
       case "--json": opts.json = true; break;
       case "-h":
       case "--help": opts.help = true; break;
@@ -68,7 +72,15 @@ function main(argv) {
     console.log(USAGE);
     return 0;
   }
-  if (!opts.file || !opts.key || (opts.value === null && !opts.valueFile)) {
+  if (!opts.file || !opts.key) {
+    console.error(USAGE);
+    return 2;
+  }
+  if (opts.remove && (opts.value !== null || opts.valueFile)) {
+    console.error("configure-env: --remove does not take a value");
+    return 2;
+  }
+  if (!opts.remove && opts.value === null && !opts.valueFile) {
     console.error(USAGE);
     return 2;
   }
@@ -99,7 +111,9 @@ function main(argv) {
 
   let merged;
   try {
-    merged = mergeEnvKey(current, opts.key, value, { force: opts.force });
+    merged = opts.remove
+      ? removeEnvKey(current, opts.key)
+      : mergeEnvKey(current, opts.key, value, { force: opts.force });
   } catch (err) {
     console.error(`configure-env: ${err instanceof Error ? err.message : String(err)}`);
     return 2;
@@ -120,7 +134,7 @@ function main(argv) {
     return 3;
   }
 
-  const changed = merged.action === "written";
+  const changed = merged.action === "written" || merged.action === "removed";
   if (changed && !opts.dryRun) {
     try {
       const mode = existsSync(opts.file) ? statSync(opts.file).mode & 0o777 : opts.mode;
@@ -136,11 +150,15 @@ function main(argv) {
     file: opts.file,
     key: opts.key,
     action: merged.action,
+    ...(opts.remove ? { removed: merged.removed } : {}),
     changed,
     dry_run: opts.dryRun,
   };
   if (opts.json) console.log(JSON.stringify(report, null, 2));
-  else console.log(`configure-env: ${opts.key} ${opts.dryRun ? "would be " : ""}${merged.action} in ${opts.file}`);
+  else {
+    const verb = opts.remove ? (merged.action === "removed" ? "removed" : "unchanged") : merged.action;
+    console.log(`configure-env: ${opts.key} ${opts.dryRun ? "would be " : ""}${verb} in ${opts.file}`);
+  }
   return 0;
 }
 

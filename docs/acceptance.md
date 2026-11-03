@@ -26,10 +26,10 @@ orphans the work.
 - There is **no project-level acceptance default**. A project supplies a reviewer, never a
   mode; a card that omits the field resolves to `auto`.
 - A project may document how its creators choose between the three words in
-  `docs/acceptance-mode.md` under the project's working directory. The `meerkat` skill discovers
+  `docs/agents/acceptance-mode.md` under the project's working directory. The `meerkat` skill discovers
   that file when it creates a card. It is guidance for the creator, not board data: it is not
   stored, inherited or read by `taskd`. This repository's own guidance is
-  [acceptance-mode.md](acceptance-mode.md).
+  [acceptance-mode.md](agents/acceptance-mode.md).
 
 ## Resolution at creation
 

@@ -5,12 +5,13 @@
       "id": 1,
       "name": "remote-board",
       "prompt": "Set up meerkat for Claude on this repo. The board is at http://board.internal:9527.",
-      "expected_output": "A detection report that classifies the board as remote, asks before configuring, and runs the installer with --target claude --no-automation (never starting a local taskd). A --dry-run writes nothing.",
+      "expected_output": "Round 1 detects a remote board and installs only taskctl plus the agent skill bundle with --no-automation; round 2 skips the taskd-side keys. No local taskd or guard is written, and no secret value is printed.",
       "files": [],
       "assertions": [
         "The detection report names the requested board URL (or the reachable non-loopback stand-in used for an unresolvable hostname) and classifies it as remote (not loopback).",
-        "The plan asks the user to confirm the remote address before writing anything.",
-        "The chosen install invocation does not include the server target and does not enable the supervisor.",
+        "The chosen install invocation does not include the server target, does not enable the supervisor and uses --no-automation.",
+        "Round 2 lists only TASKD_URL, the token and the per-kind loop keys; TASKD_HOST/PORT/DATA_DIR/ALLOW_* are explicitly skipped.",
+        "Any token or secret in the report is shown as <set>, never in clear text.",
         "No file under the temporary HOME is created by the detection or dry-run step."
       ]
     },
@@ -18,88 +19,79 @@
       "id": 2,
       "name": "standard-team",
       "prompt": "Install meerkat here with the standard team.",
-      "expected_output": "Board, director and the five role skills installed for Claude beside the existing server; the supervisor enabled; the project's task entry names the role skills and points at the director's decision policy. A second run reports unchanged.",
+      "expected_output": "Round 1 installs the board, director and five role skills for the detected kind; round 5 keeps one supervisor and shows the role placement; round 4 points the project's instruction entry at /meerkat and docs/agents. A second run reports unchanged.",
       "files": [],
       "assertions": [
-        "The install uses --target claude and includes the server (or explains why it skipped it).",
+        "The install uses --target <kind> and includes the server when the board is local (or explains why it skipped it).",
         "<home>/.claude/skills/meerkat-director/SKILL.md and <home>/.claude/skills/{jobs,linus,turing,reviewer,worker}/SKILL.md exist after installation.",
         "Each installed role skill carries a role.json with schema \"meerkat-role\".",
         "A second identical run leaves the role skills and native agent definitions unchanged, and every action reports unchanged.",
-        "The project's CLAUDE.md (or AGENTS.md) states the task entry once — /meerkat as the entry and the card scope — in the instruction file's own shape, with no marker block, and a second run leaves it unchanged.",
-        "The same file carries the compact team contract: each role's work shapes, the acceptance/landing owner, and the handoff markers with their writers, pointing at the installed role skills for the detail.",
-        "The same file points at the installed meerkat-director decision policy and the worker -> director -> human ladder, without copying the policy body."
+        "Round 4 calls the init skill once and does not write the project's instruction entry itself.",
+        "The project's instruction entry names /meerkat and docs/agents/ and carries the card scope; it has no marker block.",
+        "The setup prose keeps the team contract as an index: role shapes, the landing owner, the handoff markers and the reviewer independence, pointing at the installed role skills."
       ]
     },
     {
       "id": 3,
       "name": "move-role-between-platforms",
       "prompt": "Turing should run on codex, not on Claude. Move it.",
-      "expected_output": "Detection reports Turing's installedOn/effective; the skill is copied into the codex skills tree, the Claude copy is removed only after an explicit yes, and detection then reports codex as the effective platform.",
+      "expected_output": "Round 5 reports Turing's installedOn/effective; the skill is copied into the codex skills tree, the Claude copy is removed only after an explicit yes, and detection then reports codex as the effective platform.",
       "files": [],
       "assertions": [
         "Detection reports every role with installedOn, effective and fallback before any write.",
         "The target copy is written under <home>/.codex/skills/turing/ and includes role.json.",
         "The source <home>/.claude/skills/turing/ is deleted only after the user explicitly agrees; a role the user did not name is never touched.",
         "A re-run of the same move reports unchanged.",
-        "Detection after the move reports Turing's effective platform as codex, and a retired meerkat-loop tree (if present) is reported as legacy and not deleted."
+        "After the move, the scan set in taskctl loop status names Worker and every role whose cards are created.",
+        "A retired meerkat-loop tree (if present) is reported as legacy and not deleted."
       ]
     },
     {
       "id": 4,
       "name": "existing-tracker",
       "prompt": "I already have docs/agents/issue-tracker.md for GitHub. Set up the Matt integration.",
-      "expected_output": "Detection finds the existing unrelated tracker and asks before overwriting; nothing is overwritten without consent. The Matt skill is not invoked by this skill, and the skill does not claim it ran.",
+      "expected_output": "Round 4 finds the existing unrelated tracker and asks before overwriting; the Matt skill is not invoked by this skill, and setup does not write the tracker's agent-skills block.",
       "files": [],
       "assertions": [
         "The agent reports that an existing tracker was found and that it is unrelated to taskpanel.",
         "No write to docs/agents/issue-tracker.md happens before the user's confirmation.",
         "The response offers the /setup-matt-pocock-skills command or the manual-read route rather than claiming the skill ran.",
+        "Setup does not hand-write the tracker's agent-skills block in the project's instruction entry.",
         "A tracker that mentions taskctl or taskpanel is reported as already integrated and skipped."
       ]
     },
     {
       "id": 5,
-      "name": "decision-ladder",
-      "prompt": "A worker asks an operational question, an epic-split question, and an E2 acceptance question. Show how the supervisor and director handle each.",
-      "expected_output": "The supervisor enqueues a director row; the director answers the operational and epic-split items with one agent note and moves the card back to todo, and escalates the E2 item to awaiting with options and a recommendation. The worker writes no decision comment and the director never uses --as-human.",
+      "name": "config-conflicts",
+      "prompt": "Check this machine's Meerkat configuration and fix the conflicts you find. The board is remote at http://board.internal:9527.",
+      "expected_output": "Round 2 runs the read-only audit, reports the layered conflicts with their file and line, asks which to repair, and repairs only through the env writer. Taskd-side keys are skipped because the board is remote, and no secret is printed.",
       "files": [],
       "assertions": [
-        "Each worker question is recorded as an agent question comment on an in_progress card; the supervisor enqueues a director row, not a new project session.",
-        "The operational and epic-split items are answered in a note (never a decision kind or awaiting), and the card's single move is the E2 escalation to awaiting; the note preserves the operational answers for the resumed worker.",
-        "The epic split is presented as the director's decision; only a scope expansion is said to be E1 for the human.",
-        "The E2 question moves the card to awaiting with the E2 reason and a question carrying options and a recommendation.",
-        "No example has the worker writing decision, confirm or change, and no example has the director doing the work, claiming the card or moving it to done.",
-        "The questions are one round: one question string per card (one question comment), not one comment per item."
+        "The audit is run before any write and its conflicts are shown with a file and line.",
+        "A loop key in the shared .env is reported as a hard error, and a silent duplicate in .env.<kind> is warned.",
+        "TASKD_TOKEN and TASKD_TOKEN_FILE together is reported as an error; exactly one is the repair.",
+        "With a remote board, TASKD_HOST/PORT/DATA_DIR/ALLOW_* are not proposed.",
+        "No token or secret value is printed.",
+        "Every repair is written through the env writer, and a different existing value is a conflict until the user consents to --force."
       ]
     },
     {
       "id": 6,
-      "name": "identity",
-      "prompt": "Show who is recorded as creator, assignee and report author for a Jobs card, and what a human decision records.",
-      "expected_output": "Jobs is the board agent name (with --assignee-kind agent / --reporter-kind agent where applicable); a human decision is recorded with --as-human and signs the fixed TASKCTL_HUMAN name, never the role name.",
-      "files": [],
-      "assertions": [
-        "The example creator, assignee and report author are the role's board agent name (Jobs).",
-        "Assignee and reporter writes carry --assignee-kind agent / --reporter-kind agent.",
-        "The human decision example uses --as-human and does not use a role name as the human identity."
-      ]
-    },
-    {
-      "id": 7,
       "name": "setup-interview",
       "prompt": "Set up Meerkat TaskPanel for Claude on this repo. The board is remote at http://board.internal:9527, and I am not sure the five roles fit. Do not install or write anything - show me the setup interview you would run first.",
-      "expected_output": "Detection first, used as facts; one numbered frontier round with recommended answers worded so 'yes' accepts them; the role routing is challenged with a counterexample card shape; no install, write or daemon before the frontier closes.",
+      "expected_output": "Detection first, used as facts; six rounds in order, each with its mandatory questions plus any follow-up; recommended answers worded so 'yes' accepts them; the routing is challenged with a counterexample; no install, write or daemon before a round's answers.",
       "files": [],
       "assertions": [
         "The response runs detection (or names the facts it would detect) before asking, and never asks for a fact detection can establish.",
-        "The open decisions are one numbered round (Q1..Qn), each with a recommended answer worded so 'yes' accepts it.",
+        "The six rounds are worked in order, one at a time; the response does not merge them into one frontier.",
+        "Each round's listed questions are asked and at least one follow-up raised by the facts is added — the list is a floor, not a ceiling.",
         "The routing question is adversarial: it asks for a counterexample card or a card shape that would fall between roles, and says a shape none describes goes to Worker.",
-        "The interview states that installation, writes and daemon starts wait until the frontier is empty and the answers are confirmed - the gate is part of the procedure, not just a promise not to execute.",
+        "The interview states that installation, writes and daemon starts wait until the round's frontier is empty and the answers are confirmed.",
         "--yes is described as accepting only recommended non-destructive answers."
       ]
     },
     {
-      "id": 8,
+      "id": 7,
       "name": "role-routing-and-fallback",
       "prompt": "We will run Jobs and Linus on Claude, Turing on Codex, and Reviewer wherever it is available. Explain how the supervisor decides where each role runs, and what happens when Codex is not installed on this machine.",
       "expected_output": "Installation location is the routing: each role runs on a kind whose skills tree carries it, the supervisor's primary kind wins when several do. An unavailable preferred kind falls back only to another kind that carries that role; if none does, the card is not claimed and the gap is reported.",
@@ -113,7 +105,7 @@
       ]
     },
     {
-      "id": 9,
+      "id": 8,
       "name": "decision-round",
       "prompt": "A Jobs card has four open decisions: the design register, the mobile breakpoint, a terminology conflict, and whether to expand scope to cover a second persona. Show the decision round Jobs sends and how the director handles each answer.",
       "expected_output": "One question comment carrying Q1..Q4 with recommendations; the operational items answered by the director in one note with one move; E3 (register) and E1 (scope expansion) escalated in one awaiting string; the worker writes no decision kind and never enters awaiting; only a human comment resumes.",
@@ -127,7 +119,7 @@
       ]
     },
     {
-      "id": 10,
+      "id": 9,
       "name": "reviewer-catches-omission",
       "prompt": "Review card T-2 (round 1) audits delivered card T-1, acceptance_mode auto, project gate `npm run verify:docker`. T-1's description asks for five things: a retry with backoff, a timeout, a metric, a CLI flag and a regression test. Its delivery report lists four acceptance items and marks them met; the fifth (the CLI flag) appears in no acceptance item, and one `met` note says only \"implemented\". Show the verdict the reviewer delivers and the report it writes.",
       "expected_output": "VERDICT: REJECT on the review card; the ledger names the CLI-flag requirement as uncovered and reports the anchorless `met` as not verifiable; the report verifies at the delivered commit, records the gate command and exit code, and numbers each must-fix item with file/line, reproduction, expected versus actual and the missing case so the loop appends them to T-1's acceptance.",
@@ -143,17 +135,33 @@
       ]
     },
     {
-      "id": 11,
+      "id": 10,
       "name": "card-scope",
       "prompt": "Set up meerkat here. Not everything should become a task card — we mostly want features, bugs and design work tracked; quick questions and one-off commands are just chat.",
-      "expected_output": "The setup interview asks the card scope as one frontier question with a recommended answer — the work a role owns, read from the role skills' shapes (product design, development, bug fixes, refactors, tests and review) — and records the user's narrower answer; the instruction file the init step updated carries that answer rather than the default; a second run reports it unchanged instead of restating it.",
+      "expected_output": "Round 4 asks the card scope with a recommended answer (the work a role owns), records the user's narrower answer, and hands it to the init skill; the instruction entry the init skill writes carries that answer rather than the default. A second run reports it unchanged.",
       "files": [],
       "assertions": [
-        "The card scope is asked as its own frontier question with a recommended default, not silently assumed.",
+        "The card scope is asked as its own question with a recommended default, not silently assumed.",
         "The recommended default is the work the role skills' shapes assign to a role — product design, development, bug fixes — and work with no owner (questions, lookups, one-off commands) is stated as not becoming a card.",
-        "The user's narrower answer is written into the instruction file the init step updated, replacing the default scope statement.",
-        "The answer is persisted in the project's instruction file, not only in the conversation.",
+        "The user's narrower answer is passed to the init skill, not written into the instruction entry by setup itself.",
+        "The answer reaches the project's agent-instruction entry through the init skill.",
         "A second run reports the entry unchanged rather than restating or duplicating it."
+      ]
+    },
+    {
+      "id": 11,
+      "name": "init-writes-requirements",
+      "prompt": "Set up meerkat here and initialize this project's agent-instruction entry. Use a temporary HOME; do not touch the real one.",
+      "expected_output": "Round 4 writes docs/agents/*.md, then calls the init skill once with the brief: /meerkat is the card entry, board rules live in docs/agents/, and the card scope is stated. The init skill writes the project's CLAUDE.md or AGENTS.md; setup does not edit that file itself, and the file has no marker block.",
+      "files": [],
+      "assertions": [
+        "The init skill is called and the call succeeds; it is not replaced by setup writing the entry itself.",
+        "The project's CLAUDE.md or AGENTS.md exists after the round and contains /meerkat as the card entry.",
+        "The same file points at docs/agents/ and names the project rules there.",
+        "The same file states the card scope the user chose in round 4.",
+        "The file contains no <!-- meerkat:task-entry --> marker block.",
+        "Setup does not use Write/Edit on that instruction file; the init skill is the writer.",
+        "The init skill is called once, not once per agent kind."
       ]
     },
     {

@@ -72,7 +72,7 @@ describe("board skill: creating a card", () => {
   });
 
   it("discovers the project's acceptance-mode guidance before choosing the word", () => {
-    assert.match(create, /docs\/acceptance-mode\.md/, "the project document is named");
+    assert.match(create, /docs\/agents\/acceptance-mode\.md/, "the project document is named");
     assert.match(create, /taskctl project dir <id> --json/, "the working directory is resolved first");
     assert.match(create, /explicit instruction from the human\s+wins/i, "the human's word outranks the document");
     assert.match(create, /fallback when the mode is omitted/, "the unresolved card falls back to auto");
@@ -80,10 +80,18 @@ describe("board skill: creating a card", () => {
   });
 
   it("ships this project's acceptance-mode guidance", () => {
-    const doc = readFileSync(join(ROOT, "docs/acceptance-mode.md"), "utf8");
+    const doc = readFileSync(join(ROOT, "docs/agents/acceptance-mode.md"), "utf8");
     for (const word of ["off", "auto", "human"]) {
       assert.match(doc, new RegExp("`" + word + "`"), `the document names ${word}`);
     }
+  });
+
+  it("discovers the project's epic guidance before splitting a container", () => {
+    const containers = section(SKILL, "Containers: when the card is an epic");
+    assert.match(containers, /docs\/agents\/epic-cards\.md/, "the project document is named");
+    assert.match(containers, /explicit instruction from the human\s+wins/i, "the human's word outranks the document");
+    assert.match(containers, /taskctl project dir <id> --json/, "the working directory is resolved first");
+    assert.match(containers, /does not exist|absent|missing/i, "a missing document falls back to the board rules");
   });
 
   it("attaches an existing document right after the create", () => {

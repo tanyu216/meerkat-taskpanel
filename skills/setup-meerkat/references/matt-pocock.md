@@ -11,20 +11,22 @@ skill can invoke it. Two honest routes:
 1. **Print the command** and let the user run it:
    `/setup-matt-pocock-skills  — integrate meerkat-taskpanel as this repository's issue tracker`
    (the double space before the dash is free text, not syntax).
-2. **Read its `SKILL.md`** and follow the same process manually, with the user's
-   agreement. Choose Section A = **Other** and describe the `taskctl` board: cards,
-   comments, relations and the board status workflow, with the command surface left to the
-   `meerkat` board skill. Keep the default triage labels if the `triage` skill is installed; use
-   single-context domain docs unless the repository is a monorepo.
+2. **Read its `SKILL.md`** and follow the same process manually for the `docs/agents/`
+   outputs only, with the user's agreement. Choose Section A = **Other** and describe the
+   `taskctl` board: cards, comments, relations and the board status workflow, with the command
+   surface left to the `meerkat` board skill. Keep the default triage labels if the `triage`
+   skill is installed; use single-context domain docs unless the repository is a monorepo.
+   The tracker's own agent-skills block in the project instruction entry is not written here;
+   that entry belongs to the `init` skill (§ The instruction entry in `board-project.md`).
 
 Never claim the skill ran when it did not.
 
 ## Files and the overwrite guard
 
-The canonical output is `docs/agents/issue-tracker.md` (not `issue-tracer.md`), plus
-`docs/agents/domain.md`, optionally `docs/agents/triage-labels.md`, and an
-`## Agent skills` block in the existing `CLAUDE.md` (else `AGENTS.md`; never create one
-when the other exists).
+The canonical outputs are `docs/agents/issue-tracker.md` (not `issue-tracer.md`), plus
+`docs/agents/domain.md` and optionally `docs/agents/triage-labels.md`. The Matt skill also
+writes its own agent-skills block into the project's instruction entry; setup never writes
+that block.
 
 Existing tracker candidates, in order:
 
