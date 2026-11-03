@@ -101,8 +101,12 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
 </script>
 
 <template>
+  <!-- B08 — the list is `main`'s child exactly like the filter bar above it:
+       the design gives `.td-list` no padding of its own (the content inset is
+       `.td-main`'s), so its group starts on the bar's left edge. A root
+       padding here inset the table 12px against every row above it. -->
   <div
-    class="flex min-w-0 flex-col gap-3 p-3"
+    class="flex min-w-0 flex-col gap-3"
     data-list
     :data-list-state="listLoading ? 'loading' : 'data'"
     :hidden="view !== 'list'"
