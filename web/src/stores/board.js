@@ -100,43 +100,38 @@ export function isAwaiting(task) {
 }
 
 /**
- * The transitions the move menu may offer — a mirror of
- * `src/core/domain/status.mjs#ALLOWED_TRANSITIONS`, which is the one fact
- * source. The web mirrors it for the same reason it mirrors `DOMAINS.STATUS`:
- * the UI must not *offer* a move the server will refuse, and M1's rule is that
- * an `awaiting` card is offered no route to `in_review`, `done` or `blocked`
- * (design §6/§8-13) — the delivery gate's UI half.
+ * The transitions the **human-facing** surfaces may offer: the card kebab's
+ * shared move menu, drag-and-drop, and the drawer's status combo. This is a
+ * deliberately narrower table than
+ * `src/core/domain/status.mjs#ALLOWED_TRANSITIONS`: the board is the person's
+ * view, and the work-cycle edges (claim, dispatch, rework, block, resume)
+ * belong to the claim/loop through the CLI. The domain stays the authority;
+ * `test/web/board.store.test.mjs` holds every edge here to it, so the UI can
+ * never offer a move the server refuses.
  *
- * The terminal rows stay **empty** even though the domain now has the reopen
- * edge: that edge is audited (it requires a reason), so it must not ride the
- * generic move menu or a drag-and-drop, which cannot ask for one. The drawer's
+ * The terminal rows stay **empty** even though the domain has the reopen edge:
+ * that edge is audited (it requires a reason), so it must not ride the generic
+ * move menu or a drag-and-drop, which cannot ask for one. The drawer's
  * dedicated Reopen control (`reopenTask` below) is its UI.
  */
-export const ALLOWED_TRANSITIONS = Object.freeze({
+export const UI_TRANSITIONS = Object.freeze({
   backlog: Object.freeze(["todo", "canceled"]),
-  todo: Object.freeze(["backlog", "in_progress", "blocked", "canceled"]),
-  in_progress: Object.freeze(["in_review", "blocked", "todo", "canceled", AWAITING]),
-  // 0034 — `todo` is the post-answer requeue (the asking worker had stopped);
-  // `in_progress` stays for a worker that is still live.
-  awaiting: Object.freeze(["in_progress", "todo", "canceled"]),
-  in_review: Object.freeze(["done", "in_progress", "blocked"]),
-  blocked: Object.freeze(["todo", "in_progress", "in_review", "canceled"]),
+  todo: Object.freeze(["backlog", "canceled"]),
+  in_progress: Object.freeze([]),
+  awaiting: Object.freeze([]),
+  in_review: Object.freeze(["done", "in_progress"]),
+  blocked: Object.freeze([]),
   done: Object.freeze([]),
   canceled: Object.freeze([]),
 });
 
 /**
- * The statuses a card in `status` may move to, in menu order.
+ * The statuses a human-facing control may offer from `status`, in menu order.
  * @param {string|undefined|null} status
  * @returns {readonly string[]}
  */
-export function allowedTargets(status, task = null) {
-  const base = ALLOWED_TRANSITIONS[status] ?? Object.freeze([]);
-  // 0038 — an `off` card may go straight to done from in_progress.
-  if (status === "in_progress" && task?.acceptance_mode === "off" && !base.includes("done")) {
-    return Object.freeze([...base, "done"]);
-  }
-  return base;
+export function allowedTargets(status) {
+  return UI_TRANSITIONS[status] ?? Object.freeze([]);
 }
 
 /** @type {Record<string, any>} */

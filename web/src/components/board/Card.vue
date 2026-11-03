@@ -16,6 +16,7 @@ import { computed } from "vue";
 
 import { identifierText } from "../../lib/identifier.js";
 import {
+  allowedTargets,
   board,
   isAgentKind,
   isAwaiting,
@@ -62,8 +63,16 @@ const relationsBlocks = computed(() => Number(props.task.meta?.relations_blocks 
 const relationsRelated = computed(() => Number(props.task.meta?.relations_related ?? 0));
 const hasRelations = computed(() => relationsParent.value + relationsBlocks.value + relationsRelated.value > 0);
 
+/**
+ * The kebab opens the shared move menu, so a card with no human-facing target
+ * has no control to open. The hook stays on every card (the part set is
+ * invariant) and is disabled rather than removed, keeping the card's geometry.
+ */
+const hasMoves = computed(() => allowedTargets(props.task.status).length > 0);
+
 function onMenu(event) {
   event.stopPropagation();
+  if (!hasMoves.value) return;
   const rect = event.currentTarget.getBoundingClientRect();
   openMoveMenu(props.task, rect);
 }
@@ -134,7 +143,7 @@ function onMenu(event) {
         class="inline-flex items-center px-1.5 py-px rounded-[4px] border border-(--brand-border) bg-(--brand-sunken) text-[10px] text-(--brand-text-3)"
         data-card-review-required
       >{{ $t("review.chip") }}</span>
-      <button type="button" class="ms-auto border-0 bg-transparent text-(--brand-text-3) cursor-pointer" data-card-menu aria-haspopup="menu" :aria-expanded="false" :aria-label="$t('card.move', task.identifier)" @click="onMenu">
+      <button type="button" class="ms-auto border-0 bg-transparent text-(--brand-text-3) cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" data-card-menu aria-haspopup="menu" :aria-expanded="false" :aria-label="$t('card.move', task.identifier)" :disabled="!hasMoves" :aria-disabled="!hasMoves ? 'true' : undefined" @click="onMenu">
         ⋯
       </button>
     </div>

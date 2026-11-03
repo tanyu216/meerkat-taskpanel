@@ -459,6 +459,30 @@ and `[data-column]` itself must **not** scroll vertically (`overflow-y: visible`
 that scrolled its own frame would put the scrollbar outside the cards it scrolls. The board
 remains the document's only **horizontal** scroll container.
 
+**Implementation supplement — the human-facing move subset.** 〔原型菜单不过滤；这是记录在案的收紧〕
+The prototype's card menu and drawer status combo list all seven statuses and filter nothing
+(`app.js#moveCard`), because the prototype owns the control's **structure**, not the lifecycle. In
+the shipped board the person drives only four acts, so `web/src/stores/board.js#UI_TRANSITIONS`
+narrows every human-facing status surface to:
+
+| from | offered targets |
+|---|---|
+| `backlog` | `todo`, `canceled` |
+| `todo` | `backlog`, `canceled` |
+| `in_review` | `done`, `in_progress` (Accept / Send back) |
+| `in_progress`, `awaiting`, `blocked`, `done`, `canceled` | none |
+
+`canceled → backlog` is deliberately absent: `canceled` is terminal and only the audited
+`reopen → todo` edge exists. That edge is not in the table either — it needs a reason, so it
+belongs to the drawer's dedicated Reopen control (B09), never the generic menu or a drop.
+
+The surfaces: `[data-card-menu]` stays on every card but is **disabled** when the table row is
+empty (the part set is invariant; disabling keeps the card's geometry), and the shared
+`[data-move-menu]` never opens for such a card. The drawer's status combo keeps all **seven**
+`[data-detail-status-option]` rows — the contract's fixed vocabulary — and disables every row that
+is not a target of the card's current status; a status with no target locks the trigger as well.
+The server remains the authority: the UI offers a subset, it does not widen one.
+
 ## B06 · Column
 
 | | |
@@ -592,9 +616,11 @@ the criteria list, then offers `[data-detail-acceptance-actions]` →
 back opens `[data-detail-send-back-panel]` → `[data-detail-send-back-note]`,
 `[data-detail-send-back-confirm]`, `[data-detail-send-back-cancel]`; the note is
 required and is written **before** the `in_review → in_progress` move, which
-starts a new delivery round. The generic status menu is unchanged and remains the
-other way to make both moves; the server gate stays the authority, and its
-refusal renders through the ordinary `[data-detail-save-error]` + toast path.
+starts a new delivery round. The generic status menu keeps its seven rows and
+remains the other way to make both moves; its non-target rows are disabled by
+the human-facing subset (see B05's supplement). The server gate stays the
+authority, and its refusal renders through the ordinary
+`[data-detail-save-error]` + toast path.
 Every hook here is pinned by `test/web/blocks.contract.mjs` §B09 in `states`
 (they exist only on a waiting card), and both legs — accept and send back — are
 driven in `web/scripts/dom-smoke.mjs` (run by `test/web/blocks.dom.test.mjs`).
