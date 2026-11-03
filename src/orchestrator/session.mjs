@@ -18,6 +18,7 @@ import { basename, dirname, join } from "node:path";
 
 import { cardFileRel } from "../foundation/card-brief.mjs";
 import { DIRECTOR_ACTOR_ID, ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { processStartToken } from "../foundation/daemon-state.mjs";
 import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
 import {
   loadRoles,
@@ -75,15 +76,25 @@ import {
 // status probe; re-exported because this module was its first home.
 export {
   POOL_HEARTBEAT_MS,
+  POOL_REATTACH_MAX_MS,
   POOL_STALE_MS,
+  POOL_START_BUDGET_MS,
+  POOL_VERDICTS,
+  POOL_WEDGE_MARGIN_MS,
   SESSION_DEFAULTS,
   SESSION_LOCK_FILE,
+  killDeadlineMs,
+  poolVerdict,
+  sendDeadlineMs,
 } from "../foundation/loop-state.mjs";
 import {
   POOL_HEARTBEAT_MS,
+  POOL_REATTACH_MAX_MS,
   POOL_STALE_MS,
   SESSION_DEFAULTS,
   SESSION_LOCK_FILE,
+  effectiveTurnTimeoutMs,
+  poolVerdict,
 } from "../foundation/loop-state.mjs";
 
 /** Actor kinds whose adapter turns `role` into a real tool allowlist. */
@@ -176,9 +187,11 @@ function readSessionsState(stateDir) {
  * pass in another process (the supervisor's `passes.mjs poll`) asks the
  * same question the pool answers — no IPC, no network.
  *
- * Liveness is the pool manager's pid **and** a fresh heartbeat. The heartbeat is
- * written on its own timer, not by `tick()`, so a long turn does not read as a
- * dead pool.
+ * Liveness is the shared pool verdict: a live pid whose start token still matches
+ * is live, and the phase and timestamps decide which kind of live it is (`busy`,
+ * `starting`, `unresponsive`, `wedged`); only a dead pid or a mismatched start
+ * token is `gone`. A stale heartbeat makes a live pool `unresponsive`; it never
+ * turns a live pid into an absent one.
  *
  * @param {{
  *   opts?: object,
@@ -187,11 +200,18 @@ function readSessionsState(stateDir) {
  * }} [input]
  * @returns {{
  *   live: boolean,
+ *   verdict: string|null,
  *   reason: string|null,
  *   file: string,
  *   poolPid: number|null,
  *   projects: Record<string, object>,
+ *   workers: Record<string, object>,
+ *   capabilities: string[],
+ *   phase: string|null,
  *   heartbeatAgeMs?: number,
+ *   tickAgeMs?: number,
+ *   startAgeMs?: number,
+ *   turnTimeoutMs?: number,
  * }}
  */
 export function poolStatus(input = {}) {
@@ -229,65 +249,39 @@ export function poolStatus(input = {}) {
     : [];
   const rawPid = Number(value.poolPid);
   const poolPid = Number.isInteger(rawPid) && rawPid > 0 ? rawPid : null;
-  if (poolPid === null || !isAlive(poolPid)) {
-    return {
-      ...empty,
-      verdict: "gone",
-      reason: poolPid === null ? "no pool pid" : `pool pid ${poolPid} is gone`,
-      projects,
-      workers,
-      capabilities,
-    };
-  }
-  // A live pid is a live pool. The heartbeat and the in-flight tick decide which
-  // *kind* of live it is; neither can turn it into "gone", because a blocked
-  // event loop and a three-hour turn both keep the pid. The verdict calls for
-  // an operator (or the ping watchdog) instead of letting a second pool start.
-  const phase = typeof value.phase === "string" ? value.phase : null;
-  const beat = Date.parse(String(value.heartbeatAt ?? ""));
-  const heartbeatAgeMs = Number.isFinite(beat) ? Math.max(0, now() - beat) : null;
-  const tickStart = Date.parse(String(value.tickStartedAt ?? ""));
-  const tickAgeMs = Number.isFinite(tickStart) ? Math.max(0, now() - tickStart) : null;
-  const turnMs =
-    Number(opts.sessionTurnTimeoutMs) > 0
-      ? Number(opts.sessionTurnTimeoutMs)
-      : SESSION_DEFAULTS.turnTimeoutMs;
-  const base = {
-    file,
+  // One verdict, shared with `loop status` and the installer's pool report: the
+  // pid and its start token decide "gone"; the phase and the timestamps decide
+  // which kind of live this is. A stale heartbeat never turns a live pid into
+  // an absent pool.
+  const verdict = poolVerdict({
     poolPid,
+    poolPidStart: value.poolPidStart ?? null,
+    phase: value.phase,
+    startStartedAt: value.startStartedAt ?? null,
+    heartbeatAt: value.heartbeatAt ?? null,
+    tickStartedAt: value.tickStartedAt ?? null,
+    turnTimeoutMs:
+      Number(opts.sessionTurnTimeoutMs) > 0
+        ? Number(opts.sessionTurnTimeoutMs)
+        : value.turnTimeoutMs,
+    now,
+    isAlive,
+  });
+  return {
+    ...empty,
+    live: verdict.live,
+    verdict: verdict.verdict,
+    reason: verdict.reason,
+    poolPid: verdict.verdict === "gone" ? null : poolPid,
     projects,
     workers,
     capabilities,
-    phase,
-    heartbeatAgeMs,
-    tickAgeMs,
+    phase: verdict.phase,
+    heartbeatAgeMs: verdict.heartbeatAgeMs,
+    tickAgeMs: verdict.tickAgeMs,
+    startAgeMs: verdict.startAgeMs,
+    turnTimeoutMs: verdict.turnTimeoutMs,
   };
-  if (phase === "starting") {
-    return { ...base, live: true, verdict: "starting", reason: null };
-  }
-  if (phase === "stopped") {
-    return { ...base, live: true, verdict: "stopped", reason: "the pool is stopping" };
-  }
-  if (tickAgeMs !== null && tickAgeMs > 2 * turnMs) {
-    return {
-      ...base,
-      live: true,
-      verdict: "wedged",
-      reason: `tick in flight for ${Math.round(tickAgeMs / 1000)}s`,
-    };
-  }
-  if (heartbeatAgeMs === null || heartbeatAgeMs > POOL_STALE_MS) {
-    return {
-      ...base,
-      live: true,
-      verdict: "unresponsive",
-      reason:
-        heartbeatAgeMs === null
-          ? "no heartbeat"
-          : `heartbeat ${Math.round(heartbeatAgeMs / 1000)}s old`,
-    };
-  }
-  return { ...base, live: true, verdict: "running", reason: null };
 }
 
 /**
@@ -357,11 +351,17 @@ export function createSessionPool(input = {}) {
   const injectedKindPool = input.kindPool ?? null;
   const injectedKindPools = input.kindPools instanceof Map ? input.kindPools : new Map();
   let started = false;
-  // The liveness verdict's two inputs. `phase` is the pool's own lifecycle;
+  // The liveness verdict's inputs. `phase` is the pool's own lifecycle;
   // `tickStartedAt` is set only while a dispatch tick is in flight, so a turn
   // that legitimately runs for half an hour is not read as a wedged tick.
+  // `startStartedAt`, `poolPidStart` and `previousPoolPid` are published before
+  // `start()` so the startup window is visible to every reader.
   let phase = "starting";
   let tickStartedAt = null;
+  let startStartedAt = null;
+  let lastTickOkAt = null;
+  let poolPidStart = null;
+  let previousPoolPid = null;
   let warnedReviewerAllowlist = false;
 
   /**
@@ -387,8 +387,43 @@ export function createSessionPool(input = {}) {
     return kindPools.get(kind);
   };
 
+  /**
+   * The start token for a session's pid, or null when there is no pid (or the
+   * platform cannot report one — pid-only liveness is then the rule). Cached on
+   * the entry: a heartbeat every 15 s must not spawn `ps` for every session.
+   *
+   * @param {object} entry
+   * @param {unknown} pid
+   * @returns {string|null}
+   */
+  function startTokenFor(entry, pid) {
+    if (!Number.isInteger(pid) || pid <= 1) return null;
+    if (entry.pidStartPid === pid) return entry.pidStart ?? null;
+    entry.pidStartPid = pid;
+    entry.pidStart = processStartToken(pid);
+    return entry.pidStart;
+  }
+
+  /**
+   * Capture who we are before the first state write: the previous
+   * incarnation's pid (so the next start can reap its children) and our own
+   * start token. Idempotent — announce and start both call it.
+   */
+  function captureOwnership() {
+    if (previousPoolPid === null) {
+      const prior = readJsonFile(sessionsFile(stateDir), null).value;
+      const priorPid = Number(prior?.poolPid);
+      if (Number.isInteger(priorPid) && priorPid > 1 && priorPid !== process.pid) {
+        previousPoolPid = priorPid;
+      }
+    }
+    if (startStartedAt === null) startStartedAt = nowIso(now);
+    if (poolPidStart === null) poolPidStart = processStartToken(process.pid);
+  }
+
   function workerPersistRecord(entry, previous = {}) {
     const worker = entry.worker ?? {};
+    const pid = entry.handle?.pid ?? null;
     return {
       ...previous,
       kind: "worker-session",
@@ -407,7 +442,8 @@ export function createSessionPool(input = {}) {
       agentRole: worker.agentRole ?? previous.agentRole ?? null,
       queueId: worker.queueId ?? previous.queueId ?? null,
       sessionId: entry.handle?.sessionId ?? entry.sessionId ?? null,
-      pid: entry.handle?.pid ?? null,
+      pid,
+      pidStart: startTokenFor(entry, pid),
       generation: worker.generation ?? previous.generation ?? 1,
       status: entry.busy === true ? "running" : worker.status ?? previous.status ?? "idle",
       resumeState: worker.resumeState ?? previous.resumeState ?? "fresh",
@@ -433,11 +469,13 @@ export function createSessionPool(input = {}) {
         projects[key] = workerPersistRecord(entry, projects[key]);
         continue;
       }
+      const pid = entry.handle.pid ?? null;
       projects[key] = {
         actorKind: entry.actorKind ?? opts.actorKind ?? "claude",
         cwd: entry.cwd,
         sessionId: entry.handle.sessionId ?? entry.sessionId ?? null,
-        pid: entry.handle.pid ?? null,
+        pid,
+        pidStart: startTokenFor(entry, pid),
         startedAt: entry.startedAt,
         lastHeartbeatAt: nowIso(now),
         lastUsedAt: entry.lastUsedAt,
@@ -456,8 +494,17 @@ export function createSessionPool(input = {}) {
       // stopping pool publishes no pid, so the next start is not refused by a
       // process that is only waiting to exit.
       poolPid: phase === "stopped" ? null : process.pid,
+      poolPidStart: phase === "stopped" ? null : poolPidStart,
+      // The incarnation whose children the next start must reap before it
+      // reattaches (TP-0031 consumes it; this card only records it).
+      previousPoolPid,
       phase,
+      startStartedAt,
       tickStartedAt,
+      lastTickOkAt,
+      // The thresholds every reader derives its verdict from; the installer's
+      // pool report has no opts, so the pool publishes the effective value.
+      turnTimeoutMs,
       heartbeatAt: nowIso(now),
       // An observational marker only: it records who started the pool and changes
       // neither its lifetime nor its dispatch. It is not a session.
@@ -1696,17 +1743,34 @@ export function createSessionPool(input = {}) {
    * A crash leaves a worker row `processing` and its session record durable.
    * Return the row to pending **without** an attempt so the next tick resumes
    * the same conversation; a replay or a fresh open is never a second worker.
+   *
+   * Runs as the background reattach pass, after the tick and heartbeat start.
+   * The optional deadline is the whole pass's bound: a group that would begin
+   * after it is recorded as `reattach_timeout` and left to the stale-claim
+   * recovery, never allowed to hold the startup window open.
+   *
+   * @param {{deadline?: number|null}} [options]
    */
-  async function recoverWorkerSessions() {
+  async function recoverWorkerSessions(options = {}) {
+    const deadline = Number.isFinite(options.deadline) ? options.deadline : null;
     const read = readCards(stateDir);
-    if (read.error !== null) return 0;
+    if (read.error !== null) {
+      log(`session: reattach could not read the card queue: ${read.error}`, { level: "warn" });
+      return { ok: false, resumed: 0, timedOut: 0, failed: 0, failedIds: [], error: read.error };
+    }
     const workers = readWorkerSessions(stateDir).workers;
     const ids = [];
+    const timedOut = [];
     for (const row of read.value.cards) {
       if (row.status !== "processing") continue;
       if (typeof row.worker_key !== "string" || row.worker_key === "") continue;
       const record = workers[row.worker_key];
       if (record === undefined || record.blocked === true) continue;
+      if (!started) break;
+      if (deadline !== null && now() > deadline) {
+        timedOut.push(String(row.card ?? ""));
+        continue;
+      }
       // The turn may have delivered just before the crash. Resuming it would
       // re-prompt a card that already left the work state; complete the row
       // locally instead (the board is the durable record).
@@ -1723,7 +1787,17 @@ export function createSessionPool(input = {}) {
       }
       ids.push(String(row.id));
     }
-    if (ids.length === 0) return 0;
+    if (timedOut.length > 0) {
+      // One record for the whole pass; the startup continues, and these rows
+      // are recoverable work, not a failure.
+      log(
+        `session: reattach timed out for ${timedOut.join(", ")} — the stale-claim recovery owns them`,
+        { level: "warn", event: "reattach_timeout", cards: timedOut },
+      );
+    }
+    if (ids.length === 0) {
+      return { ok: true, resumed: 0, timedOut: timedOut.length, failed: 0, failedIds: [], error: null };
+    }
     const resumed = resumeCards(stateDir, ids, { error: "worker session recovered; resuming" });
     for (const row of read.value.cards) {
       if (!ids.includes(String(row.id))) continue;
@@ -1756,7 +1830,7 @@ export function createSessionPool(input = {}) {
       );
     }
     log(`session: recovered ${resumed.resumed} worker session(s) for resume`, { level: "debug" });
-    return resumed.resumed;
+    return { ...resumed, timedOut: timedOut.length };
   }
 
   let lockToken = null;
@@ -1799,17 +1873,57 @@ export function createSessionPool(input = {}) {
       return ledger;
     },
     async start() {
+      captureOwnership();
       const lock = await acquireLock();
       if (!lock.ok) return lock;
-      // The startup window is its own verdict: a second pool must not start
-      // beside a pool that is still reattaching its sessions.
-      phase = "starting";
-      persistState();
-      started = true;
-      await recoverWorkerSessions();
+      // The lock is the ownership fact; the phase now says the pool is up. The
+      // slow reattach pass is not part of start(): `runSession` starts the tick
+      // and heartbeat first, then runs it in the background, so a board read in
+      // reattach never holds the startup window open.
       phase = "running";
+      started = true;
       persistState();
       return { ok: true };
+    },
+    /**
+     * Publish `phase:starting` before `start()` is attempted, so the startup
+     * window is a live pool to every reader instead of an absent one. Never
+     * clobber a live pool's state; `start()` will refuse the lock anyway.
+     *
+     * @returns {{ok: boolean, reason?: string, previousPoolPid?: number|null}}
+     */
+    announceStarting() {
+      const prior = readJsonFile(sessionsFile(stateDir), null).value;
+      if (prior !== null && typeof prior === "object") {
+        const priorVerdict = poolVerdict({
+          poolPid: prior.poolPid,
+          poolPidStart: prior.poolPidStart ?? null,
+          phase: prior.phase,
+          startStartedAt: prior.startStartedAt ?? null,
+          heartbeatAt: prior.heartbeatAt ?? null,
+          tickStartedAt: prior.tickStartedAt ?? null,
+          turnTimeoutMs: prior.turnTimeoutMs ?? turnTimeoutMs,
+          now,
+          isAlive,
+        });
+        if (priorVerdict.live) {
+          return { ok: false, reason: `a pool is already ${priorVerdict.verdict}` };
+        }
+      }
+      captureOwnership();
+      phase = "starting";
+      persistState();
+      return { ok: true, previousPoolPid };
+    },
+    /**
+     * The background reattach pass. Bounded per group: one slow board read is
+     * enough to fill the budget, so the rest are recorded as `reattach_timeout`
+     * and left for the stale-claim recovery instead of holding startup open.
+     */
+    async reattachOnStart() {
+      if (!started) return { ok: true, resumed: 0, timedOut: 0, failed: 0, failedIds: [] };
+      const budgetMs = Math.min(effectiveTurnTimeoutMs(turnTimeoutMs), POOL_REATTACH_MAX_MS);
+      return recoverWorkerSessions({ deadline: now() + budgetMs });
     },
     async stop() {
       started = false;
@@ -1825,8 +1939,12 @@ export function createSessionPool(input = {}) {
       }
       kindPools.clear();
       for (const entry of [...sessions.values()]) sessions.delete(entry.key);
-      persistState();
-      releaseLock();
+      // Only the lock owner may publish the stopped state: a start that never
+      // took the lock (another pool owns it) must not clobber that pool's file.
+      if (lockToken !== null) {
+        persistState();
+        releaseLock();
+      }
       return { ok: true };
     },
     async tick(options = {}) {
@@ -1838,6 +1956,9 @@ export function createSessionPool(input = {}) {
       try {
         const cardResult = await routeCards(options);
         await evictIdle();
+        // Display-only: the age of the last *successful* tick. A fast failing
+        // tick is degradation, not a wedge, so it is not a kill signal.
+        lastTickOkAt = nowIso(now);
         return { cards: cardResult };
       } finally {
         tickStartedAt = null;
@@ -1935,6 +2056,10 @@ export async function runSession(opts, deps = {}) {
   });
   let started;
   try {
+    // The startup window is published before `start()`: another reader must
+    // see a live `starting` pool, never an absent one, between this process
+    // claiming the loop and its first heartbeat.
+    pool.announceStarting();
     started = await pool.start();
   } catch (err) {
     // A throw used to escape as an unhandled rejection and kill the pool with
@@ -1989,6 +2114,14 @@ export async function runSession(opts, deps = {}) {
   // The heartbeat is independent of the tick: while a turn is in flight the
   // state file must still say "the pool is here".
   const heartbeat = setInterval(() => pool.persistState(), POOL_HEARTBEAT_MS);
+  // Reattach is a background pass, started only after the tick and heartbeat
+  // own the pool's liveness. A slow board read here must not keep the startup
+  // window open; the pass is bounded and records `reattach_timeout`.
+  if (deps.signal === undefined || !deps.signal.aborted) {
+    void pool
+      .reattachOnStart()
+      .catch((err) => log(`session: reattach failed: ${err?.message ?? String(err)}`, { level: "warn" }));
+  }
   // These three timers are the pool's lifetime in every deployment shape: the
   // installed daemon, a `--take-over` pool, and a hand-run `loop session`. Agent
   // children are created lazily, so a fully idle board has none and cannot be

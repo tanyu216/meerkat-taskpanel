@@ -91,6 +91,7 @@ export const EVENT_LEVELS = Object.freeze({
   writer_lock_stale: "warn",
   writer_lock_release_failed: "warn",
   label_gc_mismatch: "warn",
+  reattach_timeout: "warn",
   allow_list_invalid: "warn",
   sla_config_invalid: "warn",
   log_level_invalid: "warn",

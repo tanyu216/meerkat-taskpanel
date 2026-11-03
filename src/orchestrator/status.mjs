@@ -6,7 +6,9 @@
  * The supervisor runs its passes itself; the resident pool is the one dispatcher.
  * This entry answers "who is driving it right now?" from facts, never from a guess:
  *
- *   * the pool's own state file (`sessions.state.json`: poolPid + heartbeat);
+ *   * the pool's own state file (`sessions.state.json`) through the shared
+ *     `poolVerdict`: the pid and its start token decide "gone", the phase and
+ *     timestamps decide which kind of live the pool is;
  *   * `session.lock` (the pool is starting);
  *   * the tick lock (a one-shot tick is in flight);
  *   * the subscriber state (the event daemon is alive);
@@ -138,7 +140,9 @@ export function probeUnits(opts, deps = {}) {
 
 /**
  * The runtime verdict. `verdict` is one of:
- * `running | busy | starting | configured-idle | partial | absent`.
+ * `running | busy | starting | unresponsive | wedged | configured-idle |
+ * partial | absent`. The first five are the pool's own `poolVerdict`; a live
+ * pid is never reported `absent` because its heartbeat is stale.
  *
  * @param {object} opts
  * @param {{isAlive?: Function, now?: Function, run?: Function}} [deps]
@@ -170,7 +174,10 @@ export function probeSupervisor(opts, deps = {}) {
 
   let verdict;
   if (oneShotLive) verdict = "busy";
-  else if (pool.live === true) verdict = "running";
+  // The pool's own state is `poolStatus`'s verdict, which comes from the one
+  // shared `poolVerdict`: running / busy / starting / unresponsive / wedged.
+  // A live pid is never reported as absent because its heartbeat is stale.
+  else if (pool.live === true) verdict = pool.verdict ?? "running";
   else if (starting) verdict = "starting";
   else if (units.any) verdict = "configured-idle";
   else if (subscribeLive) verdict = "partial";
@@ -349,7 +356,7 @@ export async function stopSupervisor(opts, deps = {}) {
 
 function humanReport(report) {
   const pool = report.pool.live
-    ? `running (pid ${report.pool.poolPid}, heartbeat ${Math.round((report.pool.heartbeatAgeMs ?? 0) / 1000)}s)`
+    ? `${report.pool.verdict ?? "running"} (pid ${report.pool.poolPid}, heartbeat ${Math.round((report.pool.heartbeatAgeMs ?? 0) / 1000)}s)`
     : report.pool.starting
       ? `starting (lock pid ${report.pool.lockPid ?? "?"})`
       : `not running (${report.pool.reason})`;
