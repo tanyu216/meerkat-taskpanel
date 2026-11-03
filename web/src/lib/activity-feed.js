@@ -265,6 +265,63 @@ export function rowFrom(activity, task) {
   };
 }
 
+/* ------------------------------------------------------------------ landing */
+
+/**
+ * Where a feed row lands in the detail drawer (B09): the tab it opens and, for
+ * the two families that carry an entry, the record the drawer should focus.
+ *
+ * The mapping reads the row's **`group`** — the bucket it already renders and
+ * filters by — never the raw wire event: a feed row's `event` is the classified
+ * kind (e.g. `"comment"`), not `"comment_added"`. A burst has folded to
+ * `group: "meta"` by `foldBursts`, so it can never ask for a member's focus.
+ *
+ * `focus: null` means the tab is the whole answer. A *named* entry that the
+ * drawer has not loaded is the drawer's decision, made against the history it
+ * actually holds — this module never guesses.
+ */
+export function landingFor(item) {
+  const group = item?.group;
+  const changes = item?.changes ?? {};
+
+  if (group === "comment") {
+    const id = typeof changes.commentId === "string" && changes.commentId !== "" ? changes.commentId : null;
+    return { tab: "activity", focus: id === null ? null : { kind: "comment", id } };
+  }
+
+  if (group === "delivery") {
+    const id = typeof changes.reportId === "string" && changes.reportId !== "" ? changes.reportId : null;
+    const raw = changes.round ?? changes.deliveryRound;
+    const round = raw === null || raw === undefined || raw === "" ? null : Number(raw);
+    const validRound = round !== null && Number.isFinite(round) ? round : null;
+    return {
+      tab: "reports",
+      // Both keys ride the descriptor: the drawer tries the id first and the
+      // round second, so a report whose id is not on the loaded list can still
+      // be found by the round it belongs to.
+      focus: id === null && validRound === null ? null : { kind: "report", id, round: validRound },
+    };
+  }
+
+  // Explicit Details is load-bearing: with no intent the drawer's own rule opens
+  // an `awaiting` card on Activity, and a status or metadata row must not inherit
+  // that fallback.
+  return { tab: "details", focus: null };
+}
+
+/**
+ * The drawer's tab: the intent a caller named, else the card's own status rule.
+ *
+ * Extracted from the drawer's card watcher so the expression is falsifiable
+ * without a browser: an Activity row states Details **explicitly**, and that
+ * must beat an `awaiting` card's Activity fallback (TP-0037 acceptance 3). The
+ * check that fails if `awaiting` is consulted first lives in
+ * `test/web/activity.feed.test.mjs`.
+ */
+export function resolveDetailTab(intentTab, status) {
+  return intentTab || (status === "awaiting" ? "activity" : "details");
+}
+
 /** task id → `{identifier, title}`, the lookup every row is resolved through. */
 export function taskIndex(tasks) {
   return new Map((Array.isArray(tasks) ? tasks : []).map((task) => [task.id, task]));

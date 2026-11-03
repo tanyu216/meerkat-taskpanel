@@ -44,6 +44,7 @@ import {
 } from "../../stores/board.js";
 import { acceptanceRowsFor, deliverySummaryOf } from "../../lib/acceptance.js";
 import { isAcceptanceWaiting } from "../../lib/waiting-queue.js";
+import { resolveDetailTab } from "../../lib/activity-feed.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { activityLine, relativeTime } from "../../lib/activity.js";
 import { newestFirst } from "../../lib/time.js";
@@ -250,6 +251,21 @@ const commentRows = computed(() =>
  */
 const TAB_ORDER = ["details", "activity", "reports", "acceptance", "leftovers", "sessions"];
 const activeTab = ref("details");
+/**
+ * The landing intent's focus seat (B26 → B09). `pendingFocus` is the entry the
+ * open asked for, taken once when the drawer's beat lands; `focusedEntry` is
+ * which entry currently holds DOM focus, and that is what draws the ring — a
+ * programmatic focus after a pointer press does not reliably match
+ * `:focus-visible`, so the state has to be ours. `null` / `""` means the panel
+ * itself is the seat (the old rule).
+ */
+const pendingFocus = ref(null);
+const focusedEntry = ref("");
+const isEntryFocused = (kind, id) => focusedEntry.value === `${kind}:${id}`;
+/** One transition length (`--dur-2` = 180ms); see the open watcher's note. */
+const FOCUS_BEAT_MS = 200;
+let focusTimer = null;
+let openedAt = 0;
 const tabEls = new Map();
 function setTabRef(name, el) {
   if (el) tabEls.set(name, el);
@@ -266,6 +282,8 @@ const tabs = computed(() =>
 );
 function selectTab(name) {
   if (!tabs.value.find((tab) => tab.name === name)?.visible) return;
+  // The reader's own click wins over a landing that is still inside its beat.
+  pendingFocus.value = null;
   activeTab.value = name;
 }
 function onTabKeydown(event) {
@@ -285,15 +303,26 @@ function onTabKeydown(event) {
 /* A different card starts on Details; a card without sessions can never leave
    a hidden Sessions tab selected. */
 watch(() => task.value?.id, () => {
-  // A caller that knows more than the status does names the landing tab once
-  // (the waiting queue: a delivery opens Acceptance, a question Activity). The
-  // intent is consumed here and cleared in the same act, so it can never colour
-  // a later open. With no intent, the old rule stands: a card that stopped for
-  // a human opens where the question and the comment box are; every other card
-  // keeps the design's Details default.
-  const intentTab = consumeDetailIntent(task.value?.identifier);
-  activeTab.value = intentTab ?? (task.value?.status === "awaiting" ? "activity" : "details");
+  // A caller that knows more than the status does names the landing once (the
+  // waiting queue: a delivery opens Acceptance, a question Activity; an
+  // Activity row: its tab and the comment/report it came from). The intent is
+  // consumed here and cleared in the same act, so it can never colour a later
+  // open. With no intent, the old rule stands: a card that stopped for a human
+  // opens where the question and the comment box are; every other card keeps
+  // the design's Details default.
+  const intent = consumeDetailIntent(task.value?.identifier);
+  pendingFocus.value = intent?.focus ?? null;
+  focusedEntry.value = "";
+  activeTab.value = resolveDetailTab(intent?.tab, task.value?.status);
   cancelReopen();
+
+  // Switching cards while the drawer is already open: the panel is visible, so
+  // the landing need not wait for the open beat. (A fresh open is settled by the
+  // open watcher; if the detail lands late, this branch fires after the beat has
+  // already passed and the pending focus is still there to take.)
+  if (pendingFocus.value && board.drawerState === "open" && Date.now() - openedAt >= FOCUS_BEAT_MS) {
+    nextTick(settleFocus);
+  }
   // The Acceptance tab's prompt belongs to one card: a draft about another
   // card's delivery must never be one click from being sent back.
   cancelSendBack();
@@ -454,14 +483,95 @@ const relationLinks = computed(() => {
  * does the prototype's `closeDetail`, which only clears `aria-selected` on the
  * cards. The opener-return the contract states is the access panel's,
  * `test/web/blocks.contract.mjs` B19.)
+ *
+ * A landing intent may additionally name an **entry** (B26: the comment or the
+ * report the row came from). The named entry takes the seat when the drawer has
+ * it loaded; when it does not, the panel keeps the old seat and the miss is
+ * stated once as an info toast. Both outcomes land on the same beat, and the
+ * entry's ring is driven by `[data-detail-focus]`, which exists only while that
+ * entry holds DOM focus.
  */
-const FOCUS_BEAT_MS = 200;
+function clearFocusTimer() {
+  if (focusTimer !== null) {
+    clearTimeout(focusTimer);
+    focusTimer = null;
+  }
+}
+
+/** The entry the intent names, or null when it is not in the loaded history. */
+function focusNode(focus) {
+  const root = drawerEl.value;
+  if (!root || !focus) return null;
+  if (focus.kind === "comment") {
+    return (
+      [...root.querySelectorAll("[data-detail-comment-id]")].find(
+        (el) => el.getAttribute("data-detail-comment-id") === focus.id,
+      ) ?? null
+    );
+  }
+  if (focus.kind === "report") {
+    // The id first; the round second — a `report_waived` row carries only the
+    // round, and a report whose id is not on the loaded list can still be found
+    // by the round it belongs to.
+    const byId = focus.id
+      ? [...root.querySelectorAll("[data-dv-report-id]")].find(
+          (el) => el.getAttribute("data-dv-report-id") === focus.id,
+        )
+      : null;
+    if (byId) return byId;
+    return focus.round == null
+      ? null
+      : ([...root.querySelectorAll("[data-dv-report-id][data-dv-round]")].find(
+          (el) => Number(el.getAttribute("data-dv-round")) === Number(focus.round),
+        ) ?? null);
+  }
+  return null;
+}
+
+/** The one seat: the named entry when it exists, else the panel (the old rule). */
+function settleFocus() {
+  if (board.drawerState !== "open") return;
+  const focus = pendingFocus.value;
+  pendingFocus.value = null; // one-shot, before any branch
+
+  if (focus) {
+    const node = focusNode(focus);
+    if (node) {
+      node.focus({ preventScroll: true });
+      if (globalThis.document?.activeElement === node) {
+        // 即时滚动，不用 `smooth`：本仓让 CSS 而不是脚本处理动效偏好
+        // （`prefs.js`：源码里没有 matchMedia 调用）。
+        node.scrollIntoView({ block: "center", inline: "nearest" });
+        return;
+      }
+      // Focus refused (an ancestor was still hidden): fall through to the panel.
+    } else {
+      // Named but not in the loaded history.
+      pushToast(t("detail.focusMiss"), "info");
+    }
+  }
+
+  focusedEntry.value = "";
+  drawerEl.value?.focus();
+}
+
 watch(open, (isOpen) => {
-  if (!isOpen) return;
-  window.setTimeout(() => {
-    if (board.drawerState === "open") drawerEl.value?.focus();
+  clearFocusTimer();
+  if (!isOpen) {
+    // Rows removed without a `blur` must not leave a stale ring behind.
+    pendingFocus.value = null;
+    focusedEntry.value = "";
+    openedAt = 0;
+    return;
+  }
+  openedAt = Date.now();
+  focusTimer = window.setTimeout(() => {
+    focusTimer = null;
+    settleFocus();
   }, FOCUS_BEAT_MS);
 });
+
+onBeforeUnmount(clearFocusTimer);
 
 /**
  * R14 D37 / BLOCKS.md §R14 — the relations row groups its links by kind, one
@@ -1785,7 +1895,17 @@ function copyId() {
           <!-- R14 D39/D40/D41 — avatar, meta line (author + kin + stamp) and the
                pre-lined body; a decision comment is quoted by `.td-comment-decision`
                and its kin is the chip the prototype gives it. -->
-          <article v-for="row in commentRows" :key="row.id" class="td-comment" :class="{ 'td-comment-decision': row.decision }">
+          <article
+            v-for="row in commentRows"
+            :key="row.id"
+            class="td-comment"
+            :class="{ 'td-comment-decision': row.decision }"
+            :data-detail-comment-id="row.id"
+            :data-detail-focus="isEntryFocused('comment', row.id) ? '' : undefined"
+            tabindex="-1"
+            @focus="focusedEntry = `comment:${row.id}`"
+            @blur="focusedEntry = ''"
+          >
             <span class="avatar"><span class="td-avatar" :data-assignee-kind="row.agent ? 'agent' : undefined">{{ row.initials }}</span></span>
             <div>
               <div class="td-comment-meta">
@@ -1826,7 +1946,17 @@ function copyId() {
         <section class="td-section" data-dv-tab-block="reports">
           <h3 class="td-section-title" data-i18n="drawer.tab.reports">{{ $t("drawer.tab.reports") }}</h3>
           <div class="td-dv-reports">
-            <article v-for="row in reportRows" :key="row.id" class="td-dv-report" :data-dv-round="row.round">
+            <article
+              v-for="row in reportRows"
+              :key="row.id"
+              class="td-dv-report"
+              :data-dv-round="row.round"
+              :data-dv-report-id="row.id"
+              :data-detail-focus="isEntryFocused('report', row.id) ? '' : undefined"
+              tabindex="-1"
+              @focus="focusedEntry = `report:${row.id}`"
+              @blur="focusedEntry = ''"
+            >
               <div class="td-dv-report-head">
                 <span class="badge badge-sm td-chip td-dv-round">{{ $t("drawer.report.round", row.round) }}</span>
                 <span class="td-dv-author td-mono">{{ row.author }}</span>

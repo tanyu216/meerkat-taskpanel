@@ -607,6 +607,21 @@ it when the fan-out lands. The close button stays live throughout, the root carr
 `aria-busy`, and the loading head keeps the `td-detail-title` seat so the dialog is named.
 Skeleton, drawer state and the `detail === null` window are one fact; no timer is involved.
 
+**Implementation supplement — the landing intent (TP-0037).** A caller that knows more than
+the card's status may state a one-shot landing: the tab and, for the two families that carry an
+entry, the record to focus. It rides `board.detailIntent` (`{ ref, tab, focus }`) through
+`openDetail`, is consumed exactly once by the drawer's card watcher, and is withdrawn by any
+plain open or close. The entry hooks are `[data-detail-comment-id]` (a comment row) and
+`[data-dv-report-id]` (a report row, which also carries `data-dv-round`); the entry that holds
+DOM focus carries `[data-detail-focus]`, and that attribute **is** the ring — outline
+`2px solid var(--brand-accent)`, halo `var(--brand-focus-ring)`, the comment row borrowing
+`--radius-selector` while the report card keeps its own `--radius-field`. The attribute clears
+on blur, because a programmatic focus after a pointer press does not reliably match
+`:focus-visible`. Focus settles on the drawer's 200 ms visibility beat: the named entry when
+the loaded history holds it, otherwise the panel (the old seat) plus one `detail.focusMiss`
+info toast. Nothing is written to the URL (fidelity-r16 C13). Implementation-only — the
+prototype does not carry this mechanism.
+
 **R14 — the relations area names its three kinds.** `[data-detail-relations]` groups its
 `[data-relation-link]`s by kind, each group led by that kind's own name, and the kind is
 one of three — `parent` | `blocks` | `related`. Each names itself from the catalogue:
@@ -1195,6 +1210,17 @@ link for a reader without the script; with it, the press opens the same detail s
 place — the view stays the activity view. Neither path is B26's own shell — the design's
 `design/activity/` page carries a stand-in drawer, and that stand-in is deliberately not
 what the board gets.
+
+**The row names its landing (TP-0037).** A press does not just open the card: the row's
+`group` decides the tab, and the two entry-carrying families also name the record to focus —
+a `comment` row lands Activity on its `commentId`, a `delivery` row lands Reports on its
+`reportId` (falling back to the round); every other group states Details **explicitly**, so an
+`awaiting` card cannot inherit the drawer's own Activity fallback. `landingFor()` in
+`web/src/lib/activity-feed.js` is the one mapping; the drawer half is B09's landing supplement
+above. A named entry that is not in the loaded history (comments cap at 200; a report may be
+gone) still lands the tab and raises one `detail.focusMiss` info toast. The `data-activity-*`
+vocabulary stays closed — the landing travels through the store's one-shot intent, not a new
+row attribute — and the address bar is untouched.
 
 **Zero new hues.** The view's rules moved from the design page's scoped `<style>` block into
 `src/input.css` (R-7). They declare no custom property of their own and carry no colour

@@ -339,7 +339,9 @@ export function fixtureApi() {
     { id: "act-1", task_id: "td_TD_1", actor_kind: "human", actor_id: "Terry", event: "task_created", changes: { identifier: "TD-1", status: "backlog" }, revision: 1, created_at: minutes(30 * 60) },
     { id: "act-2", task_id: "td_TD_1", actor_kind: "agent", actor_id: "jobs", event: "task_claimed", changes: { from: "backlog", to: "backlog" }, revision: 2, created_at: minutes(26 * 60) },
     { id: "act-3", task_id: "td_TD_1", actor_kind: "human", actor_id: "Terry", event: "task_moved", changes: { from: "backlog", to: "todo" }, revision: 3, created_at: minutes(8 * 60) },
-    { id: "act-4", task_id: "td_TD_1", actor_kind: "agent", actor_id: "jobs", event: "comment_added", changes: { commentId: "cm-1", kind: "discuss" }, revision: 4, created_at: minutes(4 * 60) },
+    // TP-0037 · the comment row must name a comment TD-1 actually has (`cm-4`/
+    // `cm-5`); `cm-1` is TD-13's, so it could never be focused.
+    { id: "act-4", task_id: "td_TD_1", actor_kind: "agent", actor_id: "jobs", event: "comment_added", changes: { commentId: "cm-4", kind: "discuss" }, revision: 4, created_at: minutes(4 * 60) },
     // Today — one row per admitted family, plus the burst and the two noise rows.
     { id: "act-5", task_id: "td_TD_7", actor_kind: "human", actor_id: "Terry", event: "comment_added", changes: { commentId: "cm-2", kind: "decision" }, revision: 5, created_at: today(12) },
     { id: "act-6", task_id: "td_TD_13", actor_kind: "human", actor_id: "Terry", event: "comment_added", changes: { commentId: "cm-3", kind: "decision" }, revision: 6, created_at: minutes(25) },
@@ -484,6 +486,26 @@ export function fixtureApi() {
         author_id: "a2",
         author: { id: "a2", display_name: "jobs", kind: "agent" },
         created_at: minutes(30),
+      },
+    ],
+    // TP-0037 · `act-7` (TD-5's `task_delivered`) names `rp-2`; the delivery row
+    // must land Reports on a report that is actually loaded.
+    td_TD_5: [
+      {
+        id: "rp-2",
+        task_id: "td_TD_5",
+        round: 2,
+        seg: "2",
+        session_id: "sess-2",
+        conclusion: "Delivered round two.",
+        acceptance: [],
+        evidence: [],
+        evidence_truncated: false,
+        leftovers: null,
+        author_kind: "agent",
+        author_id: "a2",
+        author: { id: "a2", display_name: "jobs", kind: "agent" },
+        created_at: minutes(40),
       },
     ],
   };
@@ -5694,6 +5716,160 @@ export async function run() {
     });
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
+
+    // TP-0037 — a row names its landing: the tab it opens and, for a comment or
+    // a delivery, the entry the drawer should focus. TD-1 is `in_progress`, so
+    // its status default is Details; landing on Activity proves the intent won.
+    // The address guard (R5 / fidelity-r16 C13) rides every landing: the row
+    // must not write the URL or push history.
+    const b26UrlBefore = await page.evaluate(() => ({
+      where: `${location.pathname}${location.search}${location.hash}`,
+      history: history.length,
+    }));
+    const b26LandingComment = await page.evaluate(async () => {
+      const row = document.querySelector('[data-activity-row][data-task="TD-1"][data-event="comment"]');
+      row?.querySelector("[data-activity-line]")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const drawer = document.querySelector("[data-detail-drawer]");
+      const active = document.activeElement;
+      const ringed = document.querySelector("[data-detail-focus]");
+      const style = ringed ? getComputedStyle(ringed) : null;
+      return {
+        drawerState: drawer?.getAttribute("data-state") ?? null,
+        identifier: drawer?.getAttribute("data-identifier") ?? null,
+        activityOpen: drawer?.querySelector('[data-detail-panel="activity"]')?.hasAttribute("hidden") === false,
+        detailsOpen: drawer?.querySelector('[data-detail-panel="details"]')?.hasAttribute("hidden") === false,
+        activeComment: active?.getAttribute("data-detail-comment-id") ?? null,
+        ringComment: ringed?.getAttribute("data-detail-comment-id") ?? null,
+        outlineWidth: style?.outlineWidth ?? null,
+        outlineStyle: style?.outlineStyle ?? null,
+        boxShadow: style?.boxShadow ?? null,
+        pageScroll: document.scrollingElement?.scrollTop ?? null,
+        where: `${location.pathname}${location.search}${location.hash}`,
+        history: history.length,
+      };
+    });
+    b26Check(
+      b26LandingComment.drawerState === "open" && b26LandingComment.identifier === "TD-1",
+      `TP-0037: a comment row must open TD-1, saw ${JSON.stringify(b26LandingComment)}`,
+    );
+    b26Check(
+      b26LandingComment.activityOpen && !b26LandingComment.detailsOpen,
+      `TP-0037: a comment row must land Activity (detailsOpen=${b26LandingComment.detailsOpen})`,
+    );
+    b26Check(
+      b26LandingComment.activeComment === "cm-4" && b26LandingComment.ringComment === "cm-4",
+      `TP-0037: the comment row must focus and ring cm-4, saw active=${b26LandingComment.activeComment} ring=${b26LandingComment.ringComment}`,
+    );
+    b26Check(
+      b26LandingComment.outlineWidth === "2px" &&
+        b26LandingComment.outlineStyle === "solid" &&
+        b26LandingComment.boxShadow !== "none",
+      `TP-0037: the focused entry must wear the ring, saw ${b26LandingComment.outlineWidth}/${b26LandingComment.outlineStyle}/${b26LandingComment.boxShadow}`,
+    );
+    b26Check(b26LandingComment.pageScroll === 0, `TP-0037: landing must not scroll the page, saw ${b26LandingComment.pageScroll}`);
+    // R5 (review must-fix #2) — the landing writes nothing to the address or the
+    // session history. This fails the moment `openDetail` learns to push or
+    // replace a URL.
+    b26Check(
+      b26LandingComment.where === b26UrlBefore.where && b26LandingComment.history === b26UrlBefore.history,
+      `TP-0037: a comment landing must not write the URL/history, saw ${b26UrlBefore.where}/${b26UrlBefore.history} → ${b26LandingComment.where}/${b26LandingComment.history}`,
+    );
+
+    // Blur clears the ring without moving the tab.
+    const b26LandingBlur = await page.evaluate(async () => {
+      document.activeElement?.blur();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return {
+        rings: document.querySelectorAll("[data-detail-focus]").length,
+        activityOpen: document
+          .querySelector("[data-detail-drawer]")
+          ?.querySelector('[data-detail-panel="activity"]')?.hasAttribute("hidden") === false,
+      };
+    });
+    b26Check(
+      b26LandingBlur.rings === 0 && b26LandingBlur.activityOpen,
+      `TP-0037: blur must clear the ring and leave the tab, saw ${JSON.stringify(b26LandingBlur)}`,
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    // A delivery row lands Reports on the report it names.
+    const b26UrlBeforeDelivery = await page.evaluate(() => ({
+      where: `${location.pathname}${location.search}${location.hash}`,
+      history: history.length,
+    }));
+    const b26LandingDelivery = await page.evaluate(async () => {
+      const row = document.querySelector('[data-activity-row][data-task="TD-5"][data-event="delivery"]');
+      row?.querySelector("[data-activity-line]")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const drawer = document.querySelector("[data-detail-drawer]");
+      return {
+        identifier: drawer?.getAttribute("data-identifier") ?? null,
+        reportsOpen: drawer?.querySelector('[data-detail-panel="reports"]')?.hasAttribute("hidden") === false,
+        activeReport: document.activeElement?.getAttribute("data-dv-report-id") ?? null,
+        where: `${location.pathname}${location.search}${location.hash}`,
+        history: history.length,
+      };
+    });
+    b26Check(
+      b26LandingDelivery.identifier === "TD-5" &&
+        b26LandingDelivery.reportsOpen &&
+        b26LandingDelivery.activeReport === "rp-2",
+      `TP-0037: a delivery row must focus its report, saw ${JSON.stringify(b26LandingDelivery)}`,
+    );
+    b26Check(
+      b26LandingDelivery.where === b26UrlBeforeDelivery.where &&
+        b26LandingDelivery.history === b26UrlBeforeDelivery.history,
+      `TP-0037: a delivery landing must not write the URL/history, saw ${b26UrlBeforeDelivery.where}/${b26UrlBeforeDelivery.history} → ${b26LandingDelivery.where}/${b26LandingDelivery.history}`,
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    // A delivery row whose report is not loaded still lands Reports and says so
+    // once. `act-16` is `report_waived` on TD-12 with no report row to find.
+    const b26LandingMissing = await page.evaluate(async () => {
+      const row = document.querySelector('[data-activity-row][data-task="TD-12"][data-event="delivery"]');
+      row?.querySelector("[data-activity-line]")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const drawer = document.querySelector("[data-detail-drawer]");
+      return {
+        identifier: drawer?.getAttribute("data-identifier") ?? null,
+        reportsOpen: drawer?.querySelector('[data-detail-panel="reports"]')?.hasAttribute("hidden") === false,
+        rings: document.querySelectorAll("[data-detail-focus]").length,
+        toasts: [...document.querySelectorAll("[data-toast-region] [data-toast]")].map((el) => el.textContent.trim()),
+      };
+    });
+    b26Check(
+      b26LandingMissing.identifier === "TD-12" &&
+        b26LandingMissing.reportsOpen &&
+        b26LandingMissing.rings === 0 &&
+        b26LandingMissing.toasts.includes("That entry is older than the loaded history."),
+      `TP-0037: a missing report must land Reports with one info toast, saw ${JSON.stringify(b26LandingMissing)}`,
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    // Every other row states Details explicitly — never the awaiting fallback.
+    const b26LandingStatus = await page.evaluate(async () => {
+      const row = document.querySelector('[data-activity-row][data-task="TD-3"][data-event="status"]');
+      row?.querySelector("[data-activity-line]")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const drawer = document.querySelector("[data-detail-drawer]");
+      return {
+        identifier: drawer?.getAttribute("data-identifier") ?? null,
+        detailsOpen: drawer?.querySelector('[data-detail-panel="details"]')?.hasAttribute("hidden") === false,
+        rings: document.querySelectorAll("[data-detail-focus]").length,
+      };
+    });
+    b26Check(
+      b26LandingStatus.identifier === "TD-3" &&
+        b26LandingStatus.detailsOpen &&
+        b26LandingStatus.rings === 0,
+      `TP-0037: a status row must land Details with no ring, saw ${JSON.stringify(b26LandingStatus)}`,
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
 
     // The press no longer leaves the feed, so the geometry sweep below is already
     // on the surface it means to measure — there is no view to step back into.

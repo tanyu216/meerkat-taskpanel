@@ -36,7 +36,7 @@
  */
 import { computed, onMounted, onUnmounted, watch } from "vue";
 
-import { changeLines } from "../../lib/activity-feed.js";
+import { changeLines, landingFor } from "../../lib/activity-feed.js";
 import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import { t } from "../../i18n/index.js";
 import {
@@ -133,10 +133,21 @@ function detailLines(item) {
 
 /* ---------------------------------------------------------------- actions */
 
+/**
+ * Every way into the drawer from a feed row opens the same card on the same
+ * landing: the row's `group` names the tab and, for a comment or a delivery,
+ * the entry the drawer should focus (`landingFor`). Nothing is written to the
+ * address — the `#/task/<id>` href stays the no-script fallback (fidelity C13).
+ */
+function openItem(item) {
+  const { tab, focus } = landingFor(item);
+  openDetail(item.identifier, { tab, focus });
+}
+
 /** A press on the row's body — but not on its own controls — opens the drawer. */
 function onLine(event, item) {
   if (event.target.closest("a, button, details, summary")) return;
-  openDetail(item.identifier);
+  openItem(item);
 }
 
 /**
@@ -155,7 +166,7 @@ function onLine(event, item) {
  */
 function onTask(event, item) {
   event.preventDefault();
-  openDetail(item.identifier);
+  openItem(item);
 }
 
 /** R15 ① — a press on a row writes the value, closes the panel (choosing is what
@@ -432,7 +443,7 @@ onUnmounted(() => {
                   class="td-iconbtn td-activity-open"
                   data-activity-open
                   :aria-label="$t('activity.open', item.identifier)"
-                  @click.stop="openDetail(item.identifier)"
+                  @click.stop="openItem(item)"
                 >
                   <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
                 </button>
