@@ -63,7 +63,7 @@ function runPingOnce(opts, env, log) {
       log,
     });
     // The liveness clock is also the pool's watchdog: a live pid whose tick has
-    // outlived twice the turn timeout is stopped, and the unit restarts it.
+    // outlived the shared send deadline is stopped, and the unit restarts it.
     if (!opts.dryRun) {
       const { config } = resolveLoopConfig(opts, env);
       if (config.recoverWedged) {

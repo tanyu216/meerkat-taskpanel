@@ -137,8 +137,9 @@ export function resolveRecoverStale(input = {}) {
 /**
  * Whether the liveness clock may stop a **wedged** resident pool.
  *
- * Only `wedged` qualifies — a live pid whose dispatch tick has outlived twice
- * the turn timeout. `starting` and `unresponsive` are not stopped: the first is
+ * Only `wedged` qualifies — a live pid whose dispatch tick has outlived the
+ * shared send deadline (turn + `POOL_WEDGE_MARGIN_MS`). `starting` and
+ * `unresponsive` are not stopped: the first is
  * a legitimate startup and the second is a blocked event loop that may recover.
  * Stopping it is what lets launchd/systemd restart the pool; the orphaned agent
  * child is protected from re-dispatch by the queue's owner-liveness check.
