@@ -1022,6 +1022,13 @@ const BLOCKS = [
       { kind: "computed", probe: "[data-filters]", property: "alignItems", equals: "center" },
       { kind: "computed", probe: "[data-filters]", property: "overflowX", equals: "auto" },
       { kind: "computed", probe: "[data-filters]", property: "minWidth", equalsPx: 0 },
+      // The bar is a **flex item** beside a view that can outgrow `main` (the
+      // list's rows are a plain block; the board's chain adapts). `overflow-x:
+      // auto` makes it its own scroll container, which zeroes the automatic
+      // minimum size — so without this it absorbs the view's overflow and the
+      // 32px control row is clipped inside a near-zero box (Terry's report, both
+      // views). Its height is the control row's, never a share of the view's.
+      { kind: "computed", probe: "[data-filters]", property: "flexShrink", equals: "0" },
       // …and the family's rhythm, which the wrap direction does not touch: the
       // 8px gap and the bar's own *zero* padding. The prototype gives the bar no
       // padding at all (the content inset belongs to `.td-main`, and to `main`
