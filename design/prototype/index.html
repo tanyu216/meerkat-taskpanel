@@ -365,9 +365,23 @@
                row, so neither the roster row nor the bar carries a clear `✕`
                (see `fidelity-r13.md` §10). -->
           <div class="mt-2" data-agents-presence>
-            <div class="td-agent-row" title="claude · jobs, linus, simons" data-agent-row="claude">
+            <!-- TP-0074 — one agent per row. The platform badge repeats, the
+                 comma separator is gone, and presence is the agent's own. The
+                 three claude agents keep their prototype statuses
+                 (running / idle / running). -->
+            <div class="td-agent-row" title="claude · jobs" data-agent-row="claude">
               <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
-              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="jobs"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="jobs" data-assignee="jobs" data-assignee-kind="agent" aria-pressed="false">jobs</button></span>, <span class="td-assignee-item" data-assignee-item="linus"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="linus" data-assignee="linus" data-assignee-kind="agent" aria-pressed="false">linus</button></span>, <span class="td-assignee-item" data-assignee-item="simons"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="simons" data-assignee="simons" data-assignee-kind="agent" aria-pressed="false">simons</button></span></span>
+              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="jobs"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="jobs" data-assignee="jobs" data-assignee-kind="agent" aria-pressed="false">jobs</button></span></span>
+              <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
+            </div>
+            <div class="td-agent-row" title="claude · linus" data-agent-row="claude">
+              <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
+              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="linus"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="linus" data-assignee="linus" data-assignee-kind="agent" aria-pressed="false">linus</button></span></span>
+              <span class="td-presence" data-presence="idle" role="img" data-i18n-aria-label="presence.idle" aria-label="idle"></span>
+            </div>
+            <div class="td-agent-row" title="claude · simons" data-agent-row="claude">
+              <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
+              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="simons"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="simons" data-assignee="simons" data-assignee-kind="agent" aria-pressed="false">simons</button></span></span>
               <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
             <div class="td-agent-row" title="openclaw · elon">
@@ -619,6 +633,12 @@
               </svg>
             </summary>
             <ul class="dropdown-content menu td-label-menu">
+              <!-- TP-0074 — the search row. The static rows stay pinned below
+                   it and are never filtered; a typed query ranks the actor
+                   roster into the rows after them. -->
+              <li class="td-menu-search">
+                <input type="search" class="input input-sm w-full" data-filter-assignee-search autocomplete="off" placeholder="Filter assignees…" data-i18n-placeholder="filters.assigneeSearch" aria-label="Filter assignees…" data-i18n-aria-label="filters.assigneeSearch" />
+              </li>
               <li><button type="button" data-assignee-filter-option="all" data-i18n="filters.assignee.all">Assignee: All</button></li>
               <li><button type="button" data-assignee-filter-option="me" data-i18n="filters.assignee.me">Assignee: Me</button></li>
               <li><button type="button" data-assignee-filter-option="human" data-i18n="filters.assignee.human">Assignee: Human</button></li>
@@ -715,6 +735,11 @@
               </svg>
             </summary>
             <ul class="dropdown-content menu td-label-menu">
+              <!-- TP-0074 — the same search row. The label menu offers the
+                   existing labels only: there is no `· new` row to find. -->
+              <li class="td-menu-search">
+                <input type="search" class="input input-sm w-full" data-filter-label-search autocomplete="off" placeholder="Filter labels…" data-i18n-placeholder="filters.labelSearch" aria-label="Filter labels…" data-i18n-aria-label="filters.labelSearch" />
+              </li>
               <li><button type="button" data-filter-label-option data-label-value="all" aria-current="true" data-i18n="filters.label.all">Label: All</button></li>
               <li><button type="button" data-filter-label-option data-label-value="a11y" data-i18n="filters.labelOption" data-i18n-arg="a11y">Label: a11y</button></li>
               <li><button type="button" data-filter-label-option data-label-value="agent" data-i18n="filters.labelOption" data-i18n-arg="agent">Label: agent</button></li>

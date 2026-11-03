@@ -386,6 +386,7 @@ workspace/T-20261013-165112-2/evidence/
 - **U4 — 清空是否要跟随 board 的 toast**：board 的 Clear 会 `toast(toast.filtersCleared)`；activity 的清空**原本不 toast**，本轮**保持不 toast**（裁定只提到钩子与 i18n 对齐）。若裁定「交互也要同一」，请明示。
 - **U5 — Activity 条的 `aria-label` 复用 `filters.label`**：与 board 条同名（`Filters` / `筛选`），好处是零新增键且 A3 成为「取值相等」的机检。若要更贴合的名字（如 `Activity filters`），需新增一键并改 A3。
 - **U6 — `<summary>` 的键盘行为**：原生 `<select>` 自带的方向键/首字母选择在 `dropdown` 面板下不存在；本轮**照抄 status/label 的既有行为**（`<summary>` 可聚焦、Enter/Space 开合，菜单行按 Tab 走），**没有**为七个控件加方向键导航。这是与既有家族一致的现状，但值得裁定是否升级为 `role="menu"` + 方向键。
+  **取代注记（2026-11-04，TP-0074）**：board 的 Assignee / Label 两个面板现在各有一条搜索框，并各自处理 ↑/↓（循环移动高亮）、Enter（选中）与 Esc（关闭）；其余五个控件仍是本段描述的原状。实现侧的规则与断言在 `BLOCKS.md` §B04、`test/web/filter-menu.test.mjs` 与 `web/scripts/dom-smoke.mjs` 的 TP-0074 段。
 - **U7 — 组件改名**：七个控件的触发器现在都叫 `.td-label-trigger`，而这个类名是 R9 为**标签**控件起的。类名不作契约锚，且改名的收益是措辞而非行为；本轮**保留**（`DESIGN.md §18.2` 仍指向它）。若裁定改名，`input.css` / `app.css` / 两个 `.vue` / `tw.css` 一起动。
 
 ### 8.2 本轮改动全集（进仓文件）

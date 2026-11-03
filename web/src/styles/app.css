@@ -538,9 +538,10 @@ svg[data-token-icon][hidden] { display: none; }
    text it was. The shell is **width-neutral**: the 6px it adds on each side is
    taken straight back by an equal negative inline margin, so the row's one line
    measures exactly what it measured at rest and no name is ever elided — the bed
-   simply bleeds 6px over the comma that follows, or over the row's own left edge.
+   simply bleeds 6px over the row's own left edge.
    Nothing here changes the row's height: the item stays an inline box. At rest
-   there is no shell at all. */
+   there is no shell at all. Since TP-0074 the row holds one agent, so this
+   bleed is the left-edge case only. */
 [data-assignee-item][data-assignee-active="true"] {
   padding: 0 6px;
   margin-inline: -6px;
@@ -586,21 +587,18 @@ svg[data-token-icon][hidden] { display: none; }
    and `shot-compare`'s rail parity. `min-width: 0` is the prototype's own
    `.td-side-name` declaration; `white-space: normal` is where this departs from
    it (the prototype ellipsises) — the departure is the round's, and it is the
-   only one that keeps every name whole. Each name is an inline-block `<button>`,
-   so a wrap can only land on a separator, never inside a name.
+   only one that keeps every name whole. Since TP-0074 a row holds one name, so
+   a long one may wrap inside its row; the item itself stays `nowrap`, so a word
+   is never broken.
 
-   The comma's position is **structural**, not a balancing accident
-   (T-20261017-021412 ②). The separator is the last child of the item it
-   follows, and the item is `white-space: nowrap`, so the name and its comma are
-   one unbreakable unit; the collapsible space *between* items is the only break
-   opportunity the run offers. A wrap therefore lands after a comma, never before
-   one — the `", assistant"` line head that greedy wrapping used to produce is
-   gone by construction. `text-wrap: balance` was the earlier mitigation for
-   exactly that defect, and it was only ever a mitigation: where the engine
-   declines to balance, the run degraded to the greedy wrap and the comma moved
-   to the line head. With the separator bound it has nothing left to fix, so it
-   is **removed** rather than kept as a second, independent thing that could
-   change the line count. */
+   The separator rule is kept as history, not as a live shape: TP-0074 put each
+   agent on its own row, so no comma joins names any more. While the grouping
+   existed, the comma was the last child of the item it followed and the item was
+   `white-space: nowrap`, so a wrap could only land after a comma — the
+   `", assistant"` line head greedy wrapping used to produce was gone by
+   construction (T-20261017-021412 ②). The `nowrap` declaration below still
+   belongs to the item: a name is never broken mid-word, and it costs nothing now
+   that a row has one item. */
 [data-agent-row] [data-agent-text] {
   min-width: 0;
   overflow: visible;
@@ -2486,6 +2484,22 @@ button.td-prop-value:hover {
 }
 .td-details-menu button:hover { background: var(--brand-hover); }
 .td-details-menu button[aria-current="true"] { background: var(--brand-active); }
+
+/* TP-0074 — the two filter panels' search row. It is the menu's first `<li>`,
+   so it is anchored with the panel (the bar's `overflow-x: auto` would clip a
+   box that escaped it). The row keeps the menu's own gutter; the input is a
+   daisyUI `input-sm` at full width. */
+.td-menu-search {
+  padding: var(--space-1) var(--space-1) var(--space-2);
+}
+/* TP-0074 — the ↑/↓ highlight. It is a *hover-grade* wash, distinct from the
+   `aria-current` row's stronger `--brand-active`, so "the row the keyboard is
+   on" and "the row the control holds" can be read at once. Every selectable row
+   carries the hook (`"true"` or `"false"`), which is what keeps the panels'
+   identical-hookset rule true. */
+.td-details-menu button[data-filter-active="true"] {
+  background: var(--brand-hover);
+}
 
 /* R11 ① — the status menu's rows: the status's own 8px dot plus its name on one
    line. Multiple choice states itself on `aria-pressed` (every row writes it,

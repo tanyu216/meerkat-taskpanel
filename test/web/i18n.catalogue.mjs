@@ -10,22 +10,22 @@
  *
  * ---------------------------------------------------------------------------
  * Measured counts (host-static, re-pinned after R17 · T-20261013-184457,
- * R14 · T-20261014-082533 and T-20261014-212017-3)
+ * R14 · T-20261014-082533, T-20261014-212017-3 and TP-0074)
  * ---------------------------------------------------------------------------
- *   prototype MESSAGES  en 289 / zh 289 (exact 1:1 mirror)
- *   this catalogue      en 272 / zh 272 — the 289 minus the 17 prototype-only
+ *   prototype MESSAGES  en 292 / zh 292 (exact 1:1 mirror)
+ *   this catalogue      en 275 / zh 275 — the 292 minus the 17 prototype-only
  *                       keys listed below, still an exact 1:1 mirror (identical
  *                       key sets, identical key order, no duplicates, no empty
  *                       values)
- *   `%s` placeholders  252 keys carry none, 17 carry one, 2 carry two — and the
+ *   `%s` placeholders  255 keys carry none, 18 carry one, 2 carry two — and the
  *                       histogram is identical for en and zh, key for key (no
  *                       prototype-only key carries a placeholder)
- *   data-i18n* hooks    836 in `design/prototype/index.html`:
+ *   data-i18n* hooks    842 in `design/prototype/index.html`:
  *                         540 `data-i18n=`
  *                         188 `data-i18n-arg=`
- *                          80 `data-i18n-aria-label=`
+ *                          84 `data-i18n-aria-label=`
  *                          19 `data-i18n-title=`
- *                           9 `data-i18n-placeholder=`
+ *                          11 `data-i18n-placeholder=`
  *
  * ---------------------------------------------------------------------------
  * Prototype-only keys (deliberately not shipped)
@@ -51,22 +51,20 @@
  * ---------------------------------------------------------------------------
  * Discrepancy to record: `design/BLOCKS.md`'s header counts are not assertions
  * ---------------------------------------------------------------------------
- * Its header now quotes **626 `data-i18n*` hooks** and **282 catalogue keys** —
- * its own line reads "522 `data-i18n` plus 104 `placeholder` / `aria-label` /
- * `title` variants", so it counts four of the five attributes and leaves the 188
- * `data-i18n-arg` seats out. Measured over all five, the document carries 836;
- * and its key count no longer agrees either — the 282 it states is one design
- * round behind the 289 `app.js` now holds (T-20261014-212017-3 added the
- * drawer's six edit keys). Earlier rounds were wrong on both, which is the
- * case `test/web/blocks.contract.mjs` still keeps on the books as
- * `STALE_PROSE_COUNTS`. Machine checks must therefore count from the real
+ * Its header has carried counts of its own, and they have drifted before: "626
+ * `data-i18n*` hooks" and "282 catalogue keys" were stale when they were
+ * written, and so were the "252 / 198" pair `STALE_PROSE_COUNTS` still records.
+ * The header is re-synced in this round (842 hooks over all five attributes,
+ * 292 keys per language), but the rule below is why no machine check trusts it:
+ * a prose number is a claim about two files, and the suite re-measures it from
+ * those files instead. Machine checks must therefore count from the real
  * data/DOM and never assert a prose number from that header; every recorded
  * number is re-measured against the two documents on each run.
  *
  * ---------------------------------------------------------------------------
  * Coverage: every hook the prototype's own markup authors resolves
  * ---------------------------------------------------------------------------
- * All 540 `data-i18n`, 80 `-aria-label`, 19 `-title` and 9 `-placeholder`
+ * All 540 `data-i18n`, 84 `-aria-label`, 19 `-title` and 11 `-placeholder`
  * values are real catalogue keys — except the 17 prototype-only demo values the
  * shipped app does not render (16 of them on `data-i18n`, `states.close` on
  * `-aria-label`), which the suite tracks by name. Every key composed at runtime
@@ -127,6 +125,8 @@ export const CATALOGUE = {
       "filters.assignee.me": "Assignee: Me",
       "filters.assignee.human": "Assignee: Human",
       "filters.assignee.agent": "Assignee: Agent",
+      "filters.assigneeOption": "Assignee: %s",
+      "filters.assigneeSearch": "Filter assignees…",
       "filters.priority": "Priority",
       "filters.priority.all": "Priority: All",
       "filters.priority.urgent": "Priority: Urgent",
@@ -136,6 +136,7 @@ export const CATALOGUE = {
       "filters.priority.none": "Priority: None",
       "filters.labelLabel": "Label",
       "filters.label.all": "Label: All",
+      "filters.labelSearch": "Filter labels…",
       "filters.labelOption": "Label: %s",
       "filters.status": "Status",
       "filters.status.all": "Status: All",
@@ -401,6 +402,8 @@ export const CATALOGUE = {
       "filters.assignee.me": "负责人：我",
       "filters.assignee.human": "负责人：人类",
       "filters.assignee.agent": "负责人：Agent",
+      "filters.assigneeOption": "负责人：%s",
+      "filters.assigneeSearch": "筛选负责人…",
       "filters.priority": "优先级",
       "filters.priority.all": "优先级：全部",
       "filters.priority.urgent": "优先级：紧急",
@@ -410,6 +413,7 @@ export const CATALOGUE = {
       "filters.priority.none": "优先级：无",
       "filters.labelLabel": "标签",
       "filters.label.all": "标签：全部",
+      "filters.labelSearch": "筛选标签…",
       "filters.labelOption": "标签：%s",
       "filters.status": "状态",
       "filters.status.all": "状态：全部",

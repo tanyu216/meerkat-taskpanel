@@ -353,8 +353,10 @@ Identity shows up in exactly one shape per surface:
   so a card always states both *which platform* and *which role* holds it.
 - **List row** — the role handle in the assignee column.
 - **Drawer** — Assignee (monogram avatar + role + platform badge for agents) and Reporter.
-- **Sidebar presence** — one row per platform, listing the roles on it, with a
-  running/idle dot. Claude carries three roles (jobs, linus, simons), the others one.
+- **Sidebar presence** — one row per agent (TP-0074, 2026-11-04): the platform badge
+  repeats on every row, the name is that row's one name button, and the running/idle
+  dot is the agent's own. Claude carries three rows (jobs, linus, simons) where it
+  used to carry one comma-joined row; the others one each.
 - **Comments and activity** — agents render as mono handles (`jobs`, `elon`, …); the
   human renders as a plain name (`Terry`). At least one comment is the human owner's
   and at least one is a `decision`.
@@ -2424,6 +2426,26 @@ separately and the same structure assertions hold with scripting disabled.
 | Store the chosen name on the element and read it back instead of reading the control | It would be a second truth beside the control's value, and the first thing to drift when `Clear` resets the control |
 | Give the capsule an accent bed, like a primary action | The accent is the brand line and belongs to primary actions; a selected filter is a state, not a call to action — the round uses only the accent's *soft* tint and its ink, both existing tokens |
 | Make the capsule a bordered 20px pill, as the first pass drew it | A border and a fixed height make a *shell*, and a shell has to be wide enough to look like one; the bed plus the cancelled padding is the only form that adds the mark without adding the width |
+
+### 31.7 Revision, 2026-11-04 (TP-0074) — the named row's sentence, and two searchable menus
+
+Two current-state statements above are superseded by TP-0074, and the round record is kept as
+written:
+
+- **A named row's copy is no longer the bare name.** The trigger already stated
+  `Assignee: <name>`; the menu row follows it now, through `filters.assigneeOption`
+  (`Assignee: %s` / `负责人：%s`), so the control has one voice. The value and the hook
+  (`[data-assignee-filter-option]`) are unchanged.
+- **The assignee and label menus are searchable.** Each panel leads with
+  `[data-filter-assignee-search]` / `[data-filter-label-search]`; a query ranks the actor roster
+  (assignee) or the existing labels (label) with `combo.js`'s matcher, the fixed rows stay
+  pinned and unfiltered, and the label menu never offers a new label. ↑/↓ + Enter + Esc and
+  clear-on-close are the panel's own state machine (`R15 §8.1 U6`'s "no arrow-key navigation"
+  is superseded for these two menus only). The resting counts are unchanged: the assignee menu
+  is still four rows plus the one named value, and the label menu still has no `· new` row.
+
+The roster is also one row per agent now — see §10's **Sidebar presence** line. `BLOCKS.md`
+B03/B04 carry the hooks and `design/prototype/` is the live oracle.
 
 ## 32. Review round R16 — the four views get addresses (URL routing)
 

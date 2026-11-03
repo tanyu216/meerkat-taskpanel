@@ -636,6 +636,18 @@ const BLOCKS = [
       { kind: "count", selector: "[data-agent-assignee]", within: "[data-agents-presence]", min: 1 },
       { kind: "count", selector: "[data-assignee-item]", within: "[data-agents-presence]", min: 1 },
       { kind: "count", selector: "[data-agent-assignee]", within: "[data-assignee-item]", min: 1 },
+      /* ---- TP-0074 · one agent per row ------------------------------------
+         The roster used to group a platform's agents into one row and join
+         their names with commas. A row is now exactly one agent: one text host,
+         one platform badge (repeated on every row), one presence dot and one
+         name button. The counts are stated per row rather than per document,
+         because how many agents the roster holds is data. */
+      { kind: "count", selector: "[data-agent-row]", min: 1 },
+      { kind: "count", selector: "[data-agent-text]", within: "[data-agent-row]", equals: 1 },
+      { kind: "count", selector: "[data-agent-platform]", within: "[data-agent-row]", equals: 1 },
+      { kind: "count", selector: "[data-presence]", within: "[data-agent-row]", equals: 1 },
+      { kind: "count", selector: "[data-assignee-item]", within: "[data-agent-row]", equals: 1 },
+      { kind: "count", selector: "[data-agent-assignee]", within: "[data-agent-row]", equals: 1 },
       { kind: "identical-hookset", selector: "[data-assignee-item]", within: "[data-agents-presence]" },
       { kind: "identical-hookset", selector: "[data-agent-assignee]", within: "[data-agents-presence]" },
       { kind: "domain", selector: "[data-agent-assignee]", attribute: "data-assignee-kind", subset: DOMAINS.ASSIGNEE_KIND },
@@ -946,6 +958,7 @@ const BLOCKS = [
       "[data-filter-assignee-value]",
       "[data-filter-assignee-summary]",
       "[data-filter-assignee-text]",
+      "[data-filter-assignee-search]",
       "[data-assignee-filter-option]",
       "[data-filter-priority]",
       "[data-filter-priority-value]",
@@ -955,6 +968,7 @@ const BLOCKS = [
       "[data-filter-label]",
       "[data-filter-label-value]",
       "[data-filter-label-summary]",
+      "[data-filter-label-search]",
       "[data-filter-label-option]",
       "[data-filter-clear]",
       "[data-filter-count]",
@@ -969,6 +983,20 @@ const BLOCKS = [
       // this bar and B26 states its own.
       { kind: "count", selector: "[data-filter-clear]", within: "[data-filters]", equals: 1 },
       { kind: "identical-hookset", selector: "[data-filter-label-option]" },
+      /* ---- TP-0074 · the two search panels -------------------------------
+         The assignee and label panels each lead with a search box; the fixed
+         rows are pinned and never filtered, and an empty query is the resting
+         list (the four static assignee rows stay, and the label menu offers
+         existing labels only — no `· new` row exists in it). `data-filter-active`
+         is the keyboard highlight; every selectable row carries it, so the hook
+         set is identical across rows and the rule above keeps holding. The
+         live behaviour (ranking, ↑/↓, Enter, Esc, clear-on-close) is measured
+         in `web/scripts/dom-smoke.mjs`'s search section. */
+      { kind: "count", selector: "[data-filter-assignee-search]", equals: 1 },
+      { kind: "count", selector: "[data-filter-label-search]", equals: 1 },
+      { kind: "count", selector: "[data-filter-active]", within: "[data-filter-assignee]", min: 4 },
+      { kind: "count", selector: "[data-filter-active]", within: "[data-filter-label]", min: 1 },
+      { kind: "count", selector: "[data-combo-new]", within: "[data-filter-label]", equals: 0 },
       // R9 ② — the label control is the third member of the field family, not a
       // lookalike. `.td-label-trigger` wears the `.td-select` shell, so the three
       // controls in the bar compute to one height and one text treatment — the
@@ -1119,8 +1147,9 @@ const BLOCKS = [
           "The assignee menu holds four static rows (`all | me | human | agent`) plus, on demand, " +
           "exactly one given name, every row carrying `[data-assignee-filter-option]` with its own " +
           "value — R15 ② kept R13's hook and carrier while moving the rows from `<option>`s to " +
-          "menu `button`s. A named row's value is the name and its copy is the name — the roster's " +
-          "own names are data, never catalogue keys. The named row is not a resting figure, so the " +
+          "menu `button`s. A named row's value is the name and its copy is `Assignee: <name>` " +
+          "(`filters.assigneeOption`), the same sentence the trigger states — the roster's own " +
+          "names are data, never catalogue keys. The named row is not a resting figure, so the " +
           "rules above pin the resting state; the live behaviour (writing the name, the capsule, " +
           "the removal via the control's own `all` row) is measured in " +
           "`web/scripts/dom-smoke.mjs`'s R11/R13 section (design/fidelity-r13.md §10.3 C1–C4).",
@@ -3386,14 +3415,14 @@ const CONSISTENCY_ITEMS = [
 export const STALE_PROSE_COUNTS = Object.freeze([
   Object.freeze({
     claim: "252 `data-i18n*` hooks",
-    measured: 836,
-    detail: "540 `data-i18n` + 188 `-arg` + 80 `-aria-label` + 19 `-title` + 9 `-placeholder`",
+    measured: 842,
+    detail: "540 `data-i18n` + 188 `-arg` + 84 `-aria-label` + 19 `-title` + 11 `-placeholder`",
     verdict: "stale",
   }),
   Object.freeze({
     claim: "198 catalogue keys",
-    measured: 289,
-    detail: "en = 289 and zh = 289, mirrored 1:1 — the prototype `MESSAGES` count the body states (M6 adds `waiting.reason.acceptance`); the shipped extraction drops the 17 prototype-only keys, so it ships 272",
+    measured: 292,
+    detail: "en = 292 and zh = 292, mirrored 1:1 — the prototype `MESSAGES` count the body states (TP-0074 adds the two control searches and the named-row sentence); the shipped extraction drops the 17 prototype-only keys, so it ships 275",
     verdict: "stale",
   }),
   Object.freeze({
