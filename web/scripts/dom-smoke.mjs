@@ -4468,6 +4468,23 @@ export async function run() {
     await page.waitForTimeout(120);
     const barAtList = await readBarBox();
     r12Check(!barClipped(barAtList), barMessage(barAtList, "list"));
+
+    /**
+     * B08 — the list is a direct child of `main`, exactly like the filter bar:
+     * the design gives `.td-list` no padding of its own (`.td-main` carries the
+     * content inset), so the list group starts on the bar's left edge. The
+     * implementation had wrapped the list in `p-3`, which inset the table 12px
+     * against every row above it (Terry's report).
+     */
+    const listEdges = await page.evaluate(() => {
+      const bar = document.querySelector("[data-filters]").getBoundingClientRect();
+      const group = document.querySelector("[data-list-rows]")?.closest(".td-list-group")?.getBoundingClientRect();
+      return { barLeft: bar.left, groupLeft: group?.left ?? null };
+    });
+    r12Check(
+      listEdges.groupLeft !== null && Math.abs(listEdges.groupLeft - listEdges.barLeft) <= 1,
+      `B08 @1512x420 list: the list starts at ${listEdges.groupLeft}px, the bar at ${listEdges.barLeft}px — the table is not on the bar's left edge`,
+    );
     await page.click('[data-view="board"]');
     await page.setViewportSize({ width: 1512, height: 950 });
     await page.waitForTimeout(150);
