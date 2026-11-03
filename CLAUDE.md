@@ -32,7 +32,12 @@ cost, never a silent drift.
 ## How to work here
 
 - Work the card by the role skill it names: read that role's `SKILL.md` and follow it, the
-  installed copy is authoritative. Card operations go through `/meerkat`.
+  installed copy is authoritative. Card operations go through `/meerkat`, and this project's
+  board rules live in `docs/agents/` (`create-card.md`, `worktrees.md`, `issue-tracker.md`,
+  `triage-labels.md`, `domain.md`, `decision-policy.md`).
+- Card scope is the work a role owns. Outside the roles is outside the board: a question, a
+  lookup, a one-off command, a scratch experiment or the change already being made in this
+  conversation is not a card.
 - Decompose first when a request is more than a couple of tool calls; a step is done when its own
   check is green, not when the edit lands.
 - TDD by default: failing test first, then the smallest change. Extend the test file that already
