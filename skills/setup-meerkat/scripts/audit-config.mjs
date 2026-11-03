@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Read-only configuration audit for `/setup-meerkat` round 2.
+ * Read-only configuration audit for `/setup-meerkat` Step 2.
  *
  * Configuration is layered: process env > `.env.<actor-kind>` > shared `.env` > default.
  * The layer a key lands in is part of its meaning: a loop key in the shared file makes the

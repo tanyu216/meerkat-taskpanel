@@ -97,7 +97,7 @@ meerkat-taskpanel/
 ├── skills/                       # meerkat (board), meerkat-director (decisions),
 │                                 #   meerkat-chat (the human's live console),
 │                                 #   jobs/linus/turing/reviewer/worker (roles),
-│                                 #   setup-meerkat (six rounds; primary-kind copy)
+│                                 #   setup-meerkat (six steps; primary-kind copy)
 ├── .claude-plugin/               # marketplace + the board plugin manifest (plugin root = the repo root)
 ├── .pi/                          # the Pi extension (declared by package.json's `pi` field)
 ├── design/                       # design artifacts: DESIGN / BLOCKS, prototype/, brand/, assets/
@@ -172,7 +172,7 @@ The repository root is the board's plugin root, so every harness reads the one `
 
 The `meerkat-director`, `meerkat-chat`, `setup-meerkat` and role skills are not distributed through the marketplace. `install.sh` puts them on the **primary kind** — the explicit `--supervisor=enable` kind when one is named, else the first `claude|codex|pi` in `--target` order (`all` → claude); an upgrade refreshes a role on the kind that already carries it. `--target openclaw` installs the board skill only for now; supervisor support for OpenClaw is on the [roadmap](#roadmap). See [The supervisor and the director](#the-supervisor-and-the-director).
 
-The **`setup-meerkat`** skill is the `/setup-meerkat` command. It works six capabilities as six ordered rounds: install and upgrade (`taskctl`, a local `taskd` and the agent bundle), configuration conflict repair and tuning, the director's project rules under `docs/agents/`, the board skill's project rules and the `init`-written instruction entry, role placement and moves across agent platforms, and creating a new role from the shipped template. `install.sh` copies it to the primary kind's skill directory (for example `~/.codex/skills/setup-meerkat` when codex is primary). Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
+The **`setup-meerkat`** skill is the `/setup-meerkat` command. It works six capabilities as six ordered steps: install and upgrade (`taskctl`, a local `taskd` and the agent bundle), configuration conflict repair and tuning, the director's project rules under `docs/agents/`, the board skill's project rules and the `init`-written instruction entry, role placement and moves across agent platforms, and creating a new role from the shipped template. `install.sh` copies it to the primary kind's skill directory (for example `~/.codex/skills/setup-meerkat` when codex is primary). Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
 
 Role skills have no roles root to own: each one is discovered from the agent kind whose `skills/` tree carries it, and that installation location is the routing. `/setup-meerkat` copies a role between kinds only on request and never deletes one the user did not name.
 

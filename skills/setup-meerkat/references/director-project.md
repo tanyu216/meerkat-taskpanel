@@ -1,23 +1,30 @@
 # The director's project rules
 
-Round 3. The `meerkat-director` skill owns the decision policy. A project has exactly one
+Step 3. The `meerkat-director` skill owns the decision policy. A project has exactly one
 refinement hook: `docs/agents/decision-policy.md`, read before the default E1–E5 map is
 applied.
 
 ## The interview
 
-Ask each item, one at a time, with a recommended answer:
+Report the E1–E5 defaults and any entries the project already carries as facts. Ask one gate:
+"Does this project change any of the director's five decision areas?" Recommended: no — keep
+the defaults and write nothing. Only a yes opens the per-item questions, and only for the
+items the user names.
 
-| Item | Default subject | The question |
+| Item | Default subject | Plain-language question |
 |---|---|---|
-| `E1` | scope | keep the default, change the subject, or make it director-decided? |
-| `E2` | the acceptance baseline | same |
-| `E3` | design / aesthetic direction | same |
-| `E4` | security / data safety | same |
-| `E5` | architecture direction | same |
+| `E1` | scope | What this project lets a card cover, and who changes that scope. |
+| `E2` | the acceptance baseline | What counts as done and who may change it. |
+| `E3` | design / aesthetic direction | The visual and interaction direction, and who changes it. |
+| `E4` | security / data safety | The security posture and data handling, and who changes it. |
+| `E5` | architecture direction | The structural direction, and who changes it. |
 
-Then ask whether the project has a reserved matter of its own that should join the human's
-list, and whether any of the default reserved matters (public contracts, dependencies,
+For each named item offer four options with their consequences: **Keep the default
+(recommended)** — same behaviour, no entry written; **Change the subject** — the project's
+own wording, same decider; **Make it director-decided** — the director answers this kind of
+decision without stopping for the human; **Make it human** — every such decision stops for a
+person. Then ask whether the project has a reserved matter of its own that should join the
+human's list, and whether any of the default reserved matters (public contracts, dependencies,
 destructive operations, release, cross-team change, budget/time, team changes, conflicting
 requirements, missing information) should move.
 

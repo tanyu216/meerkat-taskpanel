@@ -2,7 +2,7 @@
 /**
  * Initialize the worktree guard for the selected agent kinds.
  *
- * This is setup-meerkat's round-4 sub-step, not an installer feature: the user
+ * This is setup-meerkat's Step 4 sub-step, not an installer feature: the user
  * opt-in lives in `docs/agents/worktrees.md`, and the mechanism is the installed
  * `taskctl worktree` command. Here we only merge the thin hook adapters that
  * call it. Every write preserves unrelated content and is idempotent.
@@ -22,7 +22,7 @@ import { join, resolve } from "node:path";
 import { writeAtomic } from "./lib/atomic.mjs";
 import { isEntryPoint } from "./lib/entry-guard.mjs";
 
-const USAGE = `worktree-init — install the worktree guard adapters (setup-meerkat round 4)
+const USAGE = `worktree-init — install the worktree guard adapters (setup-meerkat Step 4)
 
   node worktree-init.mjs --cli <taskctl-shim> [--home <dir>] [--project <dir>]
                          [--runtime claude,codex,pi]
@@ -47,7 +47,7 @@ function readJson(path) {
   }
 }
 
-/** The hand-installed hook this round supersedes, when one is still present. */
+/** The hand-installed hook this step supersedes, when one is still present. */
 const LEGACY_GUARD = "meerkat-taskpanel-worktree-guard.sh";
 
 /** Does this settings document still carry the older ad-hoc guard? */
@@ -243,7 +243,7 @@ export function main(argv) {
     return 0;
   }
   if (opts.cli === null || opts.cli.trim() === "") {
-    console.error("worktree-init: --cli <taskctl-shim> is required (run the install round first)");
+    console.error("worktree-init: --cli <taskctl-shim> is required (run the install step first)");
     console.error(USAGE);
     return 2;
   }

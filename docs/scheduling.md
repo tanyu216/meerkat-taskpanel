@@ -583,7 +583,7 @@ A live session's tree is not a card lane. `taskctl worktree` owns it locally: `c
 branch: the loop owns that namespace, and its acceptance/patrol sweep owns its lifecycle.
 
 A project opts into the write guard by carrying `docs/agents/worktrees.md`. setup-meerkat's
-round 4 writes it and, only if the user accepts, merges the runtime adapters: Claude and Codex
+Step 4 writes it and, only if the user accepts, merges the runtime adapters: Claude and Codex
 `PreToolUse` → `taskctl worktree guard`, pi a `tool_call` extension. The policy allows a linked
 worktree and denies a write to the protected primary checkout with the recovery command. It is
 a **guardrail, not a sandbox**: Claude project hooks can be disabled, Codex hooks need trust
@@ -2564,7 +2564,7 @@ supplementary `scripts/verify/kind-cli.mjs`, which SKIPs when a CLI is absent) a
 not exercise the real board's claim semantics (`scripts/verify/install-e2e.sh` drives the
 real `taskctl`/`taskd`). Per agent kind, only the forms the bundle actually ships are
 covered: Claude has a SessionStart hook; the bundle writes none for Codex and Pi (setup-meerkat's
-optional worktree round can add a guard adapter), and their scheduling units are the automation. (The `taskctl` shim is not one of these forms and is not part of
+optional worktree step can add a guard adapter), and their scheduling units are the automation. (The `taskctl` shim is not one of these forms and is not part of
 this boundary: every agent kind gets one — see `docs/ops/install.md`.)
 
 ## See also

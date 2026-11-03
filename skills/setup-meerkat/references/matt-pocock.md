@@ -35,7 +35,8 @@ Existing tracker candidates, in order:
 3. `team/issue-tracer.md`
 4. `team/issue-tracker.md`
 
-- Contains `meerkat` / `taskctl` / `taskpanel` → already integrated; skip.
+- Contains `meerkat` / `taskctl` / `taskpanel` → already integrated; report it `unchanged`
+  and do not ask.
 - Exists and unrelated → ask before overwriting; back up to
   `<file>.bak-<timestamp>`. `--yes` does **not** authorize this.
 - Missing → offer the two routes above.

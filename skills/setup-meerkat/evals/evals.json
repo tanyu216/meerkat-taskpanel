@@ -5,12 +5,12 @@
       "id": 1,
       "name": "remote-board",
       "prompt": "Set up meerkat for Claude on this repo. The board is at http://board.internal:9527.",
-      "expected_output": "Round 1 detects a remote board and installs only taskctl plus the agent skill bundle with --no-automation; round 2 skips the taskd-side keys. No local taskd or guard is written, and no secret value is printed.",
+      "expected_output": "Step 1 detects a remote board and installs only taskctl plus the agent skill bundle with --no-automation; Step 2 skips the taskd-side keys. No local taskd or guard is written, and no secret value is printed.",
       "files": [],
       "assertions": [
         "The detection report names the requested board URL (or the reachable non-loopback stand-in used for an unresolvable hostname) and classifies it as remote (not loopback).",
         "The chosen install invocation does not include the server target, does not enable the supervisor and uses --no-automation.",
-        "Round 2 lists only TASKD_URL, the token and the per-kind loop keys; TASKD_HOST/PORT/DATA_DIR/ALLOW_* are explicitly skipped.",
+        "Step 2 lists only TASKD_URL, the token and the per-kind loop keys; TASKD_HOST/PORT/DATA_DIR/ALLOW_* are explicitly skipped.",
         "Any token or secret in the report is shown as <set>, never in clear text.",
         "No file under the temporary HOME is created by the detection or dry-run step."
       ]
@@ -19,14 +19,15 @@
       "id": 2,
       "name": "standard-team",
       "prompt": "Install meerkat here with the standard team.",
-      "expected_output": "Round 1 installs the board, director and five role skills for the detected kind; round 5 keeps one supervisor and shows the role placement; round 4 points the project's instruction entry at /meerkat and docs/agents. A second run reports unchanged.",
+      "expected_output": "Step 1 installs the board, director and five role skills for the detected kind; Step 5 keeps one supervisor and shows the role placement; Step 4 points the project's instruction entry at /meerkat and docs/agents. An agent-only install pins the installed tree and verifies where the config and shim landed. A second run reports unchanged via the fast path.",
       "files": [],
       "assertions": [
         "The install uses --target <kind> and includes the server when the board is local (or explains why it skipped it).",
         "<home>/.claude/skills/meerkat-director/SKILL.md and <home>/.claude/skills/{jobs,linus,turing,reviewer,worker}/SKILL.md exist after installation.",
         "Each installed role skill carries a role.json with schema \"meerkat-role\".",
         "A second identical run leaves the role skills and native agent definitions unchanged, and every action reports unchanged.",
-        "Round 4 calls the init skill once and does not write the project's instruction entry itself.",
+        "Step 4 calls the init skill once and does not write the project's instruction entry itself.",
+        "An agent-only install sets MEERKAT_TASKPANEL_REPO and MEERKAT_TASKPANEL_CONFIG_DIR to the installed tree and verifies kindConfig.programRoot and the shim's exec node line name it.",
         "The project's instruction entry names /meerkat and docs/agents/ and carries the card scope; it has no marker block.",
         "The setup prose keeps the team contract as an index: role shapes, the landing owner, the handoff markers and the reviewer independence, pointing at the installed role skills."
       ]
@@ -35,7 +36,7 @@
       "id": 3,
       "name": "move-role-between-platforms",
       "prompt": "Turing should run on codex, not on Claude. Move it.",
-      "expected_output": "Round 5 reports Turing's installedOn/effective; the skill is copied into the codex skills tree, the Claude copy is removed only after an explicit yes, and detection then reports codex as the effective platform.",
+      "expected_output": "Step 5 reports Turing's installedOn/effective; the skill is copied into the codex skills tree, the Claude copy is removed only after an explicit yes, and detection then reports codex as the effective platform.",
       "files": [],
       "assertions": [
         "Detection reports every role with installedOn, effective and fallback before any write.",
@@ -50,21 +51,21 @@
       "id": 4,
       "name": "existing-tracker",
       "prompt": "I already have docs/agents/issue-tracker.md for GitHub. Set up the Matt integration.",
-      "expected_output": "Round 4 finds the existing unrelated tracker and asks before overwriting; the Matt skill is not invoked by this skill, and setup does not write the tracker's agent-skills block.",
+      "expected_output": "Step 4 finds the existing unrelated tracker and asks before overwriting; the Matt skill is not invoked by this skill, and setup does not write the tracker's agent-skills block. A tracker that already names taskpanel is reported unchanged, not asked about.",
       "files": [],
       "assertions": [
         "The agent reports that an existing tracker was found and that it is unrelated to taskpanel.",
         "No write to docs/agents/issue-tracker.md happens before the user's confirmation.",
         "The response offers the /setup-matt-pocock-skills command or the manual-read route rather than claiming the skill ran.",
         "Setup does not hand-write the tracker's agent-skills block in the project's instruction entry.",
-        "A tracker that mentions taskctl or taskpanel is reported as already integrated and skipped."
+        "A tracker that mentions taskctl or taskpanel is reported as already integrated and unchanged, without asking."
       ]
     },
     {
       "id": 5,
       "name": "config-conflicts",
       "prompt": "Check this machine's Meerkat configuration and fix the conflicts you find. The board is remote at http://board.internal:9527.",
-      "expected_output": "Round 2 runs the read-only audit, reports the layered conflicts with their file and line, asks which to repair, and repairs only through the env writer. Taskd-side keys are skipped because the board is remote, and no secret is printed.",
+      "expected_output": "Step 2 runs the read-only audit, reports the layered conflicts with their file and line, asks which to repair, and repairs only through the env writer. Taskd-side keys are skipped because the board is remote, and no secret is printed. No conflicts is reported unchanged, not asked about.",
       "files": [],
       "assertions": [
         "The audit is run before any write and its conflicts are shown with a file and line.",
@@ -79,14 +80,17 @@
       "id": 6,
       "name": "setup-interview",
       "prompt": "Set up Meerkat TaskPanel for Claude on this repo. The board is remote at http://board.internal:9527, and I am not sure the five roles fit. Do not install or write anything - show me the setup interview you would run first.",
-      "expected_output": "Detection first, used as facts; six rounds in order, each with its mandatory questions plus any follow-up; recommended answers worded so 'yes' accepts them; the routing is challenged with a counterexample; no install, write or daemon before a round's answers.",
+      "expected_output": "Detection first, used as facts. Facts detection already establishes are reported, not asked; ask only a decision whose answer changes what happens. The recommended option comes first and each option describes what happens and what changes as a result; questions are in the user's language. The routing is challenged with a counterexample. A missing or different project document is a real question, never the fast path. Safety confirmations (a daemon, --force, destructive or remote actions) are always asked. No install, write or daemon before the answers.",
       "files": [],
       "assertions": [
-        "The response runs detection (or names the facts it would detect) before asking, and never asks for a fact detection can establish.",
-        "The six rounds are worked in order, one at a time; the response does not merge them into one frontier.",
-        "Each round's listed questions are asked and at least one follow-up raised by the facts is added — the list is a floor, not a ceiling.",
+        "The response runs detection (or names the facts it would detect) before asking, and never asks for a fact detection can establish — facts are reported, not asked.",
+        "Only a decision whose answer changes what happens is asked; a determined answer is reported as a fact and the run moves on.",
+        "The recommended option comes first and is labeled, and each option describes what will happen and what changes as a result, not just a flag name.",
+        "Questions and option descriptions are written in the user's language even though the skill source is English.",
         "The routing question is adversarial: it asks for a counterexample card or a card shape that would fall between roles, and says a shape none describes goes to Worker.",
-        "The interview states that installation, writes and daemon starts wait until the round's frontier is empty and the answers are confirmed.",
+        "A missing or different project document is treated as a real step, not the fast path; the fast path is used only when the machine and project are already set up.",
+        "Safety confirmations (starting a daemon, --force, destructive or remote actions) are always asked, even when the end state is already correct.",
+        "No install, write or daemon starts before the answers are confirmed.",
         "--yes is described as accepting only recommended non-destructive answers."
       ]
     },
@@ -101,7 +105,8 @@
         "A role installed on several kinds is reported with its fallback, not silently reassigned.",
         "When Codex cannot start, Turing falls back to another kind that also carries its skill, and the fallback is reported once in status/doctor.",
         "If no kind carrying the role is available, the card is not claimed and the gap is reported - the handoff is never pointed at a skill that is not installed.",
-        "The director stays on the supervisor's primary kind and is not routed by role discovery."
+        "The director stays on the supervisor's primary kind and is not routed by role discovery.",
+        "If detection shows every role on one available kind and no move is requested, that placement is reported unchanged and no question is asked."
       ]
     },
     {
@@ -138,7 +143,7 @@
       "id": 10,
       "name": "card-scope",
       "prompt": "Set up meerkat here. Not everything should become a task card — we mostly want features, bugs and design work tracked; quick questions and one-off commands are just chat.",
-      "expected_output": "Round 4 reads the installed meerkat skill's references/create-card.md so it knows the default, asks the card scope with a recommended answer (the work a role owns), and writes the user's narrower answer as a thin docs/agents/create-card.md — the choices only, not a copy of the manual. The answer also reaches the instruction entry through the init skill. A second run reports it unchanged.",
+      "expected_output": "Step 4 reads the installed meerkat skill's references/create-card.md so it knows the default, asks the card scope with a recommended answer (the work a role owns), and writes the user's narrower answer as a thin docs/agents/create-card.md — the choices only, not a copy of the manual. The answer also reaches the instruction entry through the init skill. A second run reports it unchanged.",
       "files": [],
       "assertions": [
         "The installed meerkat skill's references/create-card.md is read before the questions, so the default is known rather than invented.",
@@ -154,13 +159,13 @@
       "id": 11,
       "name": "init-writes-requirements",
       "prompt": "Set up meerkat here and initialize this project's agent-instruction entry. Use a temporary HOME; do not touch the real one.",
-      "expected_output": "Round 4 writes docs/agents/*.md, then calls the init skill once with the brief: /meerkat is the card entry, board rules live in docs/agents/, and the card scope is stated. The init skill writes the project's CLAUDE.md or AGENTS.md; setup does not edit that file itself, and the file has no marker block.",
+      "expected_output": "Step 4 writes docs/agents/*.md, declares the project map, then calls the init skill once with the brief: /meerkat is the card entry, board rules live in docs/agents/, and the card scope is stated. The init skill writes the project's CLAUDE.md or AGENTS.md; setup does not edit that file itself, and the file has no marker block.",
       "files": [],
       "assertions": [
         "The init skill is called and the call succeeds; it is not replaced by setup writing the entry itself.",
-        "The project's CLAUDE.md or AGENTS.md exists after the round and contains /meerkat as the card entry.",
+        "The project's CLAUDE.md or AGENTS.md exists after the step and contains /meerkat as the card entry.",
         "The same file points at docs/agents/ and names the project rules there.",
-        "The same file states the card scope the user chose in round 4.",
+        "The same file states the card scope the user chose in Step 4.",
         "The file contains no <!-- meerkat:task-entry --> marker block.",
         "Setup does not use Write/Edit on that instruction file; the init skill is the writer.",
         "The init skill is called once, not once per agent kind."
@@ -182,14 +187,16 @@
     },
     {
       "id": 13,
-      "name": "worktree-guard-is-an-optional-round-4-step",
+      "name": "worktree-guard-is-an-optional-step-4-step",
       "prompt": "Set up meerkat here. We want parallel work isolated on this repo; cards should land on dev, and live sessions should be kept out of the main checkout.",
-      "expected_output": "Round 4 asks whether to enable the worktree guard, writes docs/agents/worktrees.md, declares base_ref and merge_ref through `taskctl project map set`, and runs the bundled worktree-init.mjs after showing its --dry-run report for the accepted kinds. It reports Codex's /hooks trust as a manual step that is still open, and a second run reports unchanged. It does not edit install.sh or any per-kind installer.",
+      "expected_output": "Step 4 writes create-card.md and the tracker files, declares base_ref and merge_ref through `taskctl project map set`, calls the init skill for the entry, writes docs/agents/worktrees.md, and only then asks whether to enable the worktree guard and runs the bundled worktree-init.mjs after showing its --dry-run report for the accepted kinds. It reports Codex's /hooks trust as a manual step that is still open, and a second run reports unchanged. It does not edit install.sh or any per-kind installer.",
       "files": [],
       "assertions": [
         "The guard is asked as its own optional question; skipping it is accepted without nagging.",
         "docs/agents/worktrees.md is written, and it points at the project map for the ref values rather than copying them.",
         "base_ref and merge_ref are written through `taskctl project map set`, never by hand-editing projects.json.",
+        "The order is create-card/trackers, project map, init entry, worktrees.md, then the guard; neither worktrees.md nor the guard is written before the entry write.",
+        "If a guard is already active, the response notes that writing worktrees.md arms it and moves the remaining writes to a session worktree.",
         "worktree-init.mjs is shown with --dry-run before it writes, and only for the kinds the user accepted.",
         "Codex's hook review and trust in /hooks is reported as a manual step that remains open until the user confirms it.",
         "Setup does not modify install.sh or a per-kind install script.",

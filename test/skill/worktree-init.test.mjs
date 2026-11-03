@@ -1,5 +1,5 @@
 /**
- * `skills/setup-meerkat/scripts/worktree-init.mjs` — the round-4 initializer.
+ * `skills/setup-meerkat/scripts/worktree-init.mjs` — the Step 4 initializer.
  *
  * The merge contract is the point: unrelated hooks survive, a second run is a
  * no-op, a dry run writes nothing, and a generated file is never clobbered

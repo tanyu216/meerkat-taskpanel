@@ -1,6 +1,6 @@
 # Roles across agent platforms
 
-Round 5. A role is a standalone skill; **installation location is the routing**. There is no
+Step 5. A role is a standalone skill; **installation location is the routing**. There is no
 roles root, no manifest and no platform-mapping config key.
 
 ## What detection reports
@@ -13,15 +13,19 @@ is a write.
 
 ## The choice
 
-Show each kind's facts. Recommend **one kind for all roles** — one supervisor per machine,
-chosen as the kind whose capabilities best cover the team. Offer the split as an explicit
-alternative; a split needs the explicit `--supervisor-actor-kinds` and never happens by
-default.
+Show each kind's facts. If every role already sits on one available kind and the user asked
+for no move, report that placement as `unchanged` and ask nothing. Otherwise recommend **one
+kind for all roles** — one supervisor per machine, chosen as the kind whose capabilities best
+cover the team. Explain the two options: **one kind for all roles (recommended)** means one
+supervisor and every role claims there; if that kind is unavailable, nothing is claimed.
+**Split across kinds** needs the explicit `--supervisor-actor-kinds`, and more than one
+supervisor risks racing for the same cards; it never happens by default.
 
 Ask **which kinds carry which role skills**. The user may accept the recommendation, name a
 move, or decline and keep one platform. Never assign a role to a platform the user did not
 approve, and say the cost plainly: a role installed on no available kind is **not claimed at
-all**.
+all**. A kind reported `available: false` has no director skill, so it must not receive a
+role until the team skills are installed.
 
 `meerkat-director`, `meerkat-chat` and `setup-meerkat` follow the primary kind. Do not move
 them; `route-role.mjs` handles role skills only.

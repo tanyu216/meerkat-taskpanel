@@ -1,6 +1,6 @@
 # Worktree guardrails
 
-A round-4 **optional sub-step**. It initializes the worktree rules this project
+A Step 4 **optional sub-step**. It initializes the worktree rules this project
 already wrote in `docs/agents/worktrees.md` and installs the runtime hooks that
 make them hard to ignore. It is a best practice, not a mandatory install:
 
@@ -11,6 +11,11 @@ make them hard to ignore. It is a best practice, not a mandatory install:
 - Nothing here is a sandbox. Claude project hooks can be disabled, Codex hooks
   require trust, and pi has no sandbox at all. Say that plainly rather than
   promising enforcement.
+- **Install it last.** Write the other `docs/agents/` pages, declare the project
+  map and call `init` for the entry before writing `docs/agents/worktrees.md`;
+  install this guard after that. Once the marker exists, a write to the primary
+  checkout is denied — including the entry write. If it arms mid-run, finish the
+  remaining writes from `.worktrees/<slug>`.
 
 ## What it writes
 
@@ -29,20 +34,24 @@ the protected primary checkout is denied with the recovery command.
 
 ## The questions
 
-Ask, in this order, with a recommended answer:
+Report the detected facts first: which kinds are installed, which have a CLI, and
+which hook files already exist. Then ask only the choices that remain:
 
-1. **Enable the guard for this project?** Recommended: yes, when the project
-   adopted `docs/agents/worktrees.md`. Skipping leaves the rules as prose.
-2. **Which kinds?** Recommend every kind that works in this project and has a
-   CLI installed. A kind with no CLI is reported, not guessed.
+1. **Enable the guard for this project?** Recommended: yes, once the project has
+   adopted `docs/agents/worktrees.md`. Say what each option changes: **yes**
+   writes the hook entries, and a write to the primary checkout is then refused
+   with a recovery command; **skip** leaves the rules as prose only.
+2. **Which kinds?** Offer the detected kinds that have a CLI, recommended: all of
+   them. A kind with no CLI is reported, not guessed. Say that this decides
+   which agents the guard can stop.
 3. **Claude settings scope?** Recommended: the user-level file (the same one the
-   Meerkat session hook uses). A project-level file is valid when the team wants
-   it committed; it is still user-overridable.
-4. **Codex hook location?** Recommended: the user-level `hooks.json`. The
-   project `.codex/hooks.json` is loadable only in a trusted workspace.
-5. **pi extension location?** Recommended: `~/.pi/agent/extensions/`. If the
-   project installs the package with `pi install`, its own manifest already
-   loads the extension; do not write a second copy.
+   Meerkat session hook uses), which applies to every project. A project-level
+   file is committable and team-shared, but still user-overridable.
+4. **Codex hook location?** Recommended: the user-level `hooks.json`, which loads
+   everywhere. The project `.codex/hooks.json` loads only in a trusted workspace.
+5. **pi extension location?** Recommended: `~/.pi/agent/extensions/`, the default
+   load path. If the project installs the package with `pi install`, its own
+   manifest already loads the extension; do not write a second copy.
 
 ## Act
 
