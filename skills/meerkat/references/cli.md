@@ -777,7 +777,7 @@ Four creation invariants (`VALIDATION_FAILED`): `review_of` must name a card tha
 cannot be claimed, so an epic review card would never be woken). A review card in `in_review`
 cannot be moved directly to `canceled`; cancel it with
 `in_review → in_progress → canceled`. Detection and the two-round model:
-[`review-workflow.md`](review-workflow.md).
+[`review-protocol.md`](review-protocol.md).
 
 ## reconcile --workflow — the board's workflow plan
 

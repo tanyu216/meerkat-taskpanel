@@ -22,7 +22,7 @@ describe("team roles: the cross-file seams", () => {
   it("makes the reviewer's claim rule conditional on dispatch", () => {
     assert.match(read("skills/meerkat/SKILL.md"), /already claimed by the loop/i);
     assert.match(
-      read("skills/meerkat/references/review-workflow.md"),
+      read("skills/meerkat/references/review-protocol.md"),
       /the loop already claimed it/i,
     );
     assert.match(read("skills/reviewer/SKILL.md"), /do not re-claim/i);

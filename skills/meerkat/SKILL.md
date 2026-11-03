@@ -126,7 +126,7 @@ Decide it from evidence, in this order:
 **What never translates:** identifiers, command lines, flags, error codes and status literals (`in_progress`, `E2`), field names, paths, code and log excerpts, and a quoted sentence. A review card's first line stays exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.
 
 **A frozen acceptance item is a matching key, not prose.** Write it in the card's language at creation; afterwards each entry's `text` in the report repeats the item character for character, because the gate matches by normalised text. Translate the `note`, `conclusion` and `leftovers` around it, never the item. Anything another author wrote or the board froze stays as it is. Baseline and reviewer contract:
-[`references/status-lifecycle.md#4a-the-acceptance-baseline`](references/status-lifecycle.md#4a-the-acceptance-baseline), [`references/review-workflow.md#3-the-reviewers-protocol`](references/review-workflow.md#3-the-reviewers-protocol).
+[`references/status-lifecycle.md#4a-the-acceptance-baseline`](references/status-lifecycle.md#4a-the-acceptance-baseline), [`references/review-protocol.md#3-the-reviewers-protocol`](references/review-protocol.md#3-the-reviewers-protocol).
 
 ## Claim one card, deliver it, stop
 
@@ -234,7 +234,7 @@ requirements first — every requirement in the description, comments and plan n
 Then deliver a report **on this card** whose first line is exactly `VERDICT: APPROVE` or `VERDICT: REJECT`; put findings after that line and in `leftovers`, as a numbered must-fix list on a `REJECT` — the loop appends those items to the original's acceptance. Move neither card — the loop applies the verdict and closes the review card. A delivery whose first line is not a verdict is still accepted by the board; the loop records `verdict_unreadable`, so the review is wasted.
 
 The review card's `review_round` is the **original's** audited round; its own `delivery_round` is a different number. A re-delivery after a rejection needs a new review card. Full protocol:
-[`references/review-workflow.md`](references/review-workflow.md), [`references/review-workflow.md#2-the-review-cards-identity`](references/review-workflow.md#2-the-review-cards-identity), [`references/review-workflow.md#3-the-reviewers-protocol`](references/review-workflow.md#3-the-reviewers-protocol), [`references/review-workflow.md#6-what-happens-after-a-delivery`](references/review-workflow.md#6-what-happens-after-a-delivery).
+[`references/review-protocol.md`](references/review-protocol.md), [`references/review-protocol.md#2-the-review-cards-identity`](references/review-protocol.md#2-the-review-cards-identity), [`references/review-protocol.md#3-the-reviewers-protocol`](references/review-protocol.md#3-the-reviewers-protocol), [`references/review-protocol.md#6-what-happens-after-a-delivery`](references/review-protocol.md#6-what-happens-after-a-delivery).
 
 ## Waiting: the director, a human, or blocked
 
@@ -288,7 +288,7 @@ A card exported into a project directory is a **snapshot**. Register it once wit
 | commands, flags, exit codes, JSON envelope | [Commands](references/cli.md#commands), [`--json`](references/cli.md#--json), [returns](references/cli.md#what-each-command-returns) |
 | `issue create`, attachments, `export watch` | [create](references/cli.md#issue-create), [attachment](references/cli.md#attachment), [export watch](references/cli.md#export-watch) |
 | awaiting / blocked | [awaiting](references/cli.md#the-awaiting-state--asking-a-human-a-question), [blocked](references/cli.md#the-blocked-state--what-the-card-is-waiting-for) |
-| review protocol and verdict | [§1–§3](references/review-workflow.md#1-two-flows), [§6](references/review-workflow.md#6-what-happens-after-a-delivery) |
+| review protocol and verdict | [§1–§3](references/review-protocol.md#1-two-flows), [§6](references/review-protocol.md#6-what-happens-after-a-delivery) |
 | wire object, export format, identifiers, `blocked_reason` | [reading](references/card-schema.md#reading-a-card-as-json), [fields](references/card-schema.md#field-reference), [identifiers](references/card-schema.md#identifier-syntax), [blocked_reason](references/card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for), [export](references/card-schema.md#export-rules) |
 | project ↔ directory map | [managed](references/projects-json.md#managed-by-taskctl), [validation](references/projects-json.md#project--directory-what-is-checked), [unregistered](references/projects-json.md#unregistered-no-fallback--ask) |
 | supervisor bindings, candidate scan, live events | [invocation](references/capabilities.md#the-invocation-rule), [claim](references/capabilities.md#3-candidate-scan-and-atomic-claim), [questions](references/capabilities.md#questions--the-awaiting-protocol), [events](references/capabilities.md#8-live-stream--events-follow-hub--events-tail-direct) |

@@ -110,7 +110,7 @@ function verdictAuthorIdFor(ctx, task) {
  * refuses the report unless the same evidence names the commit that contains
  * the work. This is the *shape* half: core cannot shell out to git
  * (`test/core/domain/purity.test.mjs`), so the reviewer verifies that the sha
- * resolves and that every path exists at it (`review-workflow.md`).
+ * resolves and that every path exists at it (`review-protocol.md`).
  *
  * Review cards are exempt: their path anchors name places the reviewer read,
  * not work they produced. An epic is exempt too — a container has no working

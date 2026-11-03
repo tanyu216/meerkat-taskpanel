@@ -9,7 +9,7 @@ workflow channel that joins them.
 It is a design page, not a procedure. The state model and the reviewer's protocol are stated
 here; the installed board skill ships them as its **deployed contracts**
 ([`status-lifecycle.md`](../skills/meerkat/references/status-lifecycle.md) and
-[`review-workflow.md`](../skills/meerkat/references/review-workflow.md)). The acceptance model
+[`review-protocol.md`](../skills/meerkat/references/review-protocol.md)). The acceptance model
 is [acceptance.md](acceptance.md); when the passes run is [scheduling.md](scheduling.md); the
 wait-time watcher is [sla.md](sla.md). This page states what each mechanism guarantees, where
 the guarantee lives, and why it is shaped that way.
@@ -673,7 +673,7 @@ Rejected alternatives:
 | What happens after a delivery? | `src/core/domain/workflow.mjs` |
 | Who performs the writes? | `src/orchestrator/runners.mjs` |
 | When do the passes run? | [scheduling.md](scheduling.md) |
-| What does the agent do? | Its **deployed contracts**: [`status-lifecycle.md`](../skills/meerkat/references/status-lifecycle.md), [`review-workflow.md`](../skills/meerkat/references/review-workflow.md), [`cli.md`](../skills/meerkat/references/cli.md) |
+| What does the agent do? | Its **deployed contracts**: [`status-lifecycle.md`](../skills/meerkat/references/status-lifecycle.md), [`review-protocol.md`](../skills/meerkat/references/review-protocol.md), [`cli.md`](../skills/meerkat/references/cli.md) |
 
 ## See also
 

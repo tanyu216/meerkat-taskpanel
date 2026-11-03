@@ -1,4 +1,4 @@
-# The review workflow — flow A, flow B, and the verdict contract
+# The review protocol — flow A, flow B, and the verdict contract
 
 > One delivery, one independent review, one verdict. `status-lifecycle.md` is the state
 > model; `cli.md` is the command surface. This page is the agent-facing contract: what a

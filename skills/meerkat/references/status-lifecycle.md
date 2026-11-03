@@ -227,7 +227,7 @@ into the snapshot; the gates never read meta.
   the review card's own) before it can close anything, and the review report must carry at
   least one `command` anchor — the reviewer runs the gate itself, so an APPROVE that ran
   nothing is refused (`ACCEPTANCE_INCOMPLETE`, `details.reason = "no_command_evidence"`); see
-  [`review-workflow.md`](review-workflow.md).
+  [`review-protocol.md`](review-protocol.md).
 - **Epics.** A container's own snapshot is informational; its acceptance fact is the current
   round's rollup over its children (§6).
 
@@ -438,7 +438,7 @@ structural marker is the predicate: `meta.flow` is **not** a policy input, so a 
 `flow=B` on an ordinary card cannot exempt it from dispatch or auto-accept. One review card
 covers one `(original, delivery round)` pair, so a re-delivery after a rejection needs a new
 one. The identity marker, the two-round model and the reviewer's protocol are in
-[`review-workflow.md`](review-workflow.md).
+[`review-protocol.md`](review-protocol.md).
 
 The board decides what happens after a delivery; the loop executes. One command:
 

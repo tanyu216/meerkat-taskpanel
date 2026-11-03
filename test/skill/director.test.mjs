@@ -359,14 +359,14 @@ describe("board skill: references resolve where the skill is installed", () => {
     assert.equal(text.includes("scripts/supervisor.mjs]("), false, "no relative link to the executor");
   });
 
-  it("teaches the review workflow in the main prompt, not only in a reference", () => {
+  it("teaches the review protocol in the main prompt, not only in a reference", () => {
     const text = read("SKILL.md");
     assert.match(text, /review_of_id/, "the structural review marker is named");
     assert.match(text, /VERDICT/, "the verdict line is named");
     assert.match(text, /flow B/i, "the flow vocabulary is present");
     assert.match(
       text,
-      /references\/review-workflow\.md/,
+      /references\/review-protocol\.md/,
       "the main prompt links the full protocol",
     );
   });
@@ -443,7 +443,7 @@ describe("board skill: the acceptance matrix has one home", () => {
   const END = "<!-- acceptance-matrix:end -->";
   const copies = [
     ["status-lifecycle.md", join(ROOT, "skills/meerkat/references/status-lifecycle.md")],
-    ["review-workflow.md", join(ROOT, "skills/meerkat/references/review-workflow.md")],
+    ["review-protocol.md", join(ROOT, "skills/meerkat/references/review-protocol.md")],
     ["docs/acceptance.md", join(ROOT, "docs/acceptance.md")],
   ];
 
