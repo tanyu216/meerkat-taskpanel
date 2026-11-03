@@ -229,7 +229,13 @@ function readMenus() {
 
 /** Open a card's drawer and its status menu. */
 function openDrawerStatusMenu() {
-  const card = document.querySelector("[data-card]");
+  // The status combo is only enabled for a card with a human-facing move
+  // (`UI_TRANSITIONS`); pick one of those regardless of the board's order, so a
+  // locked card cannot turn this leg into a silent SKIP.
+  const card =
+    document.querySelector('[data-card][data-status="backlog"]') ??
+    document.querySelector('[data-card][data-status="todo"]') ??
+    document.querySelector('[data-card][data-status="in_review"]');
   (card?.querySelector("[data-card-title]") ?? card)?.click();
   return true;
 }

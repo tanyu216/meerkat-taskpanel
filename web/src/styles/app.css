@@ -3268,6 +3268,17 @@ button.td-prop-value:hover {
   font-size: var(--text-13);
   text-align: start;
 }
+/* A closed enumeration (status) keeps every row on screen but only offers the
+   values the reader may choose; the rest stay readable and inert. The current
+   value is disabled too (it is not a move) but keeps full ink — fading it would
+   read as "this status is unavailable", not "it is where the card already is". */
+.td-combo-menu .td-combo-option:disabled:not([aria-selected="true"]) {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.td-combo-menu .td-combo-option:disabled[aria-selected="true"] {
+  cursor: default;
+}
 
 /* The Description section's two faces. The mode attribute is the only thing
    that decides which is showing — the stylesheet holds both readings, and the

@@ -1677,7 +1677,10 @@ const BLOCKS = [
       // rows, both value sets the domain's own; `data-status` stays on the status
       // option buttons (the existing `[data-status=…]` colour rules key on it),
       // while priority rides on each row's `.td-pri` **inside** the button so the
-      // row's label keeps the ink colour.
+      // row's label keeps the ink colour. The status row **set** is fixed (the
+      // drawer never resizes its vocabulary); only the human-facing targets of
+      // the card's current status are enabled — `web/scripts/dom-smoke.mjs` pins
+      // that half.
       { kind: "count", selector: "[data-detail-status-option]", within: "[data-detail-status-menu]", equals: 7 },
       { kind: "domain", selector: "[data-detail-status-option]", attribute: "data-status-value", subset: DOMAINS.STATUS },
       { kind: "count", selector: "[data-detail-priority-option]", within: "[data-detail-priority-menu]", equals: 5 },

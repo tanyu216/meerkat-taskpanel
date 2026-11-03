@@ -59,15 +59,15 @@ const boardState = computed(() => (boardEmpty.value ? "empty" : "data"));
 const loadingNow = computed(() => projectLoading.value);
 
 /**
- * The move menu offers exactly the moves the state machine allows from the
- * card's *own* status — never the whole vocabulary with the impossible ones
- * included. M1's reason for tightening this: an `awaiting` card must be offered
- * **no** route to `in_review`, `done` or `blocked` (design §6/§8-13), because
- * offering a move the delivery gate will refuse is the UI half of bypassing it.
+ * The move menu offers exactly the human-facing subset (`UI_TRANSITIONS`) from
+ * the card's *own* status — never the whole vocabulary with the impossible ones
+ * included. A control that cannot succeed is not offered; the domain remains
+ * the authority for anything wider. A zero-target card never opens this menu
+ * (its kebab is disabled in `Card.vue`), so `moveRows` is only read non-empty.
  */
 const moveRows = computed(() => {
   const task = moveMenu.value?.task;
-  return allowedTargets(task?.status, task).map((target) => ({ status: target, current: false }));
+  return allowedTargets(task?.status).map((target) => ({ status: target, current: false }));
 });
 
 function onDragStart(task, event) {
@@ -90,7 +90,7 @@ function onDrop(status, event) {
   // (which needs a reason), so an illegal or terminal target is simply not a
   // drop. Keeping the guard here means a terminal card cannot send a move the
   // server would refuse for a missing reason.
-  if (!allowedTargets(task.status, task).includes(status)) return;
+  if (!allowedTargets(task.status).includes(status)) return;
   moveTask(task, status).catch(() => {});
 }
 
@@ -148,7 +148,7 @@ watch(view, closeMoveMenu);
       />
 
       <ul
-        v-if="moveMenu"
+        v-if="moveMenu && moveRows.length"
         class="td-details-menu menu"
         data-move-menu
         :style="{ position: 'fixed', top: `${moveMenu.top}px`, left: `${moveMenu.left}px` }"

@@ -1303,6 +1303,16 @@ export async function run() {
       };
     });
 
+    // The status combo keeps its seven rows but only the human-facing targets
+    // of the card's current status are selectable. TD-1 is `backlog`, so only
+    // `todo` and `canceled` are enabled (the current row is not a target).
+    const statusOptions = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-detail-status-option]")].map((el) => ({
+        value: el.getAttribute("data-status-value"),
+        disabled: el.disabled === true,
+      })),
+    );
+
     /* ---- v4 — the drawer's six tabs and the session trail -----------------
        Measured on the open drawer (TD-1), then returned to Details so every
        rule below sees the face it was written against. The fixture's TD-1 is an
@@ -2041,24 +2051,35 @@ export async function run() {
     await page.waitForTimeout(200);
     const drawerClosed = await page.evaluate(() => document.querySelector("[data-detail-drawer]")?.getAttribute("data-state"));
 
-    // The shared "Move to" menu: opened from a card's kebab. Since M1 it offers
-    // the moves the state machine *allows* from that card's status — not the
-    // whole vocabulary — so the expected row count is read off the card the menu
-    // was opened on. (The table mirrors `web/src/stores/board.js`
-    // `ALLOWED_TRANSITIONS`, the way the counts above mirror the fixture.)
-    const MOVE_ROWS = { backlog: 2, todo: 4, in_progress: 5, awaiting: 2, in_review: 3, blocked: 4, done: 0, canceled: 0 };
-    const moveMenu = await page.evaluate(() => {
-      const kebab = document.querySelector("[data-card-menu]");
-      const card = kebab?.closest("[data-card]");
-      kebab?.click();
+    // The shared "Move to" menu: opened from a card's kebab. The board offers
+    // only the human-facing subset (`web/src/stores/board.js` `UI_TRANSITIONS`),
+    // so the expected row count is read off the card the menu was opened on; a
+    // card with no target keeps a disabled kebab and never opens a menu.
+    const MOVE_ROWS = { backlog: 2, todo: 2, in_progress: 0, awaiting: 0, in_review: 2, blocked: 0, done: 0, canceled: 0 };
+    const moveMenu = await page.evaluate((rows) => {
+      const card = [...document.querySelectorAll("[data-card]")].find((el) => (rows[el.getAttribute("data-status")] ?? 0) > 0);
+      card?.querySelector("[data-card-menu]")?.click();
       return { cardStatus: card?.getAttribute("data-status") ?? null };
-    });
+    }, MOVE_ROWS);
     await page.waitForTimeout(120);
     moveMenu.open = await page.evaluate(() => !!document.querySelector("[data-move-menu]"));
     moveMenu.rows = await page.evaluate(() => document.querySelectorAll("[data-move-to]").length);
     moveMenu.expected = MOVE_ROWS[moveMenu.cardStatus];
     await page.keyboard.press("Escape");
     await page.waitForTimeout(120);
+    // A status with no human-facing target keeps the kebab (the part set is
+    // invariant) but disables it, so an empty menu cannot open.
+    moveMenu.locked = await page.evaluate(() => {
+      const card = [...document.querySelectorAll("[data-card]")].find((el) => el.getAttribute("data-status") === "in_progress");
+      const kebab = card?.querySelector("[data-card-menu]");
+      if (!kebab) return null;
+      kebab.click();
+      return kebab.disabled === true;
+    });
+    await page.waitForTimeout(120);
+    moveMenu.lockedMenu = await page.evaluate(() => !!document.querySelector("[data-move-menu]"));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(80);
 
     // Theme is a three-state cycle: three presses return to where it started.
     const themeStart = await page.evaluate(() => document.documentElement.getAttribute("data-theme-mode"));
@@ -2113,6 +2134,9 @@ export async function run() {
         .map((tab) => tab.getAttribute("data-detail-tab")),
       formFirst: document.querySelector("[data-detail-comments]")?.firstElementChild?.matches("[data-comment-form]") ?? false,
       hint: document.querySelector("[data-detail-comments] [data-i18n='drawer.commentHintAwaiting']")?.textContent?.trim() ?? "",
+      // The status trigger is locked for a status with no human-facing target
+      // (`awaiting` here), so the reader is not invited into an all-inert menu.
+      statusLocked: document.querySelector("[data-detail-status]")?.disabled === true,
     }));
     drawerTabsCheck(
       awaitingDrawer.selected.join(",") === "activity",
@@ -2120,6 +2144,7 @@ export async function run() {
     );
     drawerTabsCheck(awaitingDrawer.formFirst, "the comment form must sit above the comment list");
     drawerTabsCheck(/Submitting answers/.test(awaitingDrawer.hint), `awaiting hint ${JSON.stringify(awaitingDrawer.hint)}`);
+    drawerTabsCheck(awaitingDrawer.statusLocked, "an awaiting card's status trigger must be locked");
     await page.click("[data-detail-close]");
     await page.waitForTimeout(150);
 
@@ -4464,6 +4489,10 @@ export async function run() {
       drawerClosed: drawerClosed === "closed",
       agentSessionHook: drawerOpen.agentSessionHook,
       moveMenuOpened: moveMenu.open && moveMenu.rows === moveMenu.expected,
+      moveMenuLocked: moveMenu.locked === true && moveMenu.lockedMenu === false,
+      statusMenuFiltered:
+        statusOptions.length === 7 &&
+        statusOptions.filter((option) => !option.disabled).map((option) => option.value).join(",") === "todo,canceled",
       themeCycleReturns: themeStart === themeEnd,
       themeRun,
       langZh: langAfterZh === "zh",
@@ -5185,14 +5214,15 @@ export async function run() {
       };
     });
 
-    // §8-13 — the awaiting card's move menu must offer no route to in_review,
-    // done or blocked, and must offer canceled.
+    // §8-13 — an awaiting card is the worker's question, not a person's move:
+    // the human-facing table gives it no target at all, so its kebab is
+    // disabled and no menu opens.
     const awaitingMenu = await page.evaluate(() => {
       const kebab = document.querySelector('[data-card][data-identifier="TD-13"] [data-card-menu]');
+      const disabled = kebab?.disabled === true;
       kebab?.click();
-      return null;
+      return { disabled };
     });
-    void awaitingMenu;
     await page.waitForTimeout(120);
     const awaitingMenuLabels = await page.evaluate(() =>
       [...document.querySelectorAll("[data-move-to]")].map((el) => el.textContent.trim()),
@@ -5317,8 +5347,8 @@ export async function run() {
     check(m1.countText === "3", `count pill ${m1.countText} !== 3 (one question + two acceptances)`);
     check(m1.countHidden === false, "a non-zero count must not be hidden");
     check(m1.freshnessHooks === 0, "no freshness hook may exist inside a card");
-    check(!awaitingMenuLabels.some((label) => /In Review|Done|Blocked/i.test(label)), `awaiting menu offers ${awaitingMenuLabels.join("|")}`);
-    check(awaitingMenuLabels.some((label) => /Canceled/i.test(label)), "awaiting menu must offer Canceled");
+    check(awaitingMenu.disabled === true, "an awaiting card's kebab must be disabled");
+    check(awaitingMenuLabels.length === 0, `awaiting card offers ${awaitingMenuLabels.join("|")}, expected no moves`);
 
     // B27 — the queue. Three rows (one awaiting question, two accepted-waiting
     // deliveries), the awaiting row's fields, the stamp it carries stated
@@ -7083,6 +7113,10 @@ export async function run() {
               : false,
           accept: panel?.querySelector("[data-detail-accept]") !== null && panel?.querySelector("[data-detail-accept]") !== undefined,
           sendBack: panel?.querySelector("[data-detail-send-back]") !== null && panel?.querySelector("[data-detail-send-back]") !== undefined,
+          statusOptions: [...document.querySelectorAll("[data-detail-status-option]")].map((el) => ({
+            value: el.getAttribute("data-status-value"),
+            disabled: el.disabled === true,
+          })),
         };
       });
       acceptanceActCheck(deliveredPanel.hasSummary, "an in_review human-mode card shows no delivery summary");
@@ -7095,6 +7129,15 @@ export async function run() {
       acceptanceActCheck(deliveredPanel.summaryBeforeList, "the delivery summary does not render above the criteria list");
       acceptanceActCheck(deliveredPanel.accept, "a waiting card offers no Accept-and-close control");
       acceptanceActCheck(deliveredPanel.sendBack, "a waiting card offers no Send-back-for-rework control");
+      const enabledStatuses = deliveredPanel.statusOptions
+        .filter((option) => !option.disabled)
+        .map((option) => option.value);
+      // The rows render in board order (`in_progress` before `done`), so the
+      // assertion is the enabled **set**, not the transition table's own order.
+      acceptanceActCheck(
+        enabledStatuses.slice().sort().join(",") === "done,in_progress",
+        `an in_review card's status menu enables ${JSON.stringify(enabledStatuses)}, expected done + in_progress`,
+      );
 
       // A refusal the client cannot foresee lands on the standard error path:
       // the alert opens, the toast carries the code's sentence, and the card
@@ -7542,6 +7585,8 @@ if (isEntryPoint) run().then(
       report.interactions.drawerClosed &&
       report.interactions.agentSessionHook &&
       report.interactions.moveMenuOpened &&
+      report.interactions.moveMenuLocked &&
+      report.interactions.statusMenuFiltered &&
       report.interactions.themeCycleReturns &&
       report.interactions.langZh &&
       report.interactions.langEn;

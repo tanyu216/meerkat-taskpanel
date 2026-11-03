@@ -20,6 +20,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import {
+  allowedTargets,
   board,
   addComment,
   addDepends,
@@ -178,6 +179,18 @@ const PRIORITY_MENU = ["none", "low", "medium", "high", "urgent"];
  * one).
  */
 const readonly = computed(() => status.value === "done" || status.value === "canceled");
+
+/**
+ * The status combo keeps all seven stage rows (the prototype's fixed menu, and
+ * the contract's count), but a row is only selectable when it is a
+ * human-facing target of the card's current status (`UI_TRANSITIONS`). The
+ * server still owns the final word; this only stops offering a move the board
+ * will refuse. A status with no human-facing target locks the trigger too, so
+ * the reader is not invited into a menu where every row is inert.
+ */
+const statusTargets = computed(() => allowedTargets(status.value));
+const statusLocked = computed(() => readonly.value || statusTargets.value.length === 0);
+
 /** The service's own minimum; the confirm button follows it so the refusal is local. */
 const reopenReady = computed(() => reopenReason.value.trim().length >= 8);
 
@@ -750,7 +763,7 @@ function closePropMenus() {
  */
 async function chooseStatus(to) {
   closePropMenus();
-  if (to === status.value) return;
+  if (to === status.value || !statusTargets.value.includes(to)) return;
   await runCommit(() => saveDetailField("status", to));
 }
 
@@ -1461,8 +1474,8 @@ function copyId() {
               aria-haspopup="listbox"
               :aria-expanded="statusMenuOpen ? 'true' : 'false'"
               aria-controls="td-status-menu-detail"
-              :disabled="readonly"
-              :aria-disabled="readonly ? 'true' : undefined"
+              :disabled="statusLocked"
+              :aria-disabled="statusLocked ? 'true' : undefined"
               @click="toggleStatusMenu"
               @keydown.esc="closePropMenus"
               @blur="closePropMenus"
@@ -1480,6 +1493,8 @@ function copyId() {
                   class="td-combo-option"
                   role="option"
                   :aria-selected="value === statusValue ? 'true' : 'false'"
+                  :disabled="!statusTargets.includes(value)"
+                  :aria-disabled="!statusTargets.includes(value) ? 'true' : undefined"
                   data-detail-status-option
                   :data-status="value"
                   :data-status-value="value"

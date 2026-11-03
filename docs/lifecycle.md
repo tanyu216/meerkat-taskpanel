@@ -545,6 +545,12 @@ The same rules are enforced wherever a writer can enter:
 | **use-cases** (`src/core/commands/`) | the board, the actor's declared kind | acceptance authority, review evidence, children, the snapshot, the audit |
 | **storage** (`0001_init.sql` triggers + repositories) | rows, not actors or prose | the whitelist, the round bump, the evidence row, the marker, the baseline |
 
+The **web UI** is a narrower writer, not a fourth enforcement layer: it offers only the
+human-facing subset — release (`backlog ↔ todo`), abandon (`backlog`/`todo → canceled`), the
+audited reopen (`done`/`canceled → todo`) and acceptance/send-back (`in_review → done` /
+`in_progress`) — and disables every other status row. It never widens what the three layers
+above permit; `src/core/domain/status.mjs` remains the whitelist.
+
 The triggers that carry the lifecycle:
 
 | Trigger | Guarantee |

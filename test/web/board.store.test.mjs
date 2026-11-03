@@ -25,6 +25,8 @@ import assert from "node:assert/strict";
 import { register } from "node:module";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 
+import { canTransition } from "../../src/core/domain/status.mjs";
+
 // Vue is aliased to an in-repo shim (the container ships no node_modules).
 // `register` first, so every dynamic import below resolves through the hook.
 register("./support/vue-loader.mjs", import.meta.url);
@@ -412,16 +414,43 @@ describe("web/board — move guards", () => {
   });
 });
 
-describe("web/board — the move menu's direct-done edge (0038)", () => {
-  it("offers `done` from in_progress only for an `off` card", async () => {
+describe("web/board — the human-facing move table", () => {
+  // The board offers only what a person drives: release between `backlog` and
+  // `todo`, abandon from either, and close/rework a delivered card. Everything
+  // else belongs to the claim/loop, which writes through the CLI. The domain
+  // whitelist stays wider; this table is its human subset.
+  const EXPECTED = {
+    backlog: ["todo", "canceled"],
+    todo: ["backlog", "canceled"],
+    in_progress: [],
+    awaiting: [],
+    in_review: ["done", "in_progress"],
+    blocked: [],
+    done: [],
+    canceled: [],
+  };
+
+  it("offers exactly the human-facing subset, one row per status", async () => {
+    const { allowedTargets, UI_TRANSITIONS } = await freshBoard();
+    assert.deepEqual(Object.keys(UI_TRANSITIONS).sort(), Object.keys(EXPECTED).sort());
+    for (const [from, targets] of Object.entries(EXPECTED)) {
+      assert.deepEqual([...allowedTargets(from)], targets, `${from} targets`);
+    }
+  });
+
+  it("keeps the audited reopen off the generic table", async () => {
     const { allowedTargets } = await freshBoard();
-    assert.ok(allowedTargets("in_progress", { acceptance_mode: "off" }).includes("done"));
-    assert.ok(!allowedTargets("in_progress", { acceptance_mode: "auto" }).includes("done"));
-    assert.ok(!allowedTargets("in_progress", { acceptance_mode: "human" }).includes("done"));
-    // No card in hand is the conservative reading: the base row only.
-    assert.ok(!allowedTargets("in_progress").includes("done"));
-    // The edge belongs to `in_progress` alone.
-    assert.ok(!allowedTargets("todo", { acceptance_mode: "off" }).includes("done"));
+    assert.deepEqual([...allowedTargets("done")], []);
+    assert.deepEqual([...allowedTargets("canceled")], []);
+  });
+
+  it("never offers an edge the domain refuses", async () => {
+    const { UI_TRANSITIONS } = await freshBoard();
+    for (const [from, targets] of Object.entries(UI_TRANSITIONS)) {
+      for (const to of targets) {
+        assert.ok(canTransition(from, to, null, null), `${from} → ${to} must be domain-legal`);
+      }
+    }
   });
 });
 
