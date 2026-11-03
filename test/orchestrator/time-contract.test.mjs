@@ -28,6 +28,11 @@ import {
   PATROL_STALE_MS,
   planPatrol,
 } from "../../src/foundation/scheduling.mjs";
+import {
+  POOL_VERDICTS,
+  killDeadlineMs,
+  sendDeadlineMs,
+} from "../../src/foundation/loop-state.mjs";
 import { POOL_HEARTBEAT_MS, POOL_STALE_MS } from "../../src/orchestrator/session.mjs";
 
 /** The documented turn default and the bounds `src/orchestrator/options.mjs` enforces. */
@@ -57,6 +62,32 @@ describe("scheduling/time-contract — the clocks relate", () => {
 
   it("a pool heartbeat is stale well after it is written", () => {
     assert.ok(POOL_STALE_MS > POOL_HEARTBEAT_MS);
+    assert.equal(POOL_STALE_MS, 6 * POOL_HEARTBEAT_MS, "90s: six beats, not four");
+    assert.ok(POOL_STALE_MS < TURN_MIN_MS, "a stale heartbeat is detected inside one turn");
+  });
+
+  it("a send deadline outlasts the turn across the whole allowed range", () => {
+    // The whole range the option parser accepts: [1200s, 7200s).
+    for (let turn = TURN_MIN_MS; turn < TURN_MAX_EXCLUSIVE_MS; turn += 60_000) {
+      const send = sendDeadlineMs(turn);
+      const kill = killDeadlineMs(turn);
+      assert.ok(send > turn, `turn=${turn}ms: a legitimate turn is never the deadline`);
+      assert.ok(kill > send, `turn=${turn}ms: the kill deadline has its own grace`);
+      assert.ok(POOL_STALE_MS <= send, `turn=${turn}ms: staleness is inside the send window`);
+    }
+    // The boundaries themselves, without relying on the loop step.
+    for (const turn of [TURN_MIN_MS, TURN_DEFAULT_MS, TURN_MAX_EXCLUSIVE_MS - 1]) {
+      assert.ok(sendDeadlineMs(turn) > turn);
+      assert.ok(killDeadlineMs(turn) > sendDeadlineMs(turn));
+    }
+    assert.deepEqual(POOL_VERDICTS, [
+      "running",
+      "busy",
+      "starting",
+      "unresponsive",
+      "wedged",
+      "gone",
+    ]);
   });
 
   it("patrol never reports an awaiting card as stale — it holds a dormant claim", () => {

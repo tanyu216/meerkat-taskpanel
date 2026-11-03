@@ -99,6 +99,24 @@ describe("supervisor status", () => {
     assert.equal(report.pool.controlMode, "external");
   });
 
+  it("reports the shared pool verdict: busy, unresponsive and wedged are all live", () => {
+    const dir = tempDir();
+    writePool(dir, { heartbeatAt: new Date(NOW).toISOString(), tickStartedAt: new Date(NOW - 1_000).toISOString() });
+    const busy = probeSupervisor(optsFor(dir), { isAlive: (pid) => pid === 4242, now: () => NOW, run: noUnits() });
+    assert.equal(busy.verdict, "busy");
+    assert.equal(busy.pool.live, true);
+
+    writePool(dir, { heartbeatAt: new Date(NOW - 10 * 60_000).toISOString() });
+    const stale = probeSupervisor(optsFor(dir), { isAlive: (pid) => pid === 4242, now: () => NOW, run: noUnits() });
+    assert.equal(stale.verdict, "unresponsive", "a stale heartbeat is not an absent supervisor");
+    assert.equal(stale.pool.live, true);
+
+    writePool(dir, { tickStartedAt: new Date(NOW - 3 * 60 * 60_000).toISOString() });
+    const wedged = probeSupervisor(optsFor(dir), { isAlive: (pid) => pid === 4242, now: () => NOW, run: noUnits() });
+    assert.equal(wedged.verdict, "wedged");
+    assert.equal(wedged.pool.live, true);
+  });
+
   it("is busy while a one-shot tick holds the lock", () => {
     const dir = tempDir();
     writeFileSync(

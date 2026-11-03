@@ -258,11 +258,12 @@ is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `1800
 | patrol stale (scans `in_progress` work cards; an epic container is excluded) | 30 min (= `CLAIM_STALE_SAME_MS`) | `src/foundation/scheduling.mjs` |
 | tick interval (the `continue` unit) | 10 min | `src/orchestrator/options.mjs` |
 | queue `recoverStaleCards` | `2 × turn` | `src/orchestrator/session.mjs` |
-| pool `wedged` verdict | `2 × turn` | `src/orchestrator/session.mjs` |
+| pool `wedged` verdict | `turn + POOL_WEDGE_MARGIN_MS` (default 32 min) | `src/foundation/loop-state.mjs` |
+| pool start budget / reattach bound | 5 min / `min(turn, 120 s)` | `src/foundation/loop-state.mjs`, `src/orchestrator/session.mjs` |
 | `runCli` spawn bound | 120 s (`DEFAULT_CLI_TIMEOUT_MS`) | `src/orchestrator/runtime.mjs` |
 | admission deferral backoff | 30 s → 1 h, from the 3rd failure | `src/orchestrator/deferrals.mjs` |
 | ledger live-row reap | 2 h (`LEDGER_STALE_MS`) | `src/foundation/scheduling.mjs` |
-| pool heartbeat / stale | 15 s / 60 s | `src/orchestrator/session.mjs` |
+| pool heartbeat / stale | 15 s / 90 s (6 beats) | `src/foundation/loop-state.mjs` |
 | project idle / session max age | 30 min / 24 h | `src/orchestrator/options.mjs` |
 
 The contract:
@@ -312,7 +313,7 @@ policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
 | Worker session unrestorable | session record | first failure | row failed, claim released, `blocked/resource` |
 | Question turn | director row dispatches | 2 | left for the human; `question_stale` + doctor |
 | Route turn | route row dispatches | 2 | the card is parked `blocked/decision` (never assigned) |
-| Wedged pool | `sessions.state.json` `tickStartedAt` | `2 × turn timeout` | ping sends SIGTERM; the unit restarts it |
+| Wedged pool | `sessions.state.json` `tickStartedAt` / `startStartedAt` | `turn + POOL_WEDGE_MARGIN_MS` / start budget | ping sends SIGTERM; the unit restarts it |
 | Hung `taskctl` | `runCli` | 120 s | the pass fails and releases the tick lock |
 
 **The hold is an epoch, not a latch.** `meta.loop_hold_round` records the round the card was
@@ -326,12 +327,15 @@ fabricate a claim with no owner. `blocked` is legal from every active status and
 by the SLA's `blocked_clarification` row (120/1440 min), so a held card is never invisible.
 The requested E-code rides in the `question` comment and `meta.loop_hold_e_code`.
 
-**The pool has four live verdicts.** A live pid is always `live: true`; `starting`,
-`running`, `unresponsive` (heartbeat stale) and `wedged` (`tickStartedAt` past twice the turn
-timeout) say which kind of live it is. A second pool is refused in every one of them, and
-only `wedged` is stopped by the ping clock — `starting` and `unresponsive` may still recover.
-A row whose agent child is alive is never recovered: `recoverStaleCards` reads the session
-record, so a SIGKILLed pool cannot put a second worker on a card its orphan still holds.
+**The pool has five live verdicts.** A live pid is always `live: true`; `starting`,
+`running`, `busy` (a dispatch tick is in flight), `unresponsive` (heartbeat stale) and
+`wedged` (`starting` past the start budget, or `tickStartedAt` past `turn +
+POOL_WEDGE_MARGIN_MS`) say which kind of live it is. Only `gone` — a dead pid or a start-token
+mismatch — is absent, and the heartbeat never decides it. A second pool is refused in every
+one of them, and only `wedged` is stopped by the ping clock — `starting` and `unresponsive` may
+still recover. A row whose agent child is alive is never recovered: `recoverStaleCards` reads
+the session record, so a SIGKILLed pool cannot put a second worker on a card its orphan still
+holds. The one decision is `poolVerdict` in `src/foundation/loop-state.mjs`.
 
 ## Atomic claim = the single dispatch source
 
@@ -2116,8 +2120,9 @@ The console is its own skill ([`meerkat-chat`](../skills/meerkat-chat/SKILL.md))
 mode of the director. The director remains command-only and supervisor-opened; its manual
 agenda moved to the console, and its decision authority did not.
 
-`status.mjs --json` reports `running | busy | starting | configured-idle | partial |
-absent`; `--take-over` starts the pool only when the verdict is `absent` (with no control
+`status.mjs --json` reports `running | busy | starting | unresponsive | wedged |
+configured-idle | partial | absent` (the first five are the pool's own verdict — a live pid is
+never `absent`); `--take-over` starts the pool only when the verdict is `absent` (with no control
 turn there is nothing to take over), and `--stop` stops only what it started. `--control` is
 retained as a deprecated, inert flag for one release so the CLI snapshot does not move; it
 changes neither the pool's lifetime nor what it dispatches.

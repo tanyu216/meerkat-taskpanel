@@ -334,6 +334,56 @@ describe("continue — the event path needs a live pool", () => {
     assert.equal(existsSync(join(dir, "continue.state.json")), false, "no lock is taken");
   });
 
+  it("treats starting and unresponsive as a live pool — the shared verdict gates the tick", async () => {
+    const dir = tempDir("tp-require-pool-live-");
+    const stateFile = join(dir, "sessions.state.json");
+    const cases = [
+      // No heartbeat yet: the startup window is published before start().
+      { phase: "starting", startStartedAt: new Date().toISOString(), heartbeatAt: null },
+      // A blocked event loop: stale heartbeat, live pid.
+      { phase: "running", heartbeatAt: new Date(Date.now() - 10 * 60_000).toISOString() },
+    ];
+    for (const fields of cases) {
+      writeFileSync(
+        stateFile,
+        JSON.stringify({ version: 3, poolPid: process.pid, projects: {}, ...fields }),
+      );
+      const ran = [];
+      let acquired = 0;
+      const code = await runContinue(opts(dir), {
+        requirePool: true,
+        runPatrol: async () => ran.push("patrol"),
+        runWorkflow: async () => ran.push("workflow"),
+        runPoll: async () => ran.push("poll"),
+        onAcquired: () => {
+          acquired += 1;
+        },
+        log: () => {},
+      });
+      assert.equal(code, 0);
+      assert.deepEqual(ran, ["patrol", "workflow", "poll"], `${fields.phase} is a live pool`);
+      assert.equal(acquired, 1, `${fields.phase}: the tick lock is taken, and only one`);
+    }
+
+    // The same real state file with a dead pid is absent: no tick, no lock.
+    writeFileSync(stateFile, JSON.stringify({ version: 3, poolPid: 2147483646, projects: {} }));
+    const ran = [];
+    let acquired = 0;
+    const code = await runContinue(opts(dir), {
+      requirePool: true,
+      runPatrol: async () => ran.push("patrol"),
+      runWorkflow: async () => ran.push("workflow"),
+      runPoll: async () => ran.push("poll"),
+      onAcquired: () => {
+        acquired += 1;
+      },
+      log: () => {},
+    });
+    assert.equal(code, 0);
+    assert.deepEqual(ran, [], "a gone pool buys no tick");
+    assert.equal(acquired, 0);
+  });
+
   it("still runs the timer turn with no pool (patrol + workflow only)", async () => {
     const dir = tempDir("tp-timer-pool-");
     const logs = [];

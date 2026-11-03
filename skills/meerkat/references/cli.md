@@ -542,7 +542,7 @@ records who opened the loop; `--resident <auto|no>` says whether a resident pool
 whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) decides the
 claim pool; `--recover-stale <yes|no>` recovers stale in-progress claims, and
 `--recover-wedged <yes|no>` lets the ping clock stop a pool whose dispatch tick outlived
-twice the turn timeout (the service manager restarts it). `--workflow <yes|no>` applies the
+its send deadline (`turn + 2 min`; the service manager restarts it). `--workflow <yes|no>` applies the
 board's plan; the review card's assignee selects the reviewer role, and `--reviewer` is a
 deprecated no-op;
 `--workflow-max-actions` and `--review-aging-minutes` bound workflow execution and
