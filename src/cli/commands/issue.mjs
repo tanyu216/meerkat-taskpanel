@@ -586,8 +586,15 @@ export const COMMANDS = [
         acceptance_revision: flags.acceptanceRevision,
         acceptance_mode: flags.acceptanceMode,
         reason: flags.reason,
+        // A global the CLI accepts is either forwarded or refused — never
+        // silently dropped, so a caller cannot believe it holds a CAS it does
+        // not have.
+        if_version: flags.ifVersion,
       });
-      if (Object.keys(body).length === 0) {
+      // `--if-version` is a guard, not a change: a call carrying only the guard
+      // still has nothing to update and must not become a round trip.
+      const changes = Object.keys(body).filter((key) => key !== "if_version");
+      if (changes.length === 0) {
         // Refuse locally: a round trip that changes nothing is never what was meant.
         return {
           data: null,
@@ -976,6 +983,8 @@ export const COMMANDS = [
         reporter: ctx.flags.reporter,
         reporter_id: ctx.flags.reporterId,
         force_create: ctx.flags.forceCreate === true,
+        // Same rule as `update`: the global rides the wire or is refused.
+        if_version: ctx.flags.ifVersion,
       }));
       const task = payload.task;
       return {
