@@ -163,23 +163,32 @@ describe("skill frontmatter and the six-round shape", () => {
     assert.doesNotMatch(text, /<!--\s*\/?meerkat:task-entry\s*-->/, "no managed block");
   });
 
-  it("writes the board project rules under docs/agents and no card-scope file", () => {
+  it("writes one create-card document and no card-scope file", () => {
     const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
     const reference = readFileSync(join(SKILL, "references/board-project.md"), "utf8");
-    for (const name of [
-      "acceptance-mode.md",
-      "epic-cards.md",
-      "issue-tracker.md",
-      "triage-labels.md",
-      "domain.md",
-      "decision-policy.md",
-    ]) {
+    for (const name of ["create-card.md", "issue-tracker.md", "triage-labels.md", "domain.md", "decision-policy.md"]) {
       assert.ok(reference.includes(name), `board-project.md names ${name}`);
     }
+    assert.doesNotMatch(
+      reference,
+      /### `docs\/agents\/(?:acceptance-mode|epic-cards)\.md`/,
+      "the retired pair is not a document to write",
+    );
     assert.match(reference, /no project default/i, "acceptance has no project default");
     assert.match(reference, /outside the roles is outside the board/i, "the card scope has a rule");
+    assert.match(reference, /references\/create-card\.md/, "the default manual is named");
+    assert.match(
+      reference,
+      /agent-dir>?\/skills\/meerkat\/references\/create-card\.md/,
+      "the installed path is spelled out",
+    );
+    assert.match(reference, /copies differ/i, "a multi-kind divergence is surfaced");
+    assert.match(reference, /only their answers/i, "the page records choices, not a copy");
+    assert.match(reference, /earlier round/i, "an existing project's pair is migrated");
     assert.doesNotMatch(reference, /card-scope\.md/, "card scope is not a separate document");
     assert.match(skill, /docs\/agents\//);
+    assert.match(skill, /create-card\.md/);
+    assert.doesNotMatch(skill, /acceptance-mode\.md|epic-cards\.md/);
   });
 
   it("keeps the director policy a pointer, never a copy", () => {

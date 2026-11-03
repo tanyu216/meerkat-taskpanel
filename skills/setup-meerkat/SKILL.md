@@ -123,16 +123,18 @@ rules are fixed. Point at the installed `meerkat-director` skill's
 
 Read `references/board-project.md`.
 
-Write the project's board rules once, under `docs/agents/`: `acceptance-mode.md`,
-`epic-cards.md`, and the tracker files (`issue-tracker.md`, `triage-labels.md`,
-`domain.md`) through the Matt Pocock process. Ask which card shapes take `human` or `off`
-(there is **no project default**; omitted falls back to `auto`), the project's epic-splitting
-boundary, and the card scope (the default is the work a role owns; a question, a lookup or a
-one-off command has no owner and is not a card). Skip any item the user declines.
+Write the project's board rules once, under `docs/agents/`: `create-card.md`, and the tracker
+files (`issue-tracker.md`, `triage-labels.md`, `domain.md`) through the Matt Pocock process.
+Read the installed `meerkat` skill's `references/create-card.md` first so you know the default
+answer, then ask which card shapes take `human` or `off` (there is **no project default**;
+omitted falls back to `auto`), the project's epic-splitting boundary, and the card scope (the
+default is the work a role owns; a question, a lookup or a one-off command has no owner and is
+not a card). Write only the user's answers into `create-card.md` — not a copy of that manual —
+and skip any item the user declines.
 
 Call the `init` skill for the project's agent-instruction entry, and require it to point
-card work at the `/meerkat` skill and board rules at `docs/agents/` (`acceptance-mode.md`,
-`epic-cards.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, and
+card work at the `/meerkat` skill and board rules at `docs/agents/` (`create-card.md`,
+`issue-tracker.md`, `triage-labels.md`, `domain.md`, and
 `decision-policy.md` when present), and to state this round's card scope. The entry and the
 rules are project content shared by every platform: call `init` once, write the rules once
 under `docs/agents/`, never copy them per platform, never write an entry yourself, and report `skip` when the host has no `init` skill.

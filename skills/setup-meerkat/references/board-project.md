@@ -9,23 +9,33 @@ project.
 Create `docs/agents/` when it is missing. Every document is optional and skippable; ask
 before writing, and never replace a user's rule wholesale.
 
-### `docs/agents/acceptance-mode.md`
+### `docs/agents/create-card.md`
 
-The project's **selection guidance** for the three card modes. It must say the truth the
-board enforces: there is **no project default**; the card's `acceptance_mode` is the
-authority; an explicit instruction from the human wins over this page; omitted resolves to
-`auto`. Give the project's reasons for choosing `off` or `human` where it does — do not
-invent a default and do not claim the board reads this page.
+The project's three choices, in one page: **what work becomes a card**, **how its creators
+choose an acceptance mode**, and **where the epic-splitting boundary is**. Read the installed
+`meerkat` skill's `references/create-card.md` first — it holds the full manual and is what this
+page overrides. The installed copy is
+`<home>/<agent-dir>/skills/meerkat/references/create-card.md`; when several kinds are installed
+and their copies differ, say so before choosing one. Then ask the user the three questions and
+write **only their answers**. Do not copy the manual, its commands or its epic patterns; a page
+that restates them drifts from them.
+
+- **Card scope.** The recommended answer is **the work a role owns** — product design,
+  development and architecture, bug fixes and refactors, test design, regression, performance,
+  independent review. **Outside the roles is outside the board**: a question, a lookup, a
+  one-off command, a scratch experiment, the change being made in this conversation, or work
+  the human is doing themselves has no owner and does not become a card. A narrower answer
+  ("only work that crosses sessions") or a wider one ("every change") is valid; record it once.
+- **Acceptance mode.** There is **no project default**; the card's `acceptance_mode` is the
+  authority; an explicit instruction from the human wins over this page; omitted resolves to
+  `auto`. Record the project's reasons for choosing `off` or `human` where it does. Do not
+  invent a default and do not claim the board reads this page.
+- **Epic boundary.** The general epic mechanics stay in the `meerkat` skill; this page records
+  only the project's splitting choice. The worker never splits; the director owns the scope
+  decision.
 
 Link only to installed material (the `meerkat` skill) or project pages the user has. Do not
 link to a repository-only design page.
-
-### `docs/agents/epic-cards.md`
-
-The project's **splitting boundary**: when work becomes an epic, what counts as a child that
-can land alone, and who may split. The general epic mechanics stay in the `meerkat` skill;
-this page records only the project's choice. The worker never splits; the director owns the
-scope decision.
 
 ### `docs/agents/issue-tracker.md`, `triage-labels.md`, `domain.md`
 
@@ -34,24 +44,12 @@ Matt skill is available, it writes its own outputs; if not, write project-neutra
 that point at the installed `meerkat`/`taskctl` surface. Never create board labels — the
 label registry grows when a card first names a label.
 
-## The card scope
-
-Ask what work becomes a card here. A real question: a board that accepts every request stops
-being a signal, and a card costs a claim, an acceptance and a delivery report.
-
-The recommended answer is **the work a role owns** — product design, development and
-architecture, bug fixes and refactors, test design, regression, performance, independent
-review. **Outside the roles is outside the board**: a question, a lookup, a one-off command,
-a scratch experiment, the change being made in this conversation, or work the human is doing
-themselves has no owner and does not become a card. A narrower answer ("only work that
-crosses sessions") or a wider one ("every change") is valid; record it once.
-
 ## The instruction entry
 
 Call the `init` skill for the project's agent-instruction entry, and require it to point card
-work at the `/meerkat` skill and board rules at `docs/agents/` (`acceptance-mode.md`,
-`epic-cards.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, and
-`decision-policy.md` when present), and to state this round's card scope. The entry and the
+work at the `/meerkat` skill and board rules at `docs/agents/` (`create-card.md`,
+`issue-tracker.md`, `triage-labels.md`, `domain.md`, and `decision-policy.md` when present),
+and to state this round's card scope. The entry and the
 rules are project content shared by every platform: call `init` once, write the rules once
 under `docs/agents/`, never copy them per platform, and never write an entry yourself.
 
@@ -61,6 +59,15 @@ under `docs/agents/`, never copy them per platform, and never write an entry you
   the entry by hand.
 - A second run reports `unchanged` when the entry already states the same pointers and the
   same scope.
+
+## An earlier round's documents
+
+A project set up by an earlier round has `docs/agents/acceptance-mode.md` and
+`docs/agents/epic-cards.md`. When those exist and `docs/agents/create-card.md` does not, read
+them, carry over **only what differs from the manual** as the user's starting answers, and
+offer the single page. Back the old files up as `<file>.bak-<timestamp>`; remove them only with
+consent. The `meerkat` skill reads `create-card.md` only, so leaving the old pair in place would
+silently retire its rules.
 
 ## Missed items
 

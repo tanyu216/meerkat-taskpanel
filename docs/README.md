@@ -37,7 +37,7 @@ repository-only, as are `docs/ops/install.md`, `docs/ops/observability.md` and
 `docs/ops/publishing.md`; a target project may supply a file at the same path, but this
 repository's copy is not its documentation. `docs/agents/` is the home of a project's own board
 rules (`issue-tracker.md`, the historical `issue-tracer.md`, `triage-labels.md`, `domain.md`,
-`acceptance-mode.md`, `epic-cards.md`, and the optional `decision-policy.md`); those are project
+`create-card.md`, and the optional `decision-policy.md`); those are project
 documentation and
 remain addressable. The same path can be a design record here and project
 documentation in another repository (`docs/architecture.md`, `docs/agents/*`); the guard asks
@@ -57,8 +57,7 @@ this repository's own.
 | [issue-tracker.md](agents/issue-tracker.md) | How this repository's work is tracked as cards: the `taskctl` workflow, the commands the engineering skills expect, and the conventions that differ from a hosted tracker. |
 | [domain.md](agents/domain.md) | How the engineering skills consume this repository's domain documentation (`GLOSSARY.md`, ADRs, `design/`). |
 | [triage-labels.md](agents/triage-labels.md) | The five canonical triage roles and the label strings this repository uses for them. |
-| [acceptance-mode.md](agents/acceptance-mode.md) | This project's own card-creation guidance: the three words and when its creators state `off` or `human`; read by the `meerkat` skill, never board data. |
-| [epic-cards.md](agents/epic-cards.md) | This project's own splitting rule: when work becomes an epic and what counts as a child that can land alone; read by the `meerkat` skill. |
+| [create-card.md](agents/create-card.md) | This project's own card-creation choices — scope, acceptance-mode selection and the epic boundary; a thin override of the `meerkat` skill's manual, never board data. |
 
 ## Repository maintenance
 
