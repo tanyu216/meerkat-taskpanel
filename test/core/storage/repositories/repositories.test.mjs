@@ -588,6 +588,27 @@ describe("repositories/relations", () => {
     });
   });
 
+  it("walks descendants breadth-first, one level at a time, ordered by sort_order", async () => {
+    await board(({ repos }) => {
+      const root = makeTask(repos, { id: "root", kind: "epic" });
+      // Two siblings on the first level, inserted out of sort_order so the test
+      // proves the read orders rather than echoing insertion order.
+      const later = makeTask(repos, { id: "later", kind: "epic", sortOrder: 20 });
+      const earlier = makeTask(repos, { id: "earlier", kind: "epic", sortOrder: 10 });
+      const grandchild = makeTask(repos, { id: "grandchild", sortOrder: 0 });
+      repos.relations.insert({ type: "parent", source: root.id, target: later.id, now: TS });
+      repos.relations.insert({ type: "parent", source: root.id, target: earlier.id, now: TS });
+      repos.relations.insert({ type: "parent", source: later.id, target: grandchild.id, now: TS });
+
+      const descendants = repos.relations.listDescendants(root.id);
+      assert.deepEqual(descendants.map((t) => t.id), ["earlier", "later", "grandchild"]);
+      // The drawer renders id + title; the other three fields are the same row
+      // shape `listAncestors` serves.
+      assert.deepEqual(Object.keys(descendants[0]).sort(), ["id", "identifier", "kind", "status", "title"]);
+      assert.deepEqual(repos.relations.listDescendants(grandchild.id), [], "a leaf has no descendants");
+    });
+  });
+
   it("reads blockers and everything a task can touch", async () => {
     await board(({ repos }) => {
       const a = makeTask(repos, { id: "a" });

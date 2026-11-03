@@ -650,6 +650,46 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
     assert.equal(dataOf(await call("GET", `/api/v1/tasks/${epic.identifier}/relations`)).children.length, 0);
   });
 
+  it("serves an epic's whole descendant tree, a card row per descendant", async () => {
+    // Self-contained: the suite's other blocks run in declaration order, but a
+    // test picked out by name must still stand on its own project.
+    dataOf(await call("POST", "/api/v1/projects", { id: "dsc", name: "Descendants" }));
+    const make = async (title, kind) =>
+      dataOf(await call("POST", "/api/v1/tasks", { project_id: "dsc", title, kind, allow_dup: true })).task;
+    const root = await make("Descendant root", "epic");
+    const mid = await make("Descendant middle", "epic");
+    const leaf = await make("Descendant leaf", "task");
+    const grandchild = await make("Descendant grandchild", "task");
+    for (const [parent, child] of [
+      [root, mid],
+      [root, leaf],
+      [mid, grandchild],
+    ]) {
+      dataOf(
+        await call("POST", `/api/v1/tasks/${parent.identifier}/relations`, {
+          type: "parent",
+          target: child.identifier,
+        }),
+      );
+    }
+
+    const listed = dataOf(await call("GET", `/api/v1/tasks/${root.identifier}/relations`));
+    // Breadth first — both children before the grandchild — and each row is the
+    // card row the drawer renders (id + identifier + title + status + kind),
+    // not a relation edge.
+    assert.deepEqual(
+      listed.descendants.map((row) => row.identifier),
+      [mid.identifier, leaf.identifier, grandchild.identifier],
+    );
+    assert.deepEqual(Object.keys(listed.descendants[0]).sort(), ["id", "identifier", "kind", "status", "title"]);
+    assert.equal(listed.descendants[0].title, "Descendant middle");
+    assert.equal(listed.descendants[0].kind, "epic");
+    assert.equal(listed.children.length, 2, "the one-hop `children` field is unchanged");
+
+    const leafListing = dataOf(await call("GET", `/api/v1/tasks/${leaf.identifier}/relations`));
+    assert.deepEqual(leafListing.descendants, [], "a leaf has no descendants");
+  });
+
   it("registers, lists and closes an agent session", async () => {
     const registered = dataOf(
       await call("POST", `/api/v1/tasks/${REF}/sessions`, {

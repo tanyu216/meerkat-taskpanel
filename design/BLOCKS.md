@@ -590,17 +590,60 @@ the distinction.
 |---|---|
 | Root | `aside[data-detail-drawer][data-state="closed\|open\|closing"]` (`role="dialog"`, `aria-modal="true"`) |
 | Scrim | `[data-detail-overlay][data-state]` |
-| Head | `[data-detail-identifier]` (**R12**: the whole id, carrying `.td-id-full`) · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · `[data-detail-close]` |
+| Head | `[data-detail-identifier]` (**R12**: the whole id, carrying `.td-id-full`) · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · **kind** `[data-detail-kind]` (`data-kind="epic\|task"`) → `[data-detail-kind-label]` · `[data-detail-close]`. Since TP-0075 the six-tab strip also lives here, directly under the title (see the supplement below) |
 | Save state (R10) | `[data-detail-save][data-save-state="idle \| saving \| saved \| error"]` (attribute carrier, `hidden`, no copy of its own) · `[data-detail-save-error][role="alert"]` (its only visible half) |
-| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **acceptance** `[data-detail-acceptance-mode]` (`data-acceptance-mode="off\|auto\|human"`, read-only — 0038: the card's acceptance mode, set at creation and changed only through the audited `--acceptance-mode` override) · **labels** `[data-detail-labels]` (editable label combo — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
-| Tabs | `[data-detail-tabs][role="tablist"]` → `[data-detail-tab]` ×6 (`details` · `activity` · `reports` · `acceptance` · `leftovers` · `sessions`) → `[data-detail-panel]` ×6. Details holds Properties / Description / Relations / Attachments; Activity holds Comments + Activity; Sessions holds the Agent-session trail; Reports / Acceptance / Leftovers read `task_reports`. `sessions` is hidden when the card has no session rows; the other five are always present |
-| Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` (**inside the Sessions panel**) · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
+| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **acceptance** `[data-detail-acceptance-mode]` (`data-acceptance-mode="off\|auto\|human"`, read-only — 0038: the card's acceptance mode, set at creation and changed only through the audited `--acceptance-mode` override) · **labels** `[data-detail-labels]` (editable label combo — see B25). The internal id (`[data-detail-id]` / `[data-detail-id-copy]`) and `[data-detail-version]` rows were **removed** by TP-0075; the head's human identifier is the identity |
+| Tabs | `[data-detail-tabs][role="tablist"]` → `[data-detail-tab]` ×6 (`details` · `activity` · `reports` · `acceptance` · `leftovers` · `sessions`) → `[data-detail-panel]` ×6. **Since TP-0075 the strip sits inside `.td-drawer-head`, directly under `[data-detail-title]`** (`design/BLOCKS.md` §B09 supplement). Details holds Properties / Description / Relations / Attachments; Activity holds Comments + Activity; Sessions holds the Agent-session trail; Reports / Acceptance / Leftovers read `task_reports`. `sessions` is hidden when the card has no session rows; the other five are always present |
+| Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → four `[data-rel-group]` containers (`parent` · `children` · `depends` · `related`; TP-0075), each card row carrying `-value` (identifier) / `-title`; the Related group keeps `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` (**inside the Sessions panel**) · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
 
-**Implementation width.** The shipped drawer opens at **780px** — a deliberate
-product override of the prototype's 520px `--shell-drawer`. The `100vw` ceiling
-keeps a narrow viewport full-width exactly as before; every other box in this
-block follows the prototype.
+**Implementation width.** The shipped drawer opens at **580px** — a deliberate
+product override of the prototype's 520px `--shell-drawer` (the first override
+was 780px; TP-0075 narrowed it). The `100vw` ceiling keeps a narrow viewport
+full-width exactly as before; every other box in this block follows the
+prototype.
+
+**Implementation supplement — TP-0075's drawer round.** 〔原型未含以下改动；
+均为记录在案的产品决定，原型不回改〕 Six changes, all measured in
+`web/scripts/dom-smoke.mjs` and pinned by `test/web/blocks.contract.mjs` §B09:
+
+1. **Kind badge.** `[data-detail-kind]` sits on the identifier/status row; an
+   `epic` reads **Epic**, every ordinary card and every review card (a
+   `kind=task` carrying `review_of`) reads **Task**. The word is a catalogue
+   seat (`kind.task` / `kind.epic`, zh `任务` / `epic` — GLOSSARY keeps `epic`
+   in English), never colour-only.
+2. **Relations is four groups.** `[data-detail-relations]` now holds
+   `[data-rel-group="parent"]`, `"children"`, `"depends"`, `"related"`. Parent
+   and Related read the card's edges; **Children is the whole recursive
+   descendant list** served by `GET /api/v1/tasks/:ref/relations` →
+   `descendants` (card rows `{id, identifier, title, status, kind}`,
+   breadth-first), rendered `[data-detail-children]` →
+   `[data-detail-child]` / `-value` / `-title`, epic-only. Parent is
+   `[data-detail-parent-row]` / `-value` / `-title`.
+3. **Depends is add-only.** The multi-chip control became a row list
+   `[data-detail-depends-list]` → `[data-detail-depends-row]` / `-value` /
+   `-title` plus one add box; the row's ✕ keeps
+   `[data-detail-depends-remove]` and the box keeps
+   `[data-detail-depends-input]` / `-menu` / `-option` / `-value`. A read-only
+   card disables both. The list container renders unconditionally (the
+   contract's count runs while the drawer is closed); only the rows are data.
+4. **No internal id / version.** The `[data-detail-id]` / `[data-detail-id-copy]`
+   and `[data-detail-version]` property rows are withdrawn. `prop.id`,
+   `prop.version` and `toast.copied` stay in the catalogue (byte-locked to the
+   prototype) with no consumer.
+5. **Width 580px** (above).
+6. **Tabs in the head.** The six-pill strip moved from the scrolling body into
+   `.td-drawer-head`, directly under `[data-detail-title]`, so it stays visible
+   while the body scrolls. The real head adds `.td-drawer-head-tabs`
+   (`padding-bottom: 0`, the head's own border is the divider); the loading
+   skeleton head mirrors the six pills, so the card's arrival does not move
+   them. The strip no longer draws its own hairline or margin.
+
+New implementation-only copy: `kind.task`, `kind.epic`, `drawer.children`,
+`drawer.childrenEmpty`, `relations.depends` (`web/src/i18n/extra.mjs`, en/zh
+parity checked by `test/web/i18n.parity.test.mjs`). The descendant walk's own
+contract is the server's (`test/core/storage/repositories/repositories.test.mjs`,
+`test/server/routes.test.mjs`), not the prototype's.
 
 **Implementation supplement — the Acceptance tab can act (M6).** 〔原型只读；这是
 记录在案的扩展，不是原型被回改〕 The prototype's Acceptance panel is a read-only
@@ -648,15 +691,18 @@ the loaded history holds it, otherwise the panel (the old seat) plus one `detail
 info toast. Nothing is written to the URL (fidelity-r16 C13). Implementation-only — the
 prototype does not carry this mechanism.
 
-**R14 — the relations area names its three kinds.** `[data-detail-relations]` groups its
-`[data-relation-link]`s by kind, each group led by that kind's own name, and the kind is
-one of three — `parent` | `blocks` | `related`. Each names itself from the catalogue:
-`relations.parent` (`Parent` / `父任务`) · `relations.blocks` (`Blocks` / `阻塞`) ·
-`relations.related` (`Related` / `关联`). They are the same three the card's own counters
-carry (`data-relations-parent` | `data-relations-blocks` | `data-relations-related`, B07),
-so a card and the drawer it opens spell a kind identically; an area holding no relation
-reads `relations.none` (`No relations` / `暂无关联`), which `app.js` injects rather than
-the markup declaring it. 实测：`index.html` 里 `relations.parent` 有 4 座、`relations.blocks`
+**R14 — the relations area names its kinds.** `[data-detail-relations]` groups its
+rows by kind, each group led by that kind's own name. R14's three kinds were
+`parent` | `blocks` | `related`; **TP-0075** renders the same facts as four groups:
+`parent` (`relations.parent` — `Parent` / `父任务`), `children` (the epic's
+recursive descendants, `drawer.children` — `Children` / `子任务`), `depends`
+(the card's `blocked_by` edges, `relations.depends` — `Depends on` /
+`前置依赖`) and `related` (`relations.related` — `Related` / `关联`). They are
+the same edges B07's counters carry
+(`data-relations-parent` | `data-relations-blocks` | `data-relations-related`), so
+a card and the drawer it opens spell a kind identically; an area holding no
+relation at all reads `relations.none` (`No relations` / `暂无关联`).
+实测：`index.html` 里 `relations.parent` 有 4 座、`relations.blocks`
 6 座，`relations.related` **0 座** —— 三处 `Related`（`[data-slot="relations"]` ×3：4793 /
 4885 / 5253）仍是内联、无 `data-i18n` 的旧标记，本节先把第三个名字定在目录里，座位留给
 后续实现卡。
@@ -674,7 +720,9 @@ ellipsis, and neither may carry `.td-id-full`.
 the full id on `data-identifier` (`aside[data-detail-drawer][data-identifier]`), and anything
 that resolves the drawer's task must read that attribute rather than the span's `textContent`.
 The rule does not lapse now that the text happens to be complete: the text is a display value,
-the attribute is the identity. `[data-detail-id]` (the internal `td_…` id) is untouched.
+the attribute is the identity. `[data-detail-id]` (the internal `td_…` id) was untouched by
+R12; **TP-0075 withdrew that property row** (see the supplement above), which removes a
+render point, not the identity rule.
 
 **R10 ② — the three editable rows save as they change.** The drawer's Properties grid holds
 the three fields Terry reported: assignee (B22), reporter (B22) and labels (B25). Each row

@@ -140,8 +140,8 @@ const READERS = {
   projects: ["get", "list"],
   relations: [
     "get", "getParent", "listAncestors", "listBlockEdges", "listBlockedBy",
-    "listBlockerOf", "listByTask", "listChildren", "listOpenBlockers",
-    "listParentEdges", "openEdgeCounts",
+    "listBlockerOf", "listByTask", "listChildren", "listDescendants",
+    "listOpenBlockers", "listParentEdges", "openEdgeCounts",
   ],
   reports: ["latestForRound", "listByTask", "listGateReports"],
   sessions: ["list", "listByTask"],
