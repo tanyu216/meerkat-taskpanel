@@ -25,12 +25,28 @@ In the commands below, `<skill-dir>` is the directory containing this `SKILL.md`
 `<checkout>` is the detected source tree. Run the bundled scripts and `install.sh` by
 absolute path; the current working directory is the user's project.
 
+## Flags
+
+| Flag | Meaning |
+|---|---|
+| `--dry-run` | detect and plan only; no writes, no daemon, no env merge |
+| `--json` | machine-readable report from the bundled scripts |
+| `--project <dir>` | the user's project (default: cwd) |
+| `--actor-kind <kind>` | the host kind; `all` when detection must cover every kind |
+| `--checkout <dir>` | use this source tree instead of discovering one |
+| `--home <dir>` | the home to inspect/install (a sandbox form; default: `$HOME`) |
+| `--human-name <name>` | the fixed human name, rendered into `TASKCTL_HUMAN` |
+| `--yes` | accept the recommended non-destructive answers only |
+
+`--yes` never authorizes a daemon, a different existing file, an unrelated tracker, or a
+remote board the user did not name.
+
 ## How a run is structured
 
-Run detection once:
+Run detection once, with autostart disabled so a probe never starts a board:
 
 ```bash
-node <skill-dir>/scripts/detect.mjs --json --project <dir> --actor-kind all
+TASKD_NO_AUTOSTART=1 node <skill-dir>/scripts/detect.mjs --json --project <dir> --actor-kind all
 ```
 
 Do not re-detect per round; re-read only the field that round needs. Then work rounds 1 → 6
@@ -88,7 +104,8 @@ hard errors the board loader will refuse, silent last-wins duplicates, mislaid l
 the token pair, and deprecated keys. Every secret is shown as `<set>`. Show the conflicts,
 ask which to repair, and repair only through `configure-env.mjs` — a different value is a
 `conflict` (exit 3) until the user consents to `--force`, and a mislaid or duplicated key is
-removed with `--remove`. When the board is remote, skip
+removed with `--remove`. Keep `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes` so an unassigned card
+is claimed as `Worker`, never as whichever role scans first. When the board is remote, skip
 `TASKD_HOST/PORT/DATA_DIR/ALLOW_*`; only the address, token and per-kind loop keys apply.
 
 ## 3. The director's project rules

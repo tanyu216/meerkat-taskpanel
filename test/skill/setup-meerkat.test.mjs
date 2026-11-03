@@ -219,6 +219,8 @@ describe("skill frontmatter and the six-round shape", () => {
     assert.match(roleJson.id, /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/);
     assert.ok(Array.isArray(roleJson.shapes) && roleJson.shapes.length > 0);
     assert.match(roleJson.self_check, /^references\/.+\.md$/);
+    assert.ok(existsSync(join(template, roleJson.self_check)), "the template's self-check resolves");
+    assert.ok(existsSync(join(template, "references", "reviewer-prompt.md")), "the reviewer sample exists");
     const templateSkill = readFileSync(join(template, "SKILL.md"), "utf8");
     assert.match(templateSkill, /\nname: example\n/);
     assert.doesNotMatch(templateSkill, /disable-model-invocation/);
@@ -227,6 +229,26 @@ describe("skill frontmatter and the six-round shape", () => {
     assert.match(reference, /only into an installed kind's skills tree|installed kind's skills tree/i);
     assert.match(reference, /never the repository's `skills\/`|never the repository/i);
     assert.ok(existsSync(join(SKILL, "scripts/scaffold-role.mjs")));
+  });
+
+  it("ships the role skills as standalone skills, never a team copy", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    assert.doesNotMatch(skill, /assets\/team/, "the setup skill ships no team template");
+    for (const role of ["jobs", "linus", "turing", "reviewer", "worker"]) {
+      assert.ok(existsSync(join(ROOT, "skills", role, "SKILL.md")), `${role} is a standalone skill`);
+    }
+    assert.equal(existsSync(join(ROOT, "skills", "meerkat-director", "roles")), false);
+    assert.equal(existsSync(join(ROOT, "skills", "meerkat-loop")), false);
+  });
+
+  it("keeps the flags, the no-autostart probe and the Worker claim default", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    for (const flag of ["--dry-run", "--json", "--project", "--actor-kind", "--checkout", "--home", "--human-name", "--yes"]) {
+      assert.ok(skill.includes(flag), `the skill documents ${flag}`);
+    }
+    assert.match(skill, /TASKD_NO_AUTOSTART=1/, "detection never starts a board");
+    assert.match(skill, /MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes/);
+    assert.match(skill, /claimed as `Worker`/i, "the unassigned-card policy is stated");
   });
 
   it("keeps the skill-creator eval prompts parseable", () => {
@@ -892,8 +914,14 @@ describe("scaffold-role.mjs — render and validate a role skill", () => {
     assert.deepEqual(identity.lanes, ["worker"]);
     assert.equal(identity.reviewer_prompt, null);
     assert.ok(existsSync(join(dir, identity.self_check)));
-    assert.match(readFileSync(join(dir, "SKILL.md"), "utf8"), /\nname: ops\n/);
-    assert.doesNotMatch(readFileSync(join(dir, "SKILL.md"), "utf8"), /disable-model-invocation/);
+    const generated = readFileSync(join(dir, "SKILL.md"), "utf8");
+    assert.match(generated, /\nname: ops\n/);
+    assert.doesNotMatch(generated, /disable-model-invocation/);
+    for (const heading of ["## Steps at a glance", "## Your work", "## Workflow", "## Hard limits"]) {
+      assert.ok(generated.includes(heading), `the generated role has ${heading}`);
+    }
+    assert.match(readFileSync(join(dir, "references", "workflow.md"), "utf8"), /^# Workflow/m);
+    assert.match(readFileSync(join(dir, "references", "self-check.md"), "utf8"), /^# Self-check/m);
     const second = runJson(t, SCAFFOLD, ["--spec", file, "--skills-dir", skills, "--json"], { cwd: temp(t), env: { HOME: home } });
     assert.equal(second.status, 0);
     assert.equal(second.body.status, "unchanged");

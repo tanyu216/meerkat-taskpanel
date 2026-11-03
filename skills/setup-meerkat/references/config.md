@@ -58,6 +58,10 @@ What it reports:
   settings file is `unavailable`, not a conflict.
 - **Kind order**: `MEERKAT_TASKPANEL_AGENT_KIND_ORDER` naming a kind that is not installed or
   has no CLI.
+- **The unassigned-card policy**: `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes` (the installer's
+  default) makes an unassigned card claimed as `Worker`, never as whichever role scans first.
+  Keep it `yes` unless the user explicitly wants unassigned cards left in the public pool;
+  turning it off is a claim-policy decision, not a tuning tweak.
 - **Deprecated keys**: `MEERKAT_TASKPANEL_REVIEWER` is ignored by the code — report it as
   deprecated, do not delete it. `MEERKAT_TASKPANEL_ROLES_DIR` pointing at directories that
   contain `role.json` is a **valid discovery override**, not a retired key; only a tree

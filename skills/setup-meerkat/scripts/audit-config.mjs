@@ -171,8 +171,12 @@ function duplicates(lines, file, layer, severity, why) {
 function audit(opts) {
   const home = opts.home;
   const kind = opts.actorKind;
-  const configRoot = opts.configDir ?? process.env.MEERKAT_TASKPANEL_CONFIG_DIR ?? serverRoot(home);
-  const sharedFile = opts.envFile ?? process.env.MEERKAT_TASKPANEL_ENV_FILE ?? join(configRoot, ".env");
+  const envPath = (name) => {
+    const value = process.env[name];
+    return value && value.trim() !== "" ? resolve(value) : null;
+  };
+  const configRoot = opts.configDir ?? envPath("MEERKAT_TASKPANEL_CONFIG_DIR") ?? serverRoot(home);
+  const sharedFile = opts.envFile ?? envPath("MEERKAT_TASKPANEL_ENV_FILE") ?? join(configRoot, ".env");
   const perKindFile = isAgentKind(kind) ? kindConfigFile(configRoot, kind) : join(configRoot, `.env.${kind}`);
   const conflicts = [];
   const recommendations = [];

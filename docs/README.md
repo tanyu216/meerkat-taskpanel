@@ -36,8 +36,9 @@ this tree. The reverse is never allowed: an installed skill that cites `docs/sch
 repository-only, as are `docs/ops/install.md`, `docs/ops/observability.md` and
 `docs/ops/publishing.md`; a target project may supply a file at the same path, but this
 repository's copy is not its documentation. `docs/agents/` is the home of a project's own board
-rules (`issue-tracker.md`, `triage-labels.md`, `domain.md`, `acceptance-mode.md`,
-`epic-cards.md`, and the optional `decision-policy.md`); those are project documentation and
+rules (`issue-tracker.md`, the historical `issue-tracer.md`, `triage-labels.md`, `domain.md`,
+`acceptance-mode.md`, `epic-cards.md`, and the optional `decision-policy.md`); those are project
+documentation and
 remain addressable. The same path can be a design record here and project
 documentation in another repository (`docs/architecture.md`, `docs/agents/*`); the guard asks
 whether a target project is guaranteed to have the file, not which layer the path belongs to.

@@ -83,11 +83,11 @@ the per-kind config `TASKCTL_HUMAN` / `MEERKAT_TASKPANEL_HUMAN_NAME`, the render
   "server": {"url": "…", "urlSource": "flag|env|env-file|pointer|default", "loopback": true,
              "class": "loopback|remote", "probed": true, "reachable": true, "health": {}, "error": null},
   "human": {"configured": true, "name": "…", "source": "env|settings|config|shim|env-file|fallback"},
-  "skills": {"board": {}, "director": {}, "setup": {}},
-  "skillsByKind": {"claude": {"board": true, "director": true, "setup": true}},
+  "skills": {"board": {}, "director": {}, "chat": {}, "setup": {}},
+  "skillsByKind": {"claude": {"board": true, "director": true, "chat": true, "setup": true}},
   "platforms": {
     "claude": {"kind": "claude", "dir": ".claude",
-               "skills": {"board": true, "director": true, "setup": true, "names": ["…"]},
+               "skills": {"board": true, "director": true, "chat": true, "setup": true, "names": ["…"]},
                "loopState": {}, "supervisor": {},
                "config": {"path": "…", "present": true, "kindOrder": ["claude"]},
                "roles": {}, "capabilities": ["design", "…"], "available": true}
