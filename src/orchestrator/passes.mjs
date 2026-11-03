@@ -640,8 +640,8 @@ export async function runPollOnce(opts, env = process.env) {
           role: "question",
           card: row.ref,
           project: row.project,
-          // The director turn is the loop's own write, so its identity is the
-          // writer, never the first discovered role the loop scans for.
+          // Row provenance only: the Director prompt signs every board write as
+          // `Director`, never as the first discovered role the loop scans for.
           agent: opts.agents[0] ?? "agent",
           target_dir: resolved.dir,
           route: true,
@@ -684,8 +684,8 @@ export async function runPollOnce(opts, env = process.env) {
           role: "triage",
           card: row.ref,
           project: row.project_id,
-          // The director turn is the loop's own write, so its identity is the
-          // writer, never the first discovered role the loop scans for.
+          // Row provenance only: the Director prompt signs every board write as
+          // `Director`, never as the first discovered role the loop scans for.
           agent: opts.agents[0] ?? "agent",
           target_dir: resolved.dir,
           triage: true,

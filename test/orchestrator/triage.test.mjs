@@ -63,6 +63,9 @@ describe("director triage: the prompt", () => {
       },
     );
 
+    assert.match(prompt, /You are the Director/);
+    assert.match(prompt, /--agent Director --actor-kind claude/);
+    assert.doesNotMatch(prompt, /--agent alice/);
     assert.match(prompt, /accepted producer, required handoff \(round 2\)/);
     assert.match(prompt, /handoff_of=P-1:r2/);
     assert.match(prompt, /loop-handoff\|P-1\|r2\|<n>/);

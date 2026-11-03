@@ -568,6 +568,37 @@ describe("buildQuestionPrompt (pure)", () => {
     assert.match(text, /Decision policy: \/roles\/decision-policy\.md/);
   });
 
+  it("signs every row as the Director, not the asking worker", () => {
+    assert.match(text, /You are the Director for P at \/work\/app\./);
+    assert.match(text, /--agent Director --actor-kind claude/);
+    assert.doesNotMatch(text, /--agent alice/);
+  });
+
+  it("names the kind that actually runs the lane", () => {
+    const codex = buildQuestionPrompt(
+      [{
+        card: "T-3",
+        project: "P",
+        target_dir: "/work/app",
+        agent: "alice",
+        question_id: "q-3",
+        question: "Which option?",
+      }],
+      { actorKind: "codex" },
+    );
+    assert.match(codex, /--agent Director --actor-kind codex/);
+    assert.doesNotMatch(codex, /--actor-kind claude/);
+  });
+
+  it("signs a route row as the Director too", () => {
+    const route = buildQuestionPrompt(
+      [{ card: "T-4", project: "P", target_dir: "/work/app", agent: "alice", route: true, title: "wire it" }],
+      { actorKind: "claude" },
+    );
+    assert.match(route, /--agent Director --actor-kind claude/);
+    assert.doesNotMatch(route, /--agent alice/);
+  });
+
   it("releases an already-answered card instead of re-answering it", () => {
     // A retry after a note-only turn must converge: the note is the answer, the
     // release is what the worker waits for.

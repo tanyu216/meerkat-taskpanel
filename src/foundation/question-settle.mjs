@@ -3,11 +3,12 @@
  * middle rung.
  *
  * A worker that cannot decide writes an agent `question` comment on an
- * `in_progress` card and **holds** with `taskctl issue wait`. The director
+ * `in_progress` card and **holds** with `taskctl issue wait`. The Director
  * answers with an agent `note` and **releases the card to `todo`**, or escalates
  * it to `awaiting`. The release is the settle and the only answer signal — a
- * note alone is not: the director and the worker share one board identity, so no
- * comment-author rule can tell the worker's own note from the director's.
+ * note alone is not: the settle is the release, not the author. The Director
+ * signs as `Director`, but the worker's own note can still precede the release,
+ * so no comment-author rule can prove the ladder answered.
  *
  * These predicates are shared by the orchestrator's native lane, the CLI's
  * `issue wait`, and the SLA patrol. They live in `foundation` because the

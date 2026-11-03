@@ -45,8 +45,9 @@ human answers. Nothing may silently park.
   --question <id>` is a bounded, read-only wait (default 110 s — under a common 120 s tool
   timeout — max 540 s, 2 s poll) that pulses the caller's own heartbeat. `answered` means
   the card **left `in_progress`** (including a released-then-reclaimed card); a newer note or
-  human comment is shown to the worker but does not end the wait, because the director and
-  the worker share one board identity and no author rule can distinguish them. `escalated`
+  human comment is shown to the worker but does not end the wait: the settle is the release,
+  not the author (corrected 2026-11-04 — the Director now signs as `Director`; the decision
+  and status are unchanged). `escalated`
   (the card is `awaiting`), `moved`, `timeout` and `error` end the call; the worker may
   re-invoke one more bounded wait when the runtime allows it, then parks and the same worker
   session is resumed by id when the release lands. A non-zero exit is a result, not a failure.

@@ -161,6 +161,34 @@ describe("loop/subscribe — event rules", () => {
     );
   });
 
+  it("treats the Director as an own writer, but still wakes on its release", () => {
+    const ctx = { agents: ["linus"] };
+    assert.equal(
+      classify(
+        activity("task_updated", { changes: { fields: ["meta"] }, actor_kind: "claude", actor_id: "Director" }),
+        ctx,
+      ),
+      "ignore",
+      "the decision lane's triage marker is an echo, not news",
+    );
+    assert.equal(
+      classify(
+        activity("task_updated", { changes: { fields: ["assigneeId", "assigneeKind"] }, actor_kind: "claude", actor_id: "Director" }),
+        ctx,
+      ),
+      "ignore",
+      "the director's route is an echo, not news",
+    );
+    assert.equal(
+      classify(
+        activity("task_moved", { changes: { from: "in_progress", to: "todo" }, actor_kind: "claude", actor_id: "Director" }),
+        ctx,
+      ),
+      "dispatch",
+      "the release wakes the worker even though the Director is an own writer",
+    );
+  });
+
   it("wakes when a human answer resumes an awaiting card", () => {
     assert.equal(
       classify(

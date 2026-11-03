@@ -72,8 +72,8 @@ refuses with `BLOCKED_BY_PREDECESSOR` (409) when a `blocks` predecessor is not
 The command reads the card and the trail after the question; it never claims,
 moves or comments. It returns `answered` (exit 0) only when the card was
 **released** (`todo`, or a status change after the question). A `note` — the
-director's or the worker's own — does not end the hold: the director and the
-worker share one board identity, so the release is the only trustworthy answer.
+Director's or the worker's own — does not end the hold: the settle is the
+release, not the author, so the release is the only trustworthy answer.
 `escalated` (the card is `awaiting`), `moved` (left the work states, or another
 actor owns the claim), `timeout` and `error` are exit 1/3 results, not failures:
 the worker re-invokes the bounded wait once if it can, then parks and the loop

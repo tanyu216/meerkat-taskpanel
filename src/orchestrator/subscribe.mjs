@@ -26,6 +26,7 @@ import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { processStartToken } from "../foundation/daemon-state.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import {
+  DIRECTOR_ACTOR_ID,
   EVENT_CONTINUE_MIN_MS,
   EVENT_DEBOUNCE_MAX_MS,
   EVENT_DEBOUNCE_MS,
@@ -140,15 +141,19 @@ const UPDATED_FIELDS = new Set(TASK_UPDATED_DISPATCH_FIELDS);
  * @returns {boolean}
  */
 /**
- * The ids the board writes under: its own housekeeping, the workflow pass's
- * automation, and — for rows recorded before 2026-10-30 — the retired `taskd`
- * id. History is never rewritten, so a replay from a lost cursor still sees it,
- * and the board's own deliveries must not wake the loop.
+ * The ids the loop writes under: the board's own housekeeping, the workflow
+ * pass's automation, the decision lane's `Director`, and — for rows recorded
+ * before 2026-10-30 — the retired `taskd` id. History is never rewritten, so a
+ * replay from a lost cursor still sees it, and the loop's own deliveries must
+ * not wake it.
  *
  * The *kind* is deliberately not consulted: `md-import` also wrote `system`, and
- * an import is work to discover.
+ * an import is work to discover. The `in_progress → todo` release is classified
+ * before this set, so a Director release still wakes the worker.
  */
-const BOARD_ACTOR_IDS = Object.freeze(new Set([SYSTEM_KIND, ORCHESTRATOR_ACTOR_ID, "taskd"]));
+const BOARD_ACTOR_IDS = Object.freeze(
+  new Set([SYSTEM_KIND, ORCHESTRATOR_ACTOR_ID, DIRECTOR_ACTOR_ID, "taskd"]),
+);
 
 export function isOwnWrite(activity, context) {
   if (activity?.actor_kind === HUMAN_KIND) return false;

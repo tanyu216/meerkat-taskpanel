@@ -17,7 +17,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import { cardFileRel } from "../foundation/card-brief.mjs";
-import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { DIRECTOR_ACTOR_ID, ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
 import {
   loadRoles,
@@ -870,7 +870,7 @@ export function createSessionPool(input = {}) {
         directorMode === "opener"
           ? {
               command: "/meerkat-director",
-              flags: `--actor-kind=${directorKind}`,
+              flags: `--agent ${DIRECTOR_ACTOR_ID} --actor-kind=${directorKind}`,
               fingerprint: directorFingerprint,
             }
           : null;
@@ -922,7 +922,9 @@ export function createSessionPool(input = {}) {
             : typeof directorFingerprint === "string");
         outcome = await entry.handle.send(
           buildQuestionPrompt(claimed.cards, {
-            actorKind: opts.actorKind,
+            // The lane runs on the kind that carries the director skill, which
+            // may not be the supervisor's primary kind: name the one that writes.
+            actorKind: directorKind,
             decisionPolicyPath: charterLoaded
               ? null
               : (roleSet?.decisionPolicy?.path ?? null),
