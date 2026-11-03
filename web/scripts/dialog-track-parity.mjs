@@ -260,6 +260,19 @@ try {
     await protoPage.waitForTimeout(600);
     await protoPage.evaluate(() => document.querySelector("[data-new-task]")?.click());
     await protoPage.waitForSelector(".modal[open] .td-modal-box", { timeout: 10_000 });
+    // daisyUI's dialog enters through a 300ms `scale: .95 → 1` transition, so a
+    // measurement taken inside it reads an interpolated box width — the same
+    // sources measured 1102.35 / 1113.68 / 1120 across runs (TP-0074 defect:
+    // a false red on the prototype side only). Wait, bounded, for the
+    // individual `scale` property to settle; the implementation has no
+    // entrance animation, so only this side needs it.
+    await protoPage.waitForFunction(
+      () => {
+        const box = document.querySelector(".modal[open] .td-modal-box");
+        return box !== null && getComputedStyle(box).scale === "1";
+      },
+      { timeout: 5_000 },
+    );
     await protoPage.waitForTimeout(400);
     const proto = await protoPage.evaluate(READ_PROTO);
     if (opt.shots && vp.card) {
