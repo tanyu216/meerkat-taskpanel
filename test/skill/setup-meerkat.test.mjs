@@ -188,10 +188,10 @@ describe("skill frontmatter and the six-step shape", () => {
     );
     assert.match(reference, /no project default/i, "acceptance has no project default");
     assert.match(reference, /outside the roles is outside the board/i, "the card scope has a rule");
-    assert.match(reference, /references\/create-card\.md/, "the default manual is named");
+    assert.match(reference, /references\/scenarios\/create\.md/, "the default manual is named");
     assert.match(
       reference,
-      /agent-dir>?\/skills\/meerkat\/references\/create-card\.md/,
+      /agent-dir>?\/skills\/meerkat\/references\/scenarios\/create\.md/,
       "the installed path is spelled out",
     );
     assert.match(reference, /copies differ/i, "a multi-kind divergence is surfaced");

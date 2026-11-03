@@ -1,9 +1,10 @@
 # Board capabilities a supervisor binds to
 
-[`cli.md`](cli.md) is the complete `taskctl` reference. This page is the **subset a
-supervisor uses**, with the exact invocation and the JSON keys it reads. The loop decides
-*when*; these are the *how*. The loop never calls the board's HTTP API directly — every
-operation below, including the live event stream, is a `taskctl` command.
+[`cli.md`](cli.md) is the contract index — every command and flag; the prose is in
+[`cli/`](cli/). This page is the **subset a supervisor uses**, with the exact invocation and
+the JSON keys it reads. The loop decides *when*; these are the *how*. The loop never calls
+the board's HTTP API directly — every operation below, including the live event stream, is a
+`taskctl` command.
 
 ## The invocation rule
 
@@ -207,7 +208,7 @@ taskctl issue move <ref> awaiting --awaiting-reason E2 --question "what you need
 The move and the `question` comment are one transaction; the loop never writes a decision
 kind. The card's `awaiting_reason` stays the category (`E1`–`E5`); the question is the payload
 (`waitingPayload`, the newest `question`). Entry, exits and the resume rule:
-[`status-lifecycle.md` §1](status-lifecycle.md#1-the-vocabulary).
+[`lifecycle/transitions.md` §1](lifecycle/transitions.md#1-the-vocabulary).
 
 Who answers what no role may decide: `--opened-by human` means the interactive session that
 opened the work may ask its own operator in that conversation; the default (`supervisor`, for

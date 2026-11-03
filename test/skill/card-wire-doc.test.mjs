@@ -1,8 +1,8 @@
 /**
  * The card's two shapes, as the installed skill states them.
  *
- * `references/card-schema.md` is the page an agent kind receives, and it used to
- * document only the markdown export while every worker read `issue get --json`.
+ * `references/schema/wire.md` and `schema/records.md` are the pages an agent kind
+ * receives; together they document both the wire object and the markdown export.
  * This test pins the missing half:
  *
  *   1. the **wire object** — every key `taskToWire` puts on `data.task`, and the
@@ -32,17 +32,22 @@ import { taskToWire } from "../../src/foundation/wire.mjs";
 import { taskPayload } from "../../src/server/task-view.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
-const DOC = readFileSync(join(ROOT, "skills/meerkat/references/card-schema.md"), "utf8");
+const WIRE = readFileSync(join(ROOT, "skills/meerkat/references/schema/wire.md"), "utf8");
+const RECORDS = readFileSync(join(ROOT, "skills/meerkat/references/schema/records.md"), "utf8");
+const BLOCKED = readFileSync(
+  join(ROOT, "skills/meerkat/references/schema/blocked-reason.md"),
+  "utf8",
+);
 
-/** The text between `<!-- name:begin -->` and `<!-- name:end -->`. */
-function marked(name) {
+/** The text between `<!-- name:begin -->` and `<!-- name:end -->` in one page. */
+function marked(name, doc) {
   const begin = `<!-- ${name}:begin -->`;
   const end = `<!-- ${name}:end -->`;
-  const start = DOC.indexOf(begin);
-  assert.notEqual(start, -1, `card-schema.md is missing ${begin}`);
-  const stop = DOC.indexOf(end, start + begin.length);
-  assert.notEqual(stop, -1, `card-schema.md is missing ${end}`);
-  return DOC.slice(start + begin.length, stop);
+  const start = doc.indexOf(begin);
+  assert.notEqual(start, -1, `the page is missing ${begin}`);
+  const stop = doc.indexOf(end, start + begin.length);
+  assert.notEqual(stop, -1, `the page is missing ${end}`);
+  return doc.slice(start + begin.length, stop);
 }
 
 /**
@@ -52,8 +57,8 @@ function marked(name) {
  * (`comments`); the suffix is trimmed, so the fixture and the code compare as
  * plain names.
  */
-function tableKeys(name) {
-  return [...marked(name).matchAll(/^\|\s*`([^`]+)`/gm)]
+function tableKeys(name, doc) {
+  return [...marked(name, doc).matchAll(/^\|\s*`([^`]+)`/gm)]
     .map((match) => match[1].replace(/[\[{].*$/, ""))
     .filter((key) => /^[a-z][a-z0-9_]*$/.test(key));
 }
@@ -79,14 +84,14 @@ const EXPORT_STUB = {
   statusChangedAt: "2026-01-01T00:00:00.000Z",
 };
 
-describe("card-schema.md — the wire object", () => {
+describe("wire.md — the wire object", () => {
   it("documents every field taskToWire produces, and nothing else", () => {
     // An empty stub still yields every copied field (the projection writes
     // `null` for an absent source), so the list is the projection, not the stub.
     const wireFields = Object.keys(taskToWire({})).sort();
     assert.equal(wireFields.length, 45, "the projection changed — update the page and this count");
 
-    const documented = tableKeys("wire-card-fields").sort();
+    const documented = tableKeys("wire-card-fields", WIRE).sort();
     assert.deepEqual(documented, wireFields);
     assert.equal(
       new Set(documented).size,
@@ -110,28 +115,28 @@ describe("card-schema.md — the wire object", () => {
     );
     // `attachments` is composed by the route, not by `taskPayload` — one
     // constant, with the route named here so a future move is noticed.
-    assert.deepEqual([...payload, "attachments"].sort(), tableKeys("wire-payload-fields").sort());
+    assert.deepEqual([...payload, "attachments"].sort(), tableKeys("wire-payload-fields", WIRE).sort());
 
     assert.deepEqual(
       [...GET_INCLUDE_SECTIONS].sort(),
-      tableKeys("wire-include-fields").sort(),
+      tableKeys("wire-include-fields", WIRE).sort(),
       "the --include sections and the page must be one list",
     );
   });
 });
 
-describe("card-schema.md — facts that used to be wrong", () => {
+describe("records.md — facts that used to be wrong", () => {
   it("lists exactly the comment kinds the board accepts, including question", () => {
-    const kinds = [...marked("comment-kinds").matchAll(/`([a-z_]+)`/g)].map((match) => match[1]);
+    const kinds = [...marked("comment-kinds", RECORDS).matchAll(/`([a-z_]+)`/g)].map((match) => match[1]);
     assert.deepEqual([...kinds].sort(), [...COMMENT_KINDS].sort());
     assert.ok(kinds.includes("question"), "a worker's question is a comment kind");
   });
 
   it("lists the eight blocked reasons, and a write of any other value is refused", () => {
-    const start = DOC.indexOf("## blocked_reason");
-    const end = DOC.indexOf("\n## ", start);
+    const start = BLOCKED.indexOf("## blocked_reason");
+    const end = BLOCKED.indexOf("\n## ", start);
     assert.notEqual(start, -1);
-    const section = DOC.slice(start, end === -1 ? DOC.length : end);
+    const section = BLOCKED.slice(start, end === -1 ? BLOCKED.length : end);
     const literals = [...section.matchAll(/^\|\s*`([a-z_]+)`\s*\|/gm)].map((match) => match[1]);
     assert.deepEqual(literals, [...BLOCKED_REASONS]);
 
@@ -151,16 +156,16 @@ describe("card-schema.md — facts that used to be wrong", () => {
     assert.doesNotMatch(agent, /^assignee_kind:/m, "the default is not re-emitted");
     assert.doesNotMatch(absent, /^assignee_kind:/m);
 
-    const row = DOC.split("\n").find((line) => line.startsWith("| `assignee_kind`"));
+    const row = RECORDS.split("\n").find((line) => line.startsWith("| `assignee_kind`"));
     assert.ok(row !== undefined, "assignee_kind must stay in the field table");
     assert.doesNotMatch(row, /not re-exported|not re-emitted/);
   });
 
   it("names the frozen acceptance baseline as the authority", () => {
-    const start = DOC.indexOf("## Acceptance");
-    const end = DOC.indexOf("\n## Comments", start);
+    const start = RECORDS.indexOf("## Acceptance");
+    const end = RECORDS.indexOf("\n## Comments", start);
     assert.notEqual(start, -1);
-    const section = DOC.slice(start, end === -1 ? DOC.length : end);
+    const section = RECORDS.slice(start, end === -1 ? RECORDS.length : end);
 
     assert.match(section, /acceptance_json/, "the column is the authority");
     assert.match(section, /frozen/i);
@@ -177,9 +182,9 @@ describe("card-schema.md — facts that used to be wrong", () => {
   });
 
   it("states the epic rollup requirement in the report section", () => {
-    const start = DOC.indexOf("## Report");
-    const end = DOC.indexOf("\n## The process directory", start);
-    const section = DOC.slice(start, end === -1 ? DOC.length : end);
+    const start = RECORDS.indexOf("## Report");
+    const end = RECORDS.indexOf("\n## The process directory", start);
+    const section = RECORDS.slice(start, end === -1 ? RECORDS.length : end);
     assert.match(section, /rollup/i);
     assert.match(section, /ROLLUP_REQUIRED/);
   });

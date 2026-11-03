@@ -19,9 +19,9 @@ before writing, and never replace a user's rule wholesale.
 
 The project's three choices, in one page: **what work becomes a card**, **how its creators
 choose an acceptance mode**, and **where the epic-splitting boundary is**. Read the installed
-`meerkat` skill's `references/create-card.md` first — it holds the full manual and is what this
+`meerkat` skill's `references/scenarios/create.md` first — it holds the create runbook and is what this
 page overrides. The installed copy is
-`<home>/<agent-dir>/skills/meerkat/references/create-card.md`; when several kinds are installed
+`<home>/<agent-dir>/skills/meerkat/references/scenarios/create.md`; when several kinds are installed
 and their copies differ, say so before choosing one. Then ask the user the three questions and
 write **only their answers**. Do not copy the manual, its commands or its epic patterns; a page
 that restates them drifts from them.

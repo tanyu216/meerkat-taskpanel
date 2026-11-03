@@ -373,7 +373,7 @@ describe("board skill: references resolve where the skill is installed", () => {
 });
 
 describe("board skill: the status whitelist matches the domain", () => {
-  const file = "references/status-lifecycle.md";
+  const file = "references/lifecycle/transitions.md";
 
   function block(text, file) {
     const begin = text.indexOf("<!-- status-whitelist:begin -->");
@@ -417,9 +417,9 @@ describe("board skill: the status whitelist matches the domain", () => {
     assert.equal(
       skill.includes("<!-- status-whitelist:begin -->"),
       false,
-      "the whitelist has exactly one home (status-lifecycle.md §2)",
+      "the whitelist has exactly one home (lifecycle/transitions.md §2)",
     );
-    assert.match(skill, /status-lifecycle\.md#2-the-whitelist/);
+    assert.match(skill, /lifecycle\/transitions\.md#2-the-whitelist/);
 
     const raw = block(readFileSync(join(ROOT, "skills/meerkat", file), "utf8"), file);
     const { table, epic } = parse(raw, file);
@@ -442,7 +442,7 @@ describe("board skill: the acceptance matrix has one home", () => {
   const BEGIN = "<!-- acceptance-matrix:begin -->";
   const END = "<!-- acceptance-matrix:end -->";
   const copies = [
-    ["status-lifecycle.md", join(ROOT, "skills/meerkat/references/status-lifecycle.md")],
+    ["lifecycle/acceptance.md", join(ROOT, "skills/meerkat/references/lifecycle/acceptance.md")],
     ["review-protocol.md", join(ROOT, "skills/meerkat/references/review-protocol.md")],
     ["docs/acceptance.md", join(ROOT, "docs/acceptance.md")],
   ];
@@ -533,8 +533,9 @@ describe("board skill: the acceptance list rule", () => {
   });
 
   it("says an epic's acceptance is its children", () => {
-    assert.match(text, /epic[^\n]*child/i);
-    assert.match(text, /rollup/);
+    const epic = readFileSync(join(ROOT, "skills/meerkat/references/scenarios/epic.md"), "utf8");
+    assert.match(epic, /epic[^\n]*child/i);
+    assert.match(epic, /rollup/);
   });
 });
 
@@ -575,9 +576,9 @@ describe("board skill: the language of a card", () => {
 });
 
 describe("board skill: the container decision", () => {
-  const manual = readFileSync(join(ROOT, "skills/meerkat/references/create-card.md"), "utf8");
+  const manual = readFileSync(join(ROOT, "skills/meerkat/references/scenarios/epic.md"), "utf8");
   const lifecycle = readFileSync(
-    join(ROOT, "skills/meerkat/references/status-lifecycle.md"),
+    join(ROOT, "skills/meerkat/references/lifecycle/containers.md"),
     "utf8",
   );
 
@@ -595,12 +596,12 @@ describe("board skill: the container decision", () => {
   it("leaves the board-enforced container codes to the refusal", () => {
     assert.doesNotMatch(manual, /CHILDREN_OPEN/);
     assert.doesNotMatch(manual, /ROLLUP_REQUIRED|ROLLUP_STALE/);
-    assert.match(manual, /status-lifecycle\.md#6-containers-epic/);
+    assert.match(manual, /lifecycle\/containers\.md#6-containers-epic/);
   });
 
   it("names the shape limits where the card schema defines them", () => {
     const schema = readFileSync(
-      join(ROOT, "skills/meerkat/references/card-schema.md"),
+      join(ROOT, "skills/meerkat/references/schema/records.md"),
       "utf8",
     );
     assert.match(schema, /\*\*8\*\*\s+children/);
@@ -617,6 +618,6 @@ describe("board skill: the container decision", () => {
     assert.match(manual, /core, CLI, web, docs and fixtures/);
     assert.match(manual, /not a technical layer/i);
     assert.match(lifecycle, /not schema-enforced/i);
-    assert.match(lifecycle, /create-card\.md#the-epic-decision-when-work-is-a-container/);
+    assert.match(lifecycle, /scenarios\/epic\.md#a-child-is-a-deliverable-not-a-layer/);
   });
 });

@@ -1,7 +1,7 @@
 # Creating a card in this project
 
 The full rules — scope, the epic decision and its patterns, the acceptance modes, routing and
-attachments — are the installed `meerkat` skill's `references/create-card.md`. This page records
+attachments — are the installed `meerkat` skill's `references/scenarios/create.md` (and `references/scenarios/epic.md` for the epic patterns). This page records
 **only this project's choices**. What it states wins over that manual; a topic it does not state
 falls back to the manual. It is guidance, not board data: nothing stores it, `taskd` never reads
 it, and no card inherits it. An explicit instruction from the human wins over this page.

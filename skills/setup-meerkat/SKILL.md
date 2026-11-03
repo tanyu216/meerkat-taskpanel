@@ -174,7 +174,7 @@ primary checkout once `docs/agents/worktrees.md` exists.
 
 1. Write `create-card.md` and the tracker files (`issue-tracker.md`, `triage-labels.md`,
    `domain.md`) through the Matt Pocock process. Read the installed `meerkat` skill's
-   `references/create-card.md` first so you know the default answer, then ask which card shapes
+   `references/scenarios/create.md` first so you know the default answer, then ask which card shapes
    take `human` or `off` (there is **no project default**; omitted falls back to `auto`), the
    project's epic-splitting boundary, and the card scope (the default is the work a role owns;
    a question, a lookup or a one-off command has no owner and is not a card). Write only the

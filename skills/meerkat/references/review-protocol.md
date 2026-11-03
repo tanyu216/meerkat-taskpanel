@@ -1,6 +1,6 @@
 # The review protocol — flow A, flow B, and the verdict contract
 
-> One delivery, one independent review, one verdict. `status-lifecycle.md` is the state
+> One delivery, one independent review, one verdict. the `lifecycle/` pages are the state
 > model; `cli.md` is the command surface. This page is the agent-facing contract: what a
 > review card is, how to recognise one, what a reviewer writes, and who may close what.
 
@@ -109,14 +109,14 @@ report must cover every item of the original's snapshot and of the review card's
 — `partial` / `not_met` is its normal shape. If the baseline itself is wrong, rework the
 original (a new round re-freezes it); a reviewer cannot edit it. The pass/fail rules for an
 item, and the omission check's `meta.acceptance_derived` flag, are in
-[`status-lifecycle.md` §4a](status-lifecycle.md#4a-the-acceptance-baseline).
+[`lifecycle/delivery.md` §4a](lifecycle/delivery.md#4a-the-acceptance-baseline).
 
 For an **epic**, the rollup is the delivery. An `APPROVE` additionally needs the epic's
 current-round rollup (`is_rollup = 1`) to still match its children; a missing rollup is
 `rollup_unverified`, a stale one is `rollup_stale` (both are log-only alerts — the loop plans
 no approval). The repair is a rework of the epic, which starts a new round and a fresh
 rollup. The rollup's own shape is in
-[`status-lifecycle.md` §6](status-lifecycle.md#6-containers-epic).
+[`lifecycle/containers.md` §6](lifecycle/containers.md#6-containers-epic).
 
 The omission check is unconditional: every requirement in the description, comments and plan
 must map to an acceptance item and to evidence, or be explicitly deferred with a recorded
@@ -221,7 +221,7 @@ finished. A reviewer never closes the card it reviewed.
 
 The board enforces the mode; `ACCEPTANCE_FORBIDDEN` carries `mode` and `reviewCard` in its
 `details`. What the matrix means for the loop is in
-[`status-lifecycle.md` §7](status-lifecycle.md#7-acceptance-one-mode-per-card).
+[`lifecycle/acceptance.md` §7](lifecycle/acceptance.md#7-acceptance-one-mode-per-card).
 
 ## 5. The human's side
 
@@ -279,7 +279,7 @@ A review card can be refused by the same codes as any other card — `REPORT_REQ
 a direct `in_review → canceled`. The reopen, parent/child and review-of-review refusals are
 also database triggers, so a raw writer cannot bypass the command layer. The full
 table, with when each fires, is in
-[`status-lifecycle.md` §9](status-lifecycle.md#9-refusals).
+[`lifecycle/refusals.md` §9](lifecycle/refusals.md#9-refusals).
 
 ## 8. Boundaries
 

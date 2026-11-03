@@ -1,8 +1,9 @@
 /**
  * The identifier contract, as the installed skill states it.
  *
- * `references/card-schema.md` is the page an agent kind actually receives. Its
- * identifier section has to agree with the code in three places, or a team
+ * `references/schema/identifiers.md` is the page an agent kind actually receives
+ * for identifier syntax; the field table lives beside it in `schema/records.md`.
+ * The identifier page has to agree with the code in three places, or a team
  * parsing board references silently drifts from the board:
  *
  *   1. the **storable** pattern (`IDENTIFIER_PATTERN` / `isValidIdentifier`) —
@@ -33,18 +34,22 @@ import { identifierFor, isValidIdentifier as domainValid } from "../../src/core/
 import { CARD_KEY_ORDER } from "../../src/core/storage/md/export.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
-const DOC_PATH = join(ROOT, "skills/meerkat/references/card-schema.md");
+const DOC_PATH = join(ROOT, "skills/meerkat/references/schema/identifiers.md");
 const DOC = readFileSync(DOC_PATH, "utf8");
+const RECORDS = readFileSync(
+  join(ROOT, "skills/meerkat/references/schema/records.md"),
+  "utf8",
+);
 
 /** The lines between `<!-- identifier-<name>:begin -->` and its `:end` marker. */
 function marked(name) {
   const begin = `<!-- identifier-${name}:begin -->`;
   const end = `<!-- identifier-${name}:end -->`;
   const start = DOC.indexOf(begin);
-  assert.notEqual(start, -1, `card-schema.md is missing ${begin}`);
+  assert.notEqual(start, -1, `identifiers.md is missing ${begin}`);
   const bodyStart = start + begin.length;
   const stop = DOC.indexOf(end, bodyStart);
-  assert.notEqual(stop, -1, `card-schema.md is missing ${end}`);
+  assert.notEqual(stop, -1, `identifiers.md is missing ${end}`);
   return DOC.slice(bodyStart, stop)
     .trim()
     .split("\n")
@@ -52,7 +57,7 @@ function marked(name) {
     .filter((line) => line !== "");
 }
 
-describe("card-schema.md — identifier syntax", () => {
+describe("identifiers.md — identifier syntax", () => {
   it("states the storable pattern verbatim", () => {
     assert.ok(
       DOC.includes(IDENTIFIER_PATTERN.source),
@@ -124,9 +129,9 @@ describe("card-schema.md — identifier syntax", () => {
     );
   });
 
-  it("keeps the field-reference table intact while adding the identifier section", () => {
-    // The same window the page's own conformance snippet reads.
-    const table = DOC.split("## Field reference")[1].split("\n## ")[0];
+  it("keeps the field-reference table intact on its own page", () => {
+    // The identifier page and the field table are separate load units now.
+    const table = RECORDS.split("## Field reference")[1].split("\n## ")[0];
     const keys = [...table.matchAll(/^\|\s*`([a-z_]+)`\s*\|/gm)].map((match) => match[1]);
 
     // `target` has a reserved slot in CARD_KEY_ORDER so a legacy key keeps its
@@ -140,12 +145,18 @@ describe("card-schema.md — identifier syntax", () => {
     assert.deepEqual([...keys].sort(), [...documented].sort());
     assert.deepEqual([keys[0], keys.at(-1)], ["id", "notify_leader"]);
 
-    // The new section must sit outside the window the page's conformance
-    // snippet reads — an inserted `##` before the table would cut it short.
-    const windowEnd = DOC.indexOf("\n## ", DOC.indexOf("## Field reference"));
-    assert.ok(
-      DOC.indexOf("## Identifier syntax") > windowEnd,
-      "## Identifier syntax must follow the field-reference window",
+    // One home each: the field table lives in records.md, the identifier blocks in
+    // identifiers.md, and neither page duplicates the other.
+    assert.ok(RECORDS.includes("## Field reference"), "records.md carries the field table");
+    assert.equal(
+      RECORDS.includes("## Identifier syntax"),
+      false,
+      "the identifier syntax lives in identifiers.md",
+    );
+    assert.equal(
+      DOC.includes("## Field reference"),
+      false,
+      "the identifier page does not duplicate the field table",
     );
   });
 });
