@@ -209,7 +209,7 @@ supervisor 有两个时钟和一个常驻会话池：
 每个 tick 按顺序跑三个 pass：
 
 1. **patrol** —— 只通知的 SLA 巡检。报告过期心跳、无人应答的确认门、没人验收的交付，以及 SLA 契约（[`docs/sla.md`](docs/sla.md)）的其余各项。它绝不动卡；需要决策的动作变成 director 行。
-2. **workflow** —— 写入通道。看板用 `issue reconcile --workflow` 计算计划（容器规则、为每笔交付派出独立审核员、应用结论）；supervisor 执行计划里的审核动作。`--workflow=no` 关闭这条通道；`--reviewer` 启用派发。
+2. **workflow** —— 写入通道。看板用 `issue reconcile --workflow` 计算计划（容器规则、为每笔交付派出独立审核员、应用结论）；supervisor 执行计划里的审核动作。`--workflow=no` 关闭这条通道；审核卡的 assignee（角色目录的 `default_reviewer`）决定审核员。
 3. **poll** —— 扫描、导出卡片 brief、原子认领、写交接队列。它不 spawn worker。空扫描 $0。只有认领成功后，这笔工作的第一个模型回合才会开始。
 
 会话池把每张卡放进它自己的 worker 会话，在项目目录或卡片 worktree 里打开，并跑在承载该角色 skill 的 kind 上。同轮重派（问题得到回答、返工、崩溃）会按 id **恢复**原会话；原生会话不存在时，supervisor 把一段有界转录重放进新会话并标记。

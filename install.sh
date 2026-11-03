@@ -188,8 +188,9 @@ The wizard asks, in order: install root, install mode (full / skills only /
 server only), agent kinds, your board name, link-or-copy, whether to build
 web/dist, claim/recover/workflow/continue, and the opt-in supervisor action
 (+ scheduler). Every question shows a default; Enter accepts it and `q`
-cancels before anything is written. Agent name, reviewer and the two
-intervals are not asked — edit them in the per-kind config.
+cancels before anything is written. Agent name and the two intervals are not
+asked — edit them in the per-kind config. The reviewer is not configurable:
+the installed role catalog's default reviewer owns it.
 
 Requires Node >= 22 (the engine uses the built-in node:sqlite module).
 The check runs before anything is installed; a missing or older `node` is an

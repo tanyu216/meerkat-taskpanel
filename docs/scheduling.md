@@ -748,9 +748,10 @@ in this order:
    state: silence is the implemented behaviour.
 4. **dispatch.** For every flow-A card in `in_review` whose `acceptance_mode` is `auto` or
    `human` — review is mode-independent; only `off` is skipped — create a review card for the
-   effective reviewer, one per `(original, delivery round)`, with the deterministic
-   idempotency key `loop-review|<ref>|r<round>`. The effective reviewer is
-   `project.reviewer ??` the deployment reviewer (the reconcile request's `--reviewer`).
+   reviewer, one per `(original, delivery round)`, with the deterministic
+   idempotency key `loop-review|<ref>|r<round>`. The reviewer is the local role catalog's
+   `default_reviewer`, else the first reviewer-lane role (the reconcile request's `--assignee`;
+   `--reviewer` is a deprecated alias).
    There is no kind filter: a finished epic is dispatched in the same pass that rolls it up,
    and its reviewer reads the child cards and the rollup report.
 
@@ -801,10 +802,9 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
 - The supervisor always closes the review card it dispatched — there is no switch that could leave
   it for nobody. On a `human` card it records the round-scoped verdict and stops; the person
   closes the original through the ordinary acceptance gate.
-- A reviewed card with no effective reviewer is reported per card at runtime
-  (`reviewer_not_configured` / `dispatch_skipped`): the supervisor reads `project list` and
-  computes `project.reviewer ?? the deployment reviewer`; there is no project-level startup
-  refusal, because there is no project-level acceptance default.
+- A reviewed card with no installed reviewer-lane role is reported at runtime
+  (`dispatch_skipped`, reason `reviewer_not_configured`): the catalog resolves no default
+  reviewer, so the pass names the projects that are waiting instead of refusing to start.
 
 Why not let the reviewer close its own card (or skip the card entirely)? A reviewer that
 both produces the verdict and accepts it is not a second pair of eyes, and a card is the
@@ -842,8 +842,9 @@ authenticating agents, not adding a rule to the same layer.
 
 - **The reviewer runs on the kind that carries its role.** The pool holds sessions of several
   kinds and falls back to another kind that carries the same role; if no installed kind does,
-  the card is not dispatched. A reviewer on a non-resident kind (for example OpenClaw) still
-  needs a separate supervisor with its own `--reviewer`.
+  the card is not dispatched. A reviewer installed only on a non-loop kind (for example
+  OpenClaw) is not dispatched; install the role on a loop kind instead — a second supervisor
+  does not help.
 - **The reviewer's tool surface is enforced only where the adapter can enforce it.**
   A review card runs in its own `role=reviewer` conversation, so Claude and Pi apply
   the reviewer allowlist (no `Edit`/`Write`) to the subagent it spawns. Codex,
@@ -882,8 +883,8 @@ the container; with it, the container stays `in_progress` and names the child bl
   found on that partial read is marked `reason: board_truncated` / `undecidable: true` (with
   its own ledger key), because the original may sit below the read cap.
 - **The verdict must come from the reviewer.** The report's author is checked against the
-  review card's assignee — the effective reviewer recorded at dispatch — with the deployment
-  reviewer as the fallback, by id and display name. A report written by anybody else is
+  review card's assignee — the reviewer recorded at dispatch — by id and display name. There
+  is no deployment fallback. A report written by anybody else is
   `review_report_not_by_reviewer` and is not applied.
 - **A silent reviewer is not silent forever.** An **open** review card suppresses the
   original's `acceptance_card_creation` row, so a reviewer that is never woken would
@@ -895,7 +896,7 @@ the container; with it, the container stays `in_progress` and names the child bl
   `review_retries_exhausted`). A review card that is not `in_review`
   (todo / in_progress / blocked / awaiting) older than `--review-aging-minutes` (default 60)
   raises `review_aging`.
-- **Notified only when actionable.** Standing state — no reviewer configured, a
+- **Notified only when actionable.** Standing state — no reviewer-lane role installed, a
   dispatch-only cap — is logged, not sent to `--notify` on every period. Findings an
   operator can act on (including `review_aging`, an unattributable verdict and
   `actions_capped`) are notified; the ledger suppresses repeats, keyed to the state rather
@@ -933,8 +934,6 @@ the container; with it, the container stays `in_progress` and names the child bl
 | Setting | Flag | Env / per-kind config | Default |
 |---|---|---|---|
 | workflow channel | `--workflow=yes\|no` | `MEERKAT_TASKPANEL_WORKFLOW` | `yes` |
-| reviewer (deployment default) | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | empty — no dispatch until a reviewer is configured |
-| project reviewer override | `project create/update --reviewer <agent>` | — | `null` (use the deployment reviewer) |
 | writes per pass | `--workflow-max-actions <n>` | `MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS` | `20` |
 | silent-review threshold | `--review-aging-minutes <n>` | `MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES` | `60` |
 | workflow alert ledger | `--workflow-ledger <path>` | — | `workflow-ledger.json` beside `--state` |
@@ -942,13 +941,14 @@ the container; with it, the container stays `in_progress` and names the child bl
 Precedence is flag → environment → per-kind config → default, the same as the claim policy.
 For the board path, `taskctl` reads the same file as a layer between the process environment
 and the shared `.env` (so `.env.<kind>` supplies per-agent identity and project-map defaults).
-`workflow` gates the whole channel; the reviewer gates only **dispatch** — outcomes still run
-without one, so reviews already in flight can finish after a deployment removes its reviewer.
+`workflow` gates the whole channel; the reviewer role gates only **dispatch** — outcomes still
+run without one, so reviews already in flight can finish after the reviewer role is removed.
 
-The effective reviewer for a card is `projects.reviewer ??` the deployment reviewer. The supervisor
-reads `project list` at startup to merge every project reviewer into its scan/wake set; a card
-whose mode needs review but has no effective reviewer is reported per card
-(`reviewer_not_configured` / `dispatch_skipped`), not as a project-level start-up refusal.
+The reviewer for a card is the local role catalog's `default_reviewer`, else the first
+reviewer-lane role. A card whose mode needs review but has no reviewer-lane role installed is
+reported at runtime (`dispatch_skipped`, reason `reviewer_not_configured`), naming the waiting
+projects — not as a start-up refusal. Reviewer selection is not configuration: `--reviewer` is
+a deprecated no-op and `MEERKAT_TASKPANEL_REVIEWER` is ignored.
 
 **Who closes a card is the card's own `acceptance_mode`** — `off` (the deliverer may close it,
 and `in_progress → done` is allowed), `auto` (a current-round `APPROVE`, applied by the
@@ -1053,8 +1053,8 @@ the asker looking up the facts. The director skill ships the full round method a
 `references/rounds.md`; the frontier rule above is the design requirement.
 
 **The scan set.** Discovery *is* the claim set: every discovered worker-lane role's board
-name, plus the configured reviewer(s). There is no scan-set key — a writer identity with no
-role skill can write, but its cards are never claimed. Each scheduling unit carries
+name, plus every discovered reviewer-lane role. There is no scan-set key — a writer identity
+with no role skill can write, but its cards are never claimed. Each scheduling unit carries
 `--agent <installer name>` as the loop's **writer** identity (a launchd/systemd/cron start
 has no shell `TASKCTL_AGENT` to inherit); that flag does not narrow the claim set. The
 discovered set is published locally as `<config root>/roles.json` by `taskctl role sync`
@@ -2154,8 +2154,8 @@ substitute `~/.codex` / `~/.agents` for the agent kind directory and `codex` / `
 `--actor-kind`. `<agent>` names the unit label, state directory and `--agent` flag from the
 install's `--agent-name` (default `Worker`), and `<uid>` is `id -u`. The unit's `--agent` is
 the loop's **writer** identity; the claim set is every worker-lane role skill discovered on
-the installed kinds plus the configured reviewer. `install.sh` renders the flag and writes
-`MEERKAT_TASKPANEL_AGENT_KIND_ORDER` from the `--target` order.
+the installed kinds plus every discovered reviewer-lane role. `install.sh` renders the flag
+and writes `MEERKAT_TASKPANEL_AGENT_KIND_ORDER` from the `--target` order.
 
 ### macOS — launchd
 
@@ -2329,9 +2329,9 @@ describes.
   <installer name>` and one pass (`taskctl loop run --ping-once` / `--continue-once`). The
   `--agent` is the loop's **writer** identity — the minimal unit environment has no
   `TASKCTL_AGENT` to inherit. It does not narrow the claim set, which is every discovered
-  worker-lane role (plus the configured reviewer). The tick runs the passes in-process; poll
-  claims a card and enqueues it, and the resident pool runs the card in its own worker session
-  on the kind that carries the role. A resumed session continues it (`claude --resume <sid>` /
+  worker-lane role (plus every discovered reviewer-lane role). The tick runs the passes
+  in-process; poll claims a card and enqueues it, and the resident pool runs the card in its
+  own worker session on the kind that carries the role. A resumed session continues it (`claude --resume <sid>` /
   `codex thread/resume` / `pi --session-id <sid>` are the resident resume forms;
   `claude -p "<handoff>" [--resume <sid>]` etc. are the one-shot shapes).
 - **Logs.** `<config root>/logs/supervisor.log` (the supervisor's `--log`) — one file for
@@ -2367,10 +2367,10 @@ describes.
 - **Disable and status** are part of the same entry point: `--supervisor=disable` unloads /
   removes, `--supervisor=status` prints the per-agent kind load state and changes nothing
   (per-OS forms above). Status also names the **primary platform**, the discovered **scan
-  set** (worker roles + reviewer, read from the target home's role skills) and the discovered
-  **role → platform** map (every `installedOn` entry and the effective kind), and closes with
-  a machine line — a machine that still runs a second kind's supervisor is visible there,
-  with the command that stops it.
+  set** (worker roles + reviewer-lane roles, read from the target home's role skills) and the
+  discovered **role → platform** map (every `installedOn` entry and the effective kind), and
+  closes with a machine line — a machine that still runs a second kind's supervisor is visible
+  there, with the command that stops it.
 
 ### OpenClaw stays excluded
 
@@ -2415,7 +2415,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
 | `--recover-stale=yes\|no` | from per-kind config → `yes` | add stale `in_progress` cards to the candidate read (`--stale`); the claim itself is `issue claim` (holder after 10 min, anyone after 6 h) |
 | `--workflow=yes\|no` | from per-kind config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch) |
-| `--reviewer <agent>` | from `$MEERKAT_TASKPANEL_REVIEWER` / the per-kind config, else `null` | the independent reviewer; the installer writes `Reviewer`, and an empty value disables dispatch only |
+| `--reviewer <agent>` | — | deprecated no-op; the review card's assignee — the role catalog's `default_reviewer` — selects the reviewer |
 | `--workflow-max-actions <n>` | `20` | max workflow writes (and bounded reads) per pass |
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
 | `--continue=yes\|no` | from per-kind config → `yes` | enable the tick clock |
@@ -2480,19 +2480,16 @@ on, the poll's candidate read includes `--stale` and every wake claims through
 alert is the only signal. The two policies are independent: an assignee-only supervisor can
 still recover its own stale claims, and a public-pool supervisor can refuse takeovers.
 
-The same three-source precedence governs the workflow channel's answers, persisted beside
+The same three-source precedence governs the workflow channel's answer, persisted beside
 it:
 
 ```ini
 MEERKAT_TASKPANEL_WORKFLOW=yes
-MEERKAT_TASKPANEL_REVIEWER=Reviewer
 ```
 
-An empty `MEERKAT_TASKPANEL_REVIEWER` is a complete answer — "no independent reviewer" —
-not a missing one: the board still gets the container rules and the verdicts already in
-flight, and a delivery waits for a human to accept it. It is the manual opt-out: the
-installer's default is `Reviewer`, and the wizard does not ask. Re-running the installer
-adds keys an older config lacks and never overwrites one it already has.
+Reviewer selection is not configuration: the local role catalog's `default_reviewer` owns
+it, and `MEERKAT_TASKPANEL_REVIEWER` is deprecated and ignored. Re-running the installer adds
+keys an older config lacks and never overwrites one it already has.
 
 ## The end-to-end path
 
@@ -2506,7 +2503,7 @@ launchd / systemd / cron  ──tick 600s──▶  taskctl loop run --continue-
                                                 ├─ passes.mjs patrol    notify-only SLA
                                                 ├─ passes.mjs workflow  apply board workflow plan (taskd)
                                                 └─ passes.mjs poll
-                                                      scan set = config ∪ discovered roles ∪ reviewer ∪ Worker
+                                                      scan set = discovered worker-lane roles ∪ discovered reviewer-lane roles
                                                       issue candidates --assignee <role> --include-unassigned
                                                           (empty → stop; 0 sessions)
                                                       issue claim <ref>        ← atomic claim, the only dispatch

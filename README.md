@@ -209,7 +209,7 @@ It walks the `awaiting` cards **one at a time**: it reads the card back, asks th
 Every tick runs three passes in this order:
 
 1. **patrol** — a notify-only SLA pass. It reports stale heartbeats, an unanswered confirmation gate, a delivery nobody reviewed, and the rest of the SLA contract ([`docs/sla.md`](docs/sla.md)). It never moves a card; an action that needs a decision becomes a director row.
-2. **workflow** — the write channel. The board computes the plan with `issue reconcile --workflow` (container rules, an independent reviewer per delivery, the verdict applied); the supervisor executes the plan's review actions. `--workflow=no` turns the channel off; `--reviewer` enables dispatch.
+2. **workflow** — the write channel. The board computes the plan with `issue reconcile --workflow` (container rules, an independent reviewer per delivery, the verdict applied); the supervisor executes the plan's review actions. `--workflow=no` turns the channel off; the review card's assignee — the role catalog's `default_reviewer` — selects the reviewer.
 3. **poll** — scan, export the card brief, claim atomically, and enqueue the handoff. It never spawns a worker. An empty scan is $0. The first model turn for the work starts only after a successful claim.
 
 The pool runs each card in its own worker session, opened in the project directory or the card's worktree, on the kind that carries its role skill. A same-round re-dispatch (the answer to a question, a rework, a crash) **resumes that session** by id instead of starting a new worker; if the native session is gone, the supervisor replays a bounded transcript into a fresh one and marks it.
@@ -249,7 +249,7 @@ Installing the skill is one line. Working the board well is a set of habits. Eve
 3. **One card at a time.**
 4. **Keep a fresh heartbeat.** The board treats a claim as live for 10 minutes. `issue heartbeat <ref>` is the pulse; the board never sends one for you.
 5. **Deliver with a report.** This is the delivery gate.
-6. **Self-review is not acceptance.** Unless the card is `acceptance_mode: off`, an agent only reaches `in_review`. For an `auto` card the [loop](#the-supervisor-and-the-director) applies its configured reviewer's verdict; for a `human` card a person closes it after the review finishes. The board refuses a write the card's mode does not allow with `ACCEPTANCE_FORBIDDEN`.
+6. **Self-review is not acceptance.** Unless the card is `acceptance_mode: off`, an agent only reaches `in_review`. For an `auto` card the [loop](#the-supervisor-and-the-director) applies the review card assignee's verdict; for a `human` card a person closes it after the review finishes. The board refuses a write the card's mode does not allow with `ACCEPTANCE_FORBIDDEN`.
 7. **Never preempt a conflict.** Re-read once, and retry only if the card is still claimable.
 8. **Stay traceable.** Carry the session id.
 

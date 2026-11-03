@@ -326,11 +326,13 @@ deterministic idempotency key `loop-review|<ref>|r<round>`. The dispatch predica
   with no review;
 - no non-terminal review card already covers this round (a `done` one is the
   "review finished, original still open" finding; a `canceled` one no longer blocks);
-- an effective reviewer exists: `project.reviewer ??` the deployment reviewer;
+- a reviewer-lane role exists in the local role catalog (its `default_reviewer`, else the
+  first reviewer-lane role);
 - the reviewer is not the card's own assignee/holder (`self_review_not_independent`).
 
-The review card is assigned to the reviewer actually used. A deployment with `auto` or `human` cards and
-no effective reviewer reports `dispatch_skipped` per project — not silently.
+The review card is assigned to that role. A board with `auto` or `human` cards and no
+installed reviewer-lane role reports `dispatch_skipped` (reason `reviewer_not_configured`)
+once, naming the projects that are waiting — not silently.
 
 Candidates are ordered by `status_changed_at`, then ref, and sliced by the pass cap. A
 truncated board read dispatches nothing. A missing reviewer, a self-review and a capped
@@ -502,7 +504,7 @@ Three properties make the pass safe to run repeatedly:
   The window is a module constant (`runners.mjs#WORKFLOW_ACTION_ESCALATE_MS`), not a config key.
 
 Alerts split into two channels: findings an operator can act on are notified, standing state
-(no reviewer configured, a dispatch cap, a `human` card waiting for its person) is logged.
+(no reviewer-lane role installed, a dispatch cap, a `human` card waiting for its person) is logged.
 The ledger de-duplicates by state, so a standing condition does not re-notify every period.
 
 ## 6. Containers (`epic`)
@@ -585,7 +587,7 @@ others are findings an operator can act on:
 | the review is finished, an `auto` card is still `in_review` | the loop has not applied the verdict — a finding |
 | the review is finished, a `human` card is still `in_review` | the designed wait for its person; recorded, not alerted |
 | `awaiting`, with a question on the card | normal, in flight; the SLA row is the watcher |
-| `in_review` with no effective reviewer | the deployment is unconfigured; `dispatch_skipped` names the project |
+| `in_review` with no reviewer-lane role installed | `dispatch_skipped` (`reviewer_not_configured`) names the projects waiting |
 | a truncated board read | `undecidable` — "not in the snapshot" is not "gone" |
 
 The SLA patrol keeps the review states watched: an open review card suppresses the original's
@@ -655,8 +657,11 @@ Rejected alternatives:
 - **A transient SLA alert is possible.** In the tick that dispatches a review, the SLA pass may
   not yet see the card and can emit one `acceptance_card_creation`; the next tick suppresses
   it. The reverse ordering would delay every dispatch by a tick.
-- **One agent kind per supervisor.** A reviewer on a different agent kind is not implemented;
-  run a second supervisor with its own `--reviewer` (see [scheduling.md](scheduling.md)).
+- **The reviewer runs on the kind that carries its role.** One supervisor process holds
+  sessions of every loop kind, so a reviewer installed on another loop kind is dispatched
+  normally; a reviewer installed only on a non-loop kind (for example OpenClaw) is not.
+  Install the role on a loop kind — a second supervisor does not help
+  ([scheduling.md](scheduling.md)).
 - **The reviewer's tool surface is adapter-dependent.** Claude and Pi apply a per-role
   allowlist; other adapters have no per-role tool surface, where the boundary is the prompt
   plus the board's authority and the loop's report-attribution check.

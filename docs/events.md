@@ -571,7 +571,7 @@ should expect a new one.
 
 | Event | Writer | Task scope | `changes` | Reaches SSE |
 |---|---|---|---|---|
-| `project_created` | `commands/projects.mjs` | none | `project`, optional `reviewer` | yes |
+| `project_created` | `commands/projects.mjs` | none | `project` | yes |
 | `project_updated` | `commands/projects.mjs` (`updateProject`, `readmeSet`) | none | `project`, `fields` | yes |
 | `task_created` | `commands/tasks.mjs` | task | `identifier`, `status`, `priority`, `acceptance_mode`, optional `idem`/`dictionaries`/`labels` | yes |
 | `task_updated` | `commands/tasks.mjs` | task | `fields` (field **names**), optional `dictionaries`/`labels` | yes |

@@ -43,15 +43,14 @@ unit's `--actor-kind` and needs `install.sh … --supervisor=enable` re-run.
 
 Two different questions:
 
-- **What may the loop claim for?** Every discovered worker-lane role's board name, plus the
-  configured reviewer(s) (deployment and project-level overrides). There is no scan-set
-  configuration key. A reviewer-lane role is scanned for its review cards but never takes the
-  public pool.
+- **What may the loop claim for?** Every discovered worker-lane role's board name, plus every
+  discovered reviewer-lane role's board name. There is no scan-set configuration key. A
+  reviewer-lane role is scanned for its review cards but never takes the public pool.
 - **Who does the loop write as?** Its own writer identity: `--agent` (rendered into every
   scheduling unit), else `TASKCTL_AGENT` (the shim), else the OS user. A writer identity with no
   role skill can write, but its name is **not claimable**; the workaround is to install a role
   skill. The review card the workflow creates is the one automation write with a reviewer
-  assignee, and it is outside the catalog by design (see below).
+  assignee, and that assignee is the catalog's `default_reviewer`.
 
 This split is ADR 0013. It removed `MEERKAT_TASKPANEL_AGENTS`, whose unique content was a custom
 identity with no role skill — exactly the case the model says is not a claim identity.
@@ -97,8 +96,8 @@ It is skipped when:
 
 **It looks at the assignee, never the writer.** `system` / `Orchestrator` are writer identities
 for closure work (verdict, move, acceptance, comment, reconcile) and are never assignees. The
-two system-created cards are the review card (the configured reviewer, explicitly admitted with
-`--force-create` at that one argv builder) and the rework child (`--assignee-id`). A system
+two system-created cards are the review card (the catalog's `default_reviewer`, named by
+`--assignee` at that one argv builder) and the rework child (`--assignee-id`). A system
 writer that names a worker assignee is checked like anyone else.
 
 **A CLI guard, not a board invariant.** A caller that speaks HTTP directly bypasses it by

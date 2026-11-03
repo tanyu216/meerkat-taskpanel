@@ -1,5 +1,10 @@
 # 0013 — The role catalog is a local `taskctl` file; the scan set is the discovered roles
 
+> **Note (2026-11-03):** the scan set is now the **full discovered set** — every worker-lane and
+> every reviewer-lane role. There is no configured or deployment reviewer to add: the review
+> card's assignee is the catalog's `default_reviewer`. The decision — the catalog is
+> a local `taskctl` file and discovery is the claim set — is unchanged.
+
 ## Status
 
 Accepted — 2026-11-03.

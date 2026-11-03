@@ -11,8 +11,9 @@
 | **A** | An ordinary work card awaiting a delivery verdict. | Nobody — `meta.flow` is absent, and absent means A. |
 | **B** | A review card that carries a `VERDICT:` report for a flow-A card. | The loop, when it dispatches: `meta.flow=B`. |
 
-- A flow-A card that reaches `in_review` is dispatched to the configured reviewer as a
-  review card **unless its `acceptance_mode` is `off`** — review is mode-independent, so
+- A flow-A card that reaches `in_review` is dispatched to the review card's assignee — the
+  role catalog's `default_reviewer` — as a review card **unless its `acceptance_mode` is
+  `off`** — review is mode-independent, so
   `auto` and `human` are dispatched exactly the same way. The mode decides only **who
   closes the original**: the loop for `auto`, a person for `human`. There is no kind filter:
   an **epic** is dispatched on the same terms, and its reviewer reads the child cards and the

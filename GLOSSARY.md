@@ -236,12 +236,6 @@ _中文_: 验收模式
 _Avoid_: acceptance policy, approver role, reviewer (the reviewer reports; it does not accept),
 project acceptance (retired — the card states its own mode)
 
-**Effective reviewer**:
-The reviewer a card's review card is assigned to: `project.reviewer` when the project sets
-one, otherwise the deployment reviewer (`--reviewer` / `MEERKAT_TASKPANEL_REVIEWER` / agent
-config). The loop merges every project reviewer into its scan/wake set.
-_中文_: 实际审核人
-
 **Must-fix item**:
 One numbered finding in a `VERDICT: REJECT` report. The loop appends each item to the
 original's frozen acceptance baseline, so it is not advice: the next round's report must
@@ -466,7 +460,7 @@ _Avoid_: platform preference, fallback list
 **Writer identity**:
 The board identity the loop itself writes as — `--agent` on a scheduling unit, else
 `TASKCTL_AGENT`, else the OS user. It is not the claim set: the loop claims for the discovered
-worker-lane roles plus the reviewer.
+worker-lane roles plus every reviewer-lane role.
 _中文_: 写入身份
 _Avoid_: scan set, assignee (that is the card's routed role)
 
@@ -567,9 +561,9 @@ _中文_: 审核卡
 _Avoid_: review task kind, acceptance card, approval
 
 **Reviewer**:
-The independent agent a review card is assigned to — the project's `reviewer` when it sets
-one, otherwise the deployment reviewer. It reads the original's evidence and reports a
-verdict; it moves no card. The loop is the acceptor.
+The independent agent a review card is assigned to — the local role catalog's
+`default_reviewer`, else the first reviewer-lane role. It reads the original's evidence and
+reports a verdict; it moves no card. The loop is the acceptor.
 _中文_: 审核员
 _Avoid_: approver, acceptor, QA
 

@@ -23,8 +23,9 @@ orphans the work.
 
 - `tasks.acceptance_mode` — `off | auto | human`, chosen by the card's creator and frozen at
   creation.
-- There is **no project-level acceptance default**. A project supplies a reviewer, never a
-  mode; a card that omits the field resolves to `auto`.
+- There is **no project-level acceptance default, and no project-level reviewer**. A project
+  supplies neither: a card that omits the field resolves to `auto`, and the reviewer is the
+  role catalog's `default_reviewer` ([roles.md](roles.md)).
 - A project may document how its creators choose between the three words in
   `docs/agents/acceptance-mode.md` under the project's working directory. The `meerkat` skill discovers
   that file when it creates a card. It is guidance for the creator, not board data: it is not

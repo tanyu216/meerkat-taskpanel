@@ -662,17 +662,15 @@ lives (`MEERKAT_TASKPANEL_REPO=<runtime tree>`) — a key the installer adds whe
 missing, so an install made before that key existed still learns it (see
 [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)).
 
-The same merge rule covers the workflow channel's two keys, written with their defaults when
+The same merge rule covers the workflow channel's key, written with its default when
 the file is created and added only when missing on an upgrade:
 
 ```ini
 MEERKAT_TASKPANEL_WORKFLOW=yes
-MEERKAT_TASKPANEL_REVIEWER=Reviewer
 ```
 
-An **empty** `MEERKAT_TASKPANEL_REVIEWER` is the manual opt-out: the supervisor
-then dispatches no review card and a delivery waits for a human to accept it
-(edit the per-kind config; the wizard does not ask).
+Reviewer selection is **not** install or config state: the local role catalog's
+`default_reviewer` owns it, and `MEERKAT_TASKPANEL_REVIEWER` is deprecated and ignored.
 
 Acceptance is **not** install configuration: each card states its own mode
 (`off | auto | human`) with `issue create --acceptance-mode …`. There is no project-level
@@ -689,9 +687,10 @@ The SLA thresholds are seeded as a **commented** block in the same `.env` (every
 table and publishes it on `GET /api/v1/sla`, and the loop reads it on the next patrol pass —
 no restart and no per-agent-kind copy. See [`sla.md §2.1`](../sla.md#21-install-level-overrides).
 
-`--reviewer` (or `MEERKAT_TASKPANEL_REVIEWER`) is what turns review dispatch on. With it
-unset the supervisor still reconciles containers and applies verdicts already in flight —
-it simply creates no new review cards, and deliveries wait for a human.
+Review dispatch follows the local role catalog: the review card's assignee is its
+`default_reviewer`. With no reviewer-lane role installed the supervisor still reconciles
+containers and applies verdicts already in flight — it simply creates no new review cards, and
+deliveries wait for a human.
 [`scheduling.md §The workflow channel`](../scheduling.md#the-workflow-channel-review-acceptance-and-containers)
 is the full contract.
 
@@ -731,10 +730,11 @@ falls back to the OS user. A `--force` reinstall therefore never re-signs the
 operator's decisions under a second name; to change it, say so (wizard answer or
 `MEERKAT_TASKPANEL_HUMAN_NAME`), which always wins.
 
-**Agent name, reviewer, and the ping/continue intervals are not asked.** Their
-defaults are fixed (`Worker` / `Reviewer` / `60` / `600`); edit
+**Agent name and the ping/continue intervals are not asked.** Their
+defaults are fixed (`Worker` / `60` / `600`); edit
 `<program root>/.env.<actor-kind>` (or `TASKCTL_AGENT` in the agent settings) to
-change them.
+change them. The reviewer is not configurable: the installed role catalog's
+`default_reviewer` owns it.
 
 Answers feed the same resolution path as the flags, so everything below still
 applies. `q`, `quit`, `cancel` or EOF aborts with exit 2 **before** anything is
@@ -765,20 +765,20 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `--no-server` | Install the agent-kind skills only, leaving the runtime tree out (`--target all --no-server` is the old `all`). |
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`; the server tree lands at `<home>/.meerkat-taskpanel`. |
 | `--skip-web-build` | Never try to build `web/dist`. A server install without a prebuilt `web/dist` is then API-only (with a warning) instead of building it. |
-| `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle and rendered into every scheduling unit as `--agent <name>` (default `Worker`). It is the loop's **writer** identity, not its claim set: what the loop claims for is every discovered worker-lane role plus the configured reviewer. |
+| `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle and rendered into every scheduling unit as `--agent <name>` (default `Worker`). It is the loop's **writer** identity, not its claim set: what the loop claims for is every discovered worker-lane role plus every discovered reviewer-lane role. |
 | `--supervisor-actor-kinds <kind>` | With `--supervisor=enable`, which loop kind is the **primary** (one per machine). The normalized `--target` order, primary first, becomes `MEERKAT_TASKPANEL_AGENT_KIND_ORDER`; a kind the order omits is appended at discovery time, never excluded. |
-| `--supervisor=enable\|disable\|status` | Apply the supervisor action per loop kind. `status` prints the discovered scan set (worker roles + configured reviewer) and the machine view. |
+| `--supervisor=enable\|disable\|status` | Apply the supervisor action per loop kind. `status` prints the discovered scan set (worker roles + reviewer-lane roles) and the machine view. |
 | `--no-automation` | Skip the Codex scheduling units **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each agent-kind installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<program root>/.env.<actor-kind>`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
 | `--recover-stale=yes\|no` | Add stale `in_progress` cards to the poll's candidate read (`issue candidates --stale`). The takeover itself is still `issue claim`, decided by the board (holder after 10 minutes, anyone after 6 hours). Persisted to the per-kind config; default `yes`. |
 | `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the per-kind config; default `yes`. `no` means the loop writes no card at all. |
-| `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the per-kind config; default `Reviewer`. Set the key **empty** in the per-kind config to disable **dispatch** — a delivery then waits for a human to accept it. |
+| `--reviewer <agent>` | Deprecated and ignored; a review card's assignee selects the reviewer role from the installed catalog. Accepted so an older unit or script does not fail. |
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
 | `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the agent kind with a bounded `Continue` prompt; that turn runs poll, patrol and workflow. |
 | `--continue=yes\|no` | Enable the continue turn. Persisted to the per-kind config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
-| `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints each agent kind's load state, platform and discovered scan set (worker roles + reviewer), plus a machine-level view of every loaded loop kind, and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
+| `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints each agent kind's load state, platform and discovered scan set (worker roles + reviewer-lane roles), plus a machine-level view of every loaded loop kind, and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
 | `--supervisor-actor-kinds <list>` | Which loop agent kinds the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}`. For `enable` it must name exactly one kind (the primary kind); listing several is refused because one supervisor already holds every kind. `disable`/`status` default to every loop kind in `--target` and accept a narrowing list. A kind outside `--target` is named and dropped. Not `--actor-kind`: that is the loop's per-command identity flag. `openclaw` is **rejected** (reason on stderr, exit 2). |
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per agent kind — see [`scheduling.md §Enabling the supervisor (opt-in)`](../scheduling.md#enabling-the-supervisor-opt-in). |
 | `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |

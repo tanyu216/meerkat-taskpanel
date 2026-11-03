@@ -460,7 +460,7 @@ never moves a review card.
 The fail-safe rules are part of the decision:
 
 - an unreadable verdict, a stale round, a conflicting verdict, or a report not written by the
-  configured reviewer produces an **alert and no write**;
+  review card's assignee produces an **alert and no write**;
 - a **truncated** snapshot applies outcomes but **dispatches nothing**;
 - the dispatch key is `loop-review|<ref>|r<round>` — one card per pair;
 - a delivery on flow B (a review card) is never itself reviewed;
