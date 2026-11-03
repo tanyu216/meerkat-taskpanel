@@ -107,15 +107,17 @@ export async function runPollTick(deps) {
   for (const agent of agents) {
     const found = await readCandidates(agent, { claimUnassigned: config.claimUnassigned === true });
     for (const candidate of found ?? []) {
-      const unassigned =
-        candidate.agent === null ||
-        candidate.agent === undefined ||
-        candidate.agent === "" ||
-        candidate.reason === "unassigned";
+      // The board scopes a candidate to the asking agent and puts no `agent`
+      // field on the row; `reason` is the bucket. Only the public pool is
+      // "unassigned", so a missing field must not turn an assigned card into a
+      // default-agent claim — the board refuses that as `not_assignee`. A scan
+      // agent that saw a `ready` or stale card is the identity to claim it with
+      // (the board already decided the recovery window).
+      const unassigned = candidate.reason === "unassigned";
       const who =
         unassigned && typeof defaultAgent === "string" && defaultAgent !== ""
           ? defaultAgent
-          : candidate.agent ?? agent;
+          : candidate.agent || agent;
       candidates.push({ ...candidate, agent: who, ...(unassigned ? { unassigned: true } : {}) });
     }
   }

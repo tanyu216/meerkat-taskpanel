@@ -941,6 +941,33 @@ describe("runPollTick (injected deps)", () => {
     assert.equal(registry.running["T-1"].agent, "Worker");
   });
 
+  it("claims an assigned card as the scan agent when the board row carries no agent field", async () => {
+    const claims = [];
+    const registry = EMPTY_REGISTRY();
+    const result = await runPollTick({
+      agents: ["Jobs", "Linus"],
+      registry,
+      config: { ...BASE_CONFIG, claimUnassigned: true },
+      // The board scopes a candidate to the asking agent and does not put an
+      // `agent` field on the row: only `reason: "unassigned"` marks the public
+      // pool. A missing field must not turn an assigned card into a default-agent
+      // claim (the board refuses that as `not_assignee`).
+      readCandidates: async (agent) =>
+        agent === "Linus" ? [{ identifier: "T-1", reason: "ready", project: "P1" }] : [],
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      defaultAgent: "Worker",
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.deepEqual(claims, [["T-1", "Linus"]], "the scan agent that saw the card is its assignee");
+    assert.equal(result.spawned, 1);
+    assert.equal(registry.running["T-1"].agent, "Linus");
+  });
+
   it("falls back to the scan agent when no Worker role is installed", async () => {
     const claims = [];
     await runPollTick({
