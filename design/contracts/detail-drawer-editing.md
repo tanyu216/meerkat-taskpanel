@@ -64,6 +64,13 @@
 
 > 抽屉 `depends_on` chips 的**每一项**都是**该任务在等的一张卡**（前置任务）。数据来源 = wire 的 **`blocked_by`** 数组（`source` = 前置任务、`target` = 本卡）；渲染只取 `target === 本卡` 的行，chip 文本 = `source` 那张卡的 `identifier`。写一条 `depends_on` = 落一条 `blocks` 边，**`source` = 前置任务**、`target` = 本卡。
 
+> **TP-0075 排版更新（不改本裁定）**：`depends_on` 不再以 chip 组合呈现。现在是
+> `[data-detail-depends-list]` 下的**逐行列表**（`[data-detail-depends-row]`，每行
+> `identifier` + `title` + 行内 ✕ 删除）加一个 **add-only** 下拉框
+> （`[data-detail-depends-input]`）。方向仍是入边 / `blocked_by`，写一条仍落
+> `source = 前置任务`、`target = 本卡` 的 `blocks` 边；`relationId` 仍是删除的键。只读卡
+> 同时禁用添加框与删除按钮。见 `design/BLOCKS.md` §B09 的 TP-0075 supplement。
+
 ### 2.2 ② 附件移除语义
 
 **改动前（散文只到 DOM 层；无存储语义）** —— `workspace/T-20261014-212017-3/design-spec.md` §4.3：
@@ -111,13 +118,13 @@
 | 列表面 | `src/core/commands/relations.mjs#listRelations` | `{ relations, children, ancestors, blockedBy: listBlockerOf(id), blocks: listBlockedBy(id) }` |
 | wire | `src/server/routes/relations.mjs`（`GET /api/v1/tasks/:ref/relations`） | 回 `blocked_by` = `listing.blockedBy.map(relationToWire)`；`blocks` = `listing.blocks.map(...)`。`relationToWire` 形状 = `{ id, type, source, target, origin, created_at }`（`src/shared/wire.mjs#relationToWire`） |
 | CLI | `src/cli/commands/relation.mjs`（`relation list`） | 打印 `["blocked_by", r.source, "#" + r.id]` —— 入边行的**第三列即前置任务标识符** |
-| 渲染 | `web/src/stores/board.js#detailDepends` | 读 `board.detail.relations.blocked_by`，**筛 `row.target === 本卡 id`**，chip 文本 = `board.tasks` 里 `row.source` 那张卡的 `identifier`；chip 同时携带 `relationId`（= 移除用的边 id） |
+| 渲染 | `web/src/stores/board.js#detailDepends` | 读 `board.detail.relations.blocked_by`，**筛 `row.target === 本卡 id`**，行文本 = `board.tasks` 里 `row.source` 那张卡的 `identifier` + `title`；每行携带 `relationId`（= 移除用的边 id）。TP-0075 起渲染为行列表 + add-only 框（不再是 chip 组合），方向与写入不变 |
 | 写 | `web/src/stores/board.js#addDepends` | `api.addRelation(ref, { type: "blocks", **target: task.id** })`，其中 `ref` = 前置任务的 id（或标识符） |
 | 移除 | `web/src/stores/board.js#removeDepends` | 按 `relationId` 删边（板上没有 `depends_on` 语法糖） |
 | md 口径 | `src/core/storage/md/import.mjs` 头注 | 「`depends_on: [X]` means X must finish before this card, so the edge is `blocks` with **source = X (the blocker), target = this task** — the M5 ruling」 |
 | md 回写 | `src/core/storage/md/export.mjs` | 由 **`listBlockerOf(task)`** 重建 `depends_on`（同一方向的双向一致） |
 
-**排版面**：抽屉 Relations 段的 `Blocks` 行由 chip 组合**取代**（同一事实不留两个源）。原型侧同一句写在 `design/prototype/app.js` 的 `openDetail` 内（「the row that carried them goes — one fact, one source」），实现侧同一句写在 `web/src/components/detail/DetailDrawer.vue` 的 `relationGroups` 计算属性里（`if (link.type === "blocks") continue;`）与 `[data-detail-depends]` 的模板注释里（「The card's **prerequisites** are an editable multi-select…」）。**两处排版一致；分歧只在「取哪一侧的边」，本契约裁定为入边。**
+**排版面**：抽屉 Relations 段的 `Blocks` 行由依赖控**取代**（同一事实不留两个源）。原型侧同一句写在 `design/prototype/app.js` 的 `openDetail` 内（「the row that carried them goes — one fact, one source」），实现侧同一句写在 `web/src/components/detail/DetailDrawer.vue` 的 `[data-detail-depends]` 模板注释里。**TP-0075 起实现侧的控件是行列表 + add-only 添加框**，不再是原型/旧实现的 chip 组合；原型的 `relationGroups` 写法（`if (link.type === "blocks") continue;`）随该计算属性的删除而消失。取边方向的裁定不变：**入边**。
 
 **失败路径（方向的下游后果）**：写一条会成环的 `depends_on`（含自指）被**服务端**的关系守卫拒绝 —— `assertBlockEdgeAllowed`（`src/core/domain/relation.mjs#assertBlockEdgeAllowed`，`wouldCreateBlockCycle`）抛 `RELATION_CYCLE`；DB 侧另有触发器 `0017_block_cycle.sql` 二次兜底。客户端**不复制**这次图遍历（`web/src/stores/board.js#addDepends` 注释：「the board's relation guards are the guarantee, and this client does not duplicate the graph walk it could only get wrong」），只把错误码翻成一句人话。
 

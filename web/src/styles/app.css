@@ -297,12 +297,15 @@ svg[data-token-icon][hidden] { display: none; }
 }
 
 /* v4 · the detail drawer's six-tab strip (B09). daisyUI owns `.tabs`/`.tab`;
-   these rules state the prototype's own face: a hairline under the strip, a
-   12px label and an accent underline on the selected tab. The panel wrappers
-   carry no display rule, so `[hidden]` hides them as the prototype does. */
+   these rules state the prototype's own face: a 12px label and an accent
+   underline on the selected tab. TP-0075 ⑥ moved the strip into
+   `.td-drawer-head`, so it no longer draws its own hairline or margin — the
+   head's bottom border is the divider and the strip's 8px top margin is the
+   only spacing (the head's own padding-bottom is withdrawn by
+   `.td-drawer-head-tabs`). The panel wrappers carry no display rule, so
+   `[hidden]` hides them as the prototype does. */
 .td-drawer-tabs {
-  border-bottom: 1px solid var(--brand-border);
-  margin-bottom: 4px;
+  margin: 8px 0 0;
 }
 .td-drawer-tab {
   font-size: 12px;
@@ -1882,10 +1885,10 @@ html[data-theme="dark"] [data-create-project-panel] {
   display: flex;
   flex-direction: column;
   /* The product's default reading width. The prototype's `--shell-drawer` is
-     520px; 780px is a deliberate product override (registered in
-     `design/BLOCKS.md` §B09), and the `100vw` ceiling keeps a narrow viewport
-     full-width exactly as before. */
-  width: min(780px, 100vw);
+     520px; 780px was the first product override and TP-0075 narrows it to
+     580px (registered in `design/BLOCKS.md` §B09). The `100vw` ceiling keeps a
+     narrow viewport full-width exactly as before. */
+  width: min(580px, 100vw);
   max-width: 100vw;
   background-color: var(--brand-surface);
   border-inline-start: var(--border) solid var(--brand-border);
@@ -1913,6 +1916,14 @@ html[data-theme="dark"] [data-create-project-panel] {
   flex: none;
   padding: 12px var(--space-4) 12px var(--space-5);
   border-bottom: var(--border) solid var(--brand-border);
+}
+/* TP-0075 ⑥ — the real head carries the tab strip, so its bottom padding goes:
+   the strip sits flush against the head's own border (which becomes the
+   divider). The loading skeleton head keeps the 12px because it has no live
+   strip to hold; `padding-bottom: 0` is stated after the base rule so it wins
+   on source order. */
+.td-drawer-head-tabs {
+  padding-bottom: 0;
 }
 /* The scrolling host: the prototype's own padding, its `min-height: 0` (without
    which a flex item refuses to shrink below its content and the drawer grows a
@@ -2081,16 +2092,57 @@ button.td-prop-value:hover {
   border-radius: var(--radius-field);
 }
 
-/* R14 D37 · the relations row: label + link groups that wrap. */
+/* TP-0075 ②③ · the relations area: four stacked groups, one card row each.
+   Parent / Children / Depends on read identifier-then-title on one 28px line
+   (the title gives, the identifier never does); Related keeps the drawer's
+   `.td-copy` link chips. The 8px group rhythm is the only spacing — the
+   section title already owns the block above. */
 .td-rel {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px var(--space-2);
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
 }
-.td-rel-item {
-  display: inline-flex;
+.td-rel-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.td-rel-group-title {
+  font-size: var(--text-12);
+  color: var(--brand-text-3);
+}
+.td-rel-row {
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
+  min-height: 28px;
+  min-width: 0;
+}
+.td-rel-id {
+  flex: none;
+  font-size: var(--text-12);
+  color: var(--brand-text-3);
+}
+.td-rel-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.td-rel-remove {
+  flex: none;
+}
+.td-rel-empty {
+  font-size: var(--text-12);
+  color: var(--brand-text-3);
+}
+.td-chip-remove:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 /* R14 D46 — B09's activity stream, in this drawer's own short names. It shares

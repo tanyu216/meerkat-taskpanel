@@ -218,6 +218,12 @@ export const DOMAINS = Object.freeze({
   LIST_STATE: Object.freeze(["loading", "data"]),
   /** Detail drawer states (B09). */
   DRAWER_STATE: Object.freeze(["closed", "open", "closing"]),
+  /**
+   * TP-0075 — the head badge's kind vocabulary. Two values, because the card's
+   * own `kind` is `task|epic` and a review card is an ordinary `task` (its
+   * review identity rides `review_of`, never a third kind).
+   */
+  KIND: Object.freeze(["epic", "task"]),
   /** Overlay panel states (B18/B19). */
   PANEL_STATE: Object.freeze(["closed", "open"]),
   /** Token reveal icons (B19). */
@@ -1508,6 +1514,10 @@ const BLOCKS = [
       "[data-detail-title]",
       "[data-detail-status-chip]",
       "[data-detail-status-chip-label]",
+      // TP-0075 ① — the kind badge on the identifier/status row. The word is a
+      // catalogue seat (never colour-only); the attribute carries the vocabulary.
+      "[data-detail-kind]",
+      "[data-detail-kind-label]",
       "[data-detail-close]",
       "[data-detail-props]",
       "[data-detail-status]",
@@ -1524,9 +1534,10 @@ const BLOCKS = [
       "[data-detail-project]",
       "[data-detail-project-label]",
       "[data-detail-labels]",
-      "[data-detail-id]",
-      "[data-detail-id-copy]",
-      "[data-detail-version]",
+      // TP-0075 ④ — the internal UUID row, its copy button and the version row
+      // are gone from the reader's face; the head's human identifier is the
+      // identity. The catalogue keeps `prop.id`/`prop.version` (byte-locked to
+      // the prototype), they simply have no consumer.
       "[data-detail-tabs]",
       "[data-detail-tab]",
       "[data-detail-panel]",
@@ -1568,7 +1579,9 @@ const BLOCKS = [
       "[data-detail-depends]",
       "[data-detail-depends-input]",
       "[data-detail-depends-menu]",
-      "[data-detail-depends-chips]",
+      // TP-0075 ③ — the chip row became a row list (an unconditionally rendered
+      // container, so the resting document still counts it) plus an add box.
+      "[data-detail-depends-list]",
       "[data-detail-readonly]",
     ],
     states: [
@@ -1579,9 +1592,22 @@ const BLOCKS = [
       // candidate card).
       "[data-attachment-download]",
       "[data-attachment-remove]",
-      "[data-detail-depends-chip]",
+      "[data-detail-depends-row]",
+      "[data-detail-depends-title]",
       "[data-detail-depends-remove]",
       "[data-detail-depends-option]",
+      // TP-0075 ②③ — the Relations area's four group containers and their card
+      // rows. Parent/Children/Related exist only when the card has one, so they
+      // are `states`, not `required`. Each row states the identifier (`-value`)
+      // and the title (`-title`).
+      "[data-rel-group]",
+      "[data-detail-parent-row]",
+      "[data-detail-parent-value]",
+      "[data-detail-parent-title]",
+      "[data-detail-children]",
+      "[data-detail-child]",
+      "[data-detail-child-value]",
+      "[data-detail-child-title]",
       // M2 · data-driven rows. They exist only while a task is open, so they are
       // asserted in the driven pass (`when: "drawer open"`) below.
       "[data-attachment-row]",
@@ -1710,7 +1736,9 @@ const BLOCKS = [
       // ④ depends_on — one chip control over the `blocks` edge.
       { kind: "count", selector: "[data-detail-depends-input]", within: "[data-detail-depends]", equals: 1 },
       { kind: "count", selector: "[data-detail-depends-menu]", within: "[data-detail-depends]", equals: 1 },
-      { kind: "count", selector: "[data-detail-depends-chips]", within: "[data-detail-depends]", equals: 1 },
+      // The list container is unconditional (TP-0075 ③): it holds the card's
+      // `blocked_by` rows and is counted while the drawer is closed too.
+      { kind: "count", selector: "[data-detail-depends-list]", within: "[data-detail-depends]", equals: 1 },
       // E-2 — the read-only badge exists and is **off** at rest: the root carries
       // no `data-readonly` until a terminal card is opened, so a drawer that
       // leaked the attribute would red here rather than on the next card.
@@ -1770,6 +1798,11 @@ const BLOCKS = [
       // (`accent-soft`/999px vs `surface`/4px), so the value is parked on the
       // design owner's ruling (F6) — the assertion lands with the ruling.
       { kind: "classes", probe: "[data-detail-status-chip]", includes: ["badge-sm", "td-chip", "td-chip-status"] },
+      // TP-0075 ① — the kind badge sits beside the status chip and speaks the
+      // card's two-value vocabulary in words. The driven pass opens TD-1, an
+      // ordinary card, so it reads Task (the epic pass reads Epic in dom-smoke).
+      { kind: "domain", selector: "[data-detail-kind]", attribute: "data-kind", subset: DOMAINS.KIND },
+      { kind: "text", probe: "[data-detail-kind-label]", oneOf: ["Task", "任务"], when: "drawer open" },
       { kind: "computed", probe: "[data-detail-status-chip]", property: "height", equalsPx: 18, when: "drawer open" },
       {
         kind: "computed",
@@ -1913,16 +1946,16 @@ const BLOCKS = [
       { kind: "computed", probe: "[data-detail-overlay]", property: "zIndex", equals: "40" },
       { kind: "computed", probe: "[data-detail-drawer]", property: "zIndex", equals: "50" },
       // R14 D01 (B1/B21) — the drawer's reading width. The prototype's
-      // `--shell-drawer` is 520px; the implementation deliberately opens at
-      // 780px (product override, registered in `design/BLOCKS.md` §B09). Stated
-      // as a **px string** rather than with `equalsPx`, for the reason
-      // `strokeWidth` above is: the stale-prose guard
+      // `--shell-drawer` is 520px; the implementation opened at 780px and
+      // TP-0075 narrowed it to **580px** (product override, registered in
+      // `design/BLOCKS.md` §B09). Stated as a **px string** rather than with
+      // `equalsPx`, for the reason `strokeWidth` above is: the stale-prose guard
       // (`web/blocks.contract.test.mjs`) forbids a *numeric* rule value that
       // could be mistaken for one of the recorded prose counts. The
       // `max-width: 100vw` companion keeps a narrow viewport full-width and is
       // not re-pinned here — a rule for it would be measuring the viewport, not
       // the drawer.
-      { kind: "computed", probe: "[data-detail-drawer]", property: "width", equals: "780px" },
+      { kind: "computed", probe: "[data-detail-drawer]", property: "width", equals: "580px" },
       // R14 D10/D12 (B4/B6) — the head and the scrolling host are the
       // prototype's own boxes, worn by their own classes.
       { kind: "computed", probe: ".td-drawer-head", count: 1 },
@@ -1936,16 +1969,14 @@ const BLOCKS = [
       // R14 D24 (A23) — the property grid's catalogue seats. It was "eight
       // `data-i18n` attributes, one per label row"; since T-20261014-212017-4 the
       // grid also *contains* the status and priority menus, whose option labels
-      // are seats too, so the seat count is the grid's own arithmetic over the
-      // design's own vocabulary: **9 property labels + 7 status options + 5
-      // priority options = 21**. That is a domain-fixed multiplicity of the kind
-      // this file's header allows (7 statuses ⇒ 7 columns, 3 editor modes), and
-      // it is a stronger statement than the old one: the grid holds exactly
-      // these seats and nothing else. The ninth label is 0031's Review row —
-      // a read-only property, labelled like its eight neighbours. A sixth
-      // priority or a tenth property row reds here, which is what the
-      // row-per-label rule meant all along.
-      { kind: "count", selector: "[data-i18n]", within: "[data-detail-props]", equals: 21 },
+      // are seats too. TP-0075 removed the internal-id and version rows, so the
+      // arithmetic is **7 property labels + 7 status options + 5 priority
+      // options = 19**. That is a domain-fixed multiplicity of the kind this
+      // file's header allows (7 statuses ⇒ 7 columns, 3 editor modes), and it is
+      // a stronger statement than the old one: the grid holds exactly these seats
+      // and nothing else. A sixth priority or an eighth property row reds here,
+      // which is what the row-per-label rule meant all along.
+      { kind: "count", selector: "[data-i18n]", within: "[data-detail-props]", equals: 19 },
       // R14 D32/D37/D38 (A13/A14/A15) — *where* each body hook rides: the
       // description hook is on the content container (`div.td-gfm`), the four
       // stream hooks are on a `div`, and the session hook is on the `section`
@@ -1992,10 +2023,6 @@ const BLOCKS = [
       },
       { kind: "computed", probe: "div[data-detail-activity]", count: 1 },
       { kind: "computed", probe: "section[data-detail-agent-session]", count: 1 },
-      // R14 D28 (A18) — the id copy control is the prototype's `.td-copy` box and
-      // its glyph is an inline icon, not a text character.
-      { kind: "classes", probe: "[data-detail-id-copy]", includes: ["td-copy"] },
-      { kind: "computed", probe: "[data-detail-id-copy] .td-icon-sm", count: 1 },
       // R14 D50 (B14/B15) — the label chip is the prototype's `.badge.td-chip`
       // and its remove control is a real button holding `svg.td-icon-sm`. Chips
       // exist only while a task with labels is open, so these two carry the
@@ -2005,8 +2032,7 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "The root is `role=\"dialog\"` + `aria-modal=\"true\"`; [data-detail-id-copy] carries " +
-          "`data-copy-value` and writes to the clipboard (a browser API); [data-detail-description] " +
+          "The root is `role=\"dialog\"` + `aria-modal=\"true\"`; [data-detail-description] " +
           "renders sanitised GFM.",
       },
       {

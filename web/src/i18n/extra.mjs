@@ -142,6 +142,14 @@ export const EXTRA = {
     "drawer.tab.acceptance": "Acceptance",
     "drawer.tab.leftovers": "Leftovers",
     "drawer.tab.sessions": "Sessions",
+    // TP-0075 — the head's kind badge and the Relations area's new groups. The
+    // badge is a word, not a colour; `epic` keeps its English spelling in the
+    // Chinese mirror (GLOSSARY.md: 中文镜像沿用英文).
+    "kind.task": "Task",
+    "kind.epic": "Epic",
+    "drawer.children": "Children",
+    "drawer.childrenEmpty": "No child cards",
+    "relations.depends": "Depends on",
     // The drawer's third author word. The prototype knows only `comment.agent`
     // and `comment.human`; the board's own writes carry the `system` kind, and
     // saying "human" for them is the lie this key exists to stop.
@@ -297,6 +305,12 @@ export const EXTRA = {
     "drawer.tab.acceptance": "验收",
     "drawer.tab.leftovers": "遗留",
     "drawer.tab.sessions": "会话",
+    // 同上：头部卡类型徽章与 Relations 的四个分组；epic 中文沿用英文。
+    "kind.task": "任务",
+    "kind.epic": "epic",
+    "drawer.children": "子任务",
+    "drawer.childrenEmpty": "暂无子任务",
+    "relations.depends": "前置依赖",
     "comment.system": "系统",
     "drawer.report.round": "第 %s 轮",
     "drawer.reports.empty": "暂无报告。",

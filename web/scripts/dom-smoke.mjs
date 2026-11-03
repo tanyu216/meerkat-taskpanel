@@ -77,7 +77,10 @@ function fixture(projectId, status, overrides = {}) {
     description: overrides.description ?? "# Heading\n\nSome **bold** text and `code`.",
     status,
     priority: overrides.priority ?? "medium",
-    kind: "task",
+    // TP-0075 — the kind badge needs a real epic in the fixture. Every other
+    // card stays `task`; a review card is a task too, which is why `role` is
+    // derived elsewhere and never stored as a third kind.
+    kind: overrides.kind ?? "task",
     labels: overrides.labels ?? ["bug"],
     // M1 — the `awaiting` entry category (`null` on every other card).
     awaiting_reason: overrides.awaiting_reason ?? null,
@@ -264,6 +267,14 @@ export function fixtureApi() {
     fixture("p1", "done", { identifier: "TD-10", title: "Ship the CLI", priority: "low", labels: [], assignee: AGENT.human }),
     fixture("p1", "canceled", { identifier: "TD-11", title: "Drop the legacy importer", priority: "none", labels: ["perf"], assignee: AGENT.openclaw }),
     fixture("p1", "done", { identifier: "TD-12", title: "Lock down the webhooks", priority: "medium", labels: ["security", "design"], assignee: AGENT.pi }),
+    // TP-0075 ② — one epic, two direct children and one grandchild. The drawer
+    // opens TD-14 to prove the Children group is the **recursive** descendant
+    // list (TD-17 is two levels down), and every descendant row carries the
+    // `parent_id` the wire's own rows carry.
+    fixture("p1", "todo", { identifier: "TD-14", title: "Epic: drawer overhaul", kind: "epic", priority: "high", labels: ["design"], assignee: AGENT.claude }),
+    fixture("p1", "todo", { identifier: "TD-15", title: "Child: kind badge", priority: "medium", labels: [], assignee: AGENT.claude, parent_id: "td_TD_14" }),
+    fixture("p1", "in_progress", { identifier: "TD-16", title: "Child: relations rows", priority: "medium", labels: ["ui"], assignee: AGENT.codex, parent_id: "td_TD_14" }),
+    fixture("p1", "backlog", { identifier: "TD-17", title: "Grandchild: descendant walk", priority: "low", labels: [], assignee: AGENT.pi, parent_id: "td_TD_15" }),
   ];
   // The actor dictionary (0019): one table, no `platform` column. `kind` is the
   // actor's kind — `agent`/`human` today, which name no platform, so the badges
@@ -385,6 +396,16 @@ export function fixtureApi() {
       // identifier the board knows, and an id with no card behind it would test
       // the fallback rather than the resolution.)
       { id: "rel-blocked-by", type: "blocks", source: "td_TD_5", target: "td_TD_1", origin: null, created_at: minutes(43 * 60) },
+    ],
+    // TP-0075 ② — TD-14's tree. Stored under the **parent's** bucket, the way
+    // the route's `children` half is scoped; the GET mock also walks every
+    // bucket for `descendants`, so the grandchild is found two levels down.
+    td_TD_14: [
+      { id: "rel-14-15", type: "parent", source: "td_TD_14", target: "td_TD_15", origin: null, created_at: minutes(42 * 60) },
+      { id: "rel-14-16", type: "parent", source: "td_TD_14", target: "td_TD_16", origin: null, created_at: minutes(41 * 60) },
+    ],
+    td_TD_15: [
+      { id: "rel-15-17", type: "parent", source: "td_TD_15", target: "td_TD_17", origin: null, created_at: minutes(40 * 60) },
     ],
   };
   // R14 ① / the preview leg — the drawer's attachment rows, keyed by the card's
@@ -558,6 +579,43 @@ export function fixtureApi() {
  * @param {{[taskId: string]: object[]}} byTask
  * @returns {string[]}
  */
+/**
+ * TP-0075 — the **descendant** half of `parentChainOf`, breadth-first.
+ *
+ * The relations route's `descendants` is the recursive mirror of `ancestors`;
+ * the fixture answers it the same way the repository's CTE does, over the
+ * `parent` rows the fixture holds (which are spread across the parents' own
+ * buckets). Nearest level first, and a node is emitted once even if a malformed
+ * fixture reached it twice.
+ *
+ * @param {string} taskId
+ * @param {{[taskId: string]: object[]}} byTask
+ * @returns {string[]}
+ */
+function descendantIds(taskId, byTask) {
+  const edges = new Map();
+  for (const rows of Object.values(byTask)) {
+    for (const row of rows) if (row.type === "parent") edges.set(row.id, row);
+  }
+  const parentEdges = [...edges.values()];
+  const seen = new Set([taskId]);
+  const out = [];
+  let frontier = [taskId];
+  while (frontier.length > 0) {
+    const next = [];
+    for (const node of frontier) {
+      for (const edge of parentEdges.filter((row) => row.source === node)) {
+        if (seen.has(edge.target)) continue;
+        seen.add(edge.target);
+        out.push(edge.target);
+        next.push(edge.target);
+      }
+    }
+    frontier = next;
+  }
+  return out;
+}
+
 function parentChainOf(taskId, byTask) {
   const edges = new Map();
   for (const rows of Object.values(byTask)) {
@@ -736,12 +794,65 @@ export function startServer() {
     // rows a card *has*, so a fixture answering every ref with the whole table
     // would let the wrong card's edges look right.
     const relationsFor = /^\/api\/v1\/tasks\/([^/]+)\/relations$/.exec(path);
+    // TP-0075 ③ — the drawer's add-only dependency box writes too. The real
+    // route is the guard; the fixture keeps an edge in the **target's** bucket
+    // (the card whose drawer reads `blocked_by`) and refuses one designated
+    // source (TD-3) with the board's own `RELATION_CYCLE`, so the client's
+    // refusal path — alert + toast — is driven rather than assumed.
+    if (req.method === "POST" && relationsFor) {
+      const ref = decodeURIComponent(relationsFor[1]);
+      const source = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
+      readJsonBody((body) => {
+        const target = data.tasks.find((entry) => entry.identifier === body.target || entry.id === body.target);
+        if (!source || !target) {
+          res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+          return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", http: 404, message: "no such card" } }));
+        }
+        if (source.identifier === "TD-3") {
+          res.writeHead(422, { "content-type": "application/json; charset=utf-8" });
+          return res.end(
+            JSON.stringify({
+              ok: false,
+              error: { code: "RELATION_CYCLE", http: 422, message: "the fixture refuses this edge", details: { chain: "ancestors" } },
+            }),
+          );
+        }
+        const relation = {
+          id: `rel-write-${(data.relationWrites = (data.relationWrites ?? 0) + 1)}`,
+          type: body.type ?? "blocks",
+          source: source.id,
+          target: target.id,
+          origin: body.origin ?? null,
+          created_at: new Date().toISOString(),
+        };
+        (data.relations[target.id] ??= []).push(relation);
+        ok({ relation });
+      });
+      return;
+    }
+    const relationsDelete = /^\/api\/v1\/tasks\/([^/]+)\/relations\/([^/]+)$/.exec(path);
+    if (req.method === "DELETE" && relationsDelete) {
+      const id = decodeURIComponent(relationsDelete[2]);
+      let removed = null;
+      for (const rows of Object.values(data.relations)) {
+        const index = rows.findIndex((row) => String(row.id) === id);
+        if (index !== -1) {
+          removed = rows.splice(index, 1)[0];
+          break;
+        }
+      }
+      if (!removed) {
+        res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+        return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", http: 404, message: "no such relation" } }));
+      }
+      return ok({ removed: true, relation: removed });
+    }
     if (relationsFor) {
       const ref = decodeURIComponent(relationsFor[1]);
       const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
       const all = data.relations[task?.id] ?? [];
-      // The real route's six keys, not just `relations`
-      // (T-20261014-212017-4). The drawer's `depends_on` chips read
+      // The real route's keys, not just `relations`
+      // (T-20261014-212017-4). The drawer's `depends_on` rows read
       // **`blocked_by`** — the edges pointing *at* this card, which is what the
       // card-schema `depends_on` means — so a fixture that answered only
       // `relations` would leave the control empty for the wrong reason. The
@@ -754,6 +865,19 @@ export function startServer() {
         ancestors: all.filter((row) => row.type === "parent" && row.target === task?.id),
         blocked_by: all.filter((row) => row.type === "blocks" && row.target === task?.id),
         blocks: all.filter((row) => row.type === "blocks" && row.source === task?.id),
+        // TP-0075 ② — the epic drawer's recursive list, as card rows. The
+        // fixture walks every bucket's `parent` edges (they are stored under the
+        // parent, not the child), so a grandchild two levels down is a row.
+        descendants: descendantIds(task?.id ?? ref, data.relations).map((id) => {
+          const row = data.tasks.find((entry) => entry.id === id);
+          return {
+            id,
+            identifier: row?.identifier ?? id,
+            title: row?.title ?? "",
+            status: row?.status ?? "",
+            kind: row?.kind ?? "task",
+          };
+        }),
         // T-20261015-104813 — the ids on this card's parent chain, either
         // direction. The drawer's prerequisite picker filters its roster by this
         // set, so the fixture answers it the way the route does: the transitive
@@ -1759,6 +1883,13 @@ export async function run() {
       const r = close.getBoundingClientRect();
       const glyph = close.querySelector("svg.td-icon");
       const gr = glyph?.getBoundingClientRect() ?? null;
+      // TP-0075 ⑥ — the tab strip moved into this head; the measurements below
+      // prove it is **inside** the head and flush with the head's content
+      // bottom, and that the head grew by exactly the strip (the 12px
+      // padding-bottom it withdrew plus the strip's 8px margin).
+      const headRect = head?.getBoundingClientRect() ?? null;
+      const tabs = document.querySelector("[data-detail-tabs]");
+      const tabsRect = tabs?.getBoundingClientRect() ?? null;
       return {
         present: true,
         width: cs.width,
@@ -1775,7 +1906,11 @@ export async function run() {
         color: cs.color,
         glyphWidth: gr?.width ?? null,
         glyphHeight: gr?.height ?? null,
-        headHeight: head?.getBoundingClientRect().height ?? null,
+        headHeight: headRect?.height ?? null,
+        tabsHeight: tabsRect?.height ?? null,
+        tabsInsideHead: tabs !== null && head !== null && head.contains(tabs),
+        tabsFlushBottom:
+          tabsRect !== null && headRect !== null ? Math.abs(tabsRect.bottom - (headRect.bottom - 1)) <= 1 : null,
       };
     });
     r14Check(r14Close.present, "the drawer has no [data-detail-close] to measure");
@@ -1805,53 +1940,96 @@ export async function run() {
       r14Close.glyphWidth === 16 && r14Close.glyphHeight === 16,
       `the close glyph is ${r14Close.glyphWidth}×${r14Close.glyphHeight}, expected 16×16 — the box grew, the glyph did not`,
     );
+    // TP-0075 ⑥ — the tab strip moved into the head. Three relations, rather
+    // than one stale constant: the strip is **inside** the head, its bottom is
+    // flush with the head's content bottom (`.td-drawer-head-tabs` withdrew the
+    // 12px padding-bottom), and the head grew by exactly the strip — the old
+    // R14 head (78.6px) + the strip's 8px top margin + its own height − the
+    // 12px padding the modifier removed. The strip's height is read off the
+    // DOM (daisyUI's `--size-field` ×10), so a design change re-derives it
+    // instead of breaking on a magic number.
+    r14Check(r14Close.tabsInsideHead === true, "the drawer's six-tab strip is not inside [data-detail-tabs] within .td-drawer-head");
+    r14Check(r14Close.tabsFlushBottom === true, "the head's tab strip is not flush with the head's content bottom — padding-bottom was not withdrawn");
+    const r14HeadBase =
+      r14Close.headHeight !== null && r14Close.tabsHeight !== null
+        ? r14Close.headHeight - r14Close.tabsHeight - 8 + 12
+        : null;
     r14Check(
-      r14Close.headHeight !== null && Math.abs(r14Close.headHeight - 78.59) <= 1,
-      `the drawer head is ${r14Close.headHeight}px tall, expected the prototype's 78.59px ±1`,
+      r14HeadBase !== null && Math.abs(r14HeadBase - 78.6) <= 1,
+      `the head minus its ${r14Close.tabsHeight}px tab strip (plus the withdrawn 12px padding, minus the strip's 8px margin) is ${r14HeadBase}px, expected R14's 78.6px ±1`,
     );
 
     // The three rows in render order, word · identifier — the words are the
-    // catalogue's (`relations.parent|blocks|related`), the identifiers the
-    // resolved refs (PROJ-0007 for the parent edge, which is the fixture's own
-    // id derivation, not a typo).
+    // catalogue's (`relations.parent|related` + TP-0075's `relations.depends`),
+    // the identifiers the resolved refs (PROJ-0007 for the parent edge, which is
+    // the fixture's own id derivation, not a typo).
     //
-    // The reader walks the row's **groups**, not the bare links (R14 D37 /
-    // BLOCKS.md §R14: `[data-detail-relations]` groups its `[data-relation-link]`s
-    // by kind, each group led by that kind's own name — the structure 154930-2
-    // shipped). One `.td-rel-item` therefore reads `word · ref…`, which keeps
-    // the expected values below the words the catalogue names: the capital `R`
-    // of `Related` still tells a real catalogue hit from the unknown-kind
-    // fallback (that one prints the bare lowercase enum word).
-    // T-20261014-212017-3 §4.4 — `Blocks` is no longer one of these rows. The
-    // card's `depends_on` is an editable chip control of its own (the `blocks`
-    // edge), and the read-only row was withdrawn so the same fact
-    // has one source. `parent` and `related` stay read-only, which is what this
-    // reader still walks.
-    const R14_RELATION_ROWS = ["Parent · PROJ-0007", "Related · TD-4"];
+    // TP-0075 ②③ — the reader walks the **four group containers**
+    // (`[data-rel-group]`). Parent / Children / Depends-on rows read
+    // `identifier title`; Related keeps the prototype's link chips. TD-1 is an
+    // ordinary card, so it has no Children group at all.
+    const R14_RELATION_ROWS = [
+      "Parent · PROJ-0007 Collect the install survey",
+      "Depends on · TD-5 Fix the renderer",
+      "Related · TD-4",
+    ];
     const r14Relations = await page.evaluate(() =>
-      [...document.querySelectorAll("[data-detail-relations] .td-rel-item")].map((item) => {
-        const word = item.querySelector("span[data-i18n]")?.textContent.trim() ?? "";
-        const refs = [...item.querySelectorAll("[data-relation-link]")].map((button) => button.textContent.trim());
-        return [word, ...refs].join(" · ");
+      [...document.querySelectorAll("[data-detail-relations] [data-rel-group]")].map((group) => {
+        const word = group.querySelector(".td-rel-group-title")?.textContent.trim() ?? "";
+        const rows = [...group.querySelectorAll("[data-detail-parent-row], [data-detail-child], [data-detail-depends-row]")].map(
+          (row) => {
+            const value =
+              row.querySelector("[data-detail-parent-value], [data-detail-child-value], [data-detail-depends-value]")
+                ?.textContent.trim() ?? "";
+            const title =
+              row.querySelector("[data-detail-parent-title], [data-detail-child-title], [data-detail-depends-title]")
+                ?.textContent.trim() ?? "";
+            return [value, title].filter(Boolean).join(" ");
+          },
+        );
+        const links = [...group.querySelectorAll("[data-relation-link]")].map((button) => button.textContent.trim());
+        return [word, ...rows, ...links].join(" · ");
       }),
     );
     r14Check(
       r14Relations.join("|") === R14_RELATION_ROWS.join("|"),
-      `the drawer's relation rows read ${JSON.stringify(r14Relations)}, expected ${JSON.stringify(R14_RELATION_ROWS)}`,
+      `the drawer's relation groups read ${JSON.stringify(r14Relations)}, expected ${JSON.stringify(R14_RELATION_ROWS)}`,
     );
 
-    // …and the withdrawn row reappears as the card's `depends_on` chips: one
-    // chip per `blocks` edge pointing *at* this card, carrying the prerequisite's
-    // identifier. A chip is the same fact the row used to state, now editable.
-    const r14DependsChips = await page.evaluate(() =>
-      [...document.querySelectorAll("[data-detail-depends-chips] [data-detail-depends-chip]")].map((chip) =>
-        (chip.getAttribute("data-detail-depends-value") ?? "").trim(),
-      ),
+    // …the depends rows are the `blocked_by` edges pointing *at* this card, each
+    // carrying the prerequisite's identifier and title (TP-0075 ③ replaced the
+    // multi-chip control with a row list + an add box).
+    const r14DependsRows = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-detail-depends-list] [data-detail-depends-row]")].map((row) => ({
+        value: (row.querySelector("[data-detail-depends-value]")?.textContent ?? "").trim(),
+        title: (row.querySelector("[data-detail-depends-title]")?.textContent ?? "").trim(),
+      })),
     );
     r14Check(
-      r14DependsChips.join("|") === "TD-5",
-      `the drawer's depends_on chips read ${JSON.stringify(r14DependsChips)}, expected ["TD-5"] (the one blocks edge pointing *into* this card)`,
+      JSON.stringify(r14DependsRows) === JSON.stringify([{ value: "TD-5", title: "Fix the renderer" }]),
+      `the drawer's depends rows read ${JSON.stringify(r14DependsRows)}, expected [{TD-5, Fix the renderer}] (the one blocks edge pointing *into* this card)`,
     );
+
+    // TP-0075 ① — the head's kind badge. TD-1 is an ordinary card (and a review
+    // card would read the same); the epic leg below reads Epic.
+    const r14Kind = await page.evaluate(() => ({
+      kind: document.querySelector("[data-detail-kind]")?.getAttribute("data-kind") ?? null,
+      label: document.querySelector("[data-detail-kind-label]")?.textContent.trim() ?? null,
+      children: document.querySelectorAll("[data-detail-children]").length,
+      hasParent: document.querySelectorAll("[data-detail-parent-row]").length,
+    }));
+    r14Check(r14Kind.kind === "task", `an ordinary card's kind badge says data-kind=${JSON.stringify(r14Kind.kind)}, expected "task"`);
+    r14Check(["Task", "任务"].includes(r14Kind.label), `an ordinary card's kind badge reads ${JSON.stringify(r14Kind.label)}, expected Task`);
+    r14Check(r14Kind.children === 0, "an ordinary card rendered a Children group");
+    r14Check(r14Kind.hasParent === 1, "TD-1's Parent row is missing");
+
+    // TP-0075 ④ — the internal id row, its copy control and the version row are
+    // gone from the reader's face. The contract's `required` list dropped them;
+    // this is the live half (the catalogue keys stay, with no consumer).
+    const r14InternalRows = await page.evaluate(
+      () => document.querySelectorAll("[data-detail-id], [data-detail-id-copy], [data-detail-version]").length,
+    );
+    r14Check(r14InternalRows === 0, `the drawer still renders ${r14InternalRows} internal-id/version hook(s)`);
 
     /* ---- ② I-2 (T-20261014-154730) — the focus ring ----------------------
        The design states the ring **globally**, in its own base layer
@@ -2046,6 +2224,97 @@ export async function run() {
     const previewEscaped = await readPreview();
     previewCheck(previewEscaped.overlays.length === 0, "Escape did not close the preview dialog");
     previewCheck(previewEscaped.drawerState === "open", "Escape closed the drawer as well as the preview dialog");
+
+    /* ---- TP-0075 ③ — the Depends-on add/delete/refuse loop -----------------
+       The old control was a multi-chip set; this round made it a row list with
+       one add box. Three gestures are driven: adding a prerequisite shows its
+       row, the row's ✕ drops it, and a write the board refuses lands on the
+       save region (`[data-detail-save-error]`) plus a danger toast. The fixture
+       refuses TD-3 with the board's own RELATION_CYCLE code — the real guard
+       lives on the server, and what this leg proves is that the client renders
+       the refusal instead of swallowing it. */
+    const dependsRowsRead = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll("[data-detail-depends-list] [data-detail-depends-row]")].map((row) => ({
+          value: (row.querySelector("[data-detail-depends-value]")?.textContent ?? "").trim(),
+          title: (row.querySelector("[data-detail-depends-title]")?.textContent ?? "").trim(),
+        })),
+      );
+    const chooseDepends = async (identifier) => {
+      await page.evaluate(() => document.querySelector("[data-detail-depends-input]")?.focus());
+      await page.waitForTimeout(80);
+      await page.evaluate((wanted) => {
+        const row = document.querySelector(`[data-detail-depends-option][data-detail-depends-value="${wanted}"]`);
+        row?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      }, identifier);
+      await page.waitForTimeout(250);
+    };
+
+    await chooseDepends("TD-4");
+    const dependsAdded = await dependsRowsRead();
+    r14Check(
+      JSON.stringify(dependsAdded) ===
+        JSON.stringify([
+          { value: "TD-5", title: "Fix the renderer" },
+          { value: "TD-4", title: "Polish the empty states" },
+        ]),
+      `adding TD-4 left the depends rows ${JSON.stringify(dependsAdded)}`,
+    );
+
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll("[data-detail-depends-row]")].find(
+        (entry) => (entry.querySelector("[data-detail-depends-value]")?.textContent ?? "").trim() === "TD-4",
+      );
+      row?.querySelector("[data-detail-depends-remove]")?.click();
+    });
+    await page.waitForTimeout(250);
+    const dependsRemoved = await dependsRowsRead();
+    r14Check(
+      JSON.stringify(dependsRemoved) === JSON.stringify([{ value: "TD-5", title: "Fix the renderer" }]),
+      `removing TD-4 left the depends rows ${JSON.stringify(dependsRemoved)}`,
+    );
+
+    await chooseDepends("TD-3");
+    const dependsRefused = await page.evaluate(() => ({
+      state: document.querySelector("[data-detail-save]")?.getAttribute("data-save-state") ?? null,
+      alertHidden: document.querySelector("[data-detail-save-error]")?.hasAttribute("hidden") ?? null,
+      toasts: [...document.querySelectorAll('[data-toast][data-toast-kind="danger"] [data-toast-text]')].map((el) =>
+        el.textContent.trim(),
+      ),
+    }));
+    r14Check(dependsRefused.state === "error", `a refused dependency left the save state at ${dependsRefused.state}`);
+    r14Check(dependsRefused.alertHidden === false, "a refused dependency did not open [data-detail-save-error]");
+    r14Check(dependsRefused.toasts.length > 0, "a refused dependency produced no danger toast");
+
+    /* ---- TP-0075 ①② — the epic's badge and recursive Children group -------- */
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll("[data-card]")].find(
+        (el) => (el.querySelector("[data-card-identifier]")?.textContent ?? "").trim() === "TD-14",
+      );
+      card?.click();
+    });
+    await page.waitForTimeout(350);
+    const r14Epic = await page.evaluate(() => ({
+      identifier: document.querySelector("[data-detail-identifier]")?.textContent.trim() ?? null,
+      kind: document.querySelector("[data-detail-kind]")?.getAttribute("data-kind") ?? null,
+      label: document.querySelector("[data-detail-kind-label]")?.textContent.trim() ?? null,
+      rows: [...document.querySelectorAll("[data-detail-children] [data-detail-child]")].map((row) => [
+        (row.querySelector("[data-detail-child-value]")?.textContent ?? "").trim(),
+        (row.querySelector("[data-detail-child-title]")?.textContent ?? "").trim(),
+      ]),
+    }));
+    r14Check(r14Epic.identifier === "TD-14", `the epic leg opened ${JSON.stringify(r14Epic.identifier)}, expected TD-14`);
+    r14Check(r14Epic.kind === "epic", `an epic's kind badge says data-kind=${JSON.stringify(r14Epic.kind)}, expected "epic"`);
+    r14Check(["Epic", "epic"].includes(r14Epic.label), `an epic's kind badge reads ${JSON.stringify(r14Epic.label)}, expected Epic`);
+    r14Check(
+      JSON.stringify(r14Epic.rows) ===
+        JSON.stringify([
+          ["TD-15", "Child: kind badge"],
+          ["TD-16", "Child: relations rows"],
+          ["TD-17", "Grandchild: descendant walk"],
+        ]),
+      `the epic's Children group reads ${JSON.stringify(r14Epic.rows)}, expected its children breadth-first, including the grandchild`,
+    );
 
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
