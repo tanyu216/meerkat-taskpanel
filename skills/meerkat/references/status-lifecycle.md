@@ -228,8 +228,11 @@ into the snapshot; the gates never read meta.
   least one `command` anchor — the reviewer runs the gate itself, so an APPROVE that ran
   nothing is refused (`ACCEPTANCE_INCOMPLETE`, `details.reason = "no_command_evidence"`); see
   [`review-protocol.md`](review-protocol.md).
-- **Epics.** A container's own snapshot is informational; its acceptance fact is the current
-  round's rollup over its children (§6).
+- **Epics.** For the delivery/done gate only, a container's own snapshot is informational;
+  its acceptance fact there is the current round's rollup over its children (§6). The
+  review-verdict gate (`assertReviewEvidence`) still enforces it: an `APPROVE` on a review of
+  an epic is checked against the epic's frozen `acceptance` plus the review card's own
+  baseline, as the *Reviews* bullet above says.
 
 The engine guarantees coverage of the written baseline. It cannot guarantee that the baseline
 itself covers everything in the description or the plan — that stays the reviewer's omission
@@ -294,8 +297,10 @@ is not `done` — literally `status !== "done"`, so a `canceled` predecessor wit
   work.
 - **Nothing delivered, nothing to close.** Close by hand with a rollup: `report template
   <epic>` lists the children, then `issue deliver <epic> --report-file -`.
-- **The epic's own `acceptance` snapshot is informational.** `done` on an epic checks the
-  current-round rollup, not the container's `acceptance_json`.
+- **The epic's own `acceptance` snapshot is informational for the delivery/done gate.**
+  `done` on an epic checks the current-round rollup, not the container's `acceptance_json`.
+  The review-verdict gate (`assertReviewEvidence`) does enforce it: an `APPROVE` on a review
+  of the epic must cover the epic's frozen `acceptance` plus the review card's own baseline.
 - **A stale rollup blocks acceptance, not the board.** `issue reconcile` reports an
   `in_review` epic whose rollup no longer matches its children (`rollup_stale`) without
   moving it. Repair it by reworking the epic (`in_review → in_progress`, which starts a new
