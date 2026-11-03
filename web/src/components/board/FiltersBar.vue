@@ -28,7 +28,12 @@
  * pushing a horizontal scrollbar onto the document. The prototype wraps at 430
  * (`flex-wrap: wrap`); that is the one written deviation this round approves.
  * Every control is `flex: 0 0 auto` — the family's metrics never compress, which
- * is the (b) alternative §2.1 rejects.
+ * is the (b) alternative §2.1 rejects. The bar itself is `shrink-0` for the same
+ * reason one level up: it is a flex item in `main`'s column, and `overflow-x:
+ * auto` makes it its own scroll container, whose automatic minimum size is zero
+ * — without the declaration a view taller than the viewport (the list, whose
+ * rows are a plain block) took its height out of the bar and clipped the 32px
+ * control row inside a near-zero box (reported on both views).
  *
  * R12 also puts the four field controls back where the prototype keeps them:
  * they are the bar's own children, not wrapped in `<label>` boxes. The wrappers
@@ -202,7 +207,7 @@ function chooseLabel(value, event) {
        prototype wraps it onto a second line instead — the round's one approved
        deviation); the document itself stays free of horizontal overflow. -->
   <section
-    class="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto"
+    class="flex min-w-0 flex-nowrap shrink-0 items-center gap-2 overflow-x-auto"
     data-filters
     data-i18n-aria-label="filters.label"
     :aria-label="$t('filters.label')"

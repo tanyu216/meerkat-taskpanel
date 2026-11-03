@@ -4409,6 +4409,41 @@ export async function run() {
     r12Check(adapt.board.spread <= 1 && adapt.board.offContent <= 1, `B4 @1512x700: the columns spread ${adapt.board.spread}px and differ from the board by ${adapt.board.offContent}px`);
     const moved = r12Heights[1512] - adapt.board.heights[0];
     r12Check(Math.abs(moved - 200) <= 1, `B4 @1512x900→700: the column height moved ${Math.round(moved * 100) / 100}px when the viewport height moved 200px`);
+
+    /**
+     * B04 / R12 — the bar is a flex item in `main`'s column, not an overlay, and
+     * a view can outgrow the viewport beneath it (the list's rows are a block;
+     * the board's chain adapts). A short viewport forces that condition in both
+     * views. The bar's height is the control row's — 32px — and its own box must
+     * not scroll vertically; a shrunken bar clips its controls inside
+     * `overflow-x: auto`, which is the defect Terry reported.
+     */
+    const readBarBox = () =>
+      page.evaluate(() => {
+        const bar = document.querySelector("[data-filters]");
+        const trigger = document.querySelector(".td-label-trigger");
+        const r = bar.getBoundingClientRect();
+        return {
+          height: r.height,
+          clientHeight: bar.clientHeight,
+          scrollHeight: bar.scrollHeight,
+          triggerHeight: trigger ? trigger.getBoundingClientRect().height : null,
+        };
+      });
+    const barClipped = (b) => Math.abs(b.height - 32) > 0.5 || b.scrollHeight > b.clientHeight + 1;
+    const barMessage = (b, where) =>
+      `B04 @1512x420 ${where}: the bar is ${Math.round(b.height * 100) / 100}px tall over a ${b.triggerHeight}px control row (client ${b.clientHeight}, scroll ${b.scrollHeight}) — it absorbed the view's overflow`;
+    await page.click('[data-view="board"]');
+    await page.setViewportSize({ width: 1512, height: 420 });
+    await page.waitForTimeout(150);
+    const barAtBoard = await readBarBox();
+    r12Check(!barClipped(barAtBoard), barMessage(barAtBoard, "board"));
+    await page.click('[data-view="list"]');
+    await waitForListSettled();
+    await page.waitForTimeout(120);
+    const barAtList = await readBarBox();
+    r12Check(!barClipped(barAtList), barMessage(barAtList, "list"));
+    await page.click('[data-view="board"]');
     await page.setViewportSize({ width: 1512, height: 950 });
     await page.waitForTimeout(150);
 
