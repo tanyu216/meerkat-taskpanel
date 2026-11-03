@@ -164,6 +164,7 @@ const rendered = ref(false);
 const state = ref("closed");
 const closeButton = ref(null);
 let closeTimer = null;
+let focusTimer = null;
 
 function openerElement() {
   return document.querySelector("[data-access-open]");
@@ -171,6 +172,7 @@ function openerElement() {
 
 watch(accessOpen, async (open) => {
   clearTimeout(closeTimer);
+  clearTimeout(focusTimer);
   if (open) {
     void load();
     rendered.value = true;
@@ -179,10 +181,14 @@ watch(accessOpen, async (open) => {
     // the prototype gets from its `.width()` read.
     requestAnimationFrame(() => {
       state.value = "open";
-      // Focus only once `visibility` has flipped: the transition starts at
-      // this frame's paint, so a second frame is the first one on which the
-      // panel is actually focusable.
-      requestAnimationFrame(() => closeButton.value?.focus());
+      // `visibility` is transitioned (`.td-access-panel` in `app.css`), so a
+      // frame-timed focus lands at progress 0 where it still resolves
+      // `hidden` and `.focus()` is a silent no-op (TP-0074 defect: the R6
+      // check caught exactly that). Mirror the prototype's `focusWhenOpen`:
+      // one transition length later, and only while the panel is still open.
+      focusTimer = setTimeout(() => {
+        if (state.value === "open") closeButton.value?.focus();
+      }, 200);
     });
   } else {
     state.value = "closed";
@@ -194,7 +200,10 @@ watch(accessOpen, async (open) => {
   }
 });
 
-onBeforeUnmount(() => clearTimeout(closeTimer));
+onBeforeUnmount(() => {
+  clearTimeout(closeTimer);
+  clearTimeout(focusTimer);
+});
 </script>
 
 <template>

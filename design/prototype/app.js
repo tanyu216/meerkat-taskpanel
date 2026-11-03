@@ -66,6 +66,8 @@
       "filters.assignee.me": "Assignee: Me",
       "filters.assignee.human": "Assignee: Human",
       "filters.assignee.agent": "Assignee: Agent",
+      "filters.assigneeOption": "Assignee: %s",
+      "filters.assigneeSearch": "Filter assignees…",
       /* R13 修订（Terry 2026-10-13 · 决定甲）— `assignee.clear` is withdrawn with
          the `✕` it named: the removal path is the control's own `Assignee: All`
          row, which already has a seat of its own (`filters.assignee.all`), so the
@@ -79,6 +81,7 @@
       "filters.priority.none": "Priority: None",
       "filters.labelLabel": "Label",
       "filters.label.all": "Label: All",
+      "filters.labelSearch": "Filter labels…",
       "filters.labelOption": "Label: %s",
       "filters.status": "Status",
       "filters.status.all": "Status: All",
@@ -400,6 +403,8 @@
       "filters.assignee.me": "负责人：我",
       "filters.assignee.human": "负责人：人类",
       "filters.assignee.agent": "负责人：Agent",
+      "filters.assigneeOption": "负责人：%s",
+      "filters.assigneeSearch": "筛选负责人…",
       "filters.priority": "优先级",
       "filters.priority.all": "优先级：全部",
       "filters.priority.urgent": "优先级：紧急",
@@ -409,6 +414,7 @@
       "filters.priority.none": "优先级：无",
       "filters.labelLabel": "标签",
       "filters.label.all": "标签：全部",
+      "filters.labelSearch": "筛选标签…",
       "filters.labelOption": "标签：%s",
       "filters.status": "状态",
       "filters.status.all": "状态：全部",
@@ -896,18 +902,63 @@
 
   /* Restates the label control from that value: which row reads as chosen,
      and what the trigger's badge says. Run from every filter pass, so a
-     language switch re-states it in the new language for free. */
+     language switch re-states it in the new language for free.
+
+     TP-0074 — the search row narrows the *rows*, never the trigger: the rows
+     are moved into ranked order (prefix → contains → subsequence) and the
+     unmatched ones are `hidden` rather than detached, so `translateTree` still
+     reaches their `data-i18n` text on a language switch. `All` stays pinned
+     first. The control filters the labels the board already carries; there is
+     no `· new` row here to add. */
   function renderLabelFilter() {
     var value = labelFilterValue();
     var $filter = $("[data-filter-label]");
+    var $menu = $filter.find(".td-label-menu");
+    var query = menuQuery("[data-filter-label-search]");
+    var $rows = $menu
+      .find("[data-filter-label-option]")
+      .not('[data-label-value="all"]');
 
-    $filter.find("[data-filter-label-option]").each(function () {
+    var names = [];
+    $rows.each(function () {
+      names.push($(this).attr("data-label-value"));
+    });
+    var ranked = makeRoster(names).match(query);
+    var rank = {};
+    $.each(ranked, function (index, entry) {
+      rank[entry.name] = index;
+    });
+
+    $rows.each(function () {
       var $option = $(this);
       $option.attr(
         "aria-current",
         String($option.attr("data-label-value") === value)
       );
+      var at = rank[$option.attr("data-label-value")];
+      if (at === undefined) $option.closest("li").attr("hidden", "hidden");
+      else $option.closest("li").removeAttr("hidden");
+      $option.attr(
+        "data-filter-active",
+        $option.attr("data-filter-active") || "false"
+      );
     });
+
+    /* Move the matched rows into rank order. Unmatched rows are appended last
+       (kept in the document, hidden) so their translated copy stays reachable. */
+    $rows
+      .closest("li")
+      .get()
+      .sort(function (a, b) {
+        var av = $(a).find("[data-filter-label-option]").attr("data-label-value");
+        var bv = $(b).find("[data-filter-label-option]").attr("data-label-value");
+        var ar = rank[av] === undefined ? Number.MAX_SAFE_INTEGER : rank[av];
+        var br = rank[bv] === undefined ? Number.MAX_SAFE_INTEGER : rank[bv];
+        return ar - br;
+      })
+      .forEach(function (row) {
+        $menu.append(row);
+      });
 
     var $chosen = $filter.find(
       '[data-filter-label-option][data-label-value="' + value + '"]'
@@ -1030,55 +1081,102 @@
      that control instead of by nothing. R15 ② kept the hook and its
      value-in-the-attribute carrier exactly as R13 fixed them; only the element
      it sits on moved — a menu row `button` now, not an `<option>`. */
-  function renderAssigneeFilter() {
+  /* TP-0074 — the rows a query selects. An empty query is the resting set: the
+     one named value in force, if any, and no actor rows. A non-empty query ranks
+     the actor roster and the named value together (the same
+     `makeRoster().match()` the comboboxes use) and keeps the four static values
+     out of the actor domain, so a named row the query does not match is dropped
+     exactly as the shipped control drops it (`web/src/lib/filter-menu.js`). */
+  function assigneeMenuEntries(query) {
     var value = assigneeFilterValue();
     var named =
       ASSIGNEE_STATIC_VALUES.indexOf(value) === -1 ? value : null;
-    var $control = $("[data-filter-assignee]");
+    var entries = [];
 
-    /* the four static rows stay; a given name is one more row while it is in
-       force and is gone the moment the control leaves it */
+    if (query === "") {
+      if (named) entries.push({ name: named });
+      return entries;
+    }
+
+    var candidates = [];
+    $.each(assignees.all(), function (index, entry) {
+      if (ASSIGNEE_STATIC_VALUES.indexOf(rosterKey(entry.name)) === -1) {
+        candidates.push(entry.name);
+      }
+    });
+    var present = {};
+    $.each(candidates, function (index, name) {
+      present[rosterKey(name)] = true;
+    });
+    if (named && !present[rosterKey(named)]) candidates.push(named);
+    return makeRoster(candidates).match(query);
+  }
+
+  function renderAssigneeFilter() {
+    var value = assigneeFilterValue();
+    var $control = $("[data-filter-assignee]");
+    var $menu = $control.find(".td-label-menu");
+    var query = menuQuery("[data-filter-assignee-search]");
+
+    /* the four static rows stay; every non-static row is rebuilt from the
+       current query and value, so the menu can never offer a stale actor */
     $control.find("[data-assignee-filter-option]").each(function () {
       var $row = $(this);
-      var rowValue = $row.attr("data-assignee-filter-option");
       if (
-        ASSIGNEE_STATIC_VALUES.indexOf(rowValue) === -1 &&
-        rowValue !== named
+        ASSIGNEE_STATIC_VALUES.indexOf(
+          $row.attr("data-assignee-filter-option")
+        ) === -1
       ) {
         $row.closest("li").remove();
       }
     });
 
-    if (
-      named &&
-      !$control.find('[data-assignee-filter-option="' + named + '"]').length
-    ) {
+    $.each(assigneeMenuEntries(query), function (index, entry) {
+      if (
+        $control.find(
+          '[data-assignee-filter-option="' + entry.name + '"]'
+        ).length
+      ) {
+        return;
+      }
       $("<li>")
         .append(
           $("<button>")
             .attr("type", "button")
-            .attr("data-assignee-filter-option", named)
-            .text(named)
+            .attr("data-assignee-filter-option", entry.name)
+            .attr("data-filter-active", "false")
+            .text(text("filters.assigneeOption", entry.name))
         )
-        .appendTo($control.find(".td-label-menu"));
-    }
+        .appendTo($menu);
+    });
 
     $control.find("[data-assignee-filter-option]").each(function () {
       var $row = $(this);
+      var rowValue = $row.attr("data-assignee-filter-option");
       $row.attr(
         "aria-current",
-        String($row.attr("data-assignee-filter-option") === value)
+        String(rowValue === value)
       );
+      $row.attr(
+        "data-filter-active",
+        $row.attr("data-filter-active") || "false"
+      );
+      if (ASSIGNEE_STATIC_VALUES.indexOf(rowValue) === -1) {
+        $row.text(text("filters.assigneeOption", rowValue));
+      }
     });
 
-    /* the trigger states the chosen row's own copy — a static row's sentence, or
-       the bare name R13 writes for a given one — in the active language */
-    var $chosen = $control.find(
-      '[data-assignee-filter-option="' + value + '"]'
-    );
+    /* the trigger states the chosen row's own sentence — a static row's copy,
+       or `Assignee: <name>` for a given one — in the active language */
     $control
       .find("[data-filter-assignee-text]")
-      .text($chosen.length ? $.trim($chosen.text()) : text("filters.assignee.all"));
+      .text(
+        ASSIGNEE_STATIC_VALUES.indexOf(value) === -1
+          ? text("filters.assigneeOption", value)
+          : $control
+              .find('[data-assignee-filter-option="' + value + '"]')
+              .text() || text("filters.assignee.all")
+      );
 
     $("[data-assignee-item]").each(function () {
       var $item = $(this);
@@ -1134,6 +1232,103 @@
 
   function closePriorityMenu() {
     $("[data-filter-priority]").removeAttr("open");
+  }
+
+  /* TP-0074 — the search row's query, one per panel. */
+  function menuQuery(selector) {
+    return $.trim(String($(selector).val() || ""));
+  }
+
+  /**
+   * TP-0074 — one search panel's keyboard and open/close behaviour.
+   *
+   * The rows themselves are the render functions' business; this owns only:
+   *   * `input` → re-render, then highlight the first row the query filtered to;
+   *   * ↑/↓ wrap the highlight over the rendered (not `hidden`) rows;
+   *   * Enter takes the highlighted row through the panel's own click binding;
+   *   * Escape closes the panel;
+   *   * open focuses the search box, close clears it and restores the resting
+   *     list. The highlight is an inline wash: `tw.css` is a build product and
+   *     this round does not rebuild it.
+   */
+  function wireFilterSearch($control, searchSelector, isPinned, render) {
+    var $search = $control.find(searchSelector);
+
+    function rows() {
+      return $control
+        .find("[data-assignee-filter-option], [data-filter-label-option]")
+        .filter(function () {
+          return !$(this).closest("li").is("[hidden]");
+        });
+    }
+    function highlight(index) {
+      var $rows = rows();
+      $rows.attr("data-filter-active", "false").css("background", "");
+      if (index < 0 || index >= $rows.length) return;
+      $rows
+        .eq(index)
+        .attr("data-filter-active", "true")
+        .css("background", "var(--color-td-accent-soft)");
+    }
+    function firstUnpinned() {
+      var at = -1;
+      rows().each(function (index) {
+        if (!isPinned($(this))) {
+          at = index;
+          return false;
+        }
+      });
+      return at;
+    }
+    function activeIndex() {
+      var $rows = rows();
+      return $rows.index($rows.filter('[data-filter-active="true"]'));
+    }
+
+    $search.on("input", function () {
+      render();
+      highlight(firstUnpinned());
+    });
+
+    $search.on("keydown", function (event) {
+      var $rows = rows();
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        if (!$rows.length) return;
+        event.preventDefault();
+        var current = activeIndex();
+        var next =
+          current < 0
+            ? event.key === "ArrowDown"
+              ? 0
+              : $rows.length - 1
+            : (current + (event.key === "ArrowDown" ? 1 : -1) + $rows.length) %
+              $rows.length;
+        highlight(next);
+        return;
+      }
+      if (event.key === "Enter") {
+        var $active = rows().filter('[data-filter-active="true"]');
+        if (!$active.length) return;
+        event.preventDefault();
+        $active.trigger("click");
+        return;
+      }
+      if (event.key === "Escape" || event.key === "Esc") {
+        event.preventDefault();
+        event.stopPropagation();
+        $control.removeAttr("open");
+      }
+    });
+
+    $control.on("toggle", function () {
+      if (this.open) {
+        $search.trigger("focus");
+        return;
+      }
+      $search.val("");
+      render();
+      highlight(-1);
+    });
   }
 
   /* I6 / I8 · one filter pass drives cards, column counts and the count readout */
@@ -3726,6 +3921,31 @@
         applyFilters();
       }
     );
+
+    /* TP-0074 — the two search panels. The rows are rendered by
+       `renderAssigneeFilter()` / `renderLabelFilter()`, so each panel only owns
+       the keyboard and the open/close query reset. */
+    wireFilterSearch(
+      $("[data-filter-assignee]"),
+      "[data-filter-assignee-search]",
+      function ($row) {
+        return (
+          ASSIGNEE_STATIC_VALUES.indexOf(
+            $row.attr("data-assignee-filter-option")
+          ) !== -1
+        );
+      },
+      renderAssigneeFilter
+    );
+    wireFilterSearch(
+      $("[data-filter-label]"),
+      "[data-filter-label-search]",
+      function ($row) {
+        return $row.attr("data-label-value") === "all";
+      },
+      renderLabelFilter
+    );
+
     /* R15 ② — `[data-filter-clear]` now sits on two bars: B04's, and B26's
        activity filter bar (R15 ②). The press is told apart by **the bar it came
        from**, not by a second hook name: `[data-activity-filters]` is the

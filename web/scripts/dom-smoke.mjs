@@ -4950,6 +4950,32 @@ export async function run() {
         dismissCount: document.querySelectorAll("[data-dismiss-on-outside]").length,
         barOrder: bar ? [...bar.children].filter((el) => painted(el) && !el.classList.contains("td-sr")).map(childHook) : [],
         itemNames: items.map((el) => attr(el, "data-assignee-item")),
+        // TP-0074 — one agent per row: every row carries exactly one text host,
+        // one item and one name button. `rowHookCounts` is the per-row proof.
+        rosterRows: document.querySelectorAll("[data-agent-row]").length,
+        rowHookCounts: [...document.querySelectorAll("[data-agent-row]")].map((row) =>
+          [row.querySelectorAll("[data-agent-text]").length, row.querySelectorAll("[data-assignee-item]").length, row.querySelectorAll("[data-agent-assignee]").length].join(":"),
+        ),
+        // TP-0074 — the two search panels.
+        assigneeSearchCount: document.querySelectorAll("[data-filter-assignee-search]").length,
+        labelSearchCount: document.querySelectorAll("[data-filter-label-search]").length,
+        assigneeSearchValue: document.querySelector("[data-filter-assignee-search]")?.value ?? null,
+        labelSearchValue: document.querySelector("[data-filter-label-search]")?.value ?? null,
+        labelValue: attr(document.querySelector("[data-filter-label]"), "data-filter-label-value") ?? "all",
+        labelText: document.querySelector("[data-filter-label-summary]")?.textContent.trim() ?? null,
+        labelOpen: document.querySelector("[data-filter-label]")?.hasAttribute("open") ?? false,
+        assigneeOptionTexts: [...document.querySelectorAll("[data-assignee-filter-option]")].reduce((out, el) => {
+          out[attr(el, "data-assignee-filter-option")] = el.textContent.trim();
+          return out;
+        }, {}),
+        labelRows: [...document.querySelectorAll("[data-filter-label-option]")].map((el) => attr(el, "data-label-value")),
+        labelOptionTexts: [...document.querySelectorAll("[data-filter-label-option]")].reduce((out, el) => {
+          out[attr(el, "data-label-value")] = el.textContent.trim();
+          return out;
+        }, {}),
+        assigneeActiveRows: [...document.querySelectorAll('[data-assignee-filter-option][data-filter-active="true"]')].map((el) => attr(el, "data-assignee-filter-option")),
+        labelActiveRows: [...document.querySelectorAll('[data-filter-label-option][data-filter-active="true"]')].map((el) => attr(el, "data-label-value")),
+        newLabelRows: document.querySelectorAll("[data-filter-label] [data-combo-new]").length,
         nameButtonTags: [...new Set([...document.querySelectorAll("[data-agent-assignee]")].map((el) => el.tagName))],
         buttonsPerItem: items.map((el) => el.querySelectorAll("[data-agent-assignee]").length),
         clearsPerItem: items.map((el) => el.querySelectorAll("[data-assignee-clear]").length),
@@ -5137,6 +5163,25 @@ export async function run() {
       `roster item separators: ${restRoster.separator.items.map((item) => `${item.name}=${item.endsWithComma ? "comma" : "bare"}${item.last ? "(last)" : ""}`).join(", ")}`,
     );
 
+    // TP-0074 — one agent per row: row count == name count, and every row holds
+    // exactly one text host, one item and one name button (the badge repeats).
+    r11Check(
+      restR11.rosterRows === restR11.itemNames.length,
+      `roster rows ${restR11.rosterRows} !== agent names ${restR11.itemNames.length}`,
+    );
+    r11Check(
+      restR11.rowHookCounts.every((counts) => counts === "1:1:1"),
+      `each agent row must hold one text host / item / name button: ${restR11.rowHookCounts.join(", ")}`,
+    );
+    r11Check(
+      restR11.assigneeSearchCount === 1 && restR11.labelSearchCount === 1,
+      `search boxes: assignee ${restR11.assigneeSearchCount}, label ${restR11.labelSearchCount}`,
+    );
+    r11Check(
+      restR11.assigneeSearchValue === "" && restR11.labelSearchValue === "",
+      `the search boxes must rest empty: ${JSON.stringify(restR11.assigneeSearchValue)} / ${JSON.stringify(restR11.labelSearchValue)}`,
+    );
+
     // A · structure (R11 §5.1 A1–A3′, R13 §5 A1–A3, R2.1)
     r11Check(restR11.statusCount === 1, `[data-filter-status] count ${restR11.statusCount} !== 1`);
     r11Check(restR11.statusValue === "all", `resting status value ${restR11.statusValue} !== all`);
@@ -5308,9 +5353,16 @@ export async function run() {
     r11Check(r11Route.statusValue === restR11.statusValue, `the press wrote status ${restR11.statusValue} → ${r11Route.statusValue}`);
     // C1.4 — and the `x` never appears.
     r11Check(r11Route.clearCount === 0, `a name in force raised ${r11Route.clearCount} [data-assignee-clear]`);
-    // R15 ② — the trigger states the chosen row's own copy, which for a given
-    // name is the name itself (R13's reading, kept across the conversion).
-    r11Check(r11Route.assigneeText === firstName, `R15 ②: the trigger states ${JSON.stringify(r11Route.assigneeText)}, expected ${JSON.stringify(firstName)}`);
+    // TP-0074 — the trigger and the named menu row both state the same
+    // sentence: `Assignee: <name>` (the named row used to be the bare name).
+    r11Check(
+      r11Route.assigneeText === `Assignee: ${firstName}`,
+      `TP-0074: the trigger states ${JSON.stringify(r11Route.assigneeText)}, expected ${JSON.stringify(`Assignee: ${firstName}`)}`,
+    );
+    r11Check(
+      r11Route.assigneeOptionTexts[firstName] === `Assignee: ${firstName}`,
+      `TP-0074: the named row states ${JSON.stringify(r11Route.assigneeOptionTexts[firstName])}`,
+    );
     // The capsule and the named option follow the value (§10.3 C2.capsule/C2.domain).
     r11Check(r11Route.activeItems.length === 1 && r11Route.activeItems[0] === firstName, `active roster items ${r11Route.activeItems.join(",")}`);
     r11Check(r11Route.pressedNames.length === 1 && r11Route.pressedNames[0] === firstName, `pressed names ${r11Route.pressedNames.join(",")}`);
@@ -5483,6 +5535,145 @@ export async function run() {
     await page.click("[data-nav-item='board']");
     await page.waitForTimeout(150);
 
+    /* ---- TP-0074 — the two filter-search panels ---------------------------
+       Assignee ranks the actor roster (prefix → contains → subsequence) with the
+       four static values pinned and unfiltered; label ranks the existing labels
+       with `All` pinned and never offers a `· new` row. The panel focuses its
+       search box on open, ↑/↓ moves the highlight, Enter takes it, Esc closes,
+       and a reopened panel is the resting list (acceptance items 3–5). */
+    const openPanel = async (selector) => {
+      const open = await page.evaluate(
+        (sel) => document.querySelector(sel)?.hasAttribute("open") ?? false,
+        selector,
+      );
+      if (!open) {
+        await page.click(`${selector} > summary`);
+        await page.waitForTimeout(120);
+      }
+    };
+
+    // --- assignee: "l" ranks linus (prefix) before elon (contains)
+    await openPanel("[data-filter-assignee]");
+    const assigneeOpened = await readR11();
+    r11Check(
+      await page.evaluate(() => document.activeElement?.hasAttribute?.("data-filter-assignee-search") ?? false),
+      "TP-0074: opening the assignee panel must focus its search box",
+    );
+    r11Check(assigneeOpened.assigneeSearchValue === "", "TP-0074: the assignee search box must open empty");
+    await page.fill("[data-filter-assignee-search]", "l");
+    await page.waitForTimeout(120);
+    const assigneeFiltered = await readR11();
+    r11Check(
+      JSON.stringify(assigneeFiltered.assigneeRows.slice(0, 4)) === JSON.stringify(["all", "me", "human", "agent"]),
+      `TP-0074: the fixed assignee rows must stay pinned first, got ${assigneeFiltered.assigneeRows.join(",")}`,
+    );
+    r11Check(
+      JSON.stringify(assigneeFiltered.assigneeRows.slice(4)) === JSON.stringify(["linus", "elon"]),
+      `TP-0074: "l" must rank linus before elon and match nothing else, got ${assigneeFiltered.assigneeRows.slice(4).join(",")}`,
+    );
+    r11Check(
+      assigneeFiltered.assigneeActiveRows.length === 1 && assigneeFiltered.assigneeActiveRows[0] === "linus",
+      `TP-0074: the first non-pinned match must be highlighted, got ${assigneeFiltered.assigneeActiveRows.join(",")}`,
+    );
+    r11Check(
+      assigneeFiltered.assigneeOptionTexts.linus === "Assignee: linus",
+      `TP-0074: a matched actor row states ${JSON.stringify(assigneeFiltered.assigneeOptionTexts.linus)}`,
+    );
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(80);
+    const assigneeMoved = await readR11();
+    r11Check(
+      JSON.stringify(assigneeMoved.assigneeActiveRows) === JSON.stringify(["elon"]),
+      `TP-0074: ArrowDown must move the highlight to elon, got ${assigneeMoved.assigneeActiveRows.join(",")}`,
+    );
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    const assigneeChosen = await readR11();
+    r11Check(assigneeChosen.assigneeValue === "elon", `TP-0074: Enter wrote ${assigneeChosen.assigneeValue}`);
+    r11Check(
+      assigneeChosen.assigneeText === "Assignee: elon",
+      `TP-0074: the trigger states ${JSON.stringify(assigneeChosen.assigneeText)}`,
+    );
+    r11Check(assigneeChosen.assigneeOpen === false, "TP-0074: Enter must close the panel");
+    r11Check(assigneeChosen.assigneeSearchValue === "", "TP-0074: choosing must clear the query");
+    // Reopen: the resting list is the four fixed rows plus the named value.
+    await openPanel("[data-filter-assignee]");
+    const assigneeReopened = await readR11();
+    r11Check(assigneeReopened.assigneeSearchValue === "", "TP-0074: a reopened panel must start empty");
+    r11Check(
+      JSON.stringify(assigneeReopened.assigneeRows) === JSON.stringify(["all", "me", "human", "agent", "elon"]),
+      `TP-0074: the reopened resting list is ${assigneeReopened.assigneeRows.join(",")}`,
+    );
+    r11Check(assigneeReopened.assigneeActiveRows.length === 0, "TP-0074: a reopened panel must have no highlight");
+    // Esc closes and clears.
+    await page.fill("[data-filter-assignee-search]", "li");
+    await page.waitForTimeout(100);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    r11Check((await readR11()).assigneeOpen === false, "TP-0074: Esc must close the assignee panel");
+    await openPanel("[data-filter-assignee]");
+    r11Check((await readR11()).assigneeSearchValue === "", "TP-0074: Esc must clear the query");
+    // Reset the assignee for the sections after this one.
+    await page.click('[data-assignee-filter-option="all"]');
+    await page.waitForTimeout(150);
+
+    // --- label: "u" ranks ui (prefix) before bug/security (contains); no new row
+    await openPanel("[data-filter-label]");
+    r11Check(
+      await page.evaluate(() => document.activeElement?.hasAttribute?.("data-filter-label-search") ?? false),
+      "TP-0074: opening the label panel must focus its search box",
+    );
+    await page.fill("[data-filter-label-search]", "u");
+    await page.waitForTimeout(120);
+    const labelFiltered = await readR11();
+    r11Check(
+      JSON.stringify(labelFiltered.labelRows) === JSON.stringify(["all", "ui", "bug", "security"]),
+      `TP-0074: label search "u" ranks ${labelFiltered.labelRows.join(",")}`,
+    );
+    r11Check(
+      labelFiltered.labelActiveRows.length === 1 && labelFiltered.labelActiveRows[0] === "ui",
+      `TP-0074: the first non-pinned label match must be highlighted, got ${labelFiltered.labelActiveRows.join(",")}`,
+    );
+    r11Check(labelFiltered.newLabelRows === 0, "TP-0074: the label menu must never offer a new-label row");
+    r11Check(
+      labelFiltered.labelOptionTexts.ui === "Label: ui",
+      `TP-0074: the matched label row states ${JSON.stringify(labelFiltered.labelOptionTexts.ui)}`,
+    );
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(80);
+    r11Check(
+      JSON.stringify((await readR11()).labelActiveRows) === JSON.stringify(["bug"]),
+      "TP-0074: ArrowDown must move the label highlight to bug",
+    );
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    const labelChosen = await readR11();
+    r11Check(labelChosen.labelValue === "bug", `TP-0074: Enter wrote label ${labelChosen.labelValue}`);
+    r11Check(
+      labelChosen.labelText === "Label: bug",
+      `TP-0074: the label trigger states ${JSON.stringify(labelChosen.labelText)}`,
+    );
+    r11Check(labelChosen.labelOpen === false, "TP-0074: Enter must close the label panel");
+    r11Check(labelChosen.labelSearchValue === "", "TP-0074: choosing must clear the label query");
+    // Esc closes and clears; a reopened panel is the full list again.
+    await openPanel("[data-filter-label]");
+    await page.fill("[data-filter-label-search]", "u");
+    await page.waitForTimeout(100);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    r11Check((await readR11()).labelOpen === false, "TP-0074: Esc must close the label panel");
+    await openPanel("[data-filter-label]");
+    const labelReopened = await readR11();
+    r11Check(labelReopened.labelSearchValue === "", "TP-0074: Esc must clear the label query");
+    r11Check(
+      JSON.stringify(labelReopened.labelRows) === JSON.stringify(["all", "bug", "ui", "design", "perf", "security"]),
+      `TP-0074: the reopened label list is ${labelReopened.labelRows.join(",")}`,
+    );
+    // Reset the label and close both panels for the sections after this one.
+    await page.click('[data-filter-label-option][data-label-value="all"]');
+    await page.waitForTimeout(150);
+    await closeFloating();
+    await page.waitForTimeout(120);
 
     // ---- M1 · R12x · B27 — the 「等你回复」queue -------------------------------
     //

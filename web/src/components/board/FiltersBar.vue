@@ -63,9 +63,18 @@
  * (`design/fidelity-r13.md` §2.8) — and R15 ② kept that reading while moving the
  * rows from `<option>`s to menu `button`s, so the roster press and a menu press
  * are still the same write.
+ *
+ * TP-0074 — both panels gain a search row. The row set is
+ * `lib/filter-menu.js`'s: the pinned rows first and unfiltered, then actors (or
+ * labels) ranked by the query. A non-static assignee row's copy is now
+ * `Assignee: <name>`, the same sentence the trigger states, so the control has
+ * one voice. ↑/↓ + Enter + Esc and clear-on-close are the panel's own small
+ * state machine (`onMenu*` below); the query narrows the **menu**, never the
+ * control's value.
  */
-import { computed } from "vue";
+import { computed, nextTick, ref } from "vue";
 
+import { assigneeMenuRows, firstUnpinnedIndex, labelMenuRows, moveActive } from "../../lib/filter-menu.js";
 import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import {
   activeFilterCount,
@@ -109,21 +118,47 @@ const assigneeValue = computed(() => assigneeFilterValue());
 /** The priority control's chosen value, `all` when unset. */
 const priorityValue = computed(() => priorityFilterValue());
 
-/**
- * The assignee rows: the four static ones, plus the roster's given name while it
- * is in force. The row's own copy is the trigger's copy — a static row's
- * sentence, or the bare name for a given one — which is what keeps a `<details>`
- * stating its value exactly as the `<select>` it replaced did (R13 §2.8, R15
- * §2.2).
+/* ------------------------------------------------- TP-0074 · the search menus --
+ * The assignee and label panels gain a search row at the top. Their row set is
+ * `lib/filter-menu.js`'s pure output: the fixed rows stay pinned and unfiltered,
+ * the query ranks the rest with the combobox's own matcher, and the panel clears
+ * its query when it closes (acceptance item 5). Keyboard state is a plain index
+ * over the rendered rows — `-1` means nothing is highlighted, which is the
+ * resting state; a typed query lands on the first non-pinned row so `Enter`
+ * picks the top match.
  */
-const assigneeRows = computed(() => {
-  const rows = ASSIGNEE_STATIC_VALUES.map((value) => ({ value, text: t(`filters.assignee.${value}`) }));
-  if (namedAssignee.value) rows.push({ value: namedAssignee.value, text: namedAssignee.value });
-  return rows;
-});
+const assigneeQuery = ref("");
+const labelQuery = ref("");
+const assigneeActive = ref(-1);
+const labelActive = ref(-1);
+const assigneeSearchEl = ref(null);
+const labelSearchEl = ref(null);
 
-const assigneeSummary = computed(
-  () => assigneeRows.value.find((row) => row.value === assigneeValue.value)?.text ?? t("filters.assignee.all"),
+const assigneeMenu = computed(() =>
+  assigneeMenuRows({
+    staticValues: ASSIGNEE_STATIC_VALUES,
+    actors: board.assignees,
+    named: namedAssignee.value,
+    query: assigneeQuery.value,
+    t,
+  }),
+);
+
+const labelMenu = computed(() =>
+  labelMenuRows({ labels: labelRoster.value, query: labelQuery.value, t }),
+);
+
+/**
+ * The trigger's own sentence, read from the **value**, never from the menu: a
+ * query narrows the menu while the control still holds its choice, so deriving
+ * the trigger from the filtered rows would make typing change what the control
+ * claims to be set to. A static value keeps its `filters.assignee.<value>`
+ * sentence; a given name is `Assignee: <name>` (acceptance item 2).
+ */
+const assigneeSummary = computed(() =>
+  ASSIGNEE_STATIC_VALUES.includes(assigneeValue.value)
+    ? t(`filters.assignee.${assigneeValue.value}`)
+    : t("filters.assigneeOption", assigneeValue.value),
 );
 
 /** `all` plus the five priorities, in the board's own order. */
@@ -152,6 +187,70 @@ function chooseAssignee(value, event) {
 function choosePriority(value, event) {
   dismissMemberFrom(event);
   writePriorityFilter(value);
+}
+
+/* --------------------------------------------------- the two search panels --
+ * Both `<details>` controls share one behaviour, so it is stated once:
+ *   * opening focuses the search box, closing clears the query and the
+ *     highlight — a reopened panel is the resting list again (acceptance 5);
+ *   * a typed query is ranked by `filter-menu.js` and the highlight lands on
+ *     the first non-pinned row, so Enter takes the top match;
+ *   * ↑/↓ wrap over every rendered row (the fixed rows included — they are
+ *     choices too), Enter takes the highlighted one, Esc closes the panel.
+ */
+function onMenuToggle(event, query, active, input) {
+  if (!event.target.open) {
+    query.value = "";
+    active.value = -1;
+    return;
+  }
+  nextTick(() => input.value?.focus());
+}
+
+function onMenuInput(event, query, active, rows) {
+  query.value = event.target.value;
+  active.value = firstUnpinnedIndex(rows.value);
+}
+
+function onMenuKeydown(event, rows, active, choose) {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    active.value = moveActive(active.value, event.key === "ArrowDown" ? 1 : -1, rows.value.length);
+    return;
+  }
+  if (event.key === "Enter") {
+    const row = rows.value[active.value];
+    if (!row) return;
+    event.preventDefault();
+    choose(row.value);
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget?.closest?.("[data-dismiss-on-outside]")?.removeAttribute("open");
+  }
+}
+
+/* The two panels' bindings, kept as named functions so the template stays flat
+ * and the choice still carries its keydown event into `dismissMemberFrom`. */
+function onAssigneeToggle(event) {
+  onMenuToggle(event, assigneeQuery, assigneeActive, assigneeSearchEl);
+}
+function onLabelToggle(event) {
+  onMenuToggle(event, labelQuery, labelActive, labelSearchEl);
+}
+function onAssigneeInput(event) {
+  onMenuInput(event, assigneeQuery, assigneeActive, assigneeMenu);
+}
+function onLabelInput(event) {
+  onMenuInput(event, labelQuery, labelActive, labelMenu);
+}
+function onAssigneeKeydown(event) {
+  onMenuKeydown(event, assigneeMenu, assigneeActive, (value) => chooseAssignee(value, event));
+}
+function onLabelKeydown(event) {
+  onMenuKeydown(event, labelMenu, labelActive, (value) => chooseLabel(value, event));
 }
 
 const labelSummary = computed(() =>
@@ -190,6 +289,12 @@ function clearFilters() {
   writePriorityFilter("all");
   writeStatusFilter([]);
   board.filters.label = "all";
+  // The two search panels are filters too: Clear leaves no typed query behind
+  // (and a closed panel would clear it anyway; this is the same state, stated).
+  assigneeQuery.value = "";
+  labelQuery.value = "";
+  assigneeActive.value = -1;
+  labelActive.value = -1;
   pushToast(t("toast.filtersCleared"), "info");
 }
 
@@ -220,7 +325,7 @@ function chooseLabel(value, event) {
          else — and the label seat the `<select>` needed (`for=` / `id=`) is gone
          with it: the summary states its own accessible name, as the prototype's
          does. -->
-    <details class="dropdown shrink-0" data-filter-assignee :data-filter-assignee-value="assigneeValue" data-dismiss-on-outside>
+    <details class="dropdown shrink-0" data-filter-assignee :data-filter-assignee-value="assigneeValue" data-dismiss-on-outside @toggle="onAssigneeToggle">
       <summary
         class="btn btn-sm td-label-trigger cursor-pointer list-none [&::-webkit-details-marker]:hidden"
         role="button"
@@ -239,12 +344,33 @@ function chooseLabel(value, event) {
            most one given name exists, and every row carries
            `[data-assignee-filter-option]` (its own value) — not B22's
            `[data-assignee-option]`, whose document-wide delegate would otherwise
-           answer it (`design/fidelity-r13.md` §2.8/§2.9, R15 §2.2). -->
+           answer it (`design/fidelity-r13.md` §2.8/§2.9, R15 §2.2).
+
+           TP-0074 — the first `<li>` is the search box, and `assigneeMenu`
+           adds ranked actor rows only while a query is typed. The four fixed
+           rows (plus the named one) are pinned first and never filtered, and
+           `[data-filter-active]` is the keyboard highlight (all rows carry it,
+           so the hook set stays identical). -->
       <ul class="td-details-menu menu">
-        <li v-for="row in assigneeRows" :key="row.value">
+        <li class="td-menu-search">
+          <input
+            ref="assigneeSearchEl"
+            type="search"
+            class="input input-sm w-full"
+            data-filter-assignee-search
+            autocomplete="off"
+            :value="assigneeQuery"
+            :placeholder="$t('filters.assigneeSearch')"
+            :aria-label="$t('filters.assigneeSearch')"
+            @input="onAssigneeInput"
+            @keydown="onAssigneeKeydown"
+          />
+        </li>
+        <li v-for="(row, index) in assigneeMenu" :key="row.value">
           <button
             type="button"
             :data-assignee-filter-option="row.value"
+            :data-filter-active="index === assigneeActive ? 'true' : 'false'"
             :aria-current="row.value === assigneeValue ? 'true' : 'false'"
             @click="chooseAssignee(row.value, $event)"
           >{{ row.text }}</button>
@@ -349,7 +475,7 @@ function chooseLabel(value, event) {
          a `<select>` shows its own. It also takes the light-dismiss attribute,
          so the one document-level rule covers it exactly as it covers the
          project switcher (R9 ①/② are the same rule — §2.1/§2.2). -->
-    <details class="dropdown shrink-0" data-filter-label :data-filter-label-value="board.filters.label" data-dismiss-on-outside>
+    <details class="dropdown shrink-0" data-filter-label :data-filter-label-value="board.filters.label" data-dismiss-on-outside @toggle="onLabelToggle">
       <summary
         class="btn btn-sm td-label-trigger cursor-pointer list-none [&::-webkit-details-marker]:hidden"
         role="button"
@@ -361,16 +487,35 @@ function chooseLabel(value, event) {
           <path d="M6 9.5 12 15.5 18 9.5" />
         </svg>
       </summary>
+      <!-- TP-0074 — the label menu gains the same search row. Its rows are the
+           existing labels only (plus the pinned `All`), so there is no `· new`
+           row to add: this control filters, it never manages the dictionary
+           (acceptance item 4). Every row carries `[data-filter-active]`, which
+           keeps the identical-hookset rule true. -->
       <ul class="td-details-menu menu">
-        <li>
-          <button type="button" data-filter-label-option data-label-value="all" :aria-current="board.filters.label === 'all' ? 'true' : 'false'" @click="chooseLabel('all', $event)">
-            {{ $t("filters.label.all") }}
-          </button>
+        <li class="td-menu-search">
+          <input
+            ref="labelSearchEl"
+            type="search"
+            class="input input-sm w-full"
+            data-filter-label-search
+            autocomplete="off"
+            :value="labelQuery"
+            :placeholder="$t('filters.labelSearch')"
+            :aria-label="$t('filters.labelSearch')"
+            @input="onLabelInput"
+            @keydown="onLabelKeydown"
+          />
         </li>
-        <li v-for="label in labelRoster" :key="label">
-          <button type="button" data-filter-label-option :data-label-value="label" :aria-current="board.filters.label === label ? 'true' : 'false'" @click="chooseLabel(label, $event)">
-            {{ $t("filters.labelOption", label) }}
-          </button>
+        <li v-for="(row, index) in labelMenu" :key="row.value">
+          <button
+            type="button"
+            data-filter-label-option
+            :data-label-value="row.value"
+            :data-filter-active="index === labelActive ? 'true' : 'false'"
+            :aria-current="row.value === board.filters.label ? 'true' : 'false'"
+            @click="chooseLabel(row.value, $event)"
+          >{{ row.text }}</button>
         </li>
       </ul>
     </details>

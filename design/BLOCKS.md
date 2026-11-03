@@ -5,9 +5,10 @@ Tailwind class names are never part of the contract, and no anchor is positional
 
 Counts in the current build, measured in the live DOM: **7 columns · 18 cards ·
 18 detail templates** (`[data-slot]`: 18 description · 18 activity · 16 comments ·
-15 agent-session · 11 attachments · 9 relations) · **626 `data-i18n*` hooks** in the
-shipped document (522 `data-i18n` plus 104 `placeholder` / `aria-label` / `title`
-variants) · **282 catalogue keys, `en` and `zh` in exact parity.**
+15 agent-session · 11 attachments · 9 relations) · **842 `data-i18n*` hooks** in the
+shipped document (540 `data-i18n`, 188 `data-i18n-arg` and 114 `aria-label` /
+`placeholder` / `title` variants) · **292 catalogue keys, `en` and `zh` in exact
+parity.**
 
 **"35 blocks" means 35 *contract entries*, not 35 DOM blocks.** The DOM block
 inventory is **B01–B25** (25 entries; B20/B21 are retired and kept only as
@@ -92,7 +93,7 @@ label selector opens (one of the two is open at a time).
 | Root | `aside[data-sidebar]` |
 | Nav | `[data-nav]` → `[data-nav-item="board" \| "list" \| "activity" \| "waiting"]` (`aria-current="page"`, exactly one at a time, and the scope is `[data-nav]` — the project rows below carry the same attribute for the current project) |
 | Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]`; each item carries `[data-order-score]` + `[data-order-rank]` (see below) |
-| Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]`; each name in the row is a **`[data-assignee-item]`** holding exactly one `[data-agent-assignee]` **button** (R11 — see below; R13 adds the item and the width-neutral selected capsule) |
+| Agents | `[data-agents-presence]` → **one row per agent** (TP-0074): each row carries `[data-agent-platform="claude\|openclaw\|codex\|pi"]` (repeated per agent) + exactly one `[data-agent-text]` + one `[data-presence="running\|idle"]`; the row's name is a **`[data-assignee-item]`** holding exactly one `[data-agent-assignee]` **button** (R11 — see below; R13 adds the item and the width-neutral selected capsule) |
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
 | Footer controls | `[data-access-status]` — **one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px** (R7, revised 2026-10-12 21:19): theme · language · settings. Each cell is a `[data-access-cell]` block button (`.td-access-cell`); in the row a vertical hairline on its **inline start** separates it from its neighbour (the first cell carries none), and in the stack a horizontal hairline on its **block start** separates it from the cell above (the first row carries none) |
 
@@ -156,6 +157,16 @@ The R11 face is otherwise unchanged — no shell, no border, no padding at rest 
 button takes its `:focus-visible` ring and answers `Enter`/`Space` by being a real button. In
 the ≤1023px rail the whole `.td-agent-text` span is hidden, the items go with it, and that is
 the round's narrow-tier contract (measured at 980 / 760 / 430: not visible).
+
+**TP-0074 — one agent per row.** The roster used to group a platform's agents into one row
+and join their names with commas (`[claude] jobs, linus, simons`). Every agent is now its own
+row: `[data-agent-row]` repeats the platform (and its badge), `[data-agent-text]` holds exactly
+one `[data-assignee-item]` / `[data-agent-assignee]`, and `[data-presence]` is that agent's own
+state. The row's `title` is `<platform> · <name>`. Rows stay grouped by platform in
+first-appearance order (a stable sort of the roster), and `:key` is the name, never the
+platform — the same platform now legitimately appears on several rows. The comma separator and
+its line-wrap rules leave with the grouping; the item itself is still `nowrap` so a name is
+never broken.
 
 **R12x ① — all four destinations route, and the count rides the one that has one.** Until
 this round the nav's click handler answered `activity` and `waiting` with a revision toast
@@ -281,9 +292,9 @@ project, so every row is filled at all times.
 |---|---|
 | Root | `section#td-filters[data-filters]` |
 | Controls | `[data-filter-assignee]` (all/me/human/agent + a given name on demand, R13 — the removal path for the name is this control's own `all` row) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-status]` (all + the seven statuses, R11) · `[data-filter-label]` (all + 16 labels) — **all four are `dropdown` panels, R15 ②** |
-| Assignee selector | `[data-filter-assignee]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-assignee-value`, the trigger states it via `[data-filter-assignee-text]`, and the menu holds `[data-assignee-filter-option]` × 4 (all/me/human/agent) plus at most one given name (R13), `aria-current` on the chosen one |
+| Assignee selector | `[data-filter-assignee]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-assignee-value`, the trigger states it via `[data-filter-assignee-text]`, and the menu holds `[data-assignee-filter-option]` × 4 (all/me/human/agent) plus at most one given name (R13), `aria-current` on the chosen one. TP-0074 adds `[data-filter-assignee-search]` as the menu's first row: a typed query ranks the actor roster into further rows, while the four fixed rows stay pinned and unfiltered; a given name's copy is `Assignee: <name>` |
 | Priority selector | `[data-filter-priority]` on its own `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-priority-value`, the trigger states it via `[data-filter-priority-text]`, and the menu holds `[data-filter-priority-option]` × 6 (all + the five priorities), each with `data-priority-value` and `data-priority` (the dot's own binding), `aria-current` on the chosen one |
-| Label selector | `[data-filter-label]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-label-value`, the trigger states it via `[data-filter-label-summary]`, and the menu holds `[data-filter-label-option]` × 17, each with `data-label-value` and `aria-current` on the chosen one |
+| Label selector | `[data-filter-label]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-label-value`, the trigger states it via `[data-filter-label-summary]`, and the menu holds `[data-filter-label-option]` × 17, each with `data-label-value` and `aria-current` on the chosen one. TP-0074 adds `[data-filter-label-search]` as the menu's first row: a typed query ranks the existing labels, `All` stays pinned, and there is **no** `· new` row — this control filters, it never manages |
 | Status selector | `[data-filter-status]` on its own `<details class="dropdown" data-dismiss-on-outside>`; the chosen set lives on `data-filter-status-value` (`all`, or a comma-joined subset of the seven keys), the trigger states it via `[data-filter-status-summary]` → `[data-filter-status-text]`, and the menu holds `[data-filter-status-option]` × 8, each with `data-status-value` and its own `aria-pressed` (R11) |
 | Actions | `[data-filter-clear]` · `[data-filter-count]` (`aria-live="polite"`) |
 
@@ -369,6 +380,19 @@ bare attribute, the name in `data-assignee-value`), and the roster control binds
 name would be answered by the wrong control instead of by nothing. R13 adds no seat to B22's
 (measured 14 before and after, all of them inside `[data-assignee-menu]`).
 `design/fidelity-r13.md` §2.9 and §8 R12 carry the rule for later rounds.
+
+**TP-0074 — the assignee and label menus take a query.** Each menu leads with a search `<li>`
+(`.td-menu-search`), and the rows below it are the fixed ones (pinned, in their own order, never
+filtered) followed by matches ranked **prefix → contains → subsequence**, case-insensitively —
+`combo.js`'s matcher, the same one the drawer's comboboxes use. The assignee menu draws its
+matches from the board's actor roster; the label menu draws them from the board's existing
+labels and never offers a new one. With an empty query the assignee menu is the resting set
+(the four fixed values plus the one named value in force) and the label menu is `All` plus every
+label, so the resting counts above still hold. `[data-filter-active]` is the keyboard highlight:
+every selectable row carries it (`"true"` / `"false"`), and ↑/↓ move it with wraparound, Enter
+takes the highlighted row, Esc closes. Opening focuses the box; closing clears the query and the
+highlight, so a reopened menu is the resting list. `R15 §8.1 U6`'s "no arrow-key navigation" is
+superseded **for these two menus only** (recorded in `design/fidelity-r15.md`).
 
 **R13 — the `✕` removes the assignee condition alone.** No view switch, no status change, no
 priority/label/search change, no menu open or close, no toast; the event is stopped at the

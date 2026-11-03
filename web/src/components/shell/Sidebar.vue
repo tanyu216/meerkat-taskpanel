@@ -76,6 +76,13 @@ const projects = computed(() =>
 
 // Presence is derived from the board's own data: an agent is "running" while it
 // holds a task in progress or review, "idle" otherwise.
+//
+// One row per **agent**, each wearing its platform badge — the acceptance's
+// first item. The roster used to be grouped into one row per platform and its
+// names joined by commas; a row now names exactly one agent, so the badge
+// repeats per row and presence is the agent's own. Rows stay grouped by
+// platform in first-appearance order (the reading the grouped rows had), and
+// `Array.prototype.sort` is stable, so roster order survives inside a platform.
 const agents = computed(() => {
   const busy = new Set(
     board.tasks
@@ -83,7 +90,8 @@ const agents = computed(() => {
       .map((task) => task.assignee?.display_name)
       .filter(Boolean),
   );
-  const byPlatform = new Map();
+  const rows = [];
+  const platformRank = new Map();
   for (const entry of board.assignees) {
     // An **agent** is anyone the board has not recorded as the human, and since
     // 0023 the kind a roster entry shows is aggregated from the references that
@@ -96,12 +104,14 @@ const agents = computed(() => {
     // (`platformForActor`), then to `claude` — the historical fallback, kept so
     // a roster with no platform data still renders a row.
     const platform = platformForActor(entry.display_name, entry.kind) ?? "claude";
-    if (!byPlatform.has(platform)) byPlatform.set(platform, { platform, handles: [], presence: "idle" });
-    const row = byPlatform.get(platform);
-    row.handles.push(entry.display_name);
-    if (busy.has(entry.display_name)) row.presence = "running";
+    if (!platformRank.has(platform)) platformRank.set(platform, platformRank.size);
+    rows.push({
+      name: entry.display_name,
+      platform,
+      presence: busy.has(entry.display_name) ? "running" : "idle",
+    });
   }
-  return [...byPlatform.values()];
+  return rows.sort((a, b) => platformRank.get(a.platform) - platformRank.get(b.platform));
 });
 
 // The nav items that are real *views*. All four route now: R12x closed the last
@@ -271,22 +281,23 @@ function onAssignee(name) {
       <div data-agents-presence>
         <div
           v-for="agent in agents"
-          :key="agent.platform"
+          :key="agent.name"
           class="flex items-center gap-2 py-0.5"
           :data-agent-row="agent.platform"
           :data-agent-brand="agent.platform"
+          :title="`${agent.platform} · ${agent.name}`"
         >
           <!-- The platform badge: a tinted pill in the platform's official hue,
                with a dot so the row keeps its identity even when two brands
-               share a near-black or near-white mark (cursor / grok). The rail
+               share a near-black or near-white mark (cursor / grok). It repeats
+               on every agent row now, because every row is one agent. The rail
                hides it at ≤1023px by its `data-agent-platform` hook. -->
           <span class="td-platform-badge" :data-agent-platform="agent.platform">
             <span class="td-platform-dot" aria-hidden="true"></span>
             <span class="td-platform-name">{{ agent.platform }}</span>
           </span>
-          <!-- R11 ② · R13 — the row's text is the names themselves, each a real
-               `<button>` inside its own `[data-assignee-item]` wrapper: the row
-               still reads as one sentence. The wrapper is the capsule's shell
+          <!-- R11 ② · R13 — a name is a real `<button>` inside its own
+               `[data-assignee-item]` wrapper. The wrapper is the capsule's shell
                (never the button), so the name's face stays the text it replaces.
                The host drops the project row's `overflow-hidden`/`text-ellipsis`
                on purpose — the capsule is **width-neutral** (6px padding
@@ -294,43 +305,29 @@ function onAssignee(name) {
                the row's edge, and a clipped host would shear it off (R13 §8 U-6,
                corrected here). The host's own `min-width` / `white-space` are
                stated in the stylesheet with that correction (`app.css`,
-               `[data-agent-row] [data-agent-text]`): an unclipped flex item
-               falls back to its min-content width, so without them a roster
-               wider than the 248px rail escaped the rail and scrolled it
-               (T-20261016-130046). No `whitespace-nowrap` utility is left here —
-               the rule owns the wrap, and a utility the rule contradicts is a
-               trap.
+               `[data-agent-row] [data-agent-text]`).
 
-               T-20261017-021412 ② — the comma is bound to the name it follows,
-               not a free text node between names. A separator that lives
-               *between* two items is its own box for line breaking, so a greedy
-               wrap could put `", assistant"` alone at the head of a line — the
-               defect `text-wrap: balance` used to mask and could not promise
-               away. Here the comma is the last child of the item (and the item
-               is `white-space: nowrap` in the stylesheet), while the collapsible
-               space that gives the engine a break opportunity is rendered
-               *between* items: a break can only land after the comma, never
-               before it. -->
+               One agent per row (TP-0074): the row holds exactly one item and
+               one name button — the comma separator that joined the platform's
+               names is gone with the grouping, and presence is this agent's
+               own. `:key` is the name, not the platform, because a platform now
+               legitimately appears on several rows. -->
           <span class="td-mono flex-1" data-side-name data-agent-text>
-            <template v-for="(handle, index) in agent.handles" :key="handle">
-              <span
-                class="td-assignee-item"
-                :data-assignee-item="handle"
-                :data-assignee-active="assigneeFilterValue() === handle ? 'true' : 'false'"
-              >
-                <button
-                  type="button"
-                  class="td-agent-assignee td-mono"
-                  :data-agent-assignee="handle"
-                  :data-assignee="handle"
-                  data-assignee-kind="agent"
-                  :aria-pressed="assigneeFilterValue() === handle ? 'true' : 'false'"
-                  @click="onAssignee(handle)"
-                >{{ handle }}</button>
-                <span v-if="index < agent.handles.length - 1">,</span>
-              </span>
-              <template v-if="index < agent.handles.length - 1">{{ " " }}</template>
-            </template>
+            <span
+              class="td-assignee-item"
+              :data-assignee-item="agent.name"
+              :data-assignee-active="assigneeFilterValue() === agent.name ? 'true' : 'false'"
+            >
+              <button
+                type="button"
+                class="td-agent-assignee td-mono"
+                :data-agent-assignee="agent.name"
+                :data-assignee="agent.name"
+                data-assignee-kind="agent"
+                :aria-pressed="assigneeFilterValue() === agent.name ? 'true' : 'false'"
+                @click="onAssignee(agent.name)"
+              >{{ agent.name }}</button>
+            </span>
           </span>
           <span
             class="size-1.5 rounded-[999px] bg-(--brand-text-4) ms-auto data-[presence=running]:bg-success data-[presence=idle]:bg-(--brand-text-4)"
