@@ -61,7 +61,7 @@ error · `3` `export md --check` found stale cards.
 | `issue wait <ref> [--question <comment-id>] [--timeout <ms>] [--interval <ms>] [--heartbeat <sec>]` | See [cli/issue.md](cli/issue.md). |
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--reporter-id <id>] [--force-create]` | See [cli/issue.md](cli/issue.md). |
 | `issue archive <ref> [--days <n>]` | See [cli/issue.md](cli/issue.md). |
-| `issue meta <ref> --meta <k>=<v>…` | See [cli/issue.md](cli/issue.md). |
+| `issue meta <ref> --meta <k>=<v>…` | Read-modify-write merge; the global `--if-version` is forwarded and refuses a stale merge with `VERSION_CONFLICT`. See [cli/issue.md](cli/issue.md). |
 | `issue deliver <ref> --report-file <file\|-> [--to done] [--no-report --reason "<why>"] [--seg <seg>]` | See [cli/issue.md](cli/issue.md). |
 | `issue reconcile [--dry-run] [--workflow] [--assignee <agent>] [--reviewer <agent>] [--review-aging-ms <n>] [--rework-max-rounds <n>] [--max-actions <n>] [--board-limit <n>]` | See [cli/issue.md](cli/issue.md). `--reviewer` is a deprecated alias. |
 #### `issue create`
