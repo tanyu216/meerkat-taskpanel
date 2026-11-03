@@ -91,12 +91,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The incremental scan diffs the last 24 hours of history.
           fetch-depth: 0
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -174,7 +174,7 @@ jobs:
       - name: osv-scanner (full)
         if: steps.detect.outputs.scan == 'true' && steps.mode.outputs.mode == 'full'
         continue-on-error: true
-        uses: google/osv-scanner-action/osv-scanner-action@e69cc6c86b31f1e7e23935bbe7031b50e51082de # v2.0.2
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
         with:
           scan-args: |-
             --recursive
@@ -185,7 +185,7 @@ jobs:
       - name: osv-scanner (incremental)
         if: steps.detect.outputs.scan == 'true' && steps.mode.outputs.mode != 'full' && steps.targets.outputs.changed == 'true'
         continue-on-error: true
-        uses: google/osv-scanner-action/osv-scanner-action@e69cc6c86b31f1e7e23935bbe7031b50e51082de # v2.0.2
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
         with:
           scan-args: |-
             --format=json
@@ -223,7 +223,7 @@ jobs:
 
       - name: Upload the reports
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dependency-scan-reports
           path: |
@@ -237,7 +237,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # History matters: a secret deleted from HEAD is still leaked.
           fetch-depth: 0
@@ -265,7 +265,7 @@ jobs:
 
       - name: Upload the secret report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: secret-scan-report
           path: gitleaks-report.json
@@ -280,7 +280,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
@@ -291,14 +291,14 @@ jobs:
         if: ${{ !(github.event.repository.private == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) }}
         run: echo "::notice::CodeQL analysis is skipped here — a fork pull request or a private mirror has no code-scanning upload permission"
 
-      - uses: github/codeql-action/init@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v3
         if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           languages: javascript-typescript
           queries: security-extended
           build-mode: none
 
-      - uses: github/codeql-action/analyze@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v3
         if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           category: /language:javascript-typescript
@@ -310,7 +310,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # syft scans the working tree, not history.
           fetch-depth: 1
@@ -323,7 +323,7 @@ jobs:
 
       - name: Generate the SBOM (syft, SPDX JSON)
         if: github.event_name != 'pull_request'
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: .
           format: spdx-json
