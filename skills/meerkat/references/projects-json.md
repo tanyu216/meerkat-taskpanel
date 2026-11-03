@@ -49,9 +49,16 @@ A single JSON object with a `projects` array:
 | `project` | string | **Required.** The board project identity — its **id** (preferred) or its name. |
 | `local_path` | string | **Optional.** The project's own directory: absolute, existing, a directory. |
 | `run_dir` | string | **Optional.** The launch directory a worker starts in. Checked the same way; consulted only when `local_path` is not given. |
-| `base_ref` | string | **Optional, loop-only.** The ref a card's worktree branches from. Default: the project directory's current branch. The board never reads it. |
-| `merge_ref` | string | **Optional, loop-only.** The branch acceptance must merge into. It must be the branch the project directory has checked out, or landing is refused. Default: whatever is checked out. |
+| `base_ref` | string | **Optional, loop-only.** The ref a card's worktree branches from. Default: the project directory's current branch. The board never reads it. Write it with `project map set <id> --base-ref <ref>`; it must resolve as a commit-ish in the registered directory. |
+| `merge_ref` | string | **Optional, loop-only.** The branch acceptance must merge into. It must be the branch the project directory has checked out, or landing is refused. Default: whatever is checked out. Write it with `project map set <id> --merge-ref <ref>`; it must be a **local branch**. |
 | *anything else* | *any* | Copied through unchanged and never interpreted; read it with `project map show`. |
+
+`base_ref` and `merge_ref` are **project rules**, not host directory facts. `project map set`
+probes them in the registered directory before writing (`PROJECT_REF_UNRESOLVED` on a bad
+value) and refuses `--no-dir` while a rule is declared, so a rule can never be left pointing
+at nothing. A declared `merge_ref` that is not the checked-out branch is written with a
+warning — landing will refuse until the project directory is on that branch. Clear a rule
+with `--no-base-ref` / `--no-merge-ref`; never edit the file by hand.
 
 ```text
 dir = local_path ?? run_dir

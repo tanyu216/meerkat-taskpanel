@@ -44,8 +44,8 @@ will see.
 `main` is protected and is the **release line**; `dev` is the only development branch and
 branches come off it. The flow is:
 
-1. Branch off `dev` (a parallel task gets a worktree: `git worktree add .worktrees/<slug>
-   -b <branch> dev`).
+1. Branch off `dev` (a parallel task gets a worktree: `taskctl worktree create <slug> --base dev`,
+   or the low-level `git worktree add .worktrees/<slug> -b <branch> dev`).
 2. Push the branch and **open a pull request into `dev`**.
 3. Wait for CI. `pull_request` runs `check.yml` (the static gates, the Node 22/24 matrix,
    the container job and the four security jobs) plus the separate `web-dom.yml` browser

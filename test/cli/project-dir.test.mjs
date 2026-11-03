@@ -16,6 +16,7 @@
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -49,6 +50,23 @@ function makeTarget() {
   const dir = join(makeTempDir("meerkat-taskpanel-target-"), "checkout");
   mkdirSync(dir);
   return dir;
+}
+
+/** A real git checkout on `dev` with one commit, plus a helper to run git. */
+function makeGitRepo() {
+  const dir = makeTarget();
+  const git = (...args) => {
+    const result = spawnSync("git", ["-C", dir, ...args], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr || `git ${args.join(" ")} failed`);
+    return String(result.stdout ?? "").trim();
+  };
+  git("init", "-q", "-b", "dev");
+  git("config", "user.email", "test@example.com");
+  git("config", "user.name", "Test");
+  writeFileSync(join(dir, "README.md"), "base\n");
+  git("add", "README.md");
+  git("commit", "-q", "-m", "base");
+  return { dir, git };
 }
 
 /** A closed board URL: the local commands must never need one. */
@@ -284,6 +302,93 @@ describe("cli/project map — the local writer", () => {
     assert.equal(dataOf(result).dir, target);
   });
 
+  it("writes base_ref and merge_ref with the directory in one call, and validates both", () => {
+    const { dir, git } = makeGitRepo();
+    git("tag", "v1");
+    const { env, file } = emptyConfig();
+
+    const created = runCli(
+      ["project", "map", "set", "demo", "--local-path", dir, "--base-ref", "dev", "--merge-ref", "dev", "--json"],
+      { env },
+    );
+    assert.equal(created.status, 0, created.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), {
+      projects: [{ project: "demo", local_path: dir, base_ref: "dev", merge_ref: "dev" }],
+    });
+    assert.equal(dataOf(created).entry.base_ref, "dev");
+
+    // A tag is a valid base (a commit-ish) but never a merge target (a branch).
+    const tagBase = runCli(["project", "map", "set", "demo", "--base-ref", "v1", "--json"], { env });
+    assert.equal(tagBase.status, 0, tagBase.stderr);
+    const tagMerge = runCli(["project", "map", "set", "demo", "--merge-ref", "v1", "--json"], { env });
+    assert.equal(tagMerge.status, 1);
+    assert.equal(errorOf(tagMerge).code, "PROJECT_REF_UNRESOLVED");
+
+    const missing = runCli(["project", "map", "set", "demo", "--base-ref", "nope", "--json"], { env });
+    assert.equal(missing.status, 1);
+    assert.equal(errorOf(missing).code, "PROJECT_REF_UNRESOLVED");
+  });
+
+  it("warns but writes when merge_ref is not the checked-out branch", () => {
+    const { dir, git } = makeGitRepo();
+    git("branch", "feature");
+    git("checkout", "-q", "feature");
+    const { env, file } = writeMap([{ project: "demo", local_path: dir }]);
+
+    const result = runCli(["project", "map", "set", "demo", "--merge-ref", "dev", "--json"], { env });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /landing will refuse/);
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).projects[0].merge_ref, "dev");
+  });
+
+  it("refuses a ref when the entry has no directory to validate against", () => {
+    const { env } = writeMap([{ project: "demo" }]);
+    const result = runCli(["project", "map", "set", "demo", "--merge-ref", "dev", "--json"], { env });
+    assert.equal(result.status, 1);
+    assert.equal(errorOf(result).code, "PROJECT_DIR_REQUIRED");
+  });
+
+  it("clears a ref even when the entry has no directory", () => {
+    const { env, file } = writeMap([{ project: "demo", base_ref: "dev", merge_ref: "dev" }]);
+    const result = runCli(
+      ["project", "map", "set", "demo", "--no-base-ref", "--no-merge-ref", "--json"],
+      { env },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).projects[0], { project: "demo" });
+  });
+
+  it("refuses --no-dir while refs are declared, and clears a single ref explicitly", () => {
+    const { dir } = makeGitRepo();
+    const { env, file } = writeMap([
+      { project: "demo", local_path: dir, base_ref: "dev", merge_ref: "dev" },
+    ]);
+
+    const refused = runCli(["project", "map", "set", "demo", "--no-dir", "--json"], { env });
+    assert.equal(refused.status, 2);
+    assert.equal(errorOf(refused).code, "CLI_USAGE");
+    assert.match(errorOf(refused).hint.fix, /--no-base-ref --no-merge-ref/);
+
+    const cleared = runCli(["project", "map", "set", "demo", "--no-base-ref", "--json"], { env });
+    assert.equal(cleared.status, 0, cleared.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).projects[0], {
+      project: "demo",
+      local_path: dir,
+      merge_ref: "dev",
+    });
+  });
+
+  it("shows both refs", () => {
+    const { dir } = makeGitRepo();
+    const { env } = writeMap([
+      { project: "demo", local_path: dir, base_ref: "dev", merge_ref: "dev" },
+    ]);
+    const result = runCli(["project", "map", "show", "demo", "--json"], { env });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(dataOf(result).entry.base_ref, "dev");
+    assert.equal(dataOf(result).entry.merge_ref, "dev");
+  });
+
   it("refuses an absent entry for show and remove", () => {
     const { env } = writeMap([{ project: "demo" }]);
     for (const action of ["show", "remove"]) {
@@ -330,8 +435,12 @@ describe("cli/project map — the local writer", () => {
       ["project", "map", "set", "demo", "--json"],
       ["project", "map", "set", "demo", "--local-path", target, "--run-dir", target, "--json"],
       ["project", "map", "set", "demo", "--local-path", target, "--no-dir", "--json"],
+      ["project", "map", "set", "demo", "--local-path", target, "--base-ref", "dev", "--no-base-ref", "--json"],
+      ["project", "map", "set", "demo", "--no-dir", "--base-ref", "dev", "--json"],
       ["project", "map", "list", "demo", "--json"],
       ["project", "map", "list", "--no-dir", "--json"],
+      ["project", "map", "list", "--base-ref", "dev", "--json"],
+      ["project", "map", "show", "demo", "--merge-ref", "dev", "--json"],
       ["project", "map", "remove", "demo", "--local-path", target, "--json"],
     ];
     for (const args of cases) {

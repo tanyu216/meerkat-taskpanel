@@ -249,7 +249,9 @@ The two bundle agent kinds write more than the skill. **Claude** additionally wr
 `~/.claude/hooks/meerkat-taskpanel-session-start.sh`, `~/.claude/commands/{board,claim,deliver}.md`
 and `~/.claude/bin/taskctl`. **Codex** writes `~/.codex/AGENTS.md` (a claim-first snippet),
 the scheduling units under `~/.codex/scheduling/`, and `~/.codex/bin/taskctl`.
-(Their shims are the same file described above — every agent kind gets one.)
+(Their shims are the same file described above — every agent kind gets one.) The bundle writes
+only Claude's `SessionStart` hook; setup-meerkat's optional worktree round may merge
+`PreToolUse` guard entries (and a Codex `hooks.json` entry) afterward.
 
 The kind is not decoration. It is what the board reads to tell a person from an agent:
 a human's comment resumes an `awaiting` card (any kind), and a `decision` / `confirm` /
@@ -953,8 +955,9 @@ codex plugin list
 Step 1 writes, merge-style and idempotently: the skill, a claim-first snippet appended to
 `~/.codex/AGENTS.md` (existing content is preserved), the `taskctl` shim at
 `~/.codex/bin/taskctl`, and the scheduling set (`~/.codex/scheduling/*`). The per-kind
-config is separate: `<program root>/.env.codex`. Codex has no hooks, so scheduling is the auto-claim
-mechanism — load one of the units (see
+config is separate: `<program root>/.env.codex`. The bundle writes no Codex hooks (Codex 0.161+
+supports them; setup-meerkat's optional worktree round may add a guard adapter), so scheduling
+is the auto-claim mechanism — load one of the units (see
 [Scheduling units](#scheduling-units-claude-codex-pi)). `--no-automation` (or its environment
 form `MEERKAT_TASKPANEL_NO_AUTOMATION=1`) skips the scheduling set.
 
@@ -990,7 +993,9 @@ The root `package.json` carries Pi's manifest, so no copy of the skill tree is m
 `pi.skills` is the skills directory, and `pi.extensions` is the module that re-registers
 the same directory at runtime through Pi's `resources_discover` event. Those are two of the
 four resource fields Pi reads from a package's `pi` object (`extensions`, `skills`,
-`prompts`, `themes`), which is why the board needs no Pi bundle directory of its own.
+`prompts`, `themes`), which is why the board needs no Pi bundle directory of its own. The
+same extension forwards `tool_call` to `taskctl worktree guard --runtime pi`; a project opts
+into the guard with `docs/agents/worktrees.md` (setup-meerkat's optional worktree round).
 
 Pi has no timer of its own, so step 1 also drops the units under
 `~/.agents/scheduling/`; load one of them to run the supervisor (see
@@ -1087,7 +1092,8 @@ It installs into a throwaway prefix (never `$HOME`), replaces the generated `tas
 shim with a canned one — it records every argv — then drives the generated SessionStart
 hook, asserting the **actual invocation** (exit code + argv + output), not just "it ran".
 This is the step that covers the claim path in CI, where the real CLIs are absent. The full
-matrix and the per-agent-kind coverage boundary (Pi has no hook) are in
+matrix and the per-agent-kind coverage boundary (the bundle writes no hook for Pi; setup-meerkat's
+optional worktree round can install a `tool_call` extension) are in
 [`scheduling.md`](../scheduling.md#verifying-the-generated-hook).
 
 ## Isolated installs and testing

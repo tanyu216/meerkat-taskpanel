@@ -26,6 +26,7 @@ import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { MEERKAT_PROCESS_DIR, taskDirName } from "../foundation/card-brief.mjs";
+import { probeGitRef, readCurrentBranch } from "../foundation/git-ref.mjs";
 import { QUEUE_FILES } from "../foundation/loop-state.mjs";
 import { readJsonFile, writeJsonFile } from "./queue.mjs";
 
@@ -132,23 +133,20 @@ export function workspacePath(projectDir, identifier, round) {
  * @param {{projectDir: string, run?: Function}} input
  */
 export function currentBranch({ projectDir, run = runGit }) {
-  const result = run("git", ["-C", String(projectDir), "rev-parse", "--abbrev-ref", "HEAD"]);
-  if (result === null || result.status !== 0) {
-    return {
-      ok: false,
-      code: WORKSPACE_CODES.BASE_UNRESOLVED,
-      message: `cannot read the current branch of ${projectDir}`,
-    };
-  }
-  const ref = String(result.stdout ?? "").trim();
-  if (ref === "" || ref === "HEAD") {
+  const result = readCurrentBranch({ projectDir, run });
+  if (result.ok === true) return result;
+  if (result.reason === "detached") {
     return {
       ok: false,
       code: WORKSPACE_CODES.DETACHED_HEAD,
       message: `${projectDir} is on a detached HEAD; check out a branch first`,
     };
   }
-  return { ok: true, ref };
+  return {
+    ok: false,
+    code: WORKSPACE_CODES.BASE_UNRESOLVED,
+    message: `cannot read the current branch of ${projectDir}`,
+  };
 }
 
 /**
@@ -165,34 +163,26 @@ export function currentBranch({ projectDir, run = runGit }) {
  */
 export function probeRef({ projectDir, ref, run = runGit }) {
   const value = typeof ref === "string" ? ref.trim() : "";
-  if (value === "") {
+  const probe = probeGitRef({ projectDir, ref: value, run });
+  if (probe.ok === true) return probe;
+  if (probe.reason === "empty") {
     return {
       ok: false,
       code: WORKSPACE_CODES.BASE_UNRESOLVED,
       message: "the base ref is empty",
     };
   }
-  const result = run("git", [
-    "-C",
-    String(projectDir),
-    "rev-parse",
-    "--verify",
-    "--quiet",
-    `${value}^{commit}`,
-  ]);
-  if (result === null) {
+  if (probe.reason === "unavailable") {
     return {
       ok: false,
       code: WORKSPACE_CODES.BASE_UNRESOLVED,
       message: `git did not start while probing ${value}`,
     };
   }
-  if (result.status === 0) return { ok: true, exists: true };
-  if (result.status === 1) return { ok: true, exists: false };
   return {
     ok: false,
     code: WORKSPACE_CODES.BASE_UNRESOLVED,
-    message: `git could not resolve ${value}: ${String(result.stderr ?? "").trim()}`,
+    message: `git could not resolve ${value}: ${probe.stderr ?? ""}`,
   };
 }
 

@@ -241,20 +241,20 @@ function checkAbsences() {
 
   check("coverage map", "codex ships no SessionStart hook (scheduling units instead)", () => {
     return existsSync(join(ctx.home, ".codex/hooks")) ? "unexpected codex hooks dir" : null;
-  }, "N/A — Codex has no hooks; the scheduling units are the automation");
+  }, "N/A — the bundle writes no Codex hooks; the scheduling units are the automation");
 
   // Pi is the agent kind where the **absence family** was conflated: this assertion used to read
   // "no hook, trigger **or shim**", with the shim lumped in beside the two *automation*
   // forms. The shim is not one of them — it is the identity wrapper around a command the
   // agent already runs itself, so it is orthogonal to which automation an agent kind has (see
-  // `docs/ops/install.md`, where every agent kind gets one). Pi has none of the automation; it does
-  // have a shim, and `KINDS.pi.shim` above says so.
-  check("coverage map", "pi ships no hook and no trigger", () => {
+  // `docs/ops/install.md`, where every agent kind gets one). Pi gets none of the automation from
+  // this bundle; it does have a shim, and `KINDS.pi.shim` above says so.
+  check("coverage map", "pi ships no hook or trigger in the bundle", () => {
     for (const rel of [".agents/hooks", ".agents/meerkat-taskpanel-claim.sh"]) {
       if (existsSync(join(ctx.home, rel))) return `unexpected ${rel}`;
     }
     return null;
-  }, "N/A — pi has no hooks and no claim trigger; only its external supervisor applies");
+  }, "N/A — the bundle writes no pi hook or claim trigger; only its external supervisor applies");
 }
 
 // ---------------------------------------------------------------------------

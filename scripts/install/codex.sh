@@ -26,7 +26,8 @@ emit_file "taskctl-shim.sh" "$TP_SHIM" --exec
 reconcile_taskctl_on_path
 append_snippet "$(target_home)/.codex/AGENTS.md" "codex/AGENTS.md.snippet" "meerkat-taskpanel"
 
-# Scheduling is the automation — Codex has no hooks.
+# Scheduling is the automation — this bundle writes no Codex hooks (Codex 0.161+
+# supports them; setup-meerkat's optional worktree round may add a guard hook).
 if [ "${MEERKAT_TASKPANEL_NO_AUTOMATION:-}" = "1" ]; then
   echo "codex: --no-automation — skipping the scheduling units"
   # A requested disable/status still applies: it acts on whatever an *earlier* install

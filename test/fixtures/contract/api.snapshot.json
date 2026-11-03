@@ -209,6 +209,10 @@
       "http": 500
     },
     {
+      "code": "PROJECT_REF_UNRESOLVED",
+      "http": 422
+    },
+    {
       "code": "QUESTION_REQUIRED",
       "http": 422
     },
@@ -322,6 +326,46 @@
     },
     {
       "code": "VERSION_CONFLICT",
+      "http": 409
+    },
+    {
+      "code": "WORKTREE_COMMAND_FAILED",
+      "http": 500
+    },
+    {
+      "code": "WORKTREE_DIRTY",
+      "http": 409
+    },
+    {
+      "code": "WORKTREE_EXISTS",
+      "http": 409
+    },
+    {
+      "code": "WORKTREE_GIT_UNAVAILABLE",
+      "http": 500
+    },
+    {
+      "code": "WORKTREE_INVALID",
+      "http": 422
+    },
+    {
+      "code": "WORKTREE_LOOP_OWNED",
+      "http": 409
+    },
+    {
+      "code": "WORKTREE_NOT_FOUND",
+      "http": 404
+    },
+    {
+      "code": "WORKTREE_NOT_GIT",
+      "http": 422
+    },
+    {
+      "code": "WORKTREE_NOT_IGNORED",
+      "http": 422
+    },
+    {
+      "code": "WORKTREE_UNMERGED",
       "http": 409
     },
     {

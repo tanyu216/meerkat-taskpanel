@@ -52,6 +52,8 @@ cost, never a silent drift.
 advances only by merging `dev`, after the user confirms.
 
 - **Isolate a parallel task in a worktree**, never a second branch in the primary checkout:
+  `taskctl worktree create <slug> --base dev` is the managed path (it checks the root, the
+  ignore rule and the branch name); the low-level equivalent is
   `git worktree add .worktrees/<slug> -b <branch> dev` (`.worktrees/` is gitignored and
   dockerignored). Follow the `using-git-worktrees` skill's Step 0 first.
 - **Land only after confirmation**: commit every path you touched (`git commit -- <path>`), then

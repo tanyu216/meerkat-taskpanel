@@ -705,6 +705,12 @@ A parallel workstream in this repository's workflow — an isolated git worktree
 named for the card and its segment. It is tooling vocabulary: the board has no lanes.
 _Avoid_: 泳道, swimlane, column
 
+**Session worktree**:
+A human session's own tree under `.worktrees/<slug>` on a `<type>/<slug>` branch, created and
+swept by `taskctl worktree`. It is not the loop's **workspace** and is never registered in
+`workspaces.json`; `lane/` is the loop's namespace and is never touched by it.
+_Avoid_: workspace, lane, scratch dir
+
 **Release tree / hosted frontend root**:
 Two different build outputs that are easy to conflate. The release tree is the npm package
 tree and is never served; the hosted frontend root is the built web frontend, which the

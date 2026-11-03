@@ -179,6 +179,22 @@
         "If Linus is not installed on any available kind, that absence is reported as the reason the toolchain cannot be initialized.",
         "Any scanner/CI state it mentions comes from detection facts, not from a tool it started."
       ]
+    },
+    {
+      "id": 13,
+      "name": "worktree-guard-is-an-optional-round-4-step",
+      "prompt": "Set up meerkat here. We want parallel work isolated on this repo; cards should land on dev, and live sessions should be kept out of the main checkout.",
+      "expected_output": "Round 4 asks whether to enable the worktree guard, writes docs/agents/worktrees.md, declares base_ref and merge_ref through `taskctl project map set`, and runs the bundled worktree-init.mjs after showing its --dry-run report for the accepted kinds. It reports Codex's /hooks trust as a manual step that is still open, and a second run reports unchanged. It does not edit install.sh or any per-kind installer.",
+      "files": [],
+      "assertions": [
+        "The guard is asked as its own optional question; skipping it is accepted without nagging.",
+        "docs/agents/worktrees.md is written, and it points at the project map for the ref values rather than copying them.",
+        "base_ref and merge_ref are written through `taskctl project map set`, never by hand-editing projects.json.",
+        "worktree-init.mjs is shown with --dry-run before it writes, and only for the kinds the user accepted.",
+        "Codex's hook review and trust in /hooks is reported as a manual step that remains open until the user confirms it.",
+        "Setup does not modify install.sh or a per-kind install script.",
+        "A second run reports the same adapters unchanged."
+      ]
     }
   ]
 }

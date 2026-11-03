@@ -5759,6 +5759,14 @@
           ],
           "flags": [
             {
+              "flag": "base-ref",
+              "as": "string",
+              "value": "<ref>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "local-path",
               "as": "string",
               "value": "<dir>",
@@ -5767,7 +5775,31 @@
               "short": null
             },
             {
+              "flag": "merge-ref",
+              "as": "string",
+              "value": "<ref>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "no-base-ref",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "no-dir",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "no-merge-ref",
               "as": "boolean",
               "value": null,
               "required": false,
@@ -6297,6 +6329,164 @@
               "flag": "show",
               "as": "boolean",
               "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "worktree",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "create",
+          "positionals": [
+            {
+              "name": "slug",
+              "summary": "One path segment: letters, digits, '.', '_' or '-'."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "base",
+              "as": "string",
+              "value": "<ref>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "branch",
+              "as": "string",
+              "value": "<name>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "guard",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "runtime",
+              "as": "string",
+              "value": "<kind>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "leave",
+          "positionals": [
+            {
+              "name": "slug",
+              "summary": "Session worktree slug."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "into",
+              "as": "string",
+              "value": "<ref>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "keep",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "remove",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "status",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "into",
+              "as": "string",
+              "value": "<ref>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "sweep",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "dry-run",
+              "as": "boolean",
+              "value": null,
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "into",
+              "as": "string",
+              "value": "<ref>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "older-than",
+              "as": "string",
+              "value": "<hours>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project",
+              "as": "string",
+              "value": "<id>",
               "required": false,
               "repeat": false,
               "short": null

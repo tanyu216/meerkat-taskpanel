@@ -568,6 +568,24 @@ registry, so accepting its card merges nothing: the pass logs `has no lane recor
 means *accepted*, not *merged*. `loop doctor` reports those cards as `unlanded` (branch still
 outside the project's current branch), which is the only place they surface.
 
+### Session worktrees: the human half
+
+A live session's tree is not a card lane. `taskctl worktree` owns it locally: `create` makes
+`<project>/.worktrees/<slug>` on a `<type>/<slug>` branch; `status` reads `git worktree list`
+(the only registry — there is no session equivalent of `workspaces.json`); `leave --remove` and
+`sweep` delete only a **clean** tree whose branch is already an ancestor of the project's
+`merge_ref`, and report every survivor instead of forcing it. The command refuses a `lane/`
+branch: the loop owns that namespace, and its acceptance/patrol sweep owns its lifecycle.
+
+A project opts into the write guard by carrying `docs/agents/worktrees.md`. setup-meerkat's
+round 4 writes it and, only if the user accepts, merges the runtime adapters: Claude and Codex
+`PreToolUse` → `taskctl worktree guard`, pi a `tool_call` extension. The policy allows a linked
+worktree and denies a write to the protected primary checkout with the recovery command. It is
+a **guardrail, not a sandbox**: Claude project hooks can be disabled, Codex hooks need trust
+(and its `workspace-write` sandbox is the stronger boundary), and pi has no sandbox at all.
+Shell matching is best-effort; a script or a Node process can bypass it. The initialization
+lives only in setup-meerkat, never in `install.sh`.
+
 ### No resident pool: what still runs
 
 The pool is the only dispatcher, so without it a claim has nowhere to go. The
@@ -2539,8 +2557,8 @@ point* against a mock board. It does not drive the real agent CLIs (that is the
 supplementary `scripts/verify/kind-cli.mjs`, which SKIPs when a CLI is absent) and it does
 not exercise the real board's claim semantics (`scripts/verify/install-e2e.sh` drives the
 real `taskctl`/`taskd`). Per agent kind, only the forms the bundle actually ships are
-covered: Claude has a SessionStart hook; Codex and Pi have no hook, and their scheduling
-units are the automation. (The `taskctl` shim is not one of these forms and is not part of
+covered: Claude has a SessionStart hook; the bundle writes none for Codex and Pi (setup-meerkat's
+optional worktree round can add a guard adapter), and their scheduling units are the automation. (The `taskctl` shim is not one of these forms and is not part of
 this boundary: every agent kind gets one — see `docs/ops/install.md`.)
 
 ## See also

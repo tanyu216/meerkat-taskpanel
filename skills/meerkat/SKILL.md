@@ -201,6 +201,14 @@ Which directory does it work in? I will register it with
 
 [`references/projects-json.md#no-directory-is-an-answer`](references/projects-json.md#no-directory-is-an-answer), [`references/projects-json.md#unregistered-no-fallback--ask`](references/projects-json.md#unregistered-no-fallback--ask). Claiming, moving, commenting and delivering need no directory.
 
+## Working outside a card
+
+A live session doing parallel work in a project follows `<project-dir>/docs/agents/worktrees.md`
+when the project has one. `taskctl worktree create <slug>` makes the session tree,
+`status` / `leave` / `sweep` own its lifecycle, and `lane/` trees belong to the loop — a
+session never creates, reuses or removes one. The loop's landing and cleanup never touch a
+session tree; merge it yourself, then `leave --remove` (clean and merged only).
+
 ## Keeping the brief fresh
 
 A card exported into a project directory is a **snapshot**. Register it once with the local event hub — `export watch <ref> --dir <dir> --detach` — and check it with `--watch-status`; `--stop` ends it, and the portable form is `--once`. Never use a plain `&`: the hub, not your shell, owns the connection. It writes `.meerkat/<identifier>/card.md`, stops at `done` or `canceled`, and is one-way — re-read the brief before a decision, and never hand-edit it. **A supervisor-dispatched worker starts no watcher.** Detail:

@@ -196,6 +196,18 @@ export const ERROR_CODES = Object.freeze({
   PROJECT_DIR_NOT_ABSOLUTE: spec(422, "The project directory is not an absolute path."),
   PROJECT_DIR_MISSING: spec(422, "The project directory does not exist."),
   PROJECT_DIR_NOT_A_DIRECTORY: spec(422, "The project directory is not a directory."),
+  PROJECT_REF_UNRESOLVED: spec(422, "A declared project ref does not resolve in the project directory."),
+  // ---- Session worktrees (local lifecycle, never board state) ----------------
+  WORKTREE_NOT_GIT: spec(422, "The directory is not a usable git checkout."),
+  WORKTREE_GIT_UNAVAILABLE: spec(500, "git could not be started; the worktree action was not applied."),
+  WORKTREE_INVALID: spec(422, "The worktree slug, branch or base ref is invalid."),
+  WORKTREE_EXISTS: spec(409, "The worktree path or branch already exists."),
+  WORKTREE_NOT_FOUND: spec(404, "No session worktree exists at that slug."),
+  WORKTREE_DIRTY: spec(409, "The worktree has uncommitted changes; it was not removed."),
+  WORKTREE_UNMERGED: spec(409, "The worktree's branch is not merged into the integration branch."),
+  WORKTREE_LOOP_OWNED: spec(409, "The worktree belongs to the loop's lane namespace."),
+  WORKTREE_NOT_IGNORED: spec(422, "The .worktrees/ directory is not ignored by git."),
+  WORKTREE_COMMAND_FAILED: spec(500, "git refused the worktree operation."),
 
   // ---- Persistence / migrations ---------------------------------------------
   // `DB_BUSY` (R2): SQLite's `SQLITE_BUSY`/`SQLITE_LOCKED` after a bounded
@@ -395,6 +407,18 @@ export const JS_ONLY_CODES = Object.freeze([
   "PROJECT_DIR_NOT_ABSOLUTE",
   "PROJECT_DIR_MISSING",
   "PROJECT_DIR_NOT_A_DIRECTORY",
+  "PROJECT_REF_UNRESOLVED",
+  // Session worktrees: local git state, never a table or a trigger.
+  "WORKTREE_NOT_GIT",
+  "WORKTREE_GIT_UNAVAILABLE",
+  "WORKTREE_INVALID",
+  "WORKTREE_EXISTS",
+  "WORKTREE_NOT_FOUND",
+  "WORKTREE_DIRTY",
+  "WORKTREE_UNMERGED",
+  "WORKTREE_LOOP_OWNED",
+  "WORKTREE_NOT_IGNORED",
+  "WORKTREE_COMMAND_FAILED",
   // CLI-only: no database trigger and no SQLite constraint can raise these.
   "CLI_USAGE",
   "CLI_IO",

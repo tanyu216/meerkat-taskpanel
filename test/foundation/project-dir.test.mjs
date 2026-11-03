@@ -423,6 +423,26 @@ describe("upsertProjectEntry (the pure write rule)", () => {
     );
   });
 
+  it("sets and clears the loop-only refs without touching the directory keys", () => {
+    const start = [{ project: "A", local_path: "/a", base_ref: "old", merge_ref: "old" }];
+    assert.deepEqual(
+      upsertProjectEntry(start, { project: "A", baseRef: "dev", mergeRef: "dev" }).entries,
+      [{ project: "A", local_path: "/a", base_ref: "dev", merge_ref: "dev" }],
+    );
+    assert.deepEqual(
+      upsertProjectEntry(start, { project: "A", noBaseRef: true }).entries,
+      [{ project: "A", local_path: "/a", merge_ref: "old" }],
+    );
+    assert.deepEqual(
+      upsertProjectEntry(start, { project: "A", noMergeRef: true }).entries,
+      [{ project: "A", local_path: "/a", base_ref: "old" }],
+    );
+    assert.deepEqual(
+      upsertProjectEntry(start, { project: "A", noBaseRef: true, noMergeRef: true }).entries,
+      [{ project: "A", local_path: "/a" }],
+    );
+  });
+
   it("leaves non-object entries where they are", () => {
     const result = upsertProjectEntry(["stray", null, { project: "A" }], {
       project: "B",

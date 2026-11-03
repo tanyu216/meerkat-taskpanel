@@ -123,18 +123,31 @@ rules are fixed. Point at the installed `meerkat-director` skill's
 
 Read `references/board-project.md`.
 
-Write the project's board rules once, under `docs/agents/`: `create-card.md`, and the tracker
-files (`issue-tracker.md`, `triage-labels.md`, `domain.md`) through the Matt Pocock process.
-Read the installed `meerkat` skill's `references/create-card.md` first so you know the default
-answer, then ask which card shapes take `human` or `off` (there is **no project default**;
-omitted falls back to `auto`), the project's epic-splitting boundary, and the card scope (the
-default is the work a role owns; a question, a lookup or a one-off command has no owner and is
-not a card). Write only the user's answers into `create-card.md` — not a copy of that manual —
-and skip any item the user declines.
+Write the project's board rules once, under `docs/agents/`: `create-card.md`,
+`worktrees.md`, and the tracker files (`issue-tracker.md`, `triage-labels.md`, `domain.md`)
+through the Matt Pocock process. Read the installed `meerkat` skill's
+`references/create-card.md` first so you know the default answer, then ask which card shapes
+take `human` or `off` (there is **no project default**; omitted falls back to `auto`), the
+project's epic-splitting boundary, the worktree rules (see `references/worktree-guard.md`),
+and the card scope (the default is the work a role owns; a question, a lookup or a one-off
+command has no owner and is not a card). Write only the user's answers into
+`create-card.md` — not a copy of that manual — and skip any item the user declines.
+
+Before writing `worktrees.md`, declare the project's rules in the map:
+`taskctl project map set <id> --base-ref <ref> --merge-ref <ref>` (recommended:
+`base_ref = merge_ref =` the integration branch). The refs are probed at write time; a bad
+value is `PROJECT_REF_UNRESOLVED`. The page points at the map, never copies the values.
+
+The guard is **optional**: if the user accepts, install the runtime adapters through
+`scripts/worktree-init.mjs` (show its `--dry-run` report first). This is the only
+initialization point — never add the wiring to an installer. Codex hooks must be reviewed
+and trusted in `/hooks`; report that step as still open until the user confirms it. The
+script merges hooks and writes the pi extension; it never writes `docs/agents/worktrees.md`
+(that page is the project's rule, written above).
 
 Call the `init` skill for the project's agent-instruction entry, and require it to point
 card work at the `/meerkat` skill and board rules at `docs/agents/` (`create-card.md`,
-`issue-tracker.md`, `triage-labels.md`, `domain.md`, and
+`worktrees.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, and
 `decision-policy.md` when present), and to state this round's card scope. The entry and the
 rules are project content shared by every platform: call `init` once, write the rules once
 under `docs/agents/`, never copy them per platform, never write an entry yourself, and report `skip` when the host has no `init` skill.
