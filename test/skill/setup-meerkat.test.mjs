@@ -80,7 +80,7 @@ function tree(dir) {
   return files.sort();
 }
 
-describe("skill frontmatter and the six-round shape", () => {
+describe("skill frontmatter and the six-step shape", () => {
   it("is a command-only skill with a substantial description", () => {
     const text = readFileSync(join(SKILL, "SKILL.md"), "utf8");
     assert.match(text, /^---\r?\n/);
@@ -90,7 +90,7 @@ describe("skill frontmatter and the six-round shape", () => {
     assert.ok(description.length >= 20);
   });
 
-  it("runs six rounds in the fixed order, each with its own reference", () => {
+  it("runs six steps in the fixed order, each with its own reference", () => {
     const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
     assert.match(skill, /## How a run is structured/);
     const headings = [
@@ -120,15 +120,27 @@ describe("skill frontmatter and the six-round shape", () => {
       assert.ok(existsSync(join(SKILL, reference)), `${reference} exists`);
     }
     assert.match(skill, /detection runs once|Detection runs once|Run detection once/i, "detection is once");
+    assert.match(skill, /six steps in a fixed order/i, "the run is framed as steps");
+    assert.doesNotMatch(skill, /\bsix rounds\b|\brounds? [1-6]\b/i, "setup numbering is steps, not rounds");
+    assert.match(skill, /round protocol/i, "the director's decision round protocol is untouched");
+    assert.match(skill, /fast path/i, "an already-set-up run can stop early");
   });
 
-  it("treats the question list as a mandatory floor, not a ceiling", () => {
+  it("asks only real decisions and always asks safety confirmations", () => {
     const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
-    assert.match(skill, /floor, not a ceiling/i);
-    assert.match(skill, /every\s+listed question is mandatory/i);
-    assert.match(skill, /follow-up/i, "unlisted follow-ups are required");
-    assert.match(skill, /frontier is empty/i, "the round closes on its own frontier");
+    assert.match(skill, /ask only what is still a decision/i);
+    assert.match(skill, /detection is the fact source/i);
+    assert.match(skill, /answer changes what\s+happens/i);
+    assert.match(skill, /recommended option first/i);
+    assert.match(skill, /what\s+will happen and what\s+changes as a result/i);
+    assert.match(skill, /language the user is writing in/i);
+    assert.match(skill, /follow-up is allowed only when/i);
+    assert.match(skill, /safety confirmations are always asked/i);
+    assert.match(skill, /starting or enabling the daemon or supervisor/i);
+    assert.match(skill, /--force/i);
     assert.match(skill, /skipping is always\s+valid|skipping is always valid|skipped/i);
+    assert.doesNotMatch(skill, /every\s+listed question is mandatory/i, "the old floor rule is gone");
+    assert.doesNotMatch(skill, /floor, not a ceiling/i, "the old floor rule is gone");
   });
 
   it("delegates the instruction entry to the init skill once and names no host file", () => {
@@ -184,7 +196,7 @@ describe("skill frontmatter and the six-round shape", () => {
     );
     assert.match(reference, /copies differ/i, "a multi-kind divergence is surfaced");
     assert.match(reference, /only their answers/i, "the page records choices, not a copy");
-    assert.match(reference, /earlier round/i, "an existing project's pair is migrated");
+    assert.match(reference, /earlier (?:run|setup)/i, "an existing project's pair is migrated");
     assert.doesNotMatch(reference, /card-scope\.md/, "card scope is not a separate document");
     assert.match(skill, /docs\/agents\//);
     assert.match(skill, /create-card\.md/);
@@ -289,6 +301,15 @@ describe("skill frontmatter and the six-round shape", () => {
     assert.match(text, /docs\/agents\//);
     assert.match(text, /card scope/i);
     assert.match(text, /init/i);
+
+    const interview = evals.evals.find((entry) => entry.name === "setup-interview");
+    const interviewText = interview.assertions.join("\n");
+    assert.match(interviewText, /reported, not asked|ask only .*decision/i);
+    assert.match(interviewText, /recommended option (?:comes )?first/i);
+    assert.match(interviewText, /user's language/i);
+    assert.match(interviewText, /fast path/i);
+    assert.doesNotMatch(interviewText, /mandatory/i, "the interview eval no longer demands every listed question");
+    assert.doesNotMatch(interview.expected_output, /six rounds/i);
   });
 
   it("mirrors the loop's actor-kind table", () => {

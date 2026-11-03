@@ -1,8 +1,14 @@
 # The board skill's project rules
 
-Round 4. The `meerkat` skill reads a project's own rules from `docs/agents/`. Write them
+Step 4. The `meerkat` skill reads a project's own rules from `docs/agents/`. Write them
 once there; they are project content, shared by every agent platform that works in this
 project.
+
+Work in this order: **create-card and trackers → project map → instruction entry →
+worktrees.md → worktree guard**. The order matters: once `docs/agents/worktrees.md` exists
+and a guard is active, writes to the primary checkout are denied, including the entry write.
+If a guard is already active, finish the remaining writes from a session worktree under
+`.worktrees/<slug>`.
 
 ## The documents
 
@@ -20,19 +26,24 @@ and their copies differ, say so before choosing one. Then ask the user the three
 write **only their answers**. Do not copy the manual, its commands or its epic patterns; a page
 that restates them drifts from them.
 
-- **Card scope.** The recommended answer is **the work a role owns** — product design,
-  development and architecture, bug fixes and refactors, test design, regression, performance,
-  independent review. **Outside the roles is outside the board**: a question, a lookup, a
-  one-off command, a scratch experiment, the change being made in this conversation, or work
-  the human is doing themselves has no owner and does not become a card. A narrower answer
-  ("only work that crosses sessions") or a wider one ("every change") is valid; record it once.
+- **Card scope.** Recommended: **the work a role owns** — product design, development and
+  architecture, bug fixes and refactors, test design, regression, performance, independent
+  review. **Outside the roles is outside the board**: a question, a lookup, a one-off command,
+  a scratch experiment, the change being made in this conversation, or work the human is doing
+  themselves has no owner and does not become a card. Say what each alternative changes:
+  narrower ("only work that crosses sessions") means less board noise but more invisible
+  work; wider ("every change") means maximum traceability but a noisy board. Record the answer
+  once.
 - **Acceptance mode.** There is **no project default**; the card's `acceptance_mode` is the
   authority; an explicit instruction from the human wins over this page; omitted resolves to
-  `auto`. Record the project's reasons for choosing `off` or `human` where it does. Do not
-  invent a default and do not claim the board reads this page.
+  `auto`. Explain the three: **`auto`** closes after a passing review; **`human`** stops for a
+  person at each delivery; **`off`** may close without a review. Record the project's reasons
+  for choosing `off` or `human` where it does. Do not invent a default and do not claim the
+  board reads this page.
 - **Epic boundary.** The general epic mechanics stay in the `meerkat` skill; this page records
-  only the project's splitting choice. The worker never splits; the director owns the scope
-  decision.
+  only the project's splitting choice. Say it plainly: one card through delivery, versus
+  children that can each land alone as deliverables. The worker never splits; the director
+  owns the scope decision.
 
 Link only to installed material (the `meerkat` skill) or project pages the user has. Do not
 link to a repository-only design page.
@@ -80,7 +91,7 @@ Recommend `base_ref = merge_ref =` the branch the project checkout is on (its in
 branch). Both are probed in the registered directory; a value that does not resolve is
 `PROJECT_REF_UNRESOLVED`, and `--no-dir` is refused while a rule is declared. A `merge_ref`
 that is not currently checked out is written with a warning — landing will refuse until the
-checkout is on it. If the installed CLI predates these flags, go back to round 1 and upgrade;
+checkout is on it. If the installed CLI predates these flags, go back to Step 1 and upgrade;
 never hand-edit `projects.json`.
 
 ## The instruction entry
@@ -89,7 +100,7 @@ Call the `init` skill for the project's agent-instruction entry, and require it 
 work at the `/meerkat` skill and board rules at `docs/agents/` (`create-card.md`,
 `worktrees.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, and
 `decision-policy.md` when present),
-and to state this round's card scope. The entry and the
+and to state this step's card scope. The entry and the
 rules are project content shared by every platform: call `init` once, write the rules once
 under `docs/agents/`, never copy them per platform, and never write an entry yourself.
 
@@ -100,9 +111,9 @@ under `docs/agents/`, never copy them per platform, and never write an entry you
 - A second run reports `unchanged` when the entry already states the same pointers and the
   same scope.
 
-## An earlier round's documents
+## Documents from an earlier run
 
-A project set up by an earlier round has `docs/agents/acceptance-mode.md` and
+A project set up by an earlier run has `docs/agents/acceptance-mode.md` and
 `docs/agents/epic-cards.md`. When those exist and `docs/agents/create-card.md` does not, read
 them, carry over **only what differs from the manual** as the user's starting answers, and
 offer the single page. Back the old files up as `<file>.bak-<timestamp>`; remove them only with

@@ -42,7 +42,8 @@ const USAGE = `detect — read-only Meerkat TaskPanel discovery
   node detect.mjs [--json] [--home <dir>] [--project <dir>]
                   [--actor-kind <kind|all>] [--checkout <dir>]
                   [--url <url>] [--env-file <path>] [--timeout-ms <n>]
-                  [--no-network] [--taskctl <path>] [--fail-on-missing]
+                  [--roles-dir <dir>] [--no-network] [--taskctl <path>]
+                  [--fail-on-missing]
 
 Exit: 0 detection ran, 1 with --fail-on-missing, 2 usage.`;
 
@@ -589,10 +590,6 @@ function humanReport(report) {
   lines.push(`  roles:     ${roleLines.length > 0 ? roleLines.join("; ") : "none discovered"}`);
   lines.push(`  human:     ${report.human.name}${report.human.configured ? ` (${report.human.source})` : " (fallback; confirm)"}`);
   lines.push(`  matt:      skill=${report.mattPocock.skill.installed} tracker=${report.mattPocock.tracker.exists ? report.mattPocock.tracker.path : "none"}`);
-  if (report.actorKind === "pi" || report.actorKind === "all") {
-    lines.push(
-    );
-  }
   if (report.platforms) {
     const summary = Object.values(report.platforms)
       .map((platform) => `${platform.kind}=${platform.available ? "ready" : "unavailable"}`)

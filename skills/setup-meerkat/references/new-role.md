@@ -1,7 +1,8 @@
 # Create a role
 
-Round 6. A role is a skill with a `role.json` marker; the supervisor discovers it and routes
-by its `shapes`. This round interviews the role, renders it from
+Step 6. A role is a skill with a `role.json` marker; the supervisor discovers it and routes
+by its `shapes`. Run this step only when the user asks for a new role; otherwise report the
+installed roles and `skip`. This step interviews the role, renders it from
 `assets/role-template/`, and validates it against the same contract the supervisor reads.
 
 ## Before the interview
@@ -20,25 +21,32 @@ board skill first; a role without it has no board contract.
 
 ## The interview
 
-Ask in this order, with a recommended answer where one exists:
+Report the installed roles, their ids, native agents and shapes as facts; the collision and
+overlap checks above are facts, not questions. Ask only the fields that cannot be defaulted:
 
 1. **id** — the skill directory and `role.json` id; `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`.
 2. **agent** — the board assignee name (for example `Ops`).
-3. **native_agent** — the native definition stem; default the id.
-4. **lane** — `worker` or `reviewer`. Only a reviewer-lane role may hold review cards.
-5. **title**, **summary**.
-6. **shapes** — one sentence per work shape the role owns. These are the routing table.
-7. **responsibilities** — at most 16; what the role does on a card.
-8. **boundaries** — at most 16; what it must not do. Always include: do not accept your own
-   work, do not merge/rebase/push from the card, and (for a reviewer) never claim an ordinary
-   card / never enter `awaiting` / insufficient evidence is a REJECT.
-9. **workflow** — the branches a session should read (plan, execute, self-check, deliver,
-   plus any domain branch).
-10. **self_check** — the checks before delivery.
+3. **title**, **summary**.
+4. **shapes** — one sentence per work shape the role owns. These are the routing table; a
+   shape already owned by another role is a collision to resolve, not a second owner.
+
+Offer the rest as defaults and ask the user to confirm or edit:
+
+- **native_agent** — default the id.
+- **lane** — default `worker`. Say what it changes: **worker** claims ordinary work;
+  **reviewer** takes only review cards and never an ordinary card.
+- **responsibilities** — at most 16; what the role does on a card.
+- **boundaries** — at most 16; what it must not do. Always include: do not accept your own
+  work, do not merge/rebase/push from the card, and (for a reviewer) never claim an ordinary
+  card / never enter `awaiting` / insufficient evidence is a REJECT.
+- **workflow** — the branches a session should read (plan, execute, self-check, deliver,
+  plus any domain branch).
+- **self_check** — the checks before delivery.
 
 A reviewer-lane role does not automatically become the default reviewer. Set
 `default_reviewer: true` only when the user explicitly chooses it, and only when no other
-role already holds it. A worker-lane role has `reviewer_prompt: null`.
+role already holds it; explain that it becomes the role the board routes review cards to. A
+worker-lane role has `reviewer_prompt: null`.
 
 ## The spec
 
@@ -112,4 +120,4 @@ the checkout; the supervisor still injects the skill through the handoff. Say bo
 
 Re-running the same spec is `unchanged`; different content is a `conflict` until `--force`,
 and `--force` is shown as a diff first. Editing or deleting an existing role is outside this
-round.
+step.

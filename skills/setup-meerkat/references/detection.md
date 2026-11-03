@@ -113,8 +113,13 @@ roles found per kind, and `list` carries each role's `id`, `agent`, `lanes`, `in
 old-shape `MEERKAT_TASKPANEL_ROLES_DIR` value — reported, never read or deleted. An explicit
 `MEERKAT_TASKPANEL_ROLES_DIR` that names a directory of `role.json` directories is still
 honored by the supervisor as a discovery override; only a tree without those markers is
-retired. `--no-network` leaves `server.probed` false and does not mark the server missing.
+retired. `--roles-dir <dir>` (the `MEERKAT_TASKPANEL_ROLES_DIR` form) points discovery at that
+directory. `--no-network` leaves `server.probed` false and does not mark the server missing.
 `--fail-on-missing` exits 1 when `missing` is non-empty.
+
+**Fast-path signal:** `missing` empty, `actions` empty, and `human.configured` true mean the
+machine is already set up. The project documents and the instruction entry are checked
+read-only by the skill, not by detection; a missing or different document still runs its step.
 
 ## Platforms and the role split
 

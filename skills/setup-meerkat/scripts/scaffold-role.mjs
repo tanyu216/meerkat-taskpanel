@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Render and validate one role skill from a spec, into an installed agent kind's skills
- * tree. `/setup-meerkat` round 6 owns the interview; this script owns the deterministic
+ * tree. `/setup-meerkat` Step 6 owns the interview; this script owns the deterministic
  * part: the `meerkat-role` contract, the standard role prose, path safety and idempotence.
  *
  * The installed skill has no checkout, so the contract constants are duplicated here with
