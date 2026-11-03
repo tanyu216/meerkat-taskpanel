@@ -34,6 +34,45 @@ Matt skill is available, it writes its own outputs; if not, write project-neutra
 that point at the installed `meerkat`/`taskctl` surface. Never create board labels — the
 label registry grows when a card first names a label.
 
+### `docs/agents/worktrees.md`
+
+The project's **worktree and branch rules**: the page a human session and a card worker both
+read. It is also the guard's opt-in marker (see `references/worktree-guard.md`). It states the
+rules, never copies the ref values:
+
+1. Parallel work never happens in the primary checkout; it happens under `.worktrees/`.
+2. Ownership partition: `lane/<ref>[-r<round>]` belongs to the loop. A session never creates,
+   reuses, commits to or deletes a lane worktree. Human work uses `<type>/<slug>`; never name
+   a session worktree after a card id.
+3. Cards branch from the project's declared `base_ref` and land on `merge_ref`; read both with
+   `taskctl project map show <id> --json`. Keep the primary checkout on `merge_ref`; the loop
+   refuses to land anywhere else.
+4. Landing order: merge first, then `git worktree remove`, then `git branch -d`. A worktree
+   with uncommitted changes is never removed.
+5. `.worktrees/` and `.claude/worktrees/` belong in `.gitignore` and `.dockerignore`; a
+   session worktree is never registered in the loop's `workspaces.json`.
+6. **Off switch:** deleting this file removes the project from the guard's protected set;
+   existing worktrees are never deleted by that act.
+
+Do not repeat the branch names in prose. The map is the value; this page is the rule.
+
+## The loop-only rules in `projects.json`
+
+The loop reads `base_ref` / `merge_ref` from the project map. They are **project rules**, not
+directory facts, and `project map set` is their only writer:
+
+```bash
+taskctl project map show <id> --json          # read the entry and its refs
+taskctl project map set <id> --local-path <dir> --base-ref <ref> --merge-ref <ref>
+```
+
+Recommend `base_ref = merge_ref =` the branch the project checkout is on (its integration
+branch). Both are probed in the registered directory; a value that does not resolve is
+`PROJECT_REF_UNRESOLVED`, and `--no-dir` is refused while a rule is declared. A `merge_ref`
+that is not currently checked out is written with a warning — landing will refuse until the
+checkout is on it. If the installed CLI predates these flags, go back to round 1 and upgrade;
+never hand-edit `projects.json`.
+
 ## The card scope
 
 Ask what work becomes a card here. A real question: a board that accepts every request stops

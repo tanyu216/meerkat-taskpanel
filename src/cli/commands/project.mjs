@@ -17,7 +17,10 @@
  * continuing somewhere unintended.
  */
 
+import { spawnSync } from "node:child_process";
+
 import { DomainError } from "../../foundation/errors.mjs";
+import { probeGitRef, probeLocalBranch, readCurrentBranch } from "../../foundation/git-ref.mjs";
 import {
   PROJECT_DIR_CODES,
   checkTargetDirectory,
@@ -65,6 +68,51 @@ function metaWithPrefix(flags) {
 /** The one map every local read and write uses. */
 function mapFile(ctx) {
   return defaultProjectsJson(ctx.env ?? {}, { cwd: ctx.cwd });
+}
+
+/** The process boundary for the ref probes: the same timeout as the loop's runner. */
+function runGit(cmd, argv) {
+  try {
+    const result = spawnSync(cmd, argv, { encoding: "utf8", timeout: 10_000 });
+    if (result.error !== undefined && result.error !== null) return null;
+    return { status: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+const REF_FLAGS = Object.freeze({ base_ref: "--base-ref", merge_ref: "--merge-ref" });
+
+/**
+ * Validate one declared ref against the directory it is a promise about.
+ * `base_ref` is a commit-ish; `merge_ref` must be a local branch — the loop
+ * merges into it, and a tag or a raw commit can never be the checked-out
+ * integration branch.
+ */
+function checkRef({ key, value, dir, file }) {
+  const probe =
+    key === "base_ref"
+      ? probeGitRef({ projectDir: dir, ref: value, run: runGit })
+      : probeLocalBranch({ projectDir: dir, ref: value, run: runGit });
+  if (probe.ok === true && probe.exists === true) return;
+
+  const why = probe.ok === true
+    ? key === "merge_ref"
+      ? "it is not a local branch"
+      : "it does not resolve to a commit"
+    : probe.reason === "unavailable"
+      ? "git could not be started"
+      : probe.reason === "unresolvable"
+        ? `git could not resolve it${probe.stderr ? `: ${probe.stderr}` : ""}`
+        : "it is empty";
+
+  throw new DomainError(PROJECT_DIR_CODES.REF_UNRESOLVED, {
+    message: `cannot set ${key} to '${value}' in ${dir}: ${why}`,
+    details: { key, ref: value, dir, file },
+    hint: {
+      fix: `check it with \`git -C ${dir} rev-parse --verify ${value}\`, then re-run \`taskctl project map set <id> ${REF_FLAGS[key]} <ref>\``,
+    },
+  });
 }
 
 /**
@@ -168,6 +216,11 @@ function runProjectMap(ctx) {
   const hasLocalPath = ctx.flags.localPath !== undefined;
   const hasRunDir = ctx.flags.runDir !== undefined;
   const noDir = ctx.flags.noDir === true;
+  const hasBaseRef = ctx.flags.baseRef !== undefined;
+  const hasMergeRef = ctx.flags.mergeRef !== undefined;
+  const noBaseRef = ctx.flags.noBaseRef === true;
+  const noMergeRef = ctx.flags.noMergeRef === true;
+  const refFlags = hasBaseRef || hasMergeRef || noBaseRef || noMergeRef;
   const modes = [hasLocalPath, hasRunDir, noDir].filter(Boolean).length;
   const file = mapFile(ctx);
 
@@ -176,7 +229,9 @@ function runProjectMap(ctx) {
   }
 
   if (action === "list") {
-    if (id !== "" || modes > 0) throw usageError("`project map list` takes no project id and no directory flag");
+    if (id !== "" || modes > 0 || refFlags) {
+      throw usageError("`project map list` takes no project id and no directory or ref flag");
+    }
     const map = readForEdit(ctx, file);
     const entries = map.projects.filter(
       (entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry),
@@ -195,8 +250,8 @@ function runProjectMap(ctx) {
   }
 
   if (id === "") throw usageError(`\`project map ${action}\` needs a project id`);
-  if (action !== "set" && modes > 0) {
-    throw usageError(`\`project map ${action}\` takes no directory flag`);
+  if (action !== "set" && (modes > 0 || refFlags)) {
+    throw usageError(`\`project map ${action}\` takes no directory or ref flag`);
   }
 
   if (action === "show") {
@@ -205,42 +260,122 @@ function runProjectMap(ctx) {
     if (!resolved.ok) throw mapFailure(resolved, file);
     const entry = resolved.entry;
     const human = resolved.dir === null
-      ? `project ${id} is registered in ${file} with no local directory`
+      ? `project ${id} is registered in ${file} with no local directory` +
+        ` (base_ref=${entry.base_ref ?? "-"}, merge_ref=${entry.merge_ref ?? "-"})`
       : fields([
           ["project", id],
           ["local_path", entry.local_path ?? "-"],
           ["run_dir", entry.run_dir ?? "-"],
           ["dir", resolved.dir],
+          ["base_ref", entry.base_ref ?? "-"],
+          ["merge_ref", entry.merge_ref ?? "-"],
         ]);
     return { data: { file, project: id, entry, dir: resolved.dir }, human };
   }
 
   if (action === "set") {
-    if (modes !== 1) {
-      throw usageError("`project map set` needs exactly one of --local-path <dir>, --run-dir <dir> or --no-dir");
+    if (modes > 1) {
+      throw usageError(
+        "`project map set` takes at most one of --local-path <dir>, --run-dir <dir> or --no-dir",
+      );
     }
+    if (modes + [hasBaseRef, hasMergeRef, noBaseRef, noMergeRef].filter(Boolean).length === 0) {
+      throw usageError(
+        "`project map set` needs at least one of --local-path <dir>, --run-dir <dir>, --no-dir, " +
+          "--base-ref <ref>, --merge-ref <ref>, --no-base-ref or --no-merge-ref",
+      );
+    }
+    if (hasBaseRef && noBaseRef) throw usageError("`--base-ref` and `--no-base-ref` are mutually exclusive");
+    if (hasMergeRef && noMergeRef) throw usageError("`--merge-ref` and `--no-merge-ref` are mutually exclusive");
+    if (noDir && refFlags) {
+      throw usageError(
+        "`--no-dir` cannot be combined with a ref flag: a ref needs a directory to validate against",
+      );
+    }
+
+    const map = readForEdit(ctx, file);
     const mode = hasLocalPath ? { key: "local_path", value: ctx.flags.localPath } : hasRunDir ? { key: "run_dir", value: ctx.flags.runDir } : null;
     let dir = null;
     if (mode !== null) {
       const checked = checkTargetDirectory(mode.value, { key: mode.key, project: id, file });
       if (!checked.ok) throw mapFailure(checked, file);
       dir = checked.dir;
+    } else if (!noDir) {
+      const resolved = resolveProjectDir({ entries: map.projects, project: id, file });
+      if (!resolved.ok) throw mapFailure(resolved, file);
+      dir = resolved.dir;
     }
-    const map = readForEdit(ctx, file);
+
+    // A ref is a promise about a checkout; without one there is nothing to probe.
+    // Clearing a rule (`--no-base-ref` / `--no-merge-ref`) needs no directory.
+    if ((hasBaseRef || hasMergeRef) && (dir === null || dir === undefined)) {
+      throw new DomainError(PROJECT_DIR_CODES.REQUIRED, {
+        message: `project ${id} has no local directory, so a ref cannot be validated`,
+        details: { project: id, file },
+        hint: {
+          fix: `register the directory first: \`taskctl project map set ${id} --local-path <dir> --base-ref <ref> --merge-ref <ref>\``,
+        },
+      });
+    }
+
+    // `--no-dir` on an entry that carries refs would leave rules pointing at
+    // nothing. Make the operator clear them explicitly, never silently.
+    if (noDir) {
+      const existing = map.projects.find(
+        (entry) => entry !== null && typeof entry === "object" && entry.project === id,
+      );
+      if (existing && (existing.base_ref !== undefined || existing.merge_ref !== undefined)) {
+        throw new DomainError("CLI_USAGE", {
+          message: `project ${id} still declares base_ref/merge_ref; --no-dir would leave them pointing at nothing`,
+          details: { project: id, file },
+          hint: {
+            fix: `clear them first: \`taskctl project map set ${id} --no-base-ref --no-merge-ref\`, then retry --no-dir`,
+          },
+        });
+      }
+    }
+
+    const baseRef = hasBaseRef ? String(ctx.flags.baseRef).trim() : undefined;
+    const mergeRef = hasMergeRef ? String(ctx.flags.mergeRef).trim() : undefined;
+    if (baseRef !== undefined) checkRef({ key: "base_ref", value: baseRef, dir, file });
+    if (mergeRef !== undefined) checkRef({ key: "merge_ref", value: mergeRef, dir, file });
+
+    const warnings = [];
+    if (mergeRef !== undefined) {
+      const current = readCurrentBranch({ projectDir: dir, run: runGit });
+      if (current.ok === true && current.ref !== mergeRef) {
+        warnings.push(
+          `${dir} is on ${current.ref}, but merge_ref is ${mergeRef}; landing will refuse until it is checked out`,
+        );
+      }
+    }
+
     const updated = upsertProjectEntry(map.projects, {
       project: id,
       // Store the validated (trimmed) path, not the raw token.
       ...(hasLocalPath ? { localPath: dir } : {}),
       ...(hasRunDir ? { runDir: dir } : {}),
       ...(noDir ? { noDir: true } : {}),
+      ...(baseRef !== undefined ? { baseRef } : {}),
+      ...(noBaseRef ? { noBaseRef: true } : {}),
+      ...(mergeRef !== undefined ? { mergeRef } : {}),
+      ...(noMergeRef ? { noMergeRef: true } : {}),
     });
     writeMap(file, updated.entries, map.root);
-    const human = noDir
-      ? `project ${id}: registered with no local directory in ${file}`
-      : `project ${id}: ${mode.key}=${dir} in ${file}`;
+
+    const parts = [];
+    if (hasLocalPath) parts.push(`local_path=${dir}`);
+    if (hasRunDir) parts.push(`run_dir=${dir}`);
+    if (noDir) parts.push("no local directory");
+    if (baseRef !== undefined) parts.push(`base_ref=${baseRef}`);
+    if (noBaseRef) parts.push("base_ref cleared");
+    if (mergeRef !== undefined) parts.push(`merge_ref=${mergeRef}`);
+    if (noMergeRef) parts.push("merge_ref cleared");
+    const human = `project ${id}: ${parts.join(", ")} in ${file}`;
     return {
       data: { file, project: id, entry: updated.entry, dir, created: updated.created },
       human,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 
@@ -381,7 +516,8 @@ export const COMMANDS = [
     name: "map",
     summary: "Read or edit the machine-local project → directory map (never the board).",
     usage:
-      "project map list | show <id> | set <id> --local-path <dir> | --run-dir <dir> | --no-dir | remove <id>",
+      "project map list | show <id> | set <id> [--local-path <dir> | --run-dir <dir> | --no-dir] " +
+      "[--base-ref <ref> | --no-base-ref] [--merge-ref <ref> | --no-merge-ref] | remove <id>",
     positionals: [
       { name: "action", summary: "list | show | set | remove." },
       { name: "id", required: false, summary: "Project id; required for show, set and remove." },
@@ -409,6 +545,32 @@ export const COMMANDS = [
         key: "noDir",
         as: "boolean",
         summary: "Register the project with no local directory (clears local_path and run_dir).",
+      },
+      {
+        flag: "base-ref",
+        key: "baseRef",
+        as: "string",
+        value: "<ref>",
+        summary: "The ref a card's worktree branches from (loop-only; validated in the registered directory).",
+      },
+      {
+        flag: "no-base-ref",
+        key: "noBaseRef",
+        as: "boolean",
+        summary: "Clear the project's declared base_ref.",
+      },
+      {
+        flag: "merge-ref",
+        key: "mergeRef",
+        as: "string",
+        value: "<ref>",
+        summary: "The local branch acceptance merges into (loop-only; must be a local branch).",
+      },
+      {
+        flag: "no-merge-ref",
+        key: "noMergeRef",
+        as: "boolean",
+        summary: "Clear the project's declared merge_ref.",
       },
     ],
     run: runProjectMap,

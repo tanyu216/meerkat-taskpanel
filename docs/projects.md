@@ -312,6 +312,10 @@ the failure codes and the operating rules as its **deployed contract**
 - **Two keys may name the directory**, in one order: `dir = local_path ?? run_dir`. `??`, not
   `||`: a key that is *given* but blank is a failure to report, never a reason to fall through
   to the other one. `base_ref` and `merge_ref` are loop-only keys the board never reads.
+- **The loop-only rules are validated where they are written**: `project map set --base-ref`
+  probes a commit-ish, `--merge-ref` probes a local branch, and a value that does not resolve
+  is `PROJECT_REF_UNRESOLVED` — never a rule that fails on every dispatch. `--no-dir` is
+  refused while a rule is declared, so a rule cannot point at nothing.
 - **A supplied path is validated**: absolute, exists, and is a directory. Any failure is an
   answer (`PROJECT_DIR_NOT_ABSOLUTE`, `PROJECT_DIR_MISSING`, `PROJECT_DIR_NOT_A_DIRECTORY`),
   never a fallback.

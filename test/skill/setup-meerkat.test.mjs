@@ -254,7 +254,7 @@ describe("skill frontmatter and the six-round shape", () => {
   it("keeps the skill-creator eval prompts parseable", () => {
     const evals = JSON.parse(readFileSync(join(SKILL, "evals", "evals.json"), "utf8"));
     assert.equal(evals.skill_name, "setup-meerkat");
-    assert.equal(evals.evals.length, 12);
+    assert.equal(evals.evals.length, 13);
     for (const entry of evals.evals) {
       assert.equal(typeof entry.prompt, "string");
       assert.ok(entry.prompt.length > 20, `eval ${entry.id}: prompt`);

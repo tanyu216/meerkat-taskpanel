@@ -75,6 +75,8 @@ export const PROJECT_DIR_CODES = Object.freeze({
   NOT_A_DIRECTORY: "PROJECT_DIR_NOT_A_DIRECTORY",
   /** The project has no entry in the map: a complete answer, not a missing one. */
   UNMAPPED: "PROJECT_DIR_UNMAPPED",
+  /** A declared `base_ref` / `merge_ref` does not resolve in the project directory. */
+  REF_UNRESOLVED: "PROJECT_REF_UNRESOLVED",
   /** The map itself is absent or is not the documented shape. */
   MAP_UNREADABLE: "PROJECT_MAP_UNREADABLE",
   /** The map exists (or could) but this process cannot write it. */
@@ -261,7 +263,16 @@ function isEntryObject(entry) {
  * including keys this module does not interpret — survives a write.
  *
  * @param {unknown[]} projects
- * @param {{project: string, localPath?: string, runDir?: string, noDir?: boolean}} input
+ * @param {{
+ *   project: string,
+ *   localPath?: string,
+ *   runDir?: string,
+ *   noDir?: boolean,
+ *   baseRef?: string,
+ *   mergeRef?: string,
+ *   noBaseRef?: boolean,
+ *   noMergeRef?: boolean,
+ * }} input
  * @returns {{entries: unknown[], entry: object, created: boolean}}
  */
 export function upsertProjectEntry(projects, input) {
@@ -278,6 +289,20 @@ export function upsertProjectEntry(projects, input) {
   } else if (typeof input.runDir === "string") {
     current.run_dir = input.runDir;
     delete current.local_path;
+  }
+
+  // The loop-only refs are project rules, not a directory fact. They are
+  // validated by the caller (which owns the git probe); this pure writer only
+  // sets or clears them and leaves every other key alone.
+  if (input.noBaseRef === true) {
+    delete current.base_ref;
+  } else if (typeof input.baseRef === "string") {
+    current.base_ref = input.baseRef;
+  }
+  if (input.noMergeRef === true) {
+    delete current.merge_ref;
+  } else if (typeof input.mergeRef === "string") {
+    current.merge_ref = input.mergeRef;
   }
 
   if (index === -1) return { entries: [...list, current], entry: current, created: true };

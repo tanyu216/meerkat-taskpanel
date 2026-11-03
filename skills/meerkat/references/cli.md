@@ -110,7 +110,7 @@ not a failure; `note` says why (no pointer, or a stale pid).
 | `project update <id> [--name] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**; acceptance and reviewer are not project fields. |
 | `project list [--include-archived]` | List projects. |
 | `project dir <id> [--require-dir]` | Print the local directory work happens in, resolved from the config-root `projects.json`: the entry's `local_path`, else `run_dir`. An entry naming no directory succeeds and says so. Exits non-zero only when no entry is registered, or the path is relative, missing, not a directory, or blank. `--require-dir` is the wake shape: resolve from the map only (no board check) and exit **3** when the map names no usable directory — a wake has to start somewhere. |
-| `project map list` / `show <id>` / `set <id> --local-path <dir>` / `set <id> --run-dir <dir>` / `set <id> --no-dir` / `remove <id>` | Read and edit the machine-local map at the config root. `set` takes exactly one of `--local-path` (`<dir>`), `--run-dir` (`<dir>`) and `--no-dir`; the directory must be absolute, existing and a directory. Local only: no identity, no token, no board. A missing map is an empty map for `list`; `show`/`remove` on an absent entry are `PROJECT_DIR_UNMAPPED`. |
+| `project map list` / `show <id>` / `set <id> [--local-path <dir> \| --run-dir <dir> \| --no-dir] [--base-ref <ref> \| --no-base-ref] [--merge-ref <ref> \| --no-merge-ref]` / `remove <id>` | Read and edit the machine-local map at the config root. `set` takes at most one of `--local-path` (`<dir>`), `--run-dir` (`<dir>`) and `--no-dir`; the directory must be absolute, existing and a directory. It may also set the loop-only rules in the same write: `--base-ref` must resolve as a commit-ish, `--merge-ref` must be a **local branch** (the loop merges into it); both are probed in the registered directory and fail with `PROJECT_REF_UNRESOLVED` when they do not resolve. A `merge_ref` that is not the checked-out branch is written with a warning, because landing will refuse until it is checked out. `--no-base-ref` / `--no-merge-ref` clear one rule; `--no-dir` is refused while a rule is declared. Local only: no identity, no token, no board. A missing map is an empty map for `list`; `show`/`remove` on an absent entry are `PROJECT_DIR_UNMAPPED`. |
 | `project readme <id>` / `project readme <id> --set <text>` / `--file <path\|->` | Print or set the readme. |
 
 **A project carries no directory.** The map is machine-local, at the config root (beside
@@ -584,6 +584,27 @@ The writer identity (`system`/`Orchestrator`) is never exempt — the guard look
 assignee. A review card is stricter still: its assignee must name a **reviewer-lane** role
 (`ASSIGNEE_NOT_REVIEWER`), so the loop creates it with the catalog's `default_reviewer` and
 never needs `--force-create`.
+
+### `worktree`
+
+The **local session-worktree lifecycle** — the human half of the loop's isolation. It is local
+by construction: no board, no token, no `--actor-kind`. A session tree is
+`<project>/.worktrees/<slug>` on its own branch; `git worktree list` is the registry, so a
+crashed session leaves no state file to reconcile. The branch namespace is the ownership rule:
+`lane/` belongs to the loop and is never touched here.
+
+| Command | What it does |
+|---|---|
+| `worktree create <slug> [--project <id>] [--base <ref>] [--branch <name>]` | Create `.worktrees/<slug>` on a new branch. The base is `--base`, else the project's declared `base_ref`, else the primary checkout's current branch. `.worktrees/` must already be ignored; a lane branch, an invalid slug, an existing path or an existing branch is refused. |
+| `worktree status [--project <id>] [--into <ref>]` | List session trees with `dirty`, `merged` (against `--into`, else the project's `merge_ref`, else the current branch), `loop_owned` and `current`. |
+| `worktree leave <slug> [--keep\|--remove] [--project <id>] [--into <ref>]` | `--keep` (the default) reports. `--remove` deletes the tree and its branch only when the tree is clean **and** the branch is already an ancestor of the integration ref; a dirty tree (`WORKTREE_DIRTY`), an unmerged branch (`WORKTREE_UNMERGED`) and a `lane/` tree (`WORKTREE_LOOP_OWNED`) are refused. There is no `--force`. |
+| `worktree sweep [--older-than <hours>] [--project <id>] [--into <ref>] [--dry-run]` | Remove every session tree that is clean, merged and old enough; skip the current tree, `lane/` trees, dirty trees and unmerged branches, and report each survivor's reason. `--dry-run` reports what would go and changes nothing. |
+| `worktree guard --runtime claude\|codex\|pi` | The **hook adapter**, not a human verb: read one tool payload on stdin and print that runtime's decision shape — `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny",…}}` for Claude/Codex, `{"block":true,"reason":…}` for pi. A project opts in by carrying `docs/agents/worktrees.md`; a linked worktree and exempt paths are allowed; a write to the protected primary checkout is denied with the recovery command. A Claude `EnterWorktree` with a `name` (native creation in `.claude/worktrees/`) is denied; entering an existing `path` is allowed. It fails **open** when git cannot answer. Shell matching is best-effort: a guardrail, not a sandbox. |
+
+The root is the **primary** checkout even when the command runs from a linked worktree. A
+worktree made by the loop (`lane/…`) is never a session tree; use the loop's acceptance or
+patrol sweep for it. The `--project` flag reads `base_ref` / `merge_ref` from the map
+explicitly — the map has no reverse lookup, so a directory alone does not name a project.
 
 ## Editing a card: status, priority, description, attachments, dependencies
 

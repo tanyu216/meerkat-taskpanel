@@ -32,6 +32,7 @@ import { COMMANDS as sessionCommands } from "./session.mjs";
 import { COMMANDS as slaCommands } from "./sla.mjs";
 import { COMMANDS as statusCommands } from "./status.mjs";
 import { COMMANDS as tokenCommands } from "./token.mjs";
+import { COMMANDS as worktreeCommands } from "./worktree.mjs";
 
 export const groups = Object.freeze([
   { name: "project", summary: "Projects and their metadata.", commands: projectCommands },
@@ -69,6 +70,11 @@ export const groups = Object.freeze([
     name: "role",
     summary: "The local role catalog the supervisor discovers (never board state).",
     commands: roleCommands,
+  },
+  {
+    name: "worktree",
+    summary: "Session worktrees: create, inspect, leave and sweep (local, never board state).",
+    commands: worktreeCommands,
   },
 ]);
 

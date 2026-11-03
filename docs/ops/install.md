@@ -953,8 +953,9 @@ codex plugin list
 Step 1 writes, merge-style and idempotently: the skill, a claim-first snippet appended to
 `~/.codex/AGENTS.md` (existing content is preserved), the `taskctl` shim at
 `~/.codex/bin/taskctl`, and the scheduling set (`~/.codex/scheduling/*`). The per-kind
-config is separate: `<program root>/.env.codex`. Codex has no hooks, so scheduling is the auto-claim
-mechanism — load one of the units (see
+config is separate: `<program root>/.env.codex`. The bundle writes no Codex hooks (Codex 0.161+
+supports them; setup-meerkat's optional worktree round may add a guard adapter), so scheduling
+is the auto-claim mechanism — load one of the units (see
 [Scheduling units](#scheduling-units-claude-codex-pi)). `--no-automation` (or its environment
 form `MEERKAT_TASKPANEL_NO_AUTOMATION=1`) skips the scheduling set.
 
@@ -1087,7 +1088,8 @@ It installs into a throwaway prefix (never `$HOME`), replaces the generated `tas
 shim with a canned one — it records every argv — then drives the generated SessionStart
 hook, asserting the **actual invocation** (exit code + argv + output), not just "it ran".
 This is the step that covers the claim path in CI, where the real CLIs are absent. The full
-matrix and the per-agent-kind coverage boundary (Pi has no hook) are in
+matrix and the per-agent-kind coverage boundary (the bundle writes no hook for Pi; setup-meerkat's
+optional worktree round can install a `tool_call` extension) are in
 [`scheduling.md`](../scheduling.md#verifying-the-generated-hook).
 
 ## Isolated installs and testing
