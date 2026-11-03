@@ -323,8 +323,10 @@ export function createSessionPool(input = {}) {
   const triageOutcome = typeof input.triageOutcome === "function" ? input.triageOutcome : null;
   const stateDir = dirname(String(opts.state));
   // `internal` is the installed supervisor; `external` marks a pool started by a
-  // live session (`loop status --take-over`). There is no control turn in either
-  // mode: the supervisor's tick runs the passes, the pool dispatches.
+  // live session (`loop status --take-over`). It is an observational marker only:
+  // it changes neither the pool's lifetime nor what the pool dispatches, and
+  // there is no control turn in either mode — the supervisor's tick runs the
+  // passes, the pool dispatches.
   const controlMode = opts.control === "external" ? "external" : "internal";
   const maxConcurrency = Number(opts.maxConcurrency ?? SESSION_DEFAULTS.maxConcurrency);
   const projectConcurrency = Number(opts.projectConcurrency ?? SESSION_DEFAULTS.projectConcurrency);
@@ -457,8 +459,8 @@ export function createSessionPool(input = {}) {
       phase,
       tickStartedAt,
       heartbeatAt: nowIso(now),
-      // A takeover marker only: `--control=external` still decides whether the
-      // pool's timers keep a signalled process alive. It is not a session.
+      // An observational marker only: it records who started the pool and changes
+      // neither its lifetime nor its dispatch. It is not a session.
       controlMode,
       projects,
     };
@@ -1985,27 +1987,30 @@ export async function runSession(opts, deps = {}) {
   // The heartbeat is independent of the tick: while a turn is in flight the
   // state file must still say "the pool is here".
   const heartbeat = setInterval(() => pool.persistState(), POOL_HEARTBEAT_MS);
-  // In external (take-over) mode no long-lived agent holds the event loop, so the
-  // timers are the process's only handles: unref'd, the pool would exit the
-  // moment it started and `--take-over` would never see it. The internal pool
-  // has an agent process; unref'ing there lets a signalled
-  // supervisor exit once that child closes.
-  if (opts.control !== "external") {
-    interval.unref?.();
-    questionInterval.unref?.();
-    heartbeat.unref?.();
-  }
-  const stop = async () => {
-    clearInterval(interval);
-    clearInterval(questionInterval);
-    clearInterval(heartbeat);
-    await pool.stop();
-    log("session: pool stopped");
-  };
+  // These three timers are the pool's lifetime in every deployment shape: the
+  // installed daemon, a `--take-over` pool, and a hand-run `loop session`. Agent
+  // children are created lazily, so a fully idle board has none and cannot be
+  // relied on to hold the loop. The service manager's KeepAlive / Restart=always
+  // is recovery, not residency. `stop()` clears all three synchronously before
+  // its first await, so a signalled supervisor still exits once the pool closes.
+  let stopPromise = null;
+  const stop = () =>
+    (stopPromise ??= (async () => {
+      clearInterval(interval);
+      clearInterval(questionInterval);
+      clearInterval(heartbeat);
+      await pool.stop();
+      log("session: pool stopped");
+    })());
   const signal = deps.signal;
   if (signal !== undefined) {
     if (signal.aborted) await stop();
-    else signal.addEventListener("abort", () => void stop(), { once: true });
+    else
+      signal.addEventListener(
+        "abort",
+        () => void stop().catch((err) => log(`session: stop failed: ${err.message}`, { level: "error" })),
+        { once: true },
+      );
   }
   // Without a signal the process stays alive on the interval. With one, the
   // caller (the supervisor's SIGTERM handler) closes the pool cleanly.
