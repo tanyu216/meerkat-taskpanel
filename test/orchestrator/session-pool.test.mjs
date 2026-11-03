@@ -207,7 +207,9 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("--control is accepted but no longer changes the pool", async (t) => {
+  // Dispatch parity only; the process-lifetime parity is pinned by the real-child
+  // "keeps an idle pool resident in every control mode" test below.
+  it("--control changes neither dispatch nor lifetime", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
     const pool = createSessionPool({
@@ -1610,60 +1612,132 @@ describe("session pool", () => {
     assert.equal(existsSync(join(f.dir, "session.lock")), false, "the lock is released");
   });
 
-  it("keeps a takeover pool alive without an agent child", async (t) => {
-    // A takeover pool has no agent child holding the event loop. Its timers are
-    // the only handles: unref'd,
-    // the process exits the moment it starts and `--take-over` never sees it.
-    const f = fixture(t);
-    const home = join(f.dir, "home");
-    for (const name of ["meerkat", "meerkat-director"]) {
-      const dir = join(home, ".claude", "skills", name);
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`);
+  const THROTTLE_MS = 10_000;
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** Resolve on exit, or `{code:null, signal:null}` after `timeoutMs`; never hangs. */
+  function waitExit(child, timeoutMs = 10_000) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      return Promise.resolve({ code: child.exitCode, signal: child.signalCode });
     }
-    const state = join(f.dir, "state.json");
-    const logPath = join(f.dir, "supervisor.log");
-    const child = spawn(
-      process.execPath,
-      [
-        join(import.meta.dirname, "../../src/orchestrator/supervisor.mjs"),
-        "--session",
-        "--control=external",
-        "--actor-kind",
-        "claude",
-        "--agent",
-        "alice",
-        "--home",
-        home,
-        "--repo",
-        join(import.meta.dirname, "../.."),
-        "--state",
-        state,
-        "--log",
-        logPath,
-      ],
-      { stdio: "ignore" },
-    );
-    t.after(() => {
-      if (child.exitCode === null) child.kill("SIGTERM");
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (code, signal) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ code, signal });
+      };
+      const timer = setTimeout(() => finish(null, null), timeoutMs);
+      timer.unref?.();
+      child.once("exit", finish);
+    });
+  }
+
+  /** Last-resort cleanup: SIGKILL and wait, so a failed assertion cannot leak a child. */
+  async function reap(child) {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const exited = waitExit(child, 2_000);
+    child.kill("SIGKILL");
+    await exited;
+  }
+
+  /**
+   * Spawn `supervisor.mjs --session` with its own fixture and state dir (two pools
+   * on one dir are refused by `session.lock`). No cards are seeded, so no kind
+   * pool exists and no agent child holds the event loop.
+   */
+  async function startSessionChild(t, { control } = {}) {
+    const dir = mkdtempSync(join(tmpdir(), "tp-session-pool-child-"));
+    const home = join(dir, "home");
+    for (const name of ["meerkat", "meerkat-director"]) {
+      const skillDir = join(home, ".claude", "skills", name);
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, "SKILL.md"), `---\nname: ${name}\n---\n`);
+    }
+    const logPath = join(dir, "supervisor.log");
+    const args = [
+      join(import.meta.dirname, "../../src/orchestrator/supervisor.mjs"),
+      "--session",
+      "--actor-kind", "claude",
+      "--agent", "alice",
+      "--home", home,
+      "--repo", join(import.meta.dirname, "../.."),
+      "--state", join(dir, "state.json"),
+      "--log", logPath,
+    ];
+    if (control !== undefined) args.push(`--control=${control}`);
+    const child = spawn(process.execPath, args, { stdio: "ignore" });
+    t.after(async () => {
+      await reap(child);
+      rmSync(dir, { recursive: true, force: true });
     });
 
-    const sessionState = join(f.dir, "sessions.state.json");
-    const deadline = Date.now() + 5_000;
-    while (!existsSync(sessionState) && Date.now() < deadline && child.exitCode === null) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
+    const sessionState = join(dir, "sessions.state.json");
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      if (child.exitCode !== null || child.signalCode !== null) break;
+      if (existsSync(sessionState)) {
+        let state = null;
+        try {
+          state = JSON.parse(readFileSync(sessionState, "utf8"));
+        } catch {
+          /* a read that races the write is retried on the next beat */
+        }
+        if (state?.poolPid === child.pid && state?.phase === "running") break;
+      }
+      await sleep(25);
     }
-    const log = existsSync(logPath) ? readFileSync(logPath, "utf8") : "(none)";
-    assert.ok(existsSync(sessionState), `the pool wrote its state; log: ${log}`);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    assert.equal(child.exitCode, null, `the external-control pool exited (${child.exitCode}); log: ${log}`);
+    return { child, sessionState, logPath };
+  }
 
-    // Attach the listener before the signal: a pool that exits between `kill`
-    // and `once` would otherwise leave the await pending for ever.
-    const exited = new Promise((resolve) => child.once("exit", resolve));
-    child.kill("SIGTERM");
-    await exited;
-  });
+  it(
+    "keeps an idle pool resident in every control mode past the restart throttle",
+    { timeout: 45_000 },
+    async (t) => {
+      const internal = await startSessionChild(t);
+      const external = await startSessionChild(t, { control: "external" });
+      const pools = [
+        ["default/internal", internal],
+        ["external", external],
+      ];
+      for (const [label, pool] of pools) {
+        const log = existsSync(pool.logPath) ? readFileSync(pool.logPath, "utf8") : "(none)";
+        assert.ok(existsSync(pool.sessionState), `${label}: the pool wrote its state; log: ${log}`);
+      }
+
+      // launchd's ThrottleInterval is 10s. Before the fix the internal pool exits
+      // as soon as the event loop drains (Node's unsettled top-level await),
+      // well inside this window.
+      await sleep(THROTTLE_MS + 500);
+
+      for (const [label, pool] of pools) {
+        const log = existsSync(pool.logPath) ? readFileSync(pool.logPath, "utf8") : "(none)";
+        assert.equal(
+          pool.child.exitCode,
+          null,
+          `the ${label} pool exited while idle (code ${pool.child.exitCode}); log: ${log}`,
+        );
+        assert.equal(pool.child.signalCode, null, `${label}: the pool was not killed; log: ${log}`);
+        assert.equal(
+          JSON.parse(readFileSync(pool.sessionState, "utf8")).poolPid,
+          pool.child.pid,
+          `${label}: the state file names the live manager`,
+        );
+
+        // Attach the listener before the signal: a pool that exits between `kill`
+        // and `once` would otherwise leave the await pending for ever.
+        const exited = waitExit(pool.child, 10_000);
+        pool.child.kill("SIGTERM");
+        const outcome = await exited;
+        assert.equal(outcome.signal, null, `${label}: SIGTERM shut it down without SIGKILL`);
+        assert.equal(outcome.code, 0, `${label}: a clean shutdown; log: ${log}`);
+      }
+    },
+  );
 
   it("answers 'is the pool resident?' from the state file, pid and heartbeat", (t) => {
     const f = fixture(t);

@@ -536,7 +536,7 @@ the `taskctl` entry its child calls use; `--config <file>` the per-kind config (
 **Cadence and policy.** `--ping-interval <sec>` and `--continue-interval <sec>` set the two
 clocks; `--continue <yes|no>` enables the tick clock. `--opened-by <human|supervisor>`
 records who opened the loop; `--resident <auto|no>` says whether a resident pool is expected.
-`--control <internal|external>` marks a pool started by a live session (`external`); there is no LLM control turn. `--session-max-age`,
+`--control <internal|external>` marks a pool started by a live session (`external`); it changes neither the pool's lifetime nor what it dispatches, and there is no LLM control turn. `--session-max-age`,
 `--session-turn-timeout` (1200..7199 s), `--session-poll-ms`, `--session-pool-max`,
 `--project-concurrency` and `--project-idle-ms` bound the pool. `--max-concurrency` caps the
 whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) decides the

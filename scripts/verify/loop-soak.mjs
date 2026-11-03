@@ -63,6 +63,7 @@ const USAGE = `Usage: node scripts/verify/loop-soak.mjs [options]
   --linger-ms <ms>     How long an orphaned fake agent lingers (default 1200)
   --slow-cli-ms <ms>   Latency injected into the fake taskctl (default 1200)
   --cards <n>          Initial cards to seed (default 3)
+  --control <mode>     external|internal|both residency checks (default both)
   --keep               Keep the sandbox directory (its path is printed)
   --verbose            Echo pool/agent events as they happen
   -h, --help           This text`;
@@ -78,6 +79,7 @@ function parseArgs(argv) {
     lingerMs: 1200,
     slowCliMs: 1200,
     cards: 3,
+    control: "both",
     keep: false,
     verbose: false,
     help: false,
@@ -114,6 +116,9 @@ function parseArgs(argv) {
       case "--cards":
         options.cards = Number(value());
         break;
+      case "--control":
+        options.control = value();
+        break;
       case "--keep":
         options.keep = true;
         break;
@@ -139,6 +144,9 @@ function parseArgs(argv) {
     if (!Number.isFinite(options[key]) || options[key] <= 0) {
       throw new Error(`${flag} must be a positive number`);
     }
+  }
+  if (!["external", "internal", "both"].includes(options.control)) {
+    throw new Error("--control must be external, internal or both");
   }
   return options;
 }
@@ -363,7 +371,7 @@ process.stdout.write(JSON.stringify({ ok: true, data: { task: { status: "in_prog
 // the pool process
 // ---------------------------------------------------------------------------
 
-function poolArgs(sandbox) {
+function poolArgs(sandbox, control = "external") {
   return [
     join(ROOT, "src", "cli", "index.mjs"),
     "loop",
@@ -384,8 +392,7 @@ function poolArgs(sandbox) {
     join(sandbox.stateDir, "supervisor.log"),
     "--cli",
     sandbox.slowCli,
-    "--control",
-    "external",
+    ...(control === null ? [] : ["--control", control]),
     "--session-poll-ms",
     "50",
     "--session-turn-timeout",
@@ -543,7 +550,8 @@ async function main(argv) {
   };
 
   const env = poolEnv(sandbox, options);
-  const args = poolArgs(sandbox);
+  const faultControl = options.control === "both" ? "external" : options.control;
+  const args = poolArgs(sandbox, faultControl);
   let pool = null;
 
   function startPool() {
@@ -575,6 +583,79 @@ async function main(argv) {
     return Number.isInteger(pid) && pid > 0 ? pid : null;
   }
 
+  function waitExit(child, timeoutMs) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      return Promise.resolve({ code: child.exitCode, signal: child.signalCode });
+    }
+    return new Promise((resolveExit) => {
+      let settled = false;
+      const finish = (code, signal) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolveExit({ code, signal });
+      };
+      const timer = setTimeout(() => finish(null, null), timeoutMs);
+      timer.unref?.();
+      child.once("exit", finish);
+    });
+  }
+
+  /**
+   * The installed shape, not the take-over shape: start a pool with no cards
+   * seeded and prove it is still resident after several poll periods, then that
+   * SIGTERM shuts it down cleanly. `control === null` is the default (internal)
+   * invocation the service units use.
+   */
+  async function residencyCheck(control) {
+    const label = control === null ? "default" : control;
+    const child = spawn(process.execPath, poolArgs(sandbox, control), {
+      cwd: sandbox.repo,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stderr.on("data", (chunk) => note(String(chunk).trimEnd()));
+    try {
+      const deadline = Date.now() + 8000;
+      let live = false;
+      while (Date.now() < deadline) {
+        if (child.exitCode !== null || child.signalCode !== null) break;
+        const state = readJson(join(sandbox.stateDir, "sessions.state.json"));
+        if (Number(state?.poolPid) === child.pid && state?.phase === "running") {
+          live = true;
+          break;
+        }
+        await sleep(100);
+      }
+      if (!live) {
+        fail(`residency-${label}`, `the pool never reached running (exit ${child.exitCode})`);
+        return;
+      }
+      await sleep(2500);
+      if (child.exitCode !== null || child.signalCode !== null) {
+        fail(
+          `residency-${label}`,
+          `the pool exited while idle (code ${child.exitCode}, signal ${child.signalCode})`,
+        );
+        return;
+      }
+      const exited = waitExit(child, 10_000);
+      child.kill("SIGTERM");
+      const outcome = await exited;
+      if (outcome.signal !== null || outcome.code !== 0) {
+        fail(`residency-${label}`, `SIGTERM gave code ${outcome.code}, signal ${outcome.signal}`);
+        return;
+      }
+      pass(`residency-${label}`, "resident at idle; SIGTERM exit 0");
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = waitExit(child, 2000);
+        child.kill("SIGKILL");
+        await exited;
+      }
+    }
+  }
+
   function seed(card, cardCount) {
     const projectDir = join(sandbox.dir, "projects", `p${cardCount}`);
     mkdirSync(projectDir, { recursive: true });
@@ -600,6 +681,14 @@ async function main(argv) {
 
   try {
     say(`sandbox ${sandbox.dir} (duration ${options.durationSec}s)`);
+    // Residency first, before any card exists: the installed daemon must hold the
+    // loop on an empty board. `null` is the default invocation the units use.
+    const residencyModes =
+      options.control === "both"
+        ? [null, "external"]
+        : [options.control === "external" ? "external" : null];
+    for (const mode of residencyModes) await residencyCheck(mode);
+
     for (let i = 1; i <= options.cards; i += 1) seed(`TP-${9000 + i}`, i);
 
     startPool();

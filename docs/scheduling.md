@@ -460,6 +460,11 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
 
 - **No control session.** The supervisor process runs the passes itself; nothing in the
   pool executes `patrol|workflow|poll` and nothing wakes an LLM just to tick.
+- **Residency is the pool's own timers.** The tick, question and heartbeat timers are
+  ref'd in every deployment shape — the installed daemon, a `--take-over` pool, a hand-run
+  `loop session`. Agent children are created lazily, so a fully idle board has none; the
+  manager still stays resident and keeps its heartbeat fresh. `KeepAlive` /
+  `Restart=always` is recovery, not residency, and `--control` changes none of this.
 - **Worker sessions** — keyed `(actor_kind, worker:<card>:r<round>)` and opened from the
   machine-local `projects.json` at the config root (`local_path ?? run_dir`, through the
   same `resolveWakeDir` the glue uses). A card whose project is unmapped or names no
@@ -2114,7 +2119,8 @@ agenda moved to the console, and its decision authority did not.
 `status.mjs --json` reports `running | busy | starting | configured-idle | partial |
 absent`; `--take-over` starts the pool only when the verdict is `absent` (with no control
 turn there is nothing to take over), and `--stop` stops only what it started. `--control` is
-retained as a deprecated, inert flag for one release so the CLI snapshot does not move.
+retained as a deprecated, inert flag for one release so the CLI snapshot does not move; it
+changes neither the pool's lifetime nor what it dispatches.
 
 This "live-session mode" is not the install's **manual path** described next (units written
 but not loaded); the two words name different things.

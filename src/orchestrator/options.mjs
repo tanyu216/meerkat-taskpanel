@@ -777,7 +777,8 @@ Options:
   --continue-state <path>   Tick lock (default: continue.state.json beside --state).
   --control=internal|external
                             Marks a pool started by a live session (external);
-                            there is no LLM control turn.
+                            it changes neither the pool's lifetime nor what it
+                            dispatches, and there is no LLM control turn.
   --resident=auto|no        Use a live resident pool for continue (default: auto);
                             no forces the one-shot fallback with poll skipped.
   --session-state <path>    Sessions state file (default: sessions.state.json beside --state).
