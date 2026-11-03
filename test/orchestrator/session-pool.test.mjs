@@ -207,6 +207,27 @@ describe("session pool", () => {
     await pool.stop();
   });
 
+  it("lets exactly one of two concurrent starts own the pool lock", async (t) => {
+    const f = fixture(t);
+    const first = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    const second = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    t.after(async () => {
+      await first.stop();
+      await second.stop();
+    });
+
+    // Two units start in the same moment — the case the old read-check-write
+    // lock let both win. `O_EXCL` admits one owner and refuses the other.
+    const results = await Promise.all([first.start(), second.start()]);
+    assert.equal(results.filter((result) => result.ok === true).length, 1, "exactly one start wins");
+    assert.equal(results.filter((result) => result.ok === false).length, 1, "the other is refused");
+    assert.match(
+      results.find((result) => result.ok !== true).error,
+      /already running/,
+      "the refusal names the live pool",
+    );
+  });
+
   // Dispatch parity only; the process-lifetime parity is pinned by the real-child
   // "keeps an idle pool resident in every control mode" test below.
   it("--control changes neither dispatch nor lifetime", async (t) => {

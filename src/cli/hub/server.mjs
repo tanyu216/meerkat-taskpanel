@@ -37,7 +37,8 @@ import {
   HUB_PROTOCOL,
   acquireLock,
   ensureHubDir,
-  pidAlive,
+  pidMatches,
+  processStartToken,
   readJsonFile,
   removeFile,
   writeJsonFile,
@@ -926,7 +927,7 @@ export function createHubServer(input) {
     const claimed = acquireLock(paths.owner);
     if (!claimed.ok) {
       const lock = readJsonFile(paths.owner);
-      if (lock !== null && pidAlive(lock.pid)) {
+      if (lock !== null && pidMatches(lock.pid, lock.pidStart)) {
         throw new DomainError("CLI_IO", {
           message: "events hub: another hub owns this board",
           details: { pid: lock.pid, owner: paths.owner },
@@ -997,6 +998,7 @@ export function createHubServer(input) {
       protocol: HUB_PROTOCOL,
       key: paths.key,
       pid: process.pid,
+      pidStart: processStartToken(process.pid),
       port,
       token,
       log: paths.log,

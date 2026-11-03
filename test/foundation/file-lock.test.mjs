@@ -25,6 +25,7 @@ import {
   readLock,
   releaseFileLock,
 } from "../../src/foundation/file-lock.mjs";
+import { processStartToken } from "../../src/foundation/daemon-state.mjs";
 
 const dirs = [];
 function lockPath() {
@@ -67,6 +68,22 @@ test("takes over a lock whose pid is gone", () => {
     JSON.stringify({ version: 1, pid: 4242, token: "dead-holder" }),
   );
   const lock = acquireFileLock(path, { isAlive: () => false, retries: 0 });
+  assert.equal(lock.acquired, true);
+  assert.equal(readLock(path).token, lock.token);
+  releaseFileLock(path, lock.token);
+});
+
+test("takes over a lock whose live pid belongs to another process (pid reuse)", () => {
+  const real = processStartToken(process.pid);
+  if (real === null) return; // no start-token probe: pid-only liveness degrades
+  const path = lockPath();
+  // Alive pid, foreign token: the holder is dead even though `kill(pid, 0)` says
+  // it exists.
+  writeFileSync(
+    path,
+    JSON.stringify({ version: 1, pid: process.pid, pidStart: `${real}-previous`, token: "old" }),
+  );
+  const lock = acquireFileLock(path, { retries: 0 });
   assert.equal(lock.acquired, true);
   assert.equal(readLock(path).token, lock.token);
   releaseFileLock(path, lock.token);

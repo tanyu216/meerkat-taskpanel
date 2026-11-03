@@ -37,6 +37,7 @@ import {
   writeRuntimePointer,
 } from "../../src/core/index.mjs";
 import { WRITER_LOCK_FILENAME } from "../../src/foundation/constants.mjs";
+import { processStartToken } from "../../src/foundation/daemon-state.mjs";
 
 /** The daemon *program* — what autostart spawns. */
 const SERVER = resolve(dirname(fileURLToPath(import.meta.url)), "../../src/server/main.mjs");
@@ -124,6 +125,50 @@ describe("concurrency/writer-guard — one writer per data directory", () => {
     assert.equal(lock.release(), false, "the release is declined");
     assert.equal(existsSync(lock.path), true, "the other owner's lock survives");
     assert.equal(JSON.parse(readFileSync(lock.path, "utf8")).pid, deadPid());
+  });
+
+  it("recovers a lock whose live pid belongs to another process (pid reuse)", () => {
+    const real = processStartToken(process.pid);
+    if (real === null) {
+      // No start-token probe on this platform: pid-only liveness is the
+      // documented degradation, so there is nothing to distinguish here.
+      return;
+    }
+    const dir = tempDir();
+    // The pid is alive (it is this very process) but the token says the lock was
+    // written by an earlier process that owned the same pid. A `kill(pid, 0)`
+    // check would call this owner live for ever; the token must not.
+    writeFileSync(
+      join(dir, WRITER_LOCK_FILENAME),
+      `${JSON.stringify({
+        pid: process.pid,
+        pidStart: `${real}-previous-process`,
+        version: "0.0.0",
+        startedAt: "2026-10-11T00:00:00.000Z",
+      })}\n`,
+    );
+    const logs = [];
+    const lock = acquireWriterLock(dir, { pid: process.pid, logger: (event) => logs.push(event) });
+    assert.equal(lock.pid, process.pid, "the reused pid does not keep a dead owner's lock");
+    assert.equal(
+      logs.filter((entry) => entry.event === "writer_lock_stale").length,
+      1,
+      "the takeover is logged as stale recovery",
+    );
+    assert.equal(lock.release(), true);
+
+    // The same pid with its *real* token is still a live owner: the token
+    // narrows liveness, it does not replace it.
+    writeFileSync(
+      join(dir, WRITER_LOCK_FILENAME),
+      `${JSON.stringify({ pid: process.pid, pidStart: real, version: "0.0.0" })}\n`,
+    );
+    assert.throws(
+      () => acquireWriterLock(dir, { pid: deadPid() }),
+      (err) => err.code === "BOARD_ALREADY_RUNNING",
+      "a matching start token is a live owner",
+    );
+    rmSync(join(dir, WRITER_LOCK_FILENAME), { force: true });
   });
 
   it("treats a live pid as alive and a dead one as recoverable", () => {

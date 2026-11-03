@@ -30,6 +30,8 @@ export {
   ensurePrivateDir as ensureHubDir,
   lockIsStale,
   pidAlive,
+  pidMatches,
+  processStartToken,
   readJsonFile,
   releaseLock,
   removeFile,

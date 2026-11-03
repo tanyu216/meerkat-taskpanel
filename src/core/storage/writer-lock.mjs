@@ -36,6 +36,7 @@ import { closeSync, fsyncSync, openSync, readFileSync, rmSync, unlinkSync, write
 import { dirname, join } from "node:path";
 
 import { SECRET_FILE_MODE, VERSION, WRITER_LOCK_FILENAME } from "../../foundation/constants.mjs";
+import { pidMatches, processStartToken } from "../../foundation/daemon-state.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { redactText } from "../../foundation/redact.mjs";
 import { ensureDir } from "./paths.mjs";
@@ -93,7 +94,7 @@ export function acquireWriterLock(dataDir, options = {}) {
     if (created) return lockHandle(path, pid, options.logger);
 
     const holder = readLock(path);
-    if (holder !== null && isProcessAlive(holder.pid)) {
+    if (holder !== null && pidMatches(holder.pid, holder.pidStart)) {
       throw new DomainError("BOARD_ALREADY_RUNNING", {
         message: `another taskd (pid ${holder.pid}) already owns ${dataDir}`,
         details: { dataDir, pid: holder.pid, path, startedAt: holder.startedAt ?? null },
@@ -141,7 +142,7 @@ function createLockFile(path, input) {
   try {
     writeSync(
       fd,
-      `${JSON.stringify({ pid: input.pid, version: VERSION, startedAt: input.now ?? new Date().toISOString() }, null, 2)}\n`,
+      `${JSON.stringify({ pid: input.pid, pidStart: processStartToken(input.pid), version: VERSION, startedAt: input.now ?? new Date().toISOString() }, null, 2)}\n`,
     );
     fsyncSync(fd);
   } finally {

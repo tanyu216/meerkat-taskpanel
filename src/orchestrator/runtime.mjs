@@ -25,6 +25,7 @@ import {
 import { dirname, join } from "node:path";
 
 import { DEFAULT_CLI_TIMEOUT_MS, EVENT_STREAM_LINE } from "../foundation/constants.mjs";
+import { pidMatches, processStartToken } from "../foundation/daemon-state.mjs";
 import {
   createFileSink,
   createLogger as createFoundationLogger,
@@ -810,6 +811,7 @@ export function acquireContinueLock(path, options = {}) {
     const holder = {
       version: 1,
       pid: process.pid,
+      pidStart: processStartToken(process.pid),
       token: randomUUID(),
       startedAt: new Date(now()).toISOString(),
     };
@@ -844,7 +846,7 @@ export function acquireContinueLock(path, options = {}) {
 
   const started = Date.parse(String(existing.startedAt ?? ""));
   const elapsed = Number.isFinite(started) ? now() - started : null;
-  const alive = Number.isInteger(existing.pid) && isAlive(existing.pid);
+  const alive = pidMatches(existing.pid, existing.pidStart, { isAlive });
   const tooOld = maxAgeMs > 0 && (elapsed === null || elapsed >= maxAgeMs);
   if (alive && !tooOld) return { acquired: false, holder: existing, reason: "running" };
 
@@ -861,7 +863,7 @@ export function recordContinuePid(path, pid, startedAt, token = null) {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.tmp`;
   const existing = loadContinueLock(path);
-  const holder = { version: 1, pid, startedAt };
+  const holder = { version: 1, pid, pidStart: processStartToken(pid), startedAt };
   // The owner token survives the pid rewrite, so the acquiring process can
   // still prove it is the holder when it releases.
   const owner = token ?? existing?.token ?? null;
