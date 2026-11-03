@@ -205,10 +205,11 @@ export const DOMAINS = Object.freeze({
   /** The drawer fields that save as they change (B09, R10 ②). */
   // T-20261014-212017-4 — the drawer's own four edit surfaces joined R10's
   // three: the two property menus, the markdown description, the file list and
-  // the dependency chips. The set is the prototype's, read off
-  // `design/prototype/index.html` (`data-detail-save-field` appears exactly
-  // eight times, once per value below).
-  SAVE_FIELD: Object.freeze(["assignee", "reporter", "labels", "status", "priority", "description", "attachments", "depends"]),
+  // the dependency chips. `design/prototype/index.html` carries eight
+  // `data-detail-save-field` hooks; TP-0075 round 2 takes the reporter off the
+  // drawer's save surface (it is fixed at creation), so the implementation
+  // carries the seven below and the prototype's eighth has no consumer.
+  SAVE_FIELD: Object.freeze(["assignee", "labels", "status", "priority", "description", "attachments", "depends"]),
   /**
    * The list view's two states (B08/B13, R9 ③). Exactly two, and they are
    * mutually exclusive by rule: `loading` shows the skeleton, `data` shows the
@@ -1672,12 +1673,13 @@ const BLOCKS = [
       { kind: "count", selector: "[data-detail-save-error][role=\"alert\"]", equals: 1 },
       { kind: "count", selector: "[data-detail-save-error][hidden]", equals: 1 },
       { kind: "computed", probe: "[data-detail-save-error]", property: "display", equals: "none" },
-      // T-20261014-212017-4 — R10's save region now covers **eight** fields: the
-      // three M6b rows plus the four the drawer's edit surfaces added (status,
-      // priority, description, attachments, depends). The number is the
-      // prototype's own (`design/prototype/index.html` carries eight
-      // `data-detail-save-field` hooks) and the domain below spells the values.
-      { kind: "count", selector: "[data-detail-save-field]", equals: 8 },
+      // T-20261014-212017-4 — R10's save region covered eight fields: the three
+      // M6b rows plus the four the drawer's edit surfaces added (status,
+      // priority, description, attachments, depends). TP-0075 round 2 removed
+      // the reporter from the save surface (it is decided at creation and the
+      // drawer is read-only there), so the implementation carries **seven**;
+      // the prototype keeps its eight because the prototype is not edited.
+      { kind: "count", selector: "[data-detail-save-field]", equals: 7 },
       {
         kind: "domain",
         selector: "[data-detail-save-field]",
@@ -1689,13 +1691,21 @@ const BLOCKS = [
       // the hook on the section/combo roots of its own four controls, which is
       // the same rule: one hook per editable field, on the field's own root.
       { kind: "count", selector: "[data-detail-assignee][data-detail-save-field=\"assignee\"]", equals: 1 },
-      { kind: "count", selector: "[data-detail-reporter][data-detail-save-field=\"reporter\"]", equals: 1 },
+      // TP-0075 round 2 — the reporter is a read-only value row, so it carries
+      // no save-field hook (and no combo) in the drawer.
+      { kind: "count", selector: "[data-detail-reporter][data-detail-save-field]", equals: 0 },
       { kind: "count", selector: "[data-detail-labels][data-detail-save-field=\"labels\"]", equals: 1 },
       { kind: "count", selector: "[data-detail-status-combo][data-detail-save-field=\"status\"]", equals: 1 },
       { kind: "count", selector: "[data-detail-priority-combo][data-detail-save-field=\"priority\"]", equals: 1 },
       { kind: "count", selector: "[data-detail-description-section][data-detail-save-field=\"description\"]", equals: 1 },
       { kind: "count", selector: "[data-detail-attachments-section][data-detail-save-field=\"attachments\"]", equals: 1 },
       { kind: "count", selector: "[data-detail-depends][data-detail-save-field=\"depends\"]", equals: 1 },
+      // TP-0075 round 2 — the reporter row is a value, never a control: the
+      // drawer holds no reporter input or menu, and exactly one label carries
+      // the name beside the avatar.
+      { kind: "count", selector: "[data-reporter-input]", within: "[data-detail-reporter]", equals: 0, when: "drawer open" },
+      { kind: "count", selector: "[data-reporter-menu]", within: "[data-detail-reporter]", equals: 0, when: "drawer open" },
+      { kind: "count", selector: "[data-detail-reporter-label]", within: "[data-detail-reporter]", equals: 1, when: "drawer open" },
       // T-20261014-212017-4 · the four edit surfaces, block by block.
       //
       // ① status / priority — the prototype's `.td-combo` menus over fixed
@@ -2697,10 +2707,11 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "One control, two rosters, four placements: the create dialog's assignee and reporter, " +
-          "and the drawer's [data-detail-assignee-label] / [data-detail-reporter-label] (which the " +
-          "shipped markup also marks with [data-assignee-input] / [data-reporter-input], so the " +
-          "two hook families meet on one element).",
+          "One control, two rosters: the create dialog's assignee and reporter, plus the drawer's " +
+          "assignee ([data-detail-assignee-label], which the shipped markup also marks with " +
+          "[data-assignee-input], so the two hook families meet on one element). TP-0075 round 2 " +
+          "makes the drawer's reporter a read-only value ([data-detail-reporter-label] on a span, " +
+          "no [data-reporter-input] inside [data-detail-reporter]): a reporter is fixed at creation.",
       },
       {
         kind: "manual",

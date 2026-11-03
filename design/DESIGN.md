@@ -1613,9 +1613,11 @@ the ones the controls already had:
 
 | Field | Commits when | Hook |
 |---|---|---|
-| Assignee | focus leaves the input and the value moved, or a roster row is accepted | `[data-detail-assignee-label]` · `[data-assignee-option]` |
-| Reporter | same rule | `[data-detail-reporter-label]` · `[data-reporter-option]` |
+| Assignee | focus leaves the input and the value moved, or a roster row is accepted — **only while the card is `backlog`/`todo`** (TP-0075 round 2) | `[data-detail-assignee-label]` · `[data-assignee-option]` |
 | Labels | a chip arrives or is dropped | `[data-detail-label-option]` · `[data-detail-label-remove]` |
+
+**Round 2 (2026-11-04):** the reporter left this surface — it is decided at creation and
+the drawer shows it read-only (name + avatar), so it has no commit row.
 
 The field names travel on the rows themselves (`data-detail-save-field`), so a reader can
 tell which row a state belongs to without a second lookup. Three deliberate properties:

@@ -799,6 +799,12 @@ export function startServer() {
     // (the card whose drawer reads `blocked_by`) and refuses one designated
     // source (TD-3) with the board's own `RELATION_CYCLE`, so the client's
     // refusal path — alert + toast — is driven rather than assumed.
+    //
+    // The refusal is answered **200** with the wire's `ok:false` envelope, the
+    // branch the client actually takes (`services/api.js` reads `envelope.ok`,
+    // not the status). A synthetic 422 would also make Chromium log "Failed to
+    // load resource", which the main page's unfiltered zero-console-error gate
+    // counts — the trap the M7 leg already records and avoids the same way.
     if (req.method === "POST" && relationsFor) {
       const ref = decodeURIComponent(relationsFor[1]);
       const source = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
@@ -809,7 +815,7 @@ export function startServer() {
           return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", http: 404, message: "no such card" } }));
         }
         if (source.identifier === "TD-3") {
-          res.writeHead(422, { "content-type": "application/json; charset=utf-8" });
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
           return res.end(
             JSON.stringify({
               ok: false,
@@ -3968,6 +3974,82 @@ export async function run() {
     await page.waitForTimeout(400);
     const reopened = await readSave();
     r10Check(reopened.state === "idle" && reopened.alertHidden === true, `reopening on ${otherCard} left ${reopened.state}/${reopened.alertHidden}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+
+    /* ---- TP-0075 round 2 — the people rows' edit windows ------------------
+       Terry's ruling of 2026-11-04: the assignee may change only while the card
+       is `backlog` or `todo`, and the reporter is a read-only value in the
+       drawer (it is decided at creation). Driven on three fixture cards — one
+       on each side of the window and one past it — because the predicate is
+       about the *card*, not a static attribute. */
+    const peopleFailures = [];
+    const peopleCheck = (ok, message) => { if (!ok) peopleFailures.push(message); };
+    const peopleRead = () =>
+      page.evaluate(() => {
+        const input = document.querySelector("[data-detail-assignee-label]");
+        const menu = document.querySelector("[data-assignee-menu]");
+        const reporter = document.querySelector("[data-detail-reporter]");
+        return {
+          identifier: document.querySelector("[data-detail-identifier]")?.textContent.trim() ?? null,
+          assignee: input?.value ?? null,
+          assigneeDisabled: input ? input.hasAttribute("disabled") : null,
+          assigneeMenuOpen: menu ? getComputedStyle(menu).display !== "none" : null,
+          saveState: document.querySelector("[data-detail-save]")?.getAttribute("data-save-state") ?? null,
+          reporterInputs: reporter?.querySelectorAll("[data-reporter-input]").length ?? null,
+          reporterMenus: reporter?.querySelectorAll("[data-reporter-menu]").length ?? null,
+          reporterLabel: document.querySelector("[data-detail-reporter-label]")?.textContent.trim() ?? null,
+          reporterAvatar: document.querySelector("[data-detail-reporter-avatar]")?.textContent.trim() ?? null,
+          reporterSaveField: reporter?.hasAttribute("data-detail-save-field") ?? null,
+        };
+      });
+    /** The board is a live list, so a card is addressed by identifier, never by DOM index. */
+    const openPeopleCard = async (identifier) => {
+      await page.evaluate((id) => {
+        const card = [...document.querySelectorAll("[data-card]")].find(
+          (el) => (el.querySelector("[data-card-identifier]")?.textContent ?? "").trim() === id,
+        );
+        card?.querySelector("[data-card-title]")?.click();
+      }, identifier);
+      await page.waitForTimeout(350);
+    };
+
+    await openPeopleCard("TD-1");
+    const backlogPeople = await peopleRead();
+    peopleCheck(backlogPeople.identifier === "TD-1", `opened ${backlogPeople.identifier}, expected TD-1`);
+    peopleCheck(backlogPeople.assigneeDisabled === false, "a backlog card's assignee must be editable");
+    peopleCheck(
+      backlogPeople.reporterInputs === 0 && backlogPeople.reporterMenus === 0,
+      `the drawer reporter holds ${backlogPeople.reporterInputs} input(s) / ${backlogPeople.reporterMenus} menu(s), expected none`,
+    );
+    peopleCheck(backlogPeople.reporterLabel === "Terry", `the reporter label reads ${JSON.stringify(backlogPeople.reporterLabel)}, expected Terry`);
+    peopleCheck(backlogPeople.reporterAvatar === "T", `the reporter avatar reads ${JSON.stringify(backlogPeople.reporterAvatar)}, expected T`);
+    peopleCheck(backlogPeople.reporterSaveField === false, "the read-only reporter row still carries a save-field hook");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+
+    await openPeopleCard("TD-3");
+    const todoPeople = await peopleRead();
+    peopleCheck(todoPeople.identifier === "TD-3", `opened ${todoPeople.identifier}, expected TD-3`);
+    peopleCheck(todoPeople.assigneeDisabled === false, "a todo card's assignee must be editable");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+
+    await openPeopleCard("TD-5");
+    const inFlightPeople = await peopleRead();
+    peopleCheck(inFlightPeople.identifier === "TD-5", `opened ${inFlightPeople.identifier}, expected TD-5`);
+    peopleCheck(inFlightPeople.assigneeDisabled === true, "an in_progress card's assignee must be read-only");
+    peopleCheck(inFlightPeople.assignee !== "", "the read-only assignee hides the card's value");
+    // A disabled box cannot open its menu, and no draft change reaches a write.
+    await page.evaluate(() => {
+      const input = document.querySelector("[data-detail-assignee-label]");
+      input?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      input?.click();
+    });
+    await page.waitForTimeout(150);
+    const afterPress = await peopleRead();
+    peopleCheck(afterPress.assigneeMenuOpen === false, "clicking a read-only assignee opened its menu");
+    peopleCheck(afterPress.saveState === "idle", `a read-only assignee attempt moved the save state to ${afterPress.saveState}`);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(250);
 
@@ -7621,6 +7703,7 @@ export async function run() {
       },
       r12Id: { failures: r12IdFailures, longId: LONG_ID, clamped: CLAMPED, longHead, spill, listRead },
       r14: { failures: r14Failures, focus: r14Focus, relations: r14Relations, close: r14Close, ring: r14Ring },
+      people: { failures: peopleFailures, backlog: backlogPeople, todo: todoPeople, inFlight: inFlightPeople, afterPress },
       attachmentPreview: { failures: previewFailures, rest: previewRest, closed: previewClosed },
       drawerTabs: {
         failures: drawerTabsFailures,
@@ -7796,6 +7879,16 @@ if (isEntryPoint) run().then(
             `and the relation rows read ${report.r14.relations.join(" / ")}`,
         );
       }
+      if (report.people.failures.length > 0) {
+        console.log(`TP-0075 round 2 (people rows) — ${report.people.failures.length} failed:`);
+        for (const failure of report.people.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          `TP-0075 round 2 (people rows) — the assignee is editable on ${report.people.backlog.identifier} / ${report.people.todo.identifier} ` +
+            `and read-only on ${report.people.inFlight.identifier} (menu stays closed, save stays ${report.people.afterPress.saveState}); ` +
+            `the reporter row is the value ${JSON.stringify(report.people.backlog.reporterAvatar)} + ${JSON.stringify(report.people.backlog.reporterLabel)} with no input or menu`,
+        );
+      }
       if (report.attachmentPreview.failures.length > 0) {
         console.log(`Attachment preview — ${report.attachmentPreview.failures.length} failed:`);
         for (const failure of report.attachmentPreview.failures) console.log(`  ✗ ${failure}`);
@@ -7894,6 +7987,7 @@ if (isEntryPoint) run().then(
       report.b26.failures.length === 0 &&
       report.r12Id.failures.length === 0 &&
       report.r14.failures.length === 0 &&
+      report.people.failures.length === 0 &&
       report.attachmentPreview.failures.length === 0 &&
       report.drawerTabs.failures.length === 0 &&
       report.m7.failures.length === 0 &&

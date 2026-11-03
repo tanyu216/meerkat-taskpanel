@@ -609,6 +609,35 @@ describe("repositories/relations", () => {
     });
   });
 
+  it("walks the deepest legal parent chain, and the trigger refuses a ninth node", async () => {
+    await board(({ repos }) => {
+      // `tr_rel_parent_guard` caps a parent chain at 8 nodes: a new child's
+      // depth is max(ancestor depth) + 2, and an ancestor deeper than 6 is
+      // refused with CHAIN_TOO_LONG. Seven nested parents are therefore the
+      // deepest tree any writer can build; `listDescendants`' own `< 64` bound
+      // is defensive (it mirrors the other recursive reads), not reachable.
+      const chain = Array.from({ length: 8 }, (_, index) =>
+        makeTask(repos, { id: `n${index}`, kind: "epic", sortOrder: index }),
+      );
+      for (let index = 0; index < chain.length - 1; index += 1) {
+        repos.relations.insert({ type: "parent", source: chain[index].id, target: chain[index + 1].id, now: TS });
+      }
+      assert.deepEqual(
+        repos.relations.listDescendants(chain[0].id).map((task) => task.id),
+        chain.slice(1).map((task) => task.id),
+        "the deepest reachable chain reads breadth-first to its end",
+      );
+
+      // The last link is itself an epic, so the ninth card is a legal parent
+      // edge in every respect but the chain cap.
+      const ninth = makeTask(repos, { id: "n8" });
+      assert.throws(
+        () => repos.relations.insert({ type: "parent", source: chain[7].id, target: ninth.id, now: TS }),
+        (err) => err.code === "CHAIN_TOO_LONG",
+      );
+    });
+  });
+
   it("reads blockers and everything a task can touch", async () => {
     await board(({ repos }) => {
       const a = makeTask(repos, { id: "a" });

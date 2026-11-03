@@ -39,7 +39,6 @@ import {
   removeAttachment,
   removeDepends,
   reopenTask,
-  reporterRoster,
   saveDetailField,
   uploadAttachment,
 } from "../../stores/board.js";
@@ -58,6 +57,7 @@ import {
   relatedRowsOf,
   relationsEmptyOf,
 } from "../../lib/detail-relations.js";
+import { assigneeEditable } from "../../lib/detail-edit.js";
 import { api, ApiError } from "../../services/api.js";
 import { pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
@@ -69,7 +69,6 @@ const commentDraft = ref("");
 /** One comment at a time: the button is disabled while the POST is in flight. */
 const commentBusy = ref(false);
 const assigneeDraft = ref("");
-const reporterDraft = ref("");
 const labelDraft = ref([]);
 /**
  * The add box's draft (TP-0075). `depends_on` is no longer a multi-chip set:
@@ -189,6 +188,14 @@ const PRIORITY_MENU = ["none", "low", "medium", "high", "urgent"];
  * one).
  */
 const readonly = computed(() => status.value === "done" || status.value === "canceled");
+
+/**
+ * TP-0075 round 2 — the assignee settles when work starts. The window itself
+ * is `lib/detail-edit.js#assigneeEditable`; this alias exists so the template
+ * and the commit guard read one value. `awaiting` is an overlay on an
+ * in-flight card, so it is read-only like every other post-`todo` status.
+ */
+const canEditAssignee = computed(() => assigneeEditable(status.value));
 
 /**
  * The status combo keeps all seven stage rows (the prototype's fixed menu, and
@@ -444,7 +451,6 @@ const leftoverRows = computed(() =>
 );
 
 const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: kindLabel(entry.kind), platform: platformOf(entry.display_name) })));
-const reporterOptions = computed(() => reporterRoster.value.map((name) => ({ name })));
 const labelOptions = computed(() => labelRoster.value.map((name) => ({ name })));
 
 const descriptionHtml = computed(() => (task.value?.description ? renderMarkdown(task.value.description) : ""));
@@ -643,8 +649,11 @@ let savedTimer = null;
  * What each field said when the drawer was opened. A commit is "the value
  * moved", not "the field was touched": the drawer is opened, read and closed
  * constantly and none of that is a write (contract ②-11).
+ *
+ * TP-0075 round 2 — the reporter left the save surface: it is decided at
+ * creation and the drawer only shows it, so there is no baseline for it.
  */
-let saveBaseline = { assignee: "", reporter: "", labels: [] };
+let saveBaseline = { assignee: "", labels: [] };
 /**
  * The version the drawer opened with. When a remote edit arrives while a draft
  * is dirty, this deliberately stays behind: the next save carries the older
@@ -654,14 +663,19 @@ let saveBaseline = { assignee: "", reporter: "", labels: [] };
 let saveBaselineVersion = null;
 
 /**
- * `assignee` and `reporter` are committed on focus loss; `labels` on a chip
- * arriving or leaving. A single-valued field that is blank after trimming is the
- * one failure the drawer can decide on its own, with no server involved — and it
- * is the only deterministic failure path a pure-frontend check can drive
- * (contract §2.2). A blank that did **not** move the field is not a failure: an
- * empty value left empty is a no-op, not an error.
+ * `assignee` is committed on focus loss; `labels` on a chip arriving or
+ * leaving. A single-valued field that is blank after trimming is the one
+ * failure the drawer can decide on its own, with no server involved — and it is
+ * the only deterministic failure path a pure-frontend check can drive (contract
+ * §2.2). A blank that did **not** move the field is not a failure: an empty
+ * value left empty is a no-op, not an error.
+ *
+ * TP-0075 round 2 — the reporter left this surface entirely (read-only at
+ * creation), and the assignee's window closes with its `disabled` control; the
+ * guard here keeps a programmatic draft change from writing past it.
  */
 function commitField(field, raw) {
+  if (field === "assignee" && !canEditAssignee.value) return;
   const value = String(raw ?? "").trim();
   if (value === saveBaseline[field]) return;
   if (value === "") return failSave();
@@ -1092,7 +1106,7 @@ function sameSet(a, b) {
 }
 
 /**
- * Opening a card resets the state and takes that card's assignee and reporter as
+ * Opening a card resets the state and takes that card's assignee and labels as
  * the baseline, so the first edit is measured against what the card actually
  * said (`design/fidelity-r10.md` §2.2, "打开卡片即复位"). The drafts and the
  * baseline are written in the same act, which is what makes a re-fill — setting
@@ -1103,7 +1117,7 @@ function resetSave() {
   clearTimeout(savedTimer);
   saveToken += 1;
   saveState.value = "idle";
-  saveBaseline = { assignee: assigneeName.value, reporter: reporterName.value, labels: [...labelNames.value] };
+  saveBaseline = { assignee: assigneeName.value, labels: [...labelNames.value] };
   saveBaselineVersion = task.value?.version ?? null;
 }
 
@@ -1112,7 +1126,6 @@ watch(
   () => task.value?.id,
   () => {
     assigneeDraft.value = assigneeName.value;
-    reporterDraft.value = reporterName.value;
     labelDraft.value = [...labelNames.value];
     commentDraft.value = "";
     // T-20261014-212017-4 — opening a card also resets the round's own four
@@ -1140,7 +1153,6 @@ watch(
 watch(
   () => [
     task.value?.assignee?.display_name ?? "",
-    task.value?.reporter?.display_name ?? "",
     (task.value?.labels ?? []).join("\u0000"),
     task.value?.description ?? "",
   ],
@@ -1150,12 +1162,6 @@ watch(
     if (!assigneeDirty) {
       saveBaseline = { ...saveBaseline, assignee: nextAssignee };
       assigneeDraft.value = nextAssignee;
-    }
-    const nextReporter = reporterName.value;
-    const reporterDirty = reporterDraft.value !== saveBaseline.reporter;
-    if (!reporterDirty) {
-      saveBaseline = { ...saveBaseline, reporter: nextReporter };
-      reporterDraft.value = nextReporter;
     }
     const nextLabels = [...labelNames.value];
     const labelsDirty = !sameSet(labelDraft.value, saveBaseline.labels);
@@ -1171,7 +1177,7 @@ watch(
     // No dirty draft: the drawer is a pure view of the new card, so its next
     // save may use the new version. A dirty draft keeps the old version and
     // will be refused visibly by the server.
-    if (!assigneeDirty && !reporterDirty && !labelsDirty && !descriptionDirty) {
+    if (!assigneeDirty && !labelsDirty && !descriptionDirty) {
       saveBaselineVersion = task.value?.version ?? saveBaselineVersion;
     }
   },
@@ -1184,7 +1190,6 @@ watch(assigneeDraft, () => commitField("assignee", assigneeDraft.value));
 // If the note landed but the move was refused, a retry after an edit must post
 // the edited note — only an *unchanged* draft is skipped as already written.
 watch(sendBackReason, () => { sendBackCommentSent.value = false; });
-watch(reporterDraft, () => commitField("reporter", reporterDraft.value));
 watch(labelDraft, () => commitLabels(), { deep: true });
 
 async function submitComment() {
@@ -1562,15 +1567,21 @@ async function submitComment() {
           </div>
 
           <span class="td-prop-label" data-i18n="prop.assignee">{{ $t("prop.assignee") }}</span>
-          <!-- R14 D26/B13 — the people rows are combos: the value box carries
+          <!-- R14 D26/B13 — the assignee is a combo: the value box carries
                `data-assignee-kind`, and its avatar carries it too (A19), so the
                dashed agent ring resolves on both. The platform badge is the row's
-               own `[data-agent-platform]` seat. -->
+               own `[data-agent-platform]` seat.
+
+               TP-0075 round 2 — the window closes when work starts: past
+               `backlog`/`todo` the control is disabled (its box still shows the
+               name, as the terminal drawer's controls do) and `commitField`
+               refuses the same write. -->
           <div class="td-prop-value" data-detail-assignee data-detail-save-field="assignee" :data-assignee-kind="assigneeKind">
             <span class="avatar"><span class="td-avatar" data-detail-assignee-avatar :data-assignee-kind="assigneeKind">{{ initial(assigneeName) }}</span></span>
             <ComboField
               v-model="assigneeDraft"
               :options="peopleOptions"
+              :disabled="!canEditAssignee"
               seed
               hook-input="data-assignee-input"
               hook-label="data-detail-assignee-label"
@@ -1587,21 +1598,12 @@ async function submitComment() {
           </div>
 
           <span class="td-prop-label" data-i18n="prop.reporter">{{ $t("prop.reporter") }}</span>
-          <div class="td-prop-value" data-detail-reporter data-detail-save-field="reporter">
+          <!-- TP-0075 round 2 — the reporter is decided at creation, so the
+               drawer shows it and nothing else: name and avatar, no box and no
+               menu. The create dialog keeps the editable control (B22). -->
+          <div class="td-prop-value" data-detail-reporter>
             <span class="avatar"><span class="td-avatar" data-detail-reporter-avatar>{{ initial(reporterName) }}</span></span>
-            <ComboField
-              v-model="reporterDraft"
-              :options="reporterOptions"
-              seed
-              hook-input="data-reporter-input"
-              hook-label="data-detail-reporter-label"
-              hook-menu="data-reporter-menu"
-              hook-option="data-reporter-option"
-              hook-value="data-reporter-value"
-              placeholder-key="combo.reporterPlaceholder"
-              aria-key="prop.reporter"
-              @blur="(value) => commitField('reporter', value)"
-            />
+            <span data-detail-reporter-label>{{ reporterName }}</span>
           </div>
 
           <span class="td-prop-label" data-i18n="prop.project">{{ $t("prop.project") }}</span>

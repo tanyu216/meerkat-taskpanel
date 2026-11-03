@@ -592,7 +592,7 @@ the distinction.
 | Scrim | `[data-detail-overlay][data-state]` |
 | Head | `[data-detail-identifier]` (**R12**: the whole id, carrying `.td-id-full`) · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · **kind** `[data-detail-kind]` (`data-kind="epic\|task"`) → `[data-detail-kind-label]` · `[data-detail-close]`. Since TP-0075 the six-tab strip also lives here, directly under the title (see the supplement below) |
 | Save state (R10) | `[data-detail-save][data-save-state="idle \| saving \| saved \| error"]` (attribute carrier, `hidden`, no copy of its own) · `[data-detail-save-error][role="alert"]` (its only visible half) |
-| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **acceptance** `[data-detail-acceptance-mode]` (`data-acceptance-mode="off\|auto\|human"`, read-only — 0038: the card's acceptance mode, set at creation and changed only through the audited `--acceptance-mode` override) · **labels** `[data-detail-labels]` (editable label combo — see B25). The internal id (`[data-detail-id]` / `[data-detail-id-copy]`) and `[data-detail-version]` rows were **removed** by TP-0075; the head's human identifier is the identity |
+| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input while the card is `backlog`/`todo`, else a disabled box**, see B22 and the round-2 supplement) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (**read-only name + avatar since TP-0075 round 2** — see the supplement) · project `[data-detail-project]` / `[data-detail-project-label]` · **acceptance** `[data-detail-acceptance-mode]` (`data-acceptance-mode="off\|auto\|human"`, read-only — 0038: the card's acceptance mode, set at creation and changed only through the audited `--acceptance-mode` override) · **labels** `[data-detail-labels]` (editable label combo — see B25). The internal id (`[data-detail-id]` / `[data-detail-id-copy]`) and `[data-detail-version]` rows were **removed** by TP-0075; the head's human identifier is the identity |
 | Tabs | `[data-detail-tabs][role="tablist"]` → `[data-detail-tab]` ×6 (`details` · `activity` · `reports` · `acceptance` · `leftovers` · `sessions`) → `[data-detail-panel]` ×6. **Since TP-0075 the strip sits inside `.td-drawer-head`, directly under `[data-detail-title]`** (`design/BLOCKS.md` §B09 supplement). Details holds Properties / Description / Relations / Attachments; Activity holds Comments + Activity; Sessions holds the Agent-session trail; Reports / Acceptance / Leftovers read `task_reports`. `sessions` is hidden when the card has no session rows; the other five are always present |
 | Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → four `[data-rel-group]` containers (`parent` · `children` · `depends` · `related`; TP-0075), each card row carrying `-value` (identifier) / `-title`; the Related group keeps `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` (**inside the Sessions panel**) · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
@@ -644,6 +644,22 @@ New implementation-only copy: `kind.task`, `kind.epic`, `drawer.children`,
 parity checked by `test/web/i18n.parity.test.mjs`). The descendant walk's own
 contract is the server's (`test/core/storage/repositories/repositories.test.mjs`,
 `test/server/routes.test.mjs`), not the prototype's.
+
+**Implementation supplement — TP-0075 round 2's people rows.** 〔Terry 2026-11-04
+的两条产品裁定；原型仍是可编辑的行，原型不回改〕
+
+1. **The assignee settles when work starts.** The drawer edits it only while the
+   card's status is `backlog` or `todo`; past that the same combo's input carries
+   `disabled`, still showing the name, and cannot open its menu or write. The predicate is one pure function,
+   `web/src/lib/detail-edit.js#assigneeEditable`; the template's `disabled` and
+   the commit guard read it, so they cannot disagree. `awaiting` is an overlay on
+   an in-flight card, so it is read-only too.
+2. **The reporter is read-only.** It is decided at creation, so the drawer shows
+   `[data-detail-reporter-avatar]` + `[data-detail-reporter-label]` and nothing
+   else: no `[data-reporter-input]`, no menu, and no
+   `data-detail-save-field`. The create dialog keeps the editable control (B22).
+   The implementation's save surface is therefore **seven** fields, not the
+   prototype's eight.
 
 **Implementation supplement — the Acceptance tab can act (M6).** 〔原型只读；这是
 记录在案的扩展，不是原型被回改〕 The prototype's Acceptance panel is a read-only
@@ -724,18 +740,20 @@ the attribute is the identity. `[data-detail-id]` (the internal `td_…` id) was
 R12; **TP-0075 withdrew that property row** (see the supplement above), which removes a
 render point, not the identity rule.
 
-**R10 ② — the three editable rows save as they change.** The drawer's Properties grid holds
-the three fields Terry reported: assignee (B22), reporter (B22) and labels (B25). Each row
-root carries `data-detail-save-field` (`assignee` / `reporter` / `labels`), and each commits
-on the gesture it already had — focus leaving a single-valued field whose value moved, a
-roster row accepted, a label chip added or dropped — into **one** state region for all three.
+**R10 ② — the editable rows save as they change.** The drawer's Properties grid held the
+three fields Terry reported: assignee (B22), reporter (B22) and labels (B25). Each row root
+carried `data-detail-save-field`, and each committed on the gesture it already had — focus
+leaving a single-valued field whose value moved, a roster row accepted, a label chip added or
+dropped — into **one** state region. **TP-0075 round 2 takes the reporter off this surface**
+(it is read-only in the drawer) and closes the assignee's window past `todo`; the labels row
+is unchanged.
 
 | | |
 |---|---|
 | State | `[data-detail-save]` · `data-save-state` ∈ `idle` \| `saving` \| `saved` \| `error` (`idle` at rest) |
 | Feedback | `[data-detail-save-error]` — `role="alert"`, `hidden` in every state but `error` |
-| Fields | `[data-detail-assignee][data-detail-save-field="assignee"]` · `[data-detail-reporter][data-detail-save-field="reporter"]` · `[data-detail-labels][data-detail-save-field="labels"]` |
-| Commit points | `[data-detail-assignee-label]` / `[data-reporter-option]` … — the controls' **existing** hooks, unchanged |
+| Fields | `[data-detail-assignee][data-detail-save-field="assignee"]` (editable only in `backlog`/`todo`) · `[data-detail-labels][data-detail-save-field="labels"]`. The reporter row carries **no** save-field (round-2 supplement above) |
+| Commit points | `[data-detail-assignee-label]` / `[data-assignee-option]` / `[data-detail-label-option]` … — the controls' **existing** hooks, unchanged |
 | Failure | a single-valued field empty after trimming (the prototype's one deterministic failure; there is no backend) |
 
 Three properties worth naming: **typing is not a commit** (a field whose value did not move
@@ -1099,13 +1117,13 @@ open — the drawer, the states showcase, the access panel and now both floating
 
 ## B22 · Assignee / Reporter control (R3)
 
-One control, two rosters, four placements.
+One control, two rosters, three editable placements (the create dialog's assignee and reporter, and the drawer's assignee; the drawer's reporter is read-only since TP-0075 round 2).
 
 | | |
 |---|---|
 | Hooks | `[data-assignee-input]` · `[data-assignee-menu]` · `[data-assignee-option]` (`data-assignee-value`, `data-assignee-kind`, `data-agent-platform`) · `[data-reporter-input]` · `[data-reporter-menu]` · `[data-reporter-option]` (`data-reporter-value`) |
 | Shell | `.td-combo` (positioned) → `input.input` + `ul.menu.td-combo-menu` (daisyUI `menu`) |
-| Placements | create dialog — assignee and reporter (B10) · detail drawer — `[data-detail-assignee-label]` and `[data-detail-reporter-label]` are the inputs, inside `.td-prop-combo` |
+| Placements | create dialog — assignee and reporter (B10) · detail drawer — `[data-detail-assignee-label]` is the input (editable only in `backlog`/`todo`, else disabled), inside `.td-prop-combo`; the drawer's `[data-detail-reporter-label]` is a **read-only value** since TP-0075 round 2 |
 | Options | generated from the roster on every keystroke; the static seven on the assignee menu and the one on the reporter menu are the no-JS floor |
 | Keyboard | `↑`/`↓` move `aria-selected`, `Enter` accepts, `Esc` dismisses (`stopPropagation`, because the drawer also listens), `Tab` closes |
 | **No management entry** | there is no control anywhere that adds, renames or removes a roster entry — the list grows only by being used |
@@ -1565,9 +1583,9 @@ not declared — it is read off the cards' `data-reporter` at first pass, which 
 | `[data-dismiss-on-outside]` | on a `<details class="dropdown">`: a press outside it, or `Esc`, closes it (R9 — see *Floating controls*) |
 | `data-list-state` | on `[data-list]`: `loading` \| `data`, the list's two mutually exclusive states (R9 — see B08/B13) |
 | `data-board-state` | on `[data-board-view]`: `data` \| `empty`, the **board view's** two mutually exclusive states — the R9 list idiom applied to the board (R10 — see B05/B12) |
-| `[data-detail-save]` · `data-save-state` | in the drawer: `idle` \| `saving` \| `saved` \| `error` for the three auto-saving fields; an attribute carrier with no copy of its own (R10 — see B09) |
+| `[data-detail-save]` · `data-save-state` | in the drawer: `idle` \| `saving` \| `saved` \| `error` for the drawer's auto-saving fields; an attribute carrier with no copy of its own (R10 — see B09) |
 | `[data-detail-save-error]` | the visible half of that state: `role="alert"`, `hidden` in every state but `error` (R10 — see B09) |
-| `data-detail-save-field` | on each editable row root: `assignee` \| `reporter` \| `labels`, so a state can be attributed to a row without a second lookup (R10 — see B09) |
+| `data-detail-save-field` | on each editable row root: `assignee` \| `labels`, so a state can be attributed to a row without a second lookup (R10 — see B09; the reporter left this surface in TP-0075 round 2) |
 | `[data-column-progress]` | the occupancy bar under each column head |
 | `[data-cidr-enabled]` | the allow-list section's on/off state, written by `[data-cidr-switch]` |
 | `data-assignee-value` / `data-reporter-value` | the name a roster option carries, read by `comboAccept()` |
