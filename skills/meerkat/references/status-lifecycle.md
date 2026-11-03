@@ -271,7 +271,7 @@ is not `done` — literally `status !== "done"`, so a `canceled` predecessor wit
   a child is a deliverable. A child must land on the base branch alone and leave the tree
   coherent; one change's core, CLI, web, docs and fixtures are its scope, not five children.
   The four questions are in
-  [`SKILL.md` §Containers](../SKILL.md#containers-when-the-card-is-an-epic).
+  [`create-card.md` §The epic decision](create-card.md#the-epic-decision-when-work-is-a-container).
 - **Never claimable.** `issue move <epic> in_progress` is `not_claimable`.
 - **The board starts it.** The first child to enter the work moves the container
   `todo → in_progress` (actor kind `system`, no claim), with an `epic_auto_start` activity and
@@ -335,7 +335,7 @@ exception. The mode is the **closer** selector, not a review selector — an `au
 The creator states the mode at creation; an explicit `--acceptance-mode` is the whole
 decision. An unresolved card — task or epic — falls back to `auto`: review is the default,
 and `human` is opt-in. A project may document how its creators choose in
-`docs/agents/acceptance-mode.md` under its working directory; the `meerkat` skill discovers that file
+`docs/agents/create-card.md` under its working directory; the `meerkat` skill discovers that file
 when it creates a card. It is guidance for the creator, not board data — not stored, not
 inherited, not read by `taskd`. The structural rules:
 
@@ -423,7 +423,7 @@ Skill prose is written against this split:
 | “Read candidates, then claim” | **practice** — only the claim gate is enforced |
 | `depends_on` blocks claiming | **read rule** — candidates filters only |
 
-The working list of silent traps is in [`../SKILL.md`](../SKILL.md); this section is the
+The working list of silent traps is in [`create-card.md`](create-card.md); this section is the
 classification they belong to.
 
 ## 11. The board's workflow decisions

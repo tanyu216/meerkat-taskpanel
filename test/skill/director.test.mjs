@@ -575,15 +575,15 @@ describe("board skill: the language of a card", () => {
 });
 
 describe("board skill: the container decision", () => {
-  const skill = readFileSync(join(ROOT, "skills/meerkat/SKILL.md"), "utf8");
+  const manual = readFileSync(join(ROOT, "skills/meerkat/references/create-card.md"), "utf8");
   const lifecycle = readFileSync(
     join(ROOT, "skills/meerkat/references/status-lifecycle.md"),
     "utf8",
   );
 
   it("does not promote a card that already delivered", () => {
-    assert.match(skill, /current-round report/i);
-    assert.match(skill, /do \*\*not\*\* promote/i);
+    assert.match(manual, /current-round report/i);
+    assert.match(manual, /do \*\*not\*\* promote/i);
     assert.match(lifecycle, /terminal container never rolls up/i);
   });
 
@@ -593,9 +593,9 @@ describe("board skill: the container decision", () => {
   });
 
   it("leaves the board-enforced container codes to the refusal", () => {
-    assert.doesNotMatch(skill, /CHILDREN_OPEN/);
-    assert.doesNotMatch(skill, /ROLLUP_REQUIRED|ROLLUP_STALE/);
-    assert.match(skill, /status-lifecycle\.md#6-containers-epic/);
+    assert.doesNotMatch(manual, /CHILDREN_OPEN/);
+    assert.doesNotMatch(manual, /ROLLUP_REQUIRED|ROLLUP_STALE/);
+    assert.match(manual, /status-lifecycle\.md#6-containers-epic/);
   });
 
   it("names the shape limits where the card schema defines them", () => {
@@ -611,12 +611,12 @@ describe("board skill: the container decision", () => {
     // TP-0002 cut "enforce a 1-4 character prefix on every create path" into core,
     // CLI, web, docs and a fixture sweep. Three children could not land alone and
     // a sixth card existed only to pay the split's debt. The rule names the test.
-    assert.match(skill, /land on the base branch alone/i);
-    assert.match(skill, /leave the tree coherent/i);
-    assert.match(skill, /1-4 character project prefix/i);
-    assert.match(skill, /core, CLI, web, docs and fixtures/);
-    assert.match(skill, /not a technical layer/i);
+    assert.match(manual, /land on the base branch alone/i);
+    assert.match(manual, /leave the tree coherent/i);
+    assert.match(manual, /1-4 character project prefix/i);
+    assert.match(manual, /core, CLI, web, docs and fixtures/);
+    assert.match(manual, /not a technical layer/i);
     assert.match(lifecycle, /not schema-enforced/i);
-    assert.match(lifecycle, /\.\.\/SKILL\.md#containers-when-the-card-is-an-epic/);
+    assert.match(lifecycle, /create-card\.md#the-epic-decision-when-work-is-a-container/);
   });
 });

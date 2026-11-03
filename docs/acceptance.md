@@ -27,10 +27,10 @@ orphans the work.
   supplies neither: a card that omits the field resolves to `auto`, and the reviewer is the
   role catalog's `default_reviewer` ([roles.md](roles.md)).
 - A project may document how its creators choose between the three words in
-  `docs/agents/acceptance-mode.md` under the project's working directory. The `meerkat` skill discovers
+  `docs/agents/create-card.md` under the project's working directory. The `meerkat` skill discovers
   that file when it creates a card. It is guidance for the creator, not board data: it is not
   stored, inherited or read by `taskd`. This repository's own guidance is
-  [acceptance-mode.md](agents/acceptance-mode.md).
+  [create-card.md](agents/create-card.md).
 
 ## Resolution at creation
 

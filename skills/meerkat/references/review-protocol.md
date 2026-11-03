@@ -195,7 +195,7 @@ there is no project-level or deployment-level reviewer configuration.
 **The fallback is `auto`.** An unresolved card — task or epic — is reviewed; `human` and `off`
 appear only when explicitly set. Any card, at any depth, may be `human`; a person's decision on
 a subtask is a close like any other. The creator chooses the word from the card's own context;
-a project may document its selection guidance in `docs/agents/acceptance-mode.md` under its working
+a project may document its selection guidance in `docs/agents/create-card.md` under its working
 directory, which the `meerkat` skill discovers when it creates a card. That document is not
 board data and is never inherited.
 

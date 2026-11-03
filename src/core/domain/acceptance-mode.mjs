@@ -14,7 +14,7 @@
  *
  * There is no project-level default: the creator resolves the card's word at
  * creation from the card's own context. A project may document its selection
- * rules in `docs/agents/acceptance-mode.md` for the card-creating skill; that document
+ * rules in `docs/agents/create-card.md` for the card-creating skill; that document
  * is not board data and is never stored or inherited.
  *
  * `deploy` is deliberately **not** a card rule. Whether a card belongs to a

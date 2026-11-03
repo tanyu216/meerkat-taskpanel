@@ -62,46 +62,23 @@ Attempt the move and read the refusal; the whitelist names the allowed targets. 
 
 ## Creating a card
 
-`issue create` is the whole handoff: the card lands in `todo` — the queue the loop's poll reads — in the same call, addressed to whoever it is assigned to. The queue is per assignee, not global; an unassigned card is the public pool. Only `--status backlog` keeps it out of a queue. The INSERT gate:
-[`references/status-lifecycle.md#8-creating-a-card-in-a-status`](references/status-lifecycle.md#8-creating-a-card-in-a-status).
+A create is one call and three decisions: **scope** (is this work a card at all?), **shape** (one
+card, or an `epic` container for several deliverables?) and **closer** (`off`, `auto` or `human`).
+`issue create` queues the card in `todo` — the queue the loop polls — in the same call; only
+`--status backlog` keeps it out. An unassigned card is the public pool.
 
-**Resolve the acceptance mode from the card.** The mode is decided at creation, not by a
-project default. `off` means no review and the deliverer may close; `auto` means an independent
-review, then the loop closes on `APPROVE` (the fallback when the mode is omitted); `human`
-means an independent review, then a person closes after it finishes. Before passing
-`--acceptance-mode`, look for the project's own selection rules: resolve the project working
-directory with `taskctl project dir <id> --json`, then read
-`<project-dir>/docs/agents/acceptance-mode.md` when it exists. An explicit instruction from the human
-wins over that document. If the file, the directory or the map is absent, use the three
-meanings above; never invent a project default or store one on the project row.
-
-**Route the card at creation.** The create *is* the routing decision, not a step after it. Read the role catalog first — it is the valid range:
+Resolve the project's own rule first — `taskctl project dir <id> --json`, then
+`<project-dir>/docs/agents/create-card.md` when it exists. An explicit instruction from the human
+wins over it. Route in the same call from the role catalog:
 
 ```bash
-taskctl role list --json     # data.roles[].agent | id | title | summary | lanes | shapes
-```
-
-Name one worker-lane role in the same call (never the reviewer; a reviewer-lane role is not routed ordinary work):
-
-```bash
+taskctl role list --json     # the valid assignees: data.roles[].agent
 taskctl issue create --project <p> --title "…" --assignee <role> --assignee-kind agent --acceptance "…"
 ```
 
-When the catalog is non-empty, the CLI refuses an `--assignee` outside it (`ASSIGNEE_NOT_IN_CATALOG`) — tell the human the valid names rather than guessing; `--force-create` is only for an explicit human instruction to use a name outside the range. An unassigned card is **unowned**, not handed off: the supervisor's pool claim can take it as the Worker role, or the `meerkat-director` routes it. A shape no role describes goes to the Worker role, named explicitly. **With no role installed — including before the supervisor's first sync, when `role list` is empty — do not invent a role name**; leave the card unassigned (the public pool) or name your own worker identity. Ambiguous between two shapes: split it into one card per **role** shape — a handoff boundary, not a technical layer — or leave the routing to the director.
-
-**File a card in the human's name when you are in an interactive session with the human, or when the instruction to create this card comes explicitly from them.** Either one is enough: `--as-human` records that human as both the writer and the reporter. Do not use it when you are working from a loop handoff or a card brief with no explicit human instruction, when you file a card yourself outside a human conversation, or for your own claim, heartbeat, delivery or review. If the human asked but `--as-human` is unavailable, pass `--reporter <name>` for the create.
-
-**A document the work must follow is attached, not retyped.** When the human points at a file — a plan, a spec, a vendor's PDF to read closely — that pointing *is* the instruction; nobody says "upload it". Attach it straight after the create, and when the file is the plan itself, store it as `plan.md` whatever it is called on disk:
-
-```bash
-taskctl --as-human issue create --project <p> --title "…" [--assignee <role>] --acceptance "…"
-taskctl attachment add <ref> --file <path> --name plan.md   # the plan's one name; create has no --file
-```
-
-Anything else keeps its own name, and a non-text plan keeps its extension (`plan.pdf`). The worker reads the card and its brief, never this conversation, so a path said only here reaches nobody: attach the file and point `--description` at the attachment instead of retyping it. A file named without a path gets one question for the path — never go hunting the tree for a document nobody named.
-
-**Say the outcome in one line, then stop**: the identifier, that it is queued, and the file when you attached one — `已建卡 PROJ-0007，已排队处理（附 spec.pdf）`. Do not ask whether to start. Commands and flags:
-[`references/cli.md#issue-create`](references/cli.md#issue-create), [`references/cli.md#attachment`](references/cli.md#attachment).
+The full manual — what becomes a card, the epic decision and its patterns, the acceptance words,
+routing, `--as-human`, attachments, the one-line outcome:
+[`references/create-card.md`](references/create-card.md).
 
 ## Stage markers
 
@@ -170,57 +147,12 @@ The report must **cover the snapshot**: every item appears by text; `met` or `no
 
 The mode is resolved once, at creation: `--acceptance-mode off|auto|human`; omitted, it falls
 back to `auto`. There is no project default — the create section explains the project's
-`docs/agents/acceptance-mode.md`. An `off` card may go straight from `in_progress` to `done`; `auto`
+`docs/agents/create-card.md`. An `off` card may go straight from `in_progress` to `done`; `auto`
 and `human` are both reviewed; the loop accepts an `auto` card on `APPROVE`, and a person
 closes a `human` card after its review finishes. An epic is reviewed against its children and
 rollup and closed only after an `APPROVE`. An agent may only tighten a mode
 (`off → auto|human`); a review card is always `off`. Gate, rounds and the board's matrix:
 [`references/status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round`](references/status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round), [`references/status-lifecycle.md#4a-the-acceptance-baseline`](references/status-lifecycle.md#4a-the-acceptance-baseline), [`references/status-lifecycle.md#5-claims-and-heartbeats`](references/status-lifecycle.md#5-claims-and-heartbeats), [`references/status-lifecycle.md#7-acceptance-one-mode-per-card`](references/status-lifecycle.md#7-acceptance-one-mode-per-card), [`references/status-lifecycle.md#9-refusals`](references/status-lifecycle.md#9-refusals).
-
-## Containers: when the card is an epic
-
-An epic exists only where someone named one. Splitting is a scope decision: it belongs to the `meerkat-director` (an out-of-scope expansion to the human, `E1`), so a worker that finds several deliverables writes an agent `question` comment describing the pieces, keeps the card `in_progress`, and **holds** with `issue wait`. A title and description naming the **sum** of the work is the container; naming **one deliverable** makes it a child.
-
-**Resolve the project's splitting rule first.** Before deciding the container, resolve the project working directory with `taskctl project dir <id> --json`, then read `<project-dir>/docs/agents/epic-cards.md` when it exists. An explicit instruction from the human wins over that document; if it does not exist, these board rules are the whole answer.
-
-**A child is a deliverable, not a layer.** Ask four questions of every proposed child:
-
-1. **Can it land on the base branch alone?** Its branch merges without carrying a sibling's unmerged commit.
-2. **Does landing it leave the tree coherent?** Every surface it touches — core, CLI, web, docs and fixtures — is updated in the same card, and the suite is green.
-3. **Is the outcome visible?** A reader of the epic sees a result, not "the CLI flag" or "the docs".
-4. **Does it owe a cleanup card?** No fixture sweep or documentation catch-up exists only to pay its debt.
-
-A later child may build on an earlier child already on the base branch; a stack on an unmerged sibling is not. The layers of one change are its **scope**: enforcing the 1-4 character project prefix on every create path is one child, not five. The role routing table's "one card per shape" sizes a **role** handoff, not a technical layer.
-
-| Card you have | Role | What to do |
-|---|---|---|
-| already an `epic` | — | add children; never convert it |
-| `task`, no parent | the whole job | promote in place (below) |
-| `task`, no parent | one deliverable among several | create a new `--kind epic` container; link it and the new children |
-| `task`, with a parent | the whole job | promote to a nested epic; its parent edge stays |
-| `task`, with a parent | one deliverable among several | keep it as a child; add siblings under the same parent |
-| `in_review`, `done`, `canceled` or archived | — | do **not** promote; create a new container and link the old card |
-| a review card | — | do **not** promote; split a separate container |
-
-**Promote before the card delivers its current-round report.** The rollup collects the **children's** delivery reports, not the container's own history, so promoting a card that already delivered strands every child attached after it; start a *new* container instead.
-
-```bash
-taskctl issue update <ref> --kind epic       # the card keeps its status
-taskctl comment add <ref> --kind note --body "split into N cards: …"
-taskctl issue create --project <p> --title "…" [--assignee <role>] --target <t> --acceptance "…"
-taskctl relation add <ref> --type parent --target <child>     # <ref> is the parent
-```
-
-**An epic's acceptance is its children**; its delivery is a rollup of their reports. The board starts the container when a child enters work and closes it to `in_review` (never `done`) when the tree is finished — but a `backlog` or `awaiting` epic does not auto-start, and an `in_review` epic that gains a child must move back to `in_progress` to roll up again. An all-canceled tree is not a delivery — cancel the container instead. Attempt the close; the refusal names anything still open.
-
-Three rules that fail **silently**:
-
-- **Each child needs its own `--target`.** The create guard keys on kind + assignee + source + target; two children for one owner with nothing to tell them apart are the *same card*. Use `--allow-dup` when a target does not apply.
-- **`issue create --parent <epic>` links nothing** — only `relation add --type parent` does.
-- **A child attached after the rollup makes it stale**; rework the epic to start a new round.
-
-Claim exactly **one** leaf child; the container holds no work of its own. Full rules:
-[`references/status-lifecycle.md#6-containers-epic`](references/status-lifecycle.md#6-containers-epic), [`references/cli.md#promoting-an-existing-card-to-an-epic`](references/cli.md#promoting-an-existing-card-to-an-epic).
 
 ## Review cards (flow B)
 
@@ -279,6 +211,7 @@ A card exported into a project directory is a **snapshot**. Register it once wit
 | Topic | Read |
 |---|---|
 | statuses, whitelist, reopen, guards | [§1–§3](references/status-lifecycle.md#1-the-vocabulary) |
+| creating a card: scope, epic decision and patterns, acceptance mode | [create-card](references/create-card.md) |
 | delivery gate, round, acceptance baseline | [§4–§4a](references/status-lifecycle.md#4-the-delivery-gate-and-the-delivery-round) |
 | claims, heartbeats, stale takeover | [§5](references/status-lifecycle.md#5-claims-and-heartbeats) |
 | containers, rollup, promotion | [§6](references/status-lifecycle.md#6-containers-epic) |
