@@ -1223,11 +1223,16 @@ function assignmentMismatch(card, review, role, roleSet) {
   if (review) return null;
   const override =
     typeof card?.reassign?.to === "string" && card.reassign.to.trim() !== "" ? card.reassign.to : null;
+  // Two projections reach this check: the poll's candidate carries the assignee
+  // as a string (`assignee`, `assignee_kind`), while the patrol's `issue list`
+  // Task DTO carries an actor-ref object (`assignee.display_name`/`assignee.id`)
+  // beside the scalar `assignee_id`/`assignee_kind`. Reading only the string form
+  // silently skipped the patrol, which then dispatched as the holder — the very
+  // cross-role execution ADR 0015 removes.
+  const assignee = cardAssignee(card);
   const assigned =
-    typeof card?.assignee === "string" &&
-    card.assignee.trim() !== "" &&
-    String(card.assignee_kind ?? "").trim().toLowerCase() !== "human";
-  const expectedName = override ?? (assigned ? card.assignee : null);
+    assignee.name !== null && String(assignee.kind ?? "").trim().toLowerCase() !== "human";
+  const expectedName = override ?? (assigned ? assignee.name : null);
   if (expectedName === null) return null;
   const expected = roleSet === null ? null : selectRole(roleSet, expectedName, "worker");
   if (role !== null && expected !== null && role.agent.toLowerCase() === expected.agent.toLowerCase()) {
@@ -1237,6 +1242,35 @@ function assignmentMismatch(card, review, role, roleSet) {
     `card ${card?.identifier ?? "?"} is assigned to ${expectedName}, ` +
     `but the dispatch selected ${role?.agent ?? "no role"}`
   );
+}
+
+/**
+ * The card's assignee, whichever projection shape it has.
+ *
+ * @param {object|undefined} card a candidate projection or a wire Task DTO
+ * @returns {{name: string|null, kind: string|null}}
+ */
+function cardAssignee(card) {
+  const ref = card?.assignee;
+  let name = null;
+  let kind = null;
+  if (typeof ref === "string") {
+    name = ref.trim() === "" ? null : ref;
+  } else if (ref !== null && typeof ref === "object") {
+    if (typeof ref.display_name === "string" && ref.display_name.trim() !== "") {
+      name = ref.display_name;
+    } else if (typeof ref.id === "string" && ref.id.trim() !== "") {
+      name = ref.id;
+    }
+    if (typeof ref.kind === "string" && ref.kind.trim() !== "") kind = ref.kind;
+  }
+  if (name === null) {
+    const id = card?.assignee_id;
+    if (typeof id === "string" && id.trim() !== "") name = id;
+  }
+  const scalarKind = card?.assignee_kind;
+  if (typeof scalarKind === "string" && scalarKind.trim() !== "") kind = scalarKind;
+  return { name, kind };
 }
 
 export function wakeHandoff(opts, config, action, card, resident = false) {

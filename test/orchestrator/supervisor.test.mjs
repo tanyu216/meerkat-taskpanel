@@ -37,6 +37,7 @@ import {
   parseHeartbeat,
   planClaimIdentity,
   planPatrol,
+  planPatrolClaim,
   planStrandedTodoAlerts,
   planTick,
   pruneRegistry,
@@ -311,6 +312,102 @@ describe("planClaimIdentity (pure)", () => {
       { ...ctx, defaultAgent: "Jobs", scanAgent: "Jobs" },
     );
     assert.deepEqual(plan, { kind: "claim", agent: "Jobs" });
+  });
+});
+
+describe("planPatrolClaim (wire task → ADR 0015 identity)", () => {
+  // The patrol reads `issue list`, whose Task DTO carries the assignee as an
+  // actor-ref **object**, not the candidate projection's string. The patrol used
+  // to claim as the holder (`alert.agent`) and dispatch with that identity; these
+  // cases pin the decision to the same `planClaimIdentity` the poll uses.
+  const role = (id, agent, lanes, installedOn = ["claude"]) => ({ id, agent, lanes, installedOn });
+  const LINUS = role("linus", "Linus", ["worker"]);
+  const JOBS = role("jobs", "Jobs", ["worker"]);
+  const WORKER = role("worker", "Worker", ["worker"]);
+  const REVIEWER = role("reviewer", "Reviewer", ["reviewer"]);
+  const roleSet = { roles: [LINUS, JOBS, WORKER, REVIEWER] };
+  const ctx = {
+    roleSet,
+    primaryKind: "claude",
+    kindOrder: ["claude", "codex", "pi"],
+    kindAvailable: () => true,
+    defaultAgent: "Worker",
+    scanAgent: "Jobs",
+  };
+  const MIN = 60_000;
+  const ROTTED = 6 * 60 * MIN + MIN;
+  const task = (overrides = {}) => ({
+    identifier: "TP-1",
+    project_id: "P",
+    kind: "task",
+    status: "in_progress",
+    claimed_by: "a-jobs",
+    claimed_by_actor: { id: "a-jobs", display_name: "Jobs", kind: "claude" },
+    assignee_id: "a-linus",
+    assignee_kind: "agent",
+    assignee: { id: "a-linus", display_name: "Linus", kind: "agent" },
+    ...overrides,
+  });
+
+  it("defers an in-window stale_same card whose route moved off the holder", () => {
+    const plan = planPatrolClaim(task(), { ...ctx, ageMs: 45 * MIN });
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /stale_same/);
+    assert.match(plan.why, /Jobs/);
+  });
+
+  it("claims a rotted stale card as its assignee, not the holder", () => {
+    assert.deepEqual(planPatrolClaim(task(), { ...ctx, ageMs: ROTTED }), {
+      kind: "claim",
+      agent: "Linus",
+    });
+  });
+
+  it("keeps the holder's own in-window claim", () => {
+    const own = task({
+      assignee_id: "a-jobs",
+      assignee: { id: "a-jobs", display_name: "Jobs", kind: "agent" },
+    });
+    assert.deepEqual(planPatrolClaim(own, { ...ctx, ageMs: 45 * MIN }), {
+      kind: "claim",
+      agent: "Jobs",
+    });
+  });
+
+  it("reads the actor-ref kind: a human assignee is deferred", () => {
+    const human = task({
+      assignee_id: "a-terry",
+      assignee_kind: "human",
+      assignee: { id: "a-terry", display_name: "Terry", kind: "human" },
+    });
+    const plan = planPatrolClaim(human, { ...ctx, ageMs: ROTTED });
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /human/);
+  });
+
+  it("plans the formal Worker reassignment for a rotted card with no assignee role", () => {
+    const ghost = task({
+      assignee_id: "a-ghost",
+      assignee: { id: "a-ghost", display_name: "Ghost", kind: "agent" },
+    });
+    const plan = planPatrolClaim(ghost, { ...ctx, ageMs: ROTTED });
+    assert.equal(plan.kind, "claim");
+    assert.equal(plan.agent, "Worker");
+    assert.equal(plan.reassign.from, "Ghost");
+    assert.equal(plan.reassign.to, "Worker");
+    assert.match(plan.reassign.reason, /not installed/);
+  });
+
+  it("defers an unassigned in-window card held by someone other than the pool agent", () => {
+    const open = task({ assignee_id: null, assignee_kind: null, assignee: null });
+    const plan = planPatrolClaim(open, { ...ctx, ageMs: 45 * MIN });
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /stale_same/);
+  });
+
+  it("defers rather than guesses when the heartbeat age is unreadable", () => {
+    const plan = planPatrolClaim(task(), { ...ctx, ageMs: Number.NaN });
+    assert.equal(plan.kind, "defer");
   });
 });
 
