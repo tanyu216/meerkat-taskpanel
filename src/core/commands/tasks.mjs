@@ -621,6 +621,21 @@ export function updateTask(ctx, input) {
         throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
       }
 
+      // The caller's CAS guards the whole update, not only the final patch: an
+      // acceptance append or a review-mode override writes first, so checking it
+      // at the patch would let a stale caller through. Same code and details as
+      // the repository's lost-update refusal.
+      if (input.ifVersion !== undefined && current.version !== input.ifVersion) {
+        throw new DomainError("VERSION_CONFLICT", {
+          message: `task ${current.identifier} is at version ${current.version}, expected ${input.ifVersion} — re-read and retry once`,
+          details: {
+            taskId: current.id,
+            currentVersion: current.version,
+            expectedVersion: input.ifVersion,
+          },
+        });
+      }
+
       const dictionaryAudit = [];
       if (input.assignee !== undefined) {
         const resolved = resolveAssignment({ repos: ctx.repos, now }, { kind: "assignee", name: input.assignee, forceCreate: input.forceCreate });
