@@ -549,16 +549,17 @@ _中文_: 工作流通道
 _Avoid_: workflow engine, pipeline; SLA alerts are not part of it
 
 **Review card**:
-An ordinary `task` card that audits another card: it records `review_of` (the original's
+A `kind='review'` card that audits another card: it records `review_of` (the original's
 identifier), `flow=B` and the delivery round it audits, and carries the reviewer's verdict
 report. Creation also stamps the immutable structural marker (`review_of_id`,
-`review_round`), which is what the acceptance gate reads; `meta.review_of` /
-`meta.review_round` are its readable mirror and are canonicalized from the columns on
-update. It is not a `kind` of its own, and it reaches `done` through `in_review` like every
+`review_round`), which is what the acceptance gate reads; the database CHECK
+`(kind='review') = (review_of_id IS NOT NULL)` ties the type and the marker together, so
+neither can disagree; `meta.review_of` / `meta.review_round` are its readable mirror and are
+canonicalized from the columns on update. It reaches `done` through `in_review` like every
 other card. Its `acceptance_mode` is always `off` (flow B is never reviewed again), enforced
 by the resolver and a database trigger.
 _中文_: 审核卡
-_Avoid_: review task kind, acceptance card, approval
+_Avoid_: approval card, acceptance card
 
 **Reviewer**:
 The independent agent a review card is assigned to — the local role catalog's

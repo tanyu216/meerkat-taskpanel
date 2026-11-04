@@ -51,7 +51,7 @@ Without `--include` the payload is byte-identical to what it always was.
 | `description` | string | copied — opaque markdown; the export writes it under `## Background` |
 | `status` | string | copied — the eight lifecycle words |
 | `priority` | string | copied — `low` · `medium` · `high` · `urgent` |
-| `kind` | string | copied — `task` · `epic`; a review card is still `task` |
+| `kind` | string | copied — `task` · `epic` · `review`; a review row carries `review` with its marker |
 | `sort_order` | number | copied — the repository's stored order key (always `0` in practice) |
 | `assignee_id` | string \| null | copied |
 | `assignee_kind` | string \| null | copied — the kind recorded with the reference |
@@ -79,7 +79,7 @@ Without `--include` the payload is byte-identical to what it always was.
 | `review_round` | number \| null | copied — the audited delivery round; `null` = legacy round-agnostic |
 | `labels` | string[] | derived — always an array |
 | `meta` | object | derived — always an object; carries `target` and a team's own keys |
-| `role` | string | derived — `task` · `epic` · `review`; read this, not `kind`, to ask what a card is for |
+| `role` | string | derived — `task` · `epic` · `review`; equals the stored `kind` for a current row, and a legacy `meta.review_of`-only row whose mirror cannot be resolved still reads `review` while `kind` stays `task` |
 | `review_of` | string \| null | derived — the audited card's **identifier** |
 | `acceptance` | string[] | derived — the **frozen baseline**, the delivery contract |
 | `acceptance_revision` | number | derived — the baseline's revision (the prune's CAS) |

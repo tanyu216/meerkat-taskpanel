@@ -80,6 +80,7 @@ beforeEach(() => {
   boardModule.board.filters.priority = "all";
   boardModule.board.filters.status = "all";
   boardModule.board.filters.label = "all";
+  boardModule.board.showReviews = false;
   uiModule.view.value = "list";
 });
 
@@ -320,6 +321,37 @@ describe("web/list — failure isolation", () => {
     assert.equal(list.list.error.code, "INTERNAL");
     assert.equal(boardModule.board.error, null);
     assert.equal(list.list.loading, false);
+  });
+});
+
+describe("web/list — ADR 0014 review kind", () => {
+  it("hides review rows by default and shows them with the switch", async () => {
+    const list = await freshList();
+    installFetch({
+      "GET /api/v1/tasks": ok({
+        tasks: [
+          { id: "td_1", identifier: "P-1", status: "todo", kind: "task" },
+          { id: "td_2", identifier: "P-2", status: "done", kind: "review" },
+        ],
+        total: 2,
+      }),
+    });
+
+    await list.loadFirst();
+    assert.deepEqual(
+      list.visibleListTasks.value.map((task) => task.id),
+      ["td_1"],
+      "a review card is not rendered while the switch is off",
+    );
+    assert.equal(list.list.tasks.length, 2, "the raw page keeps the cursor honest");
+    assert.equal(list.listTotal.value, 1, "the count denominator drops the hidden row");
+
+    boardModule.board.showReviews = true;
+    assert.deepEqual(
+      list.visibleListTasks.value.map((task) => task.id),
+      ["td_1", "td_2"],
+    );
+    assert.equal(list.listTotal.value, 2);
   });
 });
 

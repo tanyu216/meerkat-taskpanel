@@ -208,6 +208,17 @@ export function insertTask(db, overrides = {}) {
   const columns = new Set(
     db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name),
   );
+  // `0004` makes `kind='review'` the storage shape of a marker row. A fixture
+  // that supplies the marker and says nothing about kind means a review, so it
+  // gets the kind the board now requires — but only on a board whose schema
+  // knows the third kind. A pre-0004 board is being seeded with the *old*
+  // shape on purpose, and there kind stays `task`.
+  const supportsReviewKind =
+    /kind\s+IN\s*\([^)]*'review'/.test(
+      String(db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'").get()?.sql ?? ""),
+    );
+  const derivedKind =
+    row.kind ?? (supportsReviewKind && row.review_of_id ? "review" : "task");
   const pairs = [
     ["id", row.id],
     ["identifier", row.identifier],
@@ -216,7 +227,7 @@ export function insertTask(db, overrides = {}) {
     ["description", row.description ?? ""],
     ["status", row.status],
     ["priority", row.priority ?? "medium"],
-    ["kind", row.kind ?? "task"],
+    ["kind", derivedKind],
     ["labels", row.labels ?? "[]"],
     ["sort_order", row.sort_order ?? 0],
     ["assignee_id", ensureActor(db, row.assignee_id ?? null)],
