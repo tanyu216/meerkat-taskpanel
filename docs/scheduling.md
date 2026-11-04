@@ -367,13 +367,20 @@ The thresholds are layered:
 - the same holder may re-claim after **10 minutes** (refreshing ownership/heartbeat);
 - only after **30 minutes** does the card enter the `issue candidates --stale`
   recovery pool;
-- any agent may take over after **6 hours**, and a takeover writes a `change` comment.
+- after **6 hours** the claim has rotted: its **assignee** takes the card back, and any
+  other agent needs `--allow-steal --reason`. Every takeover writes a `change` comment.
 
 The supervisor runs with `--recover-stale=yes` by default, adds `--stale` to the
 candidate read, and claims every candidate through `issue claim` — one path for
 ready and recovered work. Discovery and ownership are separate: the candidate read
 only *finds* stale cards; `issue claim` (backed by the board's CAS) is what
-transfers ownership.
+transfers ownership. The claim identity is the card's **assignee**, not the scanner:
+the recovery pool is unscoped, but a card assigned to Linus is claimed and dispatched
+as Linus even when Jobs sees it first (ADR 0014). The candidate row carries that
+route (`assignee`, `assignee_id`, `assignee_kind`). Only when the assignee's role
+is not installed or no available kind carries it does the loop formally re-assign a
+rotted work card to Worker — a version-guarded write plus a `change` comment — and
+then claim it; review and human cards never take that path.
 
 SLA patrol measures and alerts; by default it moves nothing. `--patrol-llm` is its
 only authorized move path — and that path is `move`, not `claim`: ownership changes
@@ -645,7 +652,7 @@ Every dependency's failure is named; nothing degrades silently.
 | dispatch failed after the claim | the claim is handed back to `todo` immediately; at three consecutive failures the card is parked |
 | a card keeps coming back | the board's plan emits `hold_card`; the card is `blocked/decision` with a question, and a human move starts a fresh epoch |
 | resident pool wedged | `loop doctor`/`status` report `wedged`; one minute later the ping clock SIGTERMs it once and SIGKILLs on a later ping if needed (`--recover-wedged=no` opts out) |
-| stale claim | `--recover-stale` offers it; the claim itself is `issue claim` |
+| stale claim | `--recover-stale` offers it; the claim itself is `issue claim`, made by the card's assignee role. A role absent or carried by no available kind re-routes a rotted work card to Worker (version-guarded, `change` comment) before claiming |
 | old roles tree / old `ROLES_DIR` shape | a directory with no `role.json` is reported as deprecated by `/setup-meerkat`; never deleted automatically. A directory of role directories is a valid custom team and replaces discovery |
 
 ## Fresh heartbeat is a no-op; a broken one is never silent
@@ -2461,7 +2468,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--workspace=worktree\|shared` | `worktree` | a git project's cards each run in `.worktrees/<ref>[-r<round>]` on `lane/<ref>[-r<round>]`; a creation failure defers the card (no fallback). `shared` restores the old shared-checkout behaviour |
 | `--claim-unassigned=yes\|no` | from per-kind config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
-| `--recover-stale=yes\|no` | from per-kind config → `yes` | add stale `in_progress` cards to the candidate read (`--stale`); the claim itself is `issue claim` (holder after 10 min, anyone after 6 h) |
+| `--recover-stale=yes\|no` | from per-kind config → `yes` | add stale `in_progress` cards to the candidate read (`--stale`); the claim itself is `issue claim` — the holder after 10 min, the assignee after 6 h, anyone else with `--allow-steal --reason` |
 | `--workflow=yes\|no` | from per-kind config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch) |
 | `--reviewer <agent>` | — | deprecated no-op; the review card's assignee — the role catalog's `default_reviewer` — selects the reviewer |
 | `--workflow-max-actions <n>` | `20` | max workflow writes (and bounded reads) per pass |

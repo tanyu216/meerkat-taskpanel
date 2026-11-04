@@ -483,7 +483,9 @@ export function createQueueDispatch(input) {
     if (!executorReady) {
       return {
         ok: false,
-        error: `review card assignee ${action.agent} is not an installed reviewer-lane role; not dispatching ${action.identifier}`,
+        error:
+          handoffRow.assignmentMismatch ??
+          `review card assignee ${action.agent} is not an installed reviewer-lane role; not dispatching ${action.identifier}`,
       };
     }
     for (const warning of roleWarnings) {
@@ -531,6 +533,44 @@ export function createQueueDispatch(input) {
     // made before it refreshes the brief. One writer, one path.
     return { ok: true, pid: null, queued: !queued.coalesced };
   };
+}
+
+/**
+ * The explicit Worker fallback's two board writes (ADR 0014): re-route the card,
+ * then leave the `change` comment that says why. Both are the **orchestrator's**
+ * writes — the loop decided the re-route, not the first scanner — and the
+ * assignment carries the version the scan saw, so a concurrent edit refuses it
+ * instead of reverting a human's change.
+ *
+ * @param {object} opts
+ * @param {(line: string, meta?: object) => void} log
+ * @param {string} identifier
+ * @param {string} agent the Worker role's agent name
+ * @param {{reason?: string, ifVersion?: number}} [options]
+ * @returns {{ok: boolean, version?: number, dryRun?: boolean, error?: string}}
+ */
+export function reassignCard(opts, log, identifier, agent, options = {}) {
+  if (opts?.dryRun) return { ok: true, dryRun: true };
+  const args = ["issue", "assign", identifier, "--assignee", agent];
+  if (options.ifVersion !== undefined) args.push("--if-version", String(options.ifVersion));
+  const assigned = runCli(opts, ORCHESTRATOR_ACTOR_ID, args, { actorKind: SYSTEM_KIND });
+  if (!assigned.ok) {
+    return { ok: false, error: assigned.error, ...(assigned.code ? { code: assigned.code } : {}) };
+  }
+  const version = assigned.data?.task?.version;
+  const commented = runCli(
+    opts,
+    ORCHESTRATOR_ACTOR_ID,
+    ["comment", "add", identifier, "--kind", "change", "--body", String(options.reason ?? "")],
+    { actorKind: SYSTEM_KIND },
+  );
+  if (!commented.ok) {
+    // The route is already the board's; the claim can still be correct. The
+    // missing audit line is an error in the log, not a reason to strand a card
+    // that is now routable.
+    log(`reassign ${identifier}: change comment failed: ${commented.error}`, { level: "error" });
+  }
+  return { ok: true, version };
 }
 
 /**
@@ -810,6 +850,12 @@ export async function runPollOnce(opts, env = process.env) {
     registry,
     config,
     defaultAgent,
+    // The role layer the poll's claim identity needs: a card is claimed and
+    // dispatched by its assignee's role, not by whoever scanned it first.
+    roleSet,
+    primaryKind: opts.actorKind ?? null,
+    kindOrder: opts.kindOrder ?? null,
+    kindAvailable,
     readCandidates: (agent, { claimUnassigned: claimPool }) => {
       // A role that can review but cannot work never takes the public pool:
       // handing it an ordinary card would be a self-review waiting to happen.
@@ -840,14 +886,20 @@ export async function runPollOnce(opts, env = process.env) {
       if (!dedicatedReviewer) return found;
       return found.filter((candidate) => typeof candidate.review_of === "string" && candidate.review_of !== "");
     },
-    claim: (identifier, agent) => {
+    claim: (identifier, agent, options = {}) => {
       if (opts.dryRun) return { ok: true };
       // `issue claim` is the one claim path: it handles a ready `todo` card and
       // the stale re-claim/takeover that the transition table cannot express.
-      // The claim is the agent kind's act, not a person's.
-      const claimed = runCli(opts, agent, ["issue", "claim", identifier], { actorKind: opts.actorKind });
+      // The claim is the agent kind's act, not a person's. A planned Worker
+      // fallback hands the version its reassignment returned, so the claim
+      // cannot land on a row a human edited in between.
+      const args = ["issue", "claim", identifier];
+      if (options.ifVersion !== undefined) args.push("--if-version", String(options.ifVersion));
+      const claimed = runCli(opts, agent, args, { actorKind: opts.actorKind });
       return claimed.ok ? { ok: true } : { ok: false, error: claimed.error };
     },
+    // The explicit, audited Worker fallback (ADR 0014).
+    reassign: (identifier, agent, options = {}) => reassignCard(opts, log, identifier, agent, options),
     dispatch,
     // A card whose role has no available carrying kind must not be claimed: the
     // dispatch would refuse it and the card would sit `in_progress` until the
@@ -859,6 +911,7 @@ export async function runPollOnce(opts, env = process.env) {
         action,
         card,
       );
+      if (target.assignmentMismatch) return { ok: false, why: target.assignmentMismatch };
       if (target.actorKind !== null) return { ok: true };
       return {
         ok: false,

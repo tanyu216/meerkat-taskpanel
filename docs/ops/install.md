@@ -652,7 +652,7 @@ decision remains the board's, through `issue claim`:
 |---|---|---|
 | 10 minutes | The same holder may re-claim (refresh ownership/heartbeat). | `issue claim` |
 | 30 minutes | The card enters the `issue candidates --stale` recovery pool. | candidate read |
-| 6 hours | Any agent may take over, and the takeover writes a `change` comment. | `issue claim` |
+| 6 hours | The claim has rotted: its **assignee** takes it back, and any other agent needs `--allow-steal --reason`. Every takeover writes a `change` comment. | `issue claim` |
 
 With `--recover-stale=no` the supervisor never adds `--stale`, so it never claims an
 `in_progress` card. The SLA patrol and its alerts still run — an alert is the only signal
@@ -774,7 +774,7 @@ install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each agent-kind installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<program root>/.env.<actor-kind>`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
-| `--recover-stale=yes\|no` | Add stale `in_progress` cards to the poll's candidate read (`issue candidates --stale`). The takeover itself is still `issue claim`, decided by the board (holder after 10 minutes, anyone after 6 hours). Persisted to the per-kind config; default `yes`. |
+| `--recover-stale=yes\|no` | Add stale `in_progress` cards to the poll's candidate read (`issue candidates --stale`). The takeover itself is still `issue claim`, decided by the board: the holder after 10 minutes, the card's **assignee** after 6 hours, and anyone else only with `--allow-steal --reason`. Persisted to the per-kind config; default `yes`. |
 | `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the per-kind config; default `yes`. `no` means the loop writes no card at all. |
 | `--reviewer <agent>` | Deprecated and ignored; a review card's assignee selects the reviewer role from the installed catalog. Accepted so an older unit or script does not fail. |
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |

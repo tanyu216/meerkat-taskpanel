@@ -149,8 +149,10 @@ across those two legs used to surface as a raw `CHECK constraint failed` in the 
 
 Heartbeats refresh `heartbeat_at` and nothing else, only in `in_progress`, only from the
 holder. The thresholds are one clock with three readings: the holder may re-claim after ten
-minutes, `issue candidates --stale` offers a card after thirty, and anyone may take over after
-six hours as an audited takeover.
+minutes, `issue candidates --stale` offers a card after thirty, and after six hours the claim
+has rotted — its assignee takes it back as an audited takeover, while any other actor needs
+`--allow-steal --reason` (ADR 0014). The six hours are a liveness bound, not a licence to take
+somebody else's card.
 
 The dependency rule is a **read** rule: `issue candidates` withholds a card whose `blocks`
 predecessor is not `done` (literally `status !== "done"`, so a `canceled` predecessor withholds
