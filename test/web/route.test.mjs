@@ -82,34 +82,33 @@ describe("R16 · the route table (B1/B2)", () => {
 });
 
 describe("R16 · the feed's query (B3/B4/B7/B8)", () => {
-  it("writes only the narrowing slots, in slot order", () => {
-    assert.deepEqual([...ACTIVITY_SLOTS], ["actor", "event", "task"]);
-    assert.equal(activityQuery({ actor: "all", event: "all", task: "all" }), "");
-    assert.equal(activityQuery({ actor: "agent", event: "all", task: "all" }), "?actor=agent");
-    assert.equal(activityQuery({ actor: "all", event: "delivery", task: "TD-6" }), "?event=delivery&task=TD-6");
-    assert.equal(
-      activityQuery({ actor: "agent", event: "status", task: "TD-1" }),
-      "?actor=agent&event=status&task=TD-1",
-    );
+  it("writes only the two address slots, in slot order", () => {
+    assert.deepEqual([...ACTIVITY_SLOTS], ["event", "task"]);
+    assert.equal(activityQuery({ event: "all", task: "all" }), "");
+    assert.equal(activityQuery({ event: "delivery", task: "all" }), "?event=delivery");
+    assert.equal(activityQuery({ event: "all", task: "TD-6" }), "?task=TD-6");
+    assert.equal(activityQuery({ event: "status", task: "TD-1" }), "?event=status&task=TD-1");
     assert.equal(activityQuery({}), "", "an absent slot is `all`");
+    assert.equal(activityQuery({ actor: "agent" }), "", "the retired actor slot is never written");
   });
 
   it("reads an address back into the complete filter set, refusing what it cannot use", () => {
     assert.deepEqual(readActivityQuery("?actor=agent&event=status&task=TD-1"), {
-      filters: { actor: "agent", event: "status", task: "TD-1" },
+      filters: { event: "status", task: "TD-1" },
       applied: true,
     });
     // An out-of-domain value is "no condition in this slot", not a refusal of the
-    // whole address — and not a value the writer would ever produce.
+    // whole address — and not a value the writer would ever produce. The retired
+    // `actor` slot is out of domain, so it is ignored (TP-0090 acceptance 5).
     assert.deepEqual(readActivityQuery("?actor=nonsense"), {
-      filters: { actor: "all", event: "all", task: "all" },
+      filters: { event: "all", task: "all" },
       applied: false,
     });
     // The drawer's own fragment is not the feed's payload.
     assert.equal(readActivityQuery("#/task/TD-1").applied, false);
-    assert.deepEqual(readActivityQuery("#/task/TD-1").filters, { actor: "all", event: "all", task: "all" });
+    assert.deepEqual(readActivityQuery("#/task/TD-1").filters, { event: "all", task: "all" });
     // Repeated slots apply in order, so the last accepted value wins.
-    assert.deepEqual(readActivityQuery("?actor=agent&actor=all").filters.actor, "all");
+    assert.deepEqual(readActivityQuery("?event=status&event=all").filters.event, "all");
     // Unknown slots are ignored, never applied.
     assert.equal(readActivityQuery("?theme=dark").applied, false);
   });
@@ -126,13 +125,13 @@ describe("R16 · the feed's query (B3/B4/B7/B8)", () => {
   });
 
   it("gives the old carrier no rules of its own (B8)", () => {
-    // The same payload, read through the same parser, lands the same three
-    // filters — and a slot the old form cannot name is `all`, exactly as in the
-    // query form. This is "one parser, two carriers", asserted rather than said.
+    // The same payload, read through the same parser, lands the same filters —
+    // and a slot the old form cannot name is `all`, exactly as in the query form.
+    // This is "one parser, two carriers", asserted rather than said.
     const payload = legacyActivityQuery("#/activity?actor=nonsense&event=delivery&task=");
     assert.equal(payload, "?actor=nonsense&event=delivery&task=");
     const fromLegacy = readActivityQuery(payload).filters;
-    assert.deepEqual(fromLegacy, { actor: "all", event: "delivery", task: "all" });
+    assert.deepEqual(fromLegacy, { event: "delivery", task: "all" });
     assert.equal(activityQuery(fromLegacy), activityQuery(readActivityQuery("?actor=nonsense&event=delivery&task=").filters));
   });
 });
@@ -200,15 +199,17 @@ describe("R16 · the reader (applyLocation)", () => {
     const first = address("/", "", "#/activity?actor=agent&event=status&task=TD-128");
     applyLocation(first.location, first.history);
     assert.equal(await view(), "activity", "an old feed link is a link *into* the feed");
-    assert.deepEqual({ ...(await activity()).activity.filters }, { actor: "agent", event: "status", task: "TD-128" });
-    assert.deepEqual(first.writes.replace, [[null, "", "/activity?actor=agent&event=status&task=TD-128"]]);
+    // TP-0090 acceptance 5 — the retired `actor` pair is ignored; event and task
+    // survive and the canonical address carries only them.
+    assert.deepEqual({ ...(await activity()).activity.filters }, { event: "status", task: "TD-128" });
+    assert.deepEqual(first.writes.replace, [[null, "", "/activity?event=status&task=TD-128"]]);
     assert.deepEqual(first.writes.push, []);
 
     // …and the bare form, which names no condition, redirects the same way.
     const second = address("/index.html", "", "#/activity");
     applyLocation(second.location, second.history);
     assert.equal(await view(), "activity");
-    assert.deepEqual({ ...(await activity()).activity.filters }, { actor: "all", event: "all", task: "all" });
+    assert.deepEqual({ ...(await activity()).activity.filters }, { event: "all", task: "all" });
     assert.deepEqual(second.writes.replace, [[null, "", "/activity"]]);
   });
 
@@ -223,19 +224,19 @@ describe("R16 · the reader (applyLocation)", () => {
   it("states the feed's filters completely from the address, and never writes (C4/C6)", async () => {
     const { applyLocation } = await router();
     const store = await activity();
-    store.writeActivityFilter("actor", "agent");
+    store.writeActivityFilter("event", "delivery");
     const { location, history, writes } = address("/activity", "");
     applyLocation(location, history);
     assert.equal(await view(), "activity");
     assert.deepEqual(
       { ...store.activity.filters },
-      { actor: "all", event: "all", task: "all" },
+      { event: "all", task: "all" },
       "a slot the address does not name is `all` — not the session's residue",
     );
 
     const deep = address("/activity", "?actor=agent&event=status&task=TD-128");
     applyLocation(deep.location, deep.history);
-    assert.deepEqual({ ...store.activity.filters }, { actor: "agent", event: "status", task: "TD-128" });
+    assert.deepEqual({ ...store.activity.filters }, { event: "status", task: "TD-128" });
     assert.deepEqual(deep.writes.replace, [], "a canonical address is left exactly as it is");
     assert.deepEqual(deep.writes.push, []);
     store.resetActivityFilters();
@@ -259,10 +260,10 @@ describe("R16 · writer A (navigate)", () => {
   it("carries the feed's filters into the address it writes", async () => {
     const { navigate } = await router();
     const store = await activity();
-    store.writeActivityFilter("actor", "agent");
+    store.writeActivityFilter("event", "delivery");
     const { location, history, writes } = address("/board");
     navigate("activity", location, history);
-    assert.deepEqual(writes.push, [[null, "", "/activity?actor=agent"]]);
+    assert.deepEqual(writes.push, [[null, "", "/activity?event=delivery"]]);
     store.resetActivityFilters();
   });
 

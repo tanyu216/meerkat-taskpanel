@@ -28,7 +28,12 @@ import { resolveTask } from "../task-view.mjs";
 // default stays `asc` because the SSE cursor reads forward by revision; a
 // `desc` read with `after` still filters `revision > after`, so it is not a
 // "previous page" cursor.
-const LIST_QUERY = shape({ after: str(), limit: str(), order: str() });
+//
+// The board-wide read has one extra optional field, `task_id` (TP-0090): the
+// Activity view's selected-task backfill. It is not declared on the per-task
+// route, which is already scoped by its path and would never read it.
+const TASK_LIST_QUERY = shape({ after: str(), limit: str(), order: str() });
+const BOARD_LIST_QUERY = shape({ after: str(), limit: str(), order: str(), task_id: str() });
 
 /** The board's own cursor values are 64-bit integers; anything larger is a typo. */
 const MAX_REVISION = Number.MAX_SAFE_INTEGER;
@@ -93,19 +98,26 @@ export function registerActivityRoutes(router, surface) {
         })
         .map(activityToWire),
     };
-  }, { query: LIST_QUERY });
+  }, { query: TASK_LIST_QUERY });
 
   router.get("/api/v1/activities", ({ query }) => {
     const after = readBoundedInt(query.get("after"), { field: "after", min: 0, max: MAX_REVISION });
     const limit = readBoundedInt(query.get("limit"), { field: "limit", min: 1, max: MAX_LIMIT });
+    // The card's own history for the Activity view's backfill. `resolveTask`
+    // accepts an identifier or an internal id and refuses an unknown one with
+    // `NOT_FOUND`, exactly as the per-task route does; an empty value is "no
+    // condition" so a caller may omit the parameter's content.
+    const ref = query.get("task_id");
+    const taskId = ref == null || ref.trim() === "" ? undefined : resolveTask(repos, ref).id;
     return {
       activities: repos.activities
         .list({
+          ...(taskId === undefined ? {} : { taskId }),
           ...(after === undefined ? {} : { afterRevision: after }),
           ...(limit === undefined ? {} : { limit }),
           order: readOrder(query.get("order")),
         })
         .map(activityToWire),
     };
-  }, { query: LIST_QUERY });
+  }, { query: BOARD_LIST_QUERY });
 }

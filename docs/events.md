@@ -167,7 +167,10 @@ Reads:
   `?after=<revision>` and `?limit=`.
 - `GET /api/v1/activities` — the same rows board-wide; the activity ledger's single backfill.
   It carries every project's rows; the client scopes them to its own task set at derivation.
-  `?order=desc` with `?limit=` returns the newest N.
+  `?order=desc` with `?limit=` returns the newest N. An optional `?task_id=<identifier|id>`
+  narrows it to one card (unknown → `NOT_FOUND`, empty → no filter); the Activity view reads
+  it when a task is selected, so a card's rows older than the board-wide 1000-row page are
+  still reachable. The `All tasks` reading stays the one board-wide page.
 
 ## 4. The wire
 
@@ -295,6 +298,13 @@ one read per card. The response is board-wide; the feed scopes it to the current
 set when it derives rows. Live rows arrive through the board store's stream subscription and are
 merged by activity id. A project switch invalidates the read, not a per-card pool. Unread state is
 a browser-local `seenAt` cursor, not a server fact.
+
+A selected **Task** additionally backfills that card with
+`GET /activities?task_id=<id>&limit=1000&order=desc` (TP-0090), memoised per identifier and
+merged into the feed **only while that task is the filter** — `All tasks` remains the single
+board-wide page. A failed backfill is one toast; it writes no cache entry and never clears the
+loaded ledger. The project (and the cache generation) that started the read must still be current
+when the response lands, or the rows are dropped.
 
 ### 5.3 The human activity feed (`web/src/lib/activity-feed.js`)
 

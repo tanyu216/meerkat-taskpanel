@@ -25,14 +25,14 @@
  *     only be said in the frontend, and a new surface would contradict the
  *     round's "no visual change" (fidelity-r16 §3, §7.1).
  *   * **One parser for the feed's payload.** The activity slots are read by
- *     `readActivityQuery` whether they arrive as a query (`?actor=agent`) or in
- *     the old fragment form (`#/activity?actor=agent`), so the legacy carrier
+ *     `readActivityQuery` whether they arrive as a query (`?event=status`) or in
+ *     the old fragment form (`#/activity?event=status`), so the legacy carrier
  *     cannot grow a second set of domain rules (fidelity-r16 §4.4, B8).
  *
  * The drawer's fragment (`#/task/<id>`) is deliberately absent from every
  * function here: it is not a route, and the router neither reads nor writes it.
  */
-import { ACTOR_VALUES, EVENT_VALUES } from "./activity-feed.js";
+import { EVENT_VALUES } from "./activity-feed.js";
 
 /** The four views, in the sidebar's own order (`stores/ui.js` binds them). */
 export const VIEWS = Object.freeze(["board", "list", "activity", "waiting"]);
@@ -54,8 +54,15 @@ export const VIEW_ROUTES = Object.freeze({
  */
 const ALIASES = Object.freeze(["/", "/index.html"]);
 
-/** The feed's three slots, in the order the address writes them (§4.6). */
-export const ACTIVITY_SLOTS = Object.freeze(["actor", "event", "task"]);
+/**
+ * The feed's two address slots, in the order the address writes them (§4.6).
+ *
+ * Assignee is deliberately **not** one: it is the board's shared value, held in
+ * the store like every other board filter and not in the address (TP-0090). The
+ * old `actor` slot is retired; a link that still carries it is read by `task` /
+ * `event` and the `actor` pair is ignored.
+ */
+export const ACTIVITY_SLOTS = Object.freeze(["event", "task"]);
 
 /** The view a route name maps to, or `null` when the name is not a view's. */
 export function isView(name) {
@@ -100,13 +107,12 @@ export function routeFor(pathname) {
 /** Does this view understand the slot/value pair? `task` takes any identifier. */
 function accepts(slot, value) {
   if (slot === "task") return value !== "";
-  if (slot === "actor") return ACTOR_VALUES.includes(value);
   if (slot === "event") return EVENT_VALUES.includes(value);
   return false;
 }
 
 /** `decodeURIComponent`, but a malformed escape is left as the literal text
- *  rather than thrown: a hand-typed `?actor=%` must not break the boot (§3). */
+ *  rather than thrown: a hand-typed `?task=%` must not break the boot (§3). */
 function decode(text) {
   try {
     return decodeURIComponent(text);
@@ -116,11 +122,11 @@ function decode(text) {
 }
 
 /**
- * §4.6 — the feed's address *for* a set of filters: `?actor=agent`, `""` when all
- * three are at rest. The four rules are the ones the old `activityHash()` had,
- * moved from the fragment to the query: the fixed slot order (`actor` → `event`
- * → `task`), `all` never written, the whole query omitted when every slot is at
- * rest, and no value the slot's domain does not name.
+ * §4.6 — the feed's address *for* a set of filters: `?event=status&task=TD-1`,
+ * `""` when both are at rest. The four rules are the ones the old
+ * `activityHash()` had, moved from the fragment to the query: the fixed slot
+ * order (`event` → `task`), `all` never written, the whole query omitted when
+ * every slot is at rest, and no value the slot's domain does not name.
  */
 export function activityQuery(filters = {}) {
   const params = ACTIVITY_SLOTS.filter((slot) => (filters?.[slot] ?? "all") !== "all")
@@ -130,15 +136,15 @@ export function activityQuery(filters = {}) {
 }
 
 /**
- * §4.6 — the payload read back into three filters. Returns the **complete** set,
+ * §4.6 — the payload read back into the feed's filters. Returns the **complete** set,
  * because the address is the truth for this slot group: a slot the address does
  * not name is `all`, which is also what an absent slot, the literal `all` and an
  * out-of-domain value all mean. `applied` says whether anything was written —
  * the "is this the feed's payload at all" question, as a `#/task/…` string and a
  * payload of nothing but values we refuse both answer `false`.
  *
- * It reads both carriers: the query form (`?actor=agent`, with or without the
- * `?`) and the old fragment's payload (`actor=agent`). The legacy prefix is
+ * It reads both carriers: the query form (`?event=status`, with or without the
+ * `?`) and the old fragment's payload (`event=status`). The legacy prefix is
  * stripped if present so a caller may hand it the whole fragment — §4.4's "one
  * parser", not a second set of rules.
  */
@@ -146,7 +152,7 @@ export function readActivityQuery(source) {
   const rest = String(source ?? "")
     .replace(/^#\/activity/, "")
     .replace(/^\?/, "");
-  const filters = { actor: "all", event: "all", task: "all" };
+  const filters = { event: "all", task: "all" };
   let applied = false;
   for (const pair of rest.split("&")) {
     if (pair === "") continue;

@@ -20,7 +20,8 @@ import { beforeEach, describe, it } from "node:test";
 
 register("./support/vue-loader.mjs", import.meta.url);
 
-const { activity, loadActivities, resetActivity } = await import("../../web/src/stores/activity.js");
+const { activity, feed, loadActivities, loadTaskActivities, resetActivity, writeActivityFilter } =
+  await import("../../web/src/stores/activity.js");
 const { board } = await import("../../web/src/stores/board.js");
 
 /* --------------------------------------------------------------- harness */
@@ -193,5 +194,111 @@ describe("web/activity — the ledger's loading window", () => {
     assert.deepEqual(activity.entries, [], "the stale read writes nothing");
     assert.equal(activity.projectId, null);
     assert.equal(activity.loading, false);
+  });
+});
+
+/* ------------------------------------------------------- the task backfill */
+
+describe("web/activity — the selected task's own history", () => {
+  it("reads the task with task_id and merges it only while that task is filtered", async () => {
+    board.tasks = [wireTask("TD-1", "p1"), wireTask("TD-2", "p1")];
+    const calls = installFetch({
+      "GET /api/v1/activities": ({ url }) =>
+        url.includes("task_id=")
+          ? ok({ activities: [wireActivity(10, "td_TD-1")] })
+          : ok({ activities: [wireActivity(1, "td_TD-1")] }),
+    });
+
+    assert.deepEqual(await loadTaskActivities("TD-1"), { ok: true });
+    assert.match(calls[0].url, /task_id=td_TD-1/, "the request names the task's internal id");
+    assert.match(calls[0].url, /limit=1000/);
+    assert.match(calls[0].url, /order=desc/);
+    assert.deepEqual(activity.taskEntries["TD-1"].map((entry) => entry.id), [10]);
+    assert.equal(feed.value.items.length, 0, "not merged while the filter is All tasks");
+
+    writeActivityFilter("task", "TD-1");
+    assert.deepEqual(feed.value.items.map((entry) => entry.id), [10], "merged while the task is selected");
+
+    writeActivityFilter("task", "all");
+    assert.equal(feed.value.items.length, 0, "All tasks is still the one board-wide ledger");
+    writeActivityFilter("task", "all");
+  });
+
+  it("memoises a loaded task and never issues the request twice", async () => {
+    board.tasks = [wireTask("TD-1", "p1")];
+    const calls = installFetch({
+      "GET /api/v1/activities": () => ok({ activities: [wireActivity(10, "td_TD-1")] }),
+    });
+
+    await loadTaskActivities("TD-1");
+    const afterFirst = calls.length;
+    assert.deepEqual(await loadTaskActivities("TD-1"), { ok: true, cached: true });
+    assert.equal(calls.length, afterFirst, "a second selection is the cache");
+  });
+
+  it("drops a response whose project (or cache generation) has moved on", async () => {
+    board.tasks = [wireTask("TD-1", "p1")];
+    let release;
+    installFetch({
+      "GET /api/v1/activities": () => new Promise((resolve) => (release = resolve)),
+    });
+
+    const pending = loadTaskActivities("TD-1");
+    resetActivity();
+    board.tasks = [wireTask("TD-1", "p1")];
+    release(ok({ activities: [wireActivity(10, "td_TD-1")] }));
+
+    assert.deepEqual(await pending, { ok: false, stale: true });
+    assert.deepEqual(activity.taskEntries, {}, "a read the store has left behind writes nothing");
+  });
+
+  it("reports a failure without clearing the ledger or caching the failure", async () => {
+    board.tasks = [wireTask("TD-1", "p1")];
+    activity.entries = [wireActivity(1, "td_TD-1")];
+    installFetch({
+      "GET /api/v1/activities": () => {
+        throw new Error("offline");
+      },
+    });
+
+    const failed = await loadTaskActivities("TD-1");
+    assert.equal(failed.ok, false);
+    assert.ok(failed.error);
+    assert.deepEqual(activity.entries.map((entry) => entry.id), [1], "the loaded ledger survives");
+    assert.deepEqual(activity.taskEntries, {}, "nothing is cached");
+    assert.equal(activity.error, null, "a backfill failure is a toast, not the page's error state");
+
+    installFetch({
+      "GET /api/v1/activities": () => ok({ activities: [wireActivity(10, "td_TD-1")] }),
+    });
+    assert.deepEqual(await loadTaskActivities("TD-1"), { ok: true }, "the failure did not poison the cache");
+  });
+
+  it("does nothing for `all` or a task the board list does not hold", async () => {
+    board.tasks = [wireTask("TD-1", "p1")];
+    const calls = installFetch({
+      "GET /api/v1/activities": () => ok({ activities: [] }),
+    });
+    assert.deepEqual(await loadTaskActivities("all"), { ok: false });
+    assert.deepEqual(await loadTaskActivities("TD-999"), { ok: false });
+    assert.equal(calls.length, 0);
+  });
+
+  it("clears the task cache on reset", async () => {
+    board.tasks = [wireTask("TD-1", "p1")];
+    let calls = installFetch({
+      "GET /api/v1/activities": () => ok({ activities: [wireActivity(10, "td_TD-1")] }),
+    });
+    await loadTaskActivities("TD-1");
+    assert.deepEqual(activity.taskEntries["TD-1"].map((entry) => entry.id), [10]);
+
+    resetActivity();
+    assert.deepEqual(activity.taskEntries, {});
+    board.tasks = [wireTask("TD-1", "p1")];
+    calls = installFetch({
+      "GET /api/v1/activities": () => ok({ activities: [wireActivity(10, "td_TD-1")] }),
+    });
+    assert.deepEqual(await loadTaskActivities("TD-1"), { ok: true }, "a reset forgets the memo");
+    assert.equal(calls.length, 1);
   });
 });

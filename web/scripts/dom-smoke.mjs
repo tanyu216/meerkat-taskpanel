@@ -779,8 +779,19 @@ export function startServer() {
       const order = url.searchParams.get("order") === "asc" ? "asc" : "desc";
       const limit = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
       const after = Number.parseInt(url.searchParams.get("after") ?? "", 10);
+      // TP-0090 — the selected-task backfill. The real route accepts an
+      // identifier or the internal id and 404s an unknown one; the mock answers
+      // the same contract so the browser leg exercises the real merge path.
+      const taskRef = url.searchParams.get("task_id");
+      const task = taskRef ? data.tasks.find((entry) => entry.identifier === taskRef || entry.id === taskRef) : null;
+      if (taskRef && !task) {
+        res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+        return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", http: 404, message: "no such card" } }));
+      }
       let rows = data.activities.filter(
-        (activity) => !Number.isFinite(after) || activity.revision > after,
+        (activity) =>
+          (!Number.isFinite(after) || activity.revision > after) &&
+          (!taskRef || activity.task_id === task.id),
       );
       rows = [...rows].sort((a, b) =>
         order === "asc" ? a.revision - b.revision : b.revision - a.revision,
@@ -5996,15 +6007,24 @@ export async function run() {
     const b26Failures = [];
     const b26Check = (ok, message) => { if (!ok) b26Failures.push(message); };
 
-    /** BLOCKS.md B26's closed vocabulary — the 39 names, no more (sorted).
+    // TP-0090 — observe the selected-task backfill from Node. `page.on("request")`
+    // is a Playwright hook (the page context cannot see its own fetches), and it
+    // must be installed **before** the filter round below selects a task.
+    const activityRequests = [];
+    page.on("request", (request) => {
+      if (/\/api\/v1\/activities(\?|$)/.test(request.url())) activityRequests.push(request.url());
+    });
+
+    /** BLOCKS.md B26's closed vocabulary — the 40 names, no more (sorted).
      *  R15 ① added the five the dropdown conversion needs (`filter-summary`,
      *  `filter-text`, `filter-option`, `filter-value`, `value`) and retired one
-     *  (`filter-reset`); `design/BLOCKS.md` B26 "Auxiliary hooks" is the record
-     *  this list is read against. */
+     *  (`filter-reset`); TP-0090 added `filter-search` for the Assignee/Task
+     *  menus. `design/BLOCKS.md` B26 "Auxiliary hooks" is the record this list
+     *  is read against. */
     const B26_HOOK_NAMES = [
       "actor", "at", "burst", "burst-count", "burst-count-label", "burst-item", "change", "day", "day-kind",
       "day-label", "detail", "empty", "empty-kind", "empty-reset", "feed", "filter", "filter-count",
-      "filter-option", "filter-summary", "filter-text", "filter-value", "filters", "group", "line",
+      "filter-option", "filter-search", "filter-summary", "filter-text", "filter-value", "filters", "group", "line",
       "mark-read", "more", "open", "page", "row", "sentence", "task", "task-id", "task-title", "title",
       "unread", "unread-count", "unread-divider", "value", "view",
     ];
@@ -6148,8 +6168,8 @@ export async function run() {
       return out;
     });
 
-    // §6 — the three filters narrow, the count follows the rows, and the address
-    // bar shadows the three of them.
+    // §6 — the three controls (Assignee · Event · Task) narrow, the count follows
+    // the rows, and the address bar shadows the two address slots.
     const b26Filters = await page.evaluate(async () => {
       // R15 ① — a filter is a press on a dropdown row now, not `select.value`
       // plus a synthetic `change`: open the control's own panel, press the row
@@ -6161,6 +6181,7 @@ export async function run() {
         host.querySelector(rowSelector)?.click();
         await sleep(70);
       };
+      const SLOTS = ["assignee", "event", "task"];
       const set = async (slot, value) =>
         press(document.querySelector(`[data-activity-filter="${slot}"]`), `[data-activity-filter-option][data-activity-value="${value}"]`);
       const read = () => {
@@ -6177,44 +6198,48 @@ export async function run() {
           search: globalThis.location.search,
           empty: [...root.querySelectorAll("[data-activity-empty]")].filter((el) => !el.hasAttribute("hidden")).map((el) => el.getAttribute("data-activity-empty-kind")),
           dayCount: root.querySelectorAll("[data-activity-day]").length,
-          triggers: ["actor", "event", "task"].map((slot) => root.querySelector(`[data-activity-filter="${slot}"] [data-activity-filter-text]`)?.textContent?.trim() ?? null),
-          values: ["actor", "event", "task"].map((slot) => root.querySelector(`[data-activity-filter="${slot}"]`)?.getAttribute("data-activity-filter-value") ?? null),
+          triggers: SLOTS.map((slot) => root.querySelector(`[data-activity-filter="${slot}"] [data-activity-filter-text]`)?.textContent?.trim() ?? null),
+          values: SLOTS.map((slot) => root.querySelector(`[data-activity-filter="${slot}"]`)?.getAttribute("data-activity-filter-value") ?? null),
           // One chosen row per control (each control's own `aria-current`), read
           // through the control rather than document-wide so the three do not
           // blur into one list.
-          currents: ["actor", "event", "task"].map(
+          currents: SLOTS.map(
             (slot) =>
               root
                 .querySelector(`[data-activity-filter="${slot}"] [data-activity-filter-option][aria-current="true"]`)
                 ?.getAttribute("data-activity-value") ?? null,
           ),
-          // The board's own priority condition, read from this same window: the
-          // two Clear controls must not touch each other's bar (§2.4, C12).
+          // The board's own priority and shared assignee conditions, read from
+          // this same window: the two Clear controls must not touch each other's
+          // bar (§2.4, C12), while Assignee is deliberately shared (TP-0090).
           boardPriority: document.querySelector("[data-filter-priority]")?.getAttribute("data-filter-priority-value") ?? null,
+          boardAssignee: document.querySelector("[data-filter-assignee]")?.getAttribute("data-filter-assignee-value") ?? null,
         };
       };
-      const actorControl = document.querySelector('[data-activity-filter="actor"]');
+      const assigneeControl = document.querySelector('[data-activity-filter="assignee"]');
       const out = { before: read() };
-      actorControl.querySelector("summary")?.click();
+      assigneeControl.querySelector("summary")?.click();
       await sleep(60);
       out.openPanel = {
-        open: actorControl.hasAttribute("open"),
-        painted: (actorControl.querySelector('[data-activity-filter-option][data-activity-value="agent"]')?.getClientRects().length ?? 0) > 0,
-        text: actorControl.querySelector("[data-activity-filter-text]")?.textContent?.trim() ?? null,
-        dismiss: actorControl.hasAttribute("data-dismiss-on-outside"),
+        open: assigneeControl.hasAttribute("open"),
+        painted: (assigneeControl.querySelector('[data-activity-filter-option][data-activity-value="agent"]')?.getClientRects().length ?? 0) > 0,
+        text: assigneeControl.querySelector("[data-activity-filter-text]")?.textContent?.trim() ?? null,
+        dismiss: assigneeControl.hasAttribute("data-dismiss-on-outside"),
+        focused: document.activeElement?.hasAttribute("data-activity-filter-search") ?? false,
+        search: assigneeControl.querySelector("[data-activity-filter-search]")?.value ?? null,
       };
       // …the panel really paints, so close it again before the rounds below.
-      actorControl.querySelector("summary")?.click();
+      assigneeControl.querySelector("summary")?.click();
       await sleep(60);
-      out.closedAgain = actorControl.hasAttribute("open");
+      out.closedAgain = assigneeControl.hasAttribute("open");
       // A board filter in force for the whole round: the activity Clear must
       // leave it exactly where it was.
       await press(document.querySelector("[data-filter-priority]"), '[data-filter-priority-option][data-priority-value="urgent"]');
-      await set("actor", "agent");
+      await set("assignee", "agent");
       out.agent = read();
       await set("event", "delivery");
       out.agentDelivery = read();
-      await set("actor", "all");
+      await set("assignee", "all");
       await set("event", "all");
       await set("task", "TD-6");
       out.task = read();
@@ -6227,9 +6252,10 @@ export async function run() {
       document.querySelector('[data-activity-empty][data-activity-empty-kind="filter"] [data-activity-empty-reset]')?.click();
       await sleep(80);
       out.afterReset = read();
-      // R15 ③/④ — the bar's Clear is B04's own control: the three activity slots
-      // go back to `all`, the board's priority condition is untouched, and the
-      // board's own confirmation toast is raised here too (the ruling's ④).
+      // R15 ③/④ — the bar's Clear is B04's own control: the two activity slots
+      // go back to `all`, the shared assignee goes back to `all` (TP-0090 — the
+      // control is visible on this bar), the board's priority condition is
+      // untouched, and the board's own confirmation toast is raised here too.
       await set("event", "delivery");
       out.beforeClear = read();
       const clear = document.querySelector("[data-activity-filters] [data-filter-clear]");
@@ -6242,6 +6268,130 @@ export async function run() {
       await press(document.querySelector("[data-filter-priority]"), '[data-filter-priority-option][data-priority-value="all"]');
       out.afterBoardRestore = read();
       return out;
+    });
+
+    // TP-0090 — the two searchable menus (Assignee · Task). Node-side because
+    // `page.fill` drives the real input; `activityRequests` above observes the
+    // backfill from outside the page.
+    const b26SearchCount = await page.evaluate(() => document.querySelectorAll("[data-activity-filter-search]").length);
+    await page.click('[data-activity-filter="assignee"] summary');
+    await page.waitForTimeout(80);
+    const b26SearchAssigneeOpen = await page.evaluate(() => ({
+      focused: document.activeElement?.hasAttribute("data-activity-filter-search") ?? false,
+      value: document.querySelector('[data-activity-filter="assignee"] [data-activity-filter-search]')?.value ?? null,
+      rows: document.querySelectorAll("[data-activity-row]:not([hidden])").length,
+    }));
+    await page.fill('[data-activity-filter="assignee"] [data-activity-filter-search]', "jo");
+    await page.waitForTimeout(80);
+    const b26SearchAssigneeMenu = await page.evaluate(() => {
+      const options = [...document.querySelectorAll('[data-activity-filter="assignee"] [data-activity-filter-option]')];
+      return {
+        values: options.map((el) => el.getAttribute("data-activity-value")),
+        active: options.findIndex((el) => el.getAttribute("data-filter-active") === "true"),
+        rows: document.querySelectorAll("[data-activity-row]:not([hidden])").length,
+      };
+    });
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(160);
+    const b26SearchAssignee = await page.evaluate(() => {
+      const root = document.querySelector("[data-activity-view]");
+      const rows = [...root.querySelectorAll("[data-activity-row]")].filter((row) => !row.hasAttribute("hidden"));
+      return {
+        value: root.querySelector('[data-activity-filter="assignee"]')?.getAttribute("data-activity-filter-value") ?? null,
+        trigger: root.querySelector('[data-activity-filter="assignee"] [data-activity-filter-text]')?.textContent?.trim() ?? null,
+        actors: [...new Set(rows.map((row) => row.getAttribute("data-actor")))],
+        rows: rows.length,
+        count: root.querySelector("[data-activity-filter-count]")?.textContent?.trim() ?? null,
+        search: globalThis.location.search,
+      };
+    });
+
+    await page.click('[data-activity-filter="task"] summary');
+    await page.waitForTimeout(80);
+    const b26SearchTaskResting = await page.evaluate(() => ({
+      value: document.querySelector('[data-activity-filter="task"] [data-activity-filter-search]')?.value ?? null,
+      rows: document.querySelectorAll("[data-activity-row]:not([hidden])").length,
+    }));
+    await page.fill('[data-activity-filter="task"] [data-activity-filter-search]', "scroll");
+    await page.waitForTimeout(80);
+    const b26SearchTaskMenu = await page.evaluate(() => {
+      const options = [...document.querySelectorAll('[data-activity-filter="task"] [data-activity-filter-option]')];
+      return {
+        values: options.map((el) => el.getAttribute("data-activity-value")),
+        active: options.findIndex((el) => el.getAttribute("data-filter-active") === "true"),
+        rows: document.querySelectorAll("[data-activity-row]:not([hidden])").length,
+      };
+    });
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(400);
+    const b26SearchTask = await page.evaluate(() => {
+      const root = document.querySelector("[data-activity-view]");
+      const rows = [...root.querySelectorAll("[data-activity-row]")].filter((row) => !row.hasAttribute("hidden"));
+      return {
+        value: root.querySelector('[data-activity-filter="task"]')?.getAttribute("data-activity-filter-value") ?? null,
+        trigger: root.querySelector('[data-activity-filter="task"] [data-activity-filter-text]')?.textContent?.trim() ?? null,
+        tasks: [...new Set(rows.map((row) => row.getAttribute("data-task")))],
+        rows: rows.length,
+        distinct: new Set(rows.map((row) => `${row.getAttribute("data-task")}|${row.getAttribute("data-at")}|${row.getAttribute("data-event")}`)).size,
+        search: globalThis.location.search,
+      };
+    });
+    const taskRequests = () => activityRequests.filter((url) => /[?&]task_id=td_TD_6(?:&|$)/.test(url)).length;
+    const b26SearchBackfill = { first: taskRequests() };
+
+    // Re-selecting the same task is the cache: switch to All tasks and back,
+    // through the controls, and no second task_id request is made.
+    await page.evaluate(async () => {
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const host = document.querySelector('[data-activity-filter="task"]');
+      if (!host.hasAttribute("open")) {
+        host.querySelector("summary")?.click();
+        await sleep(40);
+      }
+      host.querySelector('[data-activity-filter-option][data-activity-value="all"]')?.click();
+      await sleep(80);
+    });
+    await page.click('[data-activity-filter="task"] summary');
+    await page.fill('[data-activity-filter="task"] [data-activity-filter-search]', "scroll");
+    await page.waitForTimeout(60);
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(250);
+    b26SearchBackfill.second = taskRequests();
+
+    // Escape closes, and a reopen starts from the empty query / full list.
+    await page.click('[data-activity-filter="task"] summary');
+    await page.fill('[data-activity-filter="task"] [data-activity-filter-search]', "zzz");
+    await page.waitForTimeout(60);
+    const b26SearchNarrowed = await page.evaluate(
+      () => document.querySelectorAll('[data-activity-filter="task"] [data-activity-filter-option]').length,
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(80);
+    const b26SearchEscaped = await page.evaluate(
+      () => document.querySelector('[data-activity-filter="task"]')?.hasAttribute("open") ?? null,
+    );
+    await page.click('[data-activity-filter="task"] summary');
+    await page.waitForTimeout(80);
+    const b26SearchReopened = await page.evaluate(() => ({
+      value: document.querySelector('[data-activity-filter="task"] [data-activity-filter-search]')?.value ?? null,
+      options: document.querySelectorAll('[data-activity-filter="task"] [data-activity-filter-option]').length,
+    }));
+
+    // Back to the resting controls for the sections after this one.
+    await page.evaluate(async () => {
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const press = async (slot, value) => {
+        const host = document.querySelector(`[data-activity-filter="${slot}"]`);
+        if (!host.hasAttribute("open")) {
+          host.querySelector("summary")?.click();
+          await sleep(40);
+        }
+        host.querySelector(`[data-activity-filter-option][data-activity-value="${value}"]`)?.click();
+        await sleep(80);
+      };
+      await press("task", "all");
+      await press("assignee", "all");
+      document.activeElement?.blur?.();
     });
 
     // §6 — `j` / `k` walk the visible rows' open buttons. The presses go through
@@ -6529,9 +6679,11 @@ export async function run() {
         // language switch re-states every trigger (they carry no `data-i18n` seat
         // of their own, the way the board's label and status triggers do not)
         // and the activity bar's own accessible name is the dedicated word.
-        activityTriggers: ["actor", "event", "task"].map(
+        activityTriggers: ["assignee", "event", "task"].map(
           (slot) => root.querySelector(`[data-activity-filter="${slot}"] [data-activity-filter-text]`)?.textContent?.trim() ?? null,
         ),
+        assigneeSearch: root.querySelector('[data-activity-filter="assignee"] [data-activity-filter-search]')?.getAttribute("aria-label") ?? null,
+        taskSearch: root.querySelector('[data-activity-filter="task"] [data-activity-filter-search]')?.getAttribute("aria-label") ?? null,
         activityBarLabel: root.querySelector("[data-activity-filters]")?.getAttribute("aria-label") ?? null,
         clearText: root.querySelector("[data-activity-filters] [data-filter-clear]")?.textContent?.trim() ?? null,
         boardTriggers: ["[data-filter-assignee-text]", "[data-filter-priority-text]"].map(
@@ -6614,25 +6766,33 @@ export async function run() {
     b26Check(b26Detail.position === "absolute", `the change panel must be positioned, got ${b26Detail.position}`);
     b26Check(b26Detail.display !== "none", "an opened panel must be displayed");
     b26Check(b26Detail.reflowedFeed === false && b26Detail.reflowedBody === false, "opening a row must not reflow the feed");
-    b26Check(b26Filters.agent.rows > 0 && b26Filters.agent.kinds.length === 1 && b26Filters.agent.kinds[0] === "agent", `actor=agent left ${b26Filters.agent.kinds.join(",")}`);
-    b26Check(b26Filters.agent.count === `${b26Filters.agent.rows} entries`, `actor=agent count ${b26Filters.agent.count} for ${b26Filters.agent.rows} rows`);
-    b26Check(b26Filters.agent.search === "?actor=agent", `actor=agent query ${b26Filters.agent.search}`);
-    b26Check(b26Filters.agentDelivery.groups.join(",") === "delivery", `agent+delivery groups ${b26Filters.agentDelivery.groups.join(",")}`);
+    b26Check(b26Filters.agent.rows > 0 && b26Filters.agent.kinds.length === 1 && b26Filters.agent.kinds[0] === "agent", `assignee=agent left ${b26Filters.agent.kinds.join(",")}`);
+    b26Check(b26Filters.agent.count === `${b26Filters.agent.rows} entries`, `assignee=agent count ${b26Filters.agent.count} for ${b26Filters.agent.rows} rows`);
+    // TP-0090 — Assignee is shared board state, not an address slot.
+    b26Check(b26Filters.agent.search === "", `assignee=agent must not write the address, got ${b26Filters.agent.search}`);
+    b26Check(b26Filters.agent.boardAssignee === "agent", `the board bar's assignee reads ${b26Filters.agent.boardAssignee}, expected agent`);
+    b26Check(b26Filters.agentDelivery.groups.join(",") === "delivery", `assignee+delivery groups ${b26Filters.agentDelivery.groups.join(",")}`);
+    b26Check(b26Filters.agentDelivery.search === "?event=delivery", `assignee+delivery wrote ${b26Filters.agentDelivery.search}`);
     b26Check(b26Filters.task.tasks.length === 1 && b26Filters.task.tasks[0] === "TD-6", `task=TD-6 left ${b26Filters.task.tasks.join(",")}`);
+    b26Check(b26Filters.task.search === "?task=TD-6", `task=TD-6 query ${b26Filters.task.search}`);
     b26Check(b26Filters.emptyMatch.rows === 0, `the empty filter left ${b26Filters.emptyMatch.rows} rows`);
     b26Check(b26Filters.emptyMatch.empty.join(",") === "filter", `empty kind ${b26Filters.emptyMatch.empty.join(",")}`);
     b26Check(b26Filters.emptyMatch.dayCount === 0, "a filter that matches nothing must paint no day group");
+    b26Check(b26Filters.emptyMatch.search === "?event=delivery&task=TD-7", `the empty filter wrote ${b26Filters.emptyMatch.search}`);
     b26Check(b26Filters.afterReset.rows === b26Filters.before.rows, `reset restored ${b26Filters.afterReset.rows} of ${b26Filters.before.rows}`);
+    b26Check(b26Filters.afterReset.search === "", `the empty state's reset must clear the query, got ${b26Filters.afterReset.search}`);
 
     // R15 ① — the three controls are dropdown panels (design/fidelity-r15.md
     // §2.3): the panel paints on a press on the summary, the trigger states the
     // chosen row's own copy, the value rides the control's own attribute, and
     // `aria-current` follows on exactly one row.
-    b26Check(b26Filters.openPanel.open === true && b26Filters.openPanel.painted === true, `R15 ①: the actor panel ${b26Filters.openPanel.open}/${b26Filters.openPanel.painted}`);
+    b26Check(b26Filters.openPanel.open === true && b26Filters.openPanel.painted === true, `R15 ①: the assignee panel ${b26Filters.openPanel.open}/${b26Filters.openPanel.painted}`);
     b26Check(b26Filters.openPanel.dismiss === true, "R15 ①: the three controls must join the light-dismiss membership");
-    b26Check(b26Filters.openPanel.text === "Anyone", `R15 ①: the resting actor trigger reads ${JSON.stringify(b26Filters.openPanel.text)}`);
+    // TP-0090 — opening a searchable panel focuses its own search box, empty.
+    b26Check(b26Filters.openPanel.focused === true && b26Filters.openPanel.search === "", `TP-0090: the assignee panel opened focus=${b26Filters.openPanel.focused} query=${JSON.stringify(b26Filters.openPanel.search)}`);
+    b26Check(b26Filters.openPanel.text === "Assignee: All", `R15 ①: the resting assignee trigger reads ${JSON.stringify(b26Filters.openPanel.text)}`);
     b26Check(b26Filters.closedAgain === false, "R15 ①: a second press on the summary must close the panel");
-    b26Check(b26Filters.agent.triggers[0] === "Agents", `R15 ①: the actor trigger reads ${JSON.stringify(b26Filters.agent.triggers[0])}`);
+    b26Check(b26Filters.agent.triggers[0] === "Assignee: Agent", `R15 ①: the assignee trigger reads ${JSON.stringify(b26Filters.agent.triggers[0])}`);
     b26Check(b26Filters.agentDelivery.triggers[1] === "Delivery", `R15 ①: the event trigger reads ${JSON.stringify(b26Filters.agentDelivery.triggers[1])}`);
     b26Check(b26Filters.task.triggers[2] === "TD-6", `R15 ①: the task trigger reads ${JSON.stringify(b26Filters.task.triggers[2])}`);
     b26Check(
@@ -6642,15 +6802,17 @@ export async function run() {
     b26Check(b26Filters.afterReset.values.join(",") === "all,all,all", `R15 ①: the empty state's reset left ${b26Filters.afterReset.values.join(",")}`);
 
     // R15 ③/④ — the bar's Clear is B04's own control, told apart by the bar the
-    // press came from: the three activity slots go back to `all`, the board's
-    // priority condition is untouched, and the board's own confirmation toast is
-    // raised here too (the ruling's ④).
+    // press came from: the two address slots go back to `all`, the shared
+    // assignee goes back to `all` (TP-0090 — the control is visible on this
+    // bar), the board's priority condition is untouched, and the board's own
+    // confirmation toast is raised here too (the ruling's ④).
     b26Check(b26Filters.clearHook === true, "R15 ③: the activity bar must carry B04's [data-filter-clear]");
     b26Check(b26Filters.beforeClear.search === "?event=delivery", `R15 ③: the round left the address at ${b26Filters.beforeClear.search}`);
-    b26Check(b26Filters.afterClear.values.join(",") === "all,all,all", `R15 ③: Clear left the three slots ${b26Filters.afterClear.values.join(",")}`);
+    b26Check(b26Filters.afterClear.values.join(",") === "all,all,all", `R15 ③: Clear left the three controls at ${b26Filters.afterClear.values.join(",")}`);
     b26Check(b26Filters.afterClear.rows === b26Filters.before.rows, `R15 ③: Clear restored ${b26Filters.afterClear.rows} of ${b26Filters.before.rows} rows`);
     b26Check(b26Filters.afterClear.search === "", `R15 ③: Clear left the address at ${b26Filters.afterClear.search}`);
     b26Check(b26Filters.afterClear.currents.join(",") === "all,all,all", `R15 ③: Clear left the chosen rows at ${b26Filters.afterClear.currents.join(",")}`);
+    b26Check(b26Filters.afterClear.boardAssignee === "all", `TP-0090: Clear left the shared assignee at ${b26Filters.afterClear.boardAssignee}`);
     b26Check(
       b26Filters.before.boardPriority === "all" && b26Filters.afterClear.boardPriority === "urgent",
       `R15 ③: the board's priority moved "${b26Filters.before.boardPriority}" → "${b26Filters.afterClear.boardPriority}" across the activity round (expected all → urgent: Clear must not touch the board bar)`,
@@ -6663,7 +6825,35 @@ export async function run() {
     // …and let it retire before the sections below, so their toast reads bracket
     // a quiet region (the toast lives 2500ms + a 200ms exit).
     await page.waitForTimeout(2900);
-    b26Check(b26Filters.afterReset.search === "", `reset must clear the query, got ${b26Filters.afterReset.search}`);
+
+    // TP-0090 — the two searchable menus, driven through the real inputs.
+    b26Check(b26SearchCount === 2, `TP-0090: the bar must carry two search rows, got ${b26SearchCount}`);
+    b26Check(b26SearchAssigneeOpen.focused === true && b26SearchAssigneeOpen.value === "", `TP-0090: the assignee panel must focus an empty search box (${b26SearchAssigneeOpen.focused}/${JSON.stringify(b26SearchAssigneeOpen.value)})`);
+    b26Check(JSON.stringify(b26SearchAssigneeMenu.values) === JSON.stringify(["all", "me", "human", "agent", "jobs"]), `TP-0090: typing "jo" offered ${JSON.stringify(b26SearchAssigneeMenu.values)}`);
+    b26Check(b26SearchAssigneeMenu.active === 4, `TP-0090: the highlight landed on ${b26SearchAssigneeMenu.active}, expected the first non-pinned row`);
+    b26Check(b26SearchAssigneeMenu.rows === b26SearchAssigneeOpen.rows, "TP-0090: typing must narrow the menu, not the feed");
+    b26Check(
+      b26SearchAssignee.value === "jobs" && b26SearchAssignee.trigger === "Assignee: jobs",
+      `TP-0090: Enter wrote ${JSON.stringify(b26SearchAssignee.value)} / ${JSON.stringify(b26SearchAssignee.trigger)}`,
+    );
+    b26Check(b26SearchAssignee.actors.length === 1 && b26SearchAssignee.actors[0] === "jobs", `TP-0090: assignee=jobs left actors ${JSON.stringify(b26SearchAssignee.actors)}`);
+    b26Check(b26SearchAssignee.rows > 0 && b26SearchAssignee.count === `${b26SearchAssignee.rows} entries`, `TP-0090: assignee=jobs count ${b26SearchAssignee.count} for ${b26SearchAssignee.rows} rows`);
+    b26Check(b26SearchAssignee.search === "", `TP-0090: choosing an assignee must not write the address, got ${b26SearchAssignee.search}`);
+    b26Check(JSON.stringify(b26SearchTaskMenu.values) === JSON.stringify(["all", "TD-6"]), `TP-0090: typing "scroll" offered ${JSON.stringify(b26SearchTaskMenu.values)}`);
+    b26Check(b26SearchTaskMenu.active === 1, `TP-0090: the task highlight landed on ${b26SearchTaskMenu.active}`);
+    b26Check(b26SearchTaskMenu.rows === b26SearchTaskResting.rows, "TP-0090: typing must not change the task-filtered feed");
+    b26Check(b26SearchTaskResting.value === "", "TP-0090: a reopened task panel starts from an empty query");
+    b26Check(
+      b26SearchTask.value === "TD-6" && b26SearchTask.trigger === "TD-6" && b26SearchTask.search === "?task=TD-6",
+      `TP-0090: Enter wrote ${JSON.stringify(b26SearchTask.value)} / ${JSON.stringify(b26SearchTask.trigger)} / ${b26SearchTask.search}`,
+    );
+    b26Check(b26SearchTask.tasks.length === 1 && b26SearchTask.tasks[0] === "TD-6", `TP-0090: task=TD-6 left ${JSON.stringify(b26SearchTask.tasks)}`);
+    b26Check(b26SearchTask.rows > 0 && b26SearchTask.rows === b26SearchTask.distinct, `TP-0090: the merged feed has ${b26SearchTask.rows} rows but ${b26SearchTask.distinct} distinct — a duplicate slipped through`);
+    b26Check(b26SearchBackfill.first >= 1, `TP-0090: selecting TD-6 made no task_id backfill request (${b26SearchBackfill.first})`);
+    b26Check(b26SearchBackfill.second === b26SearchBackfill.first, `TP-0090: re-selecting a cached task re-read it (${b26SearchBackfill.first} → ${b26SearchBackfill.second})`);
+    b26Check(b26SearchNarrowed === 1, `TP-0090: query "zzz" left ${b26SearchNarrowed} rows in the task menu`);
+    b26Check(b26SearchEscaped === false, "TP-0090: Escape must close the task panel");
+    b26Check(b26SearchReopened.value === "" && b26SearchReopened.options > b26SearchNarrowed, `TP-0090: a reopened task panel must restore the full list (${JSON.stringify(b26SearchReopened.value)}/${b26SearchReopened.options})`);
     b26Check(b26Keys.wrappable === true, `j/k focus walk: first=${b26Keys.first} second=${b26Keys.second} back=${b26Keys.back}`);
     b26Check((b26Keys.firstLabel ?? "").startsWith("Open "), `row button aria-label ${b26Keys.firstLabel}`);
     b26Check(b26Read.before.unreadRows > 0 && b26Read.before.dividers === 1, "a fresh reader must see one boundary over the new rows");
@@ -6693,8 +6883,12 @@ export async function run() {
     // bar's clear control is B04's copy in both languages, and the two named
     // landmarks read differently.
     b26Check(
-      JSON.stringify(b26Zh.activityTriggers) === JSON.stringify(["任何人", "全部事件", "全部任务"]),
-      `R15 ① zh: the activity triggers read ${b26Zh.activityTriggers.join(" / ")}`,
+      JSON.stringify(b26Zh.activityTriggers) === JSON.stringify(["负责人：全部", "全部事件", "全部任务"]),
+      `TP-0090 zh: the activity triggers read ${b26Zh.activityTriggers.join(" / ")}`,
+    );
+    b26Check(
+      b26Zh.assigneeSearch === "筛选负责人…" && b26Zh.taskSearch === "筛选任务…",
+      `TP-0090 zh: the two search boxes read ${JSON.stringify(b26Zh.assigneeSearch)} / ${JSON.stringify(b26Zh.taskSearch)}`,
     );
     b26Check(b26Zh.clearText === "清除", `R15 ③ zh: the bar's clear control reads ${JSON.stringify(b26Zh.clearText)}`);
     b26Check(b26Zh.activityBarLabel === "动态筛选", `R15 ⑤ zh: the bar's own name is ${JSON.stringify(b26Zh.activityBarLabel)}`);
@@ -6764,7 +6958,7 @@ export async function run() {
           list: painted("[data-list]"),
           activity: painted("[data-activity-view]"),
           waiting: painted("[data-waiting-view]"),
-          filterValues: ["actor", "event", "task"].map(
+          filterValues: ["assignee", "event", "task"].map(
             (slot) => document.querySelector(`[data-activity-filter="${slot}"]`)?.getAttribute("data-activity-filter-value") ?? null,
           ),
         };
@@ -6839,13 +7033,15 @@ export async function run() {
 
     // §4.4 / 裁定 ① — an old share link is read, entered and redirected to the
     // query form, and the fragment it arrived in is consumed.
+    // TP-0090 — the retired `actor` pair is ignored; the other two slots survive
+    // and the canonical address carries only them.
     const r16Legacy = await loadAddress("/#/activity?actor=agent&event=status&task=TD-128");
     r16Check(
-      r16Legacy.pathname === "/activity" && r16Legacy.search === "?actor=agent&event=status&task=TD-128" && r16Legacy.hash === "",
+      r16Legacy.pathname === "/activity" && r16Legacy.search === "?event=status&task=TD-128" && r16Legacy.hash === "",
       `the old feed address redirected to ${r16Legacy.pathname}${r16Legacy.search}${r16Legacy.hash}`,
     );
     r16Check(r16Legacy.activity && r16Legacy.navCurrent === "activity", "an old feed address must enter the feed");
-    r16Check(r16Legacy.filterValues.join(",") === "agent,status,TD-128", `the old address restored ${r16Legacy.filterValues.join(",")}`);
+    r16Check(r16Legacy.filterValues.join(",") === "all,status,TD-128", `the old address restored ${r16Legacy.filterValues.join(",")}`);
     const r16LegacyBare = await loadAddress("/#/activity");
     r16Check(
       r16LegacyBare.pathname === "/activity" && r16LegacyBare.search === "" && r16LegacyBare.hash === "",
@@ -6865,17 +7061,19 @@ export async function run() {
     const r16AtFeed = await readAddress();
     r16Check(r16AtFeed.pathname === "/activity" && r16AtFeed.navCurrent === "activity", `the nav press wrote ${r16AtFeed.pathname}`);
     r16Check(r16AtFeed.entries === r16Before.entries + 1, `a view change must add one history entry (${r16Before.entries} → ${r16AtFeed.entries})`);
-    // A filter is writer B: the query changes, the path and the entry count do not.
+    // A filter is writer B: the query changes, the path and the entry count do
+    // not. Event is one of the address's two slots (Assignee deliberately is
+    // not — it is the board's shared value, TP-0090).
     await page.evaluate(async () => {
       const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-      const host = document.querySelector('[data-activity-filter="actor"]');
+      const host = document.querySelector('[data-activity-filter="event"]');
       host.querySelector("summary")?.click();
       await sleep(40);
-      host.querySelector('[data-activity-filter-option][data-activity-value="agent"]')?.click();
+      host.querySelector('[data-activity-filter-option][data-activity-value="status"]')?.click();
       await sleep(80);
     });
     const r16Filtered = await readAddress();
-    r16Check(r16Filtered.search === "?actor=agent" && r16Filtered.pathname === "/activity", `a filter wrote ${r16Filtered.pathname}${r16Filtered.search}`);
+    r16Check(r16Filtered.search === "?event=status" && r16Filtered.pathname === "/activity", `a filter wrote ${r16Filtered.pathname}${r16Filtered.search}`);
     r16Check(r16Filtered.entries === r16AtFeed.entries, `a filter must not add a history entry (${r16AtFeed.entries} → ${r16Filtered.entries})`);
     await page.click('[data-nav-item="waiting"]');
     await page.waitForTimeout(250);
@@ -6887,10 +7085,10 @@ export async function run() {
     await page.waitForTimeout(250);
     const r16BackOne = await readAddress();
     r16Check(
-      r16BackOne.pathname === "/activity" && r16BackOne.search === "?actor=agent" && r16BackOne.activity,
+      r16BackOne.pathname === "/activity" && r16BackOne.search === "?event=status" && r16BackOne.activity,
       `back #1 landed on ${r16BackOne.pathname}${r16BackOne.search}`,
     );
-    r16Check(r16BackOne.filterValues[0] === "agent", `back #1 lost the filter the address names (${r16BackOne.filterValues.join(",")})`);
+    r16Check(r16BackOne.filterValues[1] === "status", `back #1 lost the filter the address names (${r16BackOne.filterValues.join(",")})`);
     await page.evaluate(() => globalThis.history.back());
     await page.waitForTimeout(250);
     const r16BackTwo = await readAddress();

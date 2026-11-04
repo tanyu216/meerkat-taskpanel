@@ -24,7 +24,7 @@
  */
 import { computed, reactive } from "vue";
 
-import { ACTOR_VALUES, EVENT_VALUES, buildFeed } from "../lib/activity-feed.js";
+import { EVENT_VALUES, buildFeed, mergeById } from "../lib/activity-feed.js";
 import { activityQuery, readActivityQuery } from "../lib/route.js";
 import { lang } from "../i18n/index.js";
 import { api } from "../services/api.js";
@@ -53,13 +53,19 @@ export function writeSeen(value, storage = globalThis.localStorage) {
   return value;
 }
 
-/** @type {{entries: object[], loading: boolean, loaded: boolean, error: unknown, filters: {actor: string, event: string, task: string}, page: number, seenAt: string|null, projectId: string|null}} */
+/** @type {{entries: object[], taskEntries: Record<string, object[]>, loading: boolean, loaded: boolean, error: unknown, filters: {event: string, task: string}, page: number, seenAt: string|null, projectId: string|null}} */
 export const activity = reactive({
   entries: [],
+  /**
+   * A selected task's own history, read on demand (`GET /activities?task_id=`).
+   * Keyed by identifier and merged into the feed **only** while that task is
+   * the filter — the board-wide ledger above stays the `All tasks` reading.
+   */
+  taskEntries: {},
   loading: false,
   loaded: false,
   error: null,
-  filters: { actor: "all", event: "all", task: "all" },
+  filters: { event: "all", task: "all" },
   page: 1,
   seenAt: readSeen(),
   /** Which project the entries belong to — a project switch invalidates them. */
@@ -67,23 +73,38 @@ export const activity = reactive({
 });
 
 /**
+ * The per-task cache's memo and in-flight sets, plus the epoch that invalidates
+ * both. A task read is allowed to land only in the project (and cache
+ * generation) it was started in: a project switch or a reset bumps the epoch, so
+ * even a switch back to the *same* project id cannot accept the stale response.
+ */
+const taskLoaded = new Set();
+const taskPending = new Set();
+let taskEpoch = 0;
+
+/**
  * The whole derivation: admission, folding, day grouping, filtering and the
  * unread split. The view paints this and nothing else, so every rule in
  * `lib/activity-feed.js` reaches the DOM through one value.
  */
-export const feed = computed(() =>
-  buildFeed({
-    activities: activity.entries,
+export const feed = computed(() => {
+  // The task's separate history joins the board-wide ledger **only** while that
+  // task is the filter; `All tasks` is still the one board-wide read. `mergeById`
+  // dedupes the rows the two reads share, so the live tail cannot double.
+  const selected = activity.filters.task;
+  const extra = selected === "all" ? [] : activity.taskEntries[selected] ?? [];
+  return buildFeed({
+    activities: mergeById(activity.entries, extra),
     tasks: board.tasks,
-    // The board's own assignee value joins the three activity slots: the
-    // sidebar roster writes it, and this view is one of the surfaces it
-    // narrows (`design/fidelity-r13.md` §10.1 extended across views).
+    // The board's own assignee value is this bar's Assignee control: the sidebar
+    // roster and the board bar write it too, and all three read one value
+    // (`design/fidelity-r13.md` §10.1 extended across views).
     filters: { ...activity.filters, assignee: assigneeFilterValue(), assigneeMe: ME },
     seenAt: activity.seenAt,
     page: activity.page,
     lang: lang.value,
-  }),
-);
+  });
+});
 
 /** The unread rows the reader can currently see — one number, three readers (§6). */
 export const unreadCount = computed(() => feed.value.unreadCount);
@@ -102,17 +123,20 @@ export const unreadCount = computed(() => feed.value.unreadCount);
  */
 export const projectEmpty = computed(() => feed.value.emptyKind === "project" && activity.loaded);
 
-/** Write one of the three filters. The domain is fixed, so an unknown value is refused. */
+/**
+ * Write one of the feed's **address** filters. Assignee is not one of them: it
+ * is the board's shared value, written by `writeAssigneeFilter()` like the other
+ * surfaces write it. The domain is fixed, so an unknown value is refused.
+ */
 export function writeActivityFilter(name, value) {
-  if (name === "actor" && ACTOR_VALUES.includes(value)) activity.filters.actor = value;
-  else if (name === "event" && EVENT_VALUES.includes(value)) activity.filters.event = value;
+  if (name === "event" && EVENT_VALUES.includes(value)) activity.filters.event = value;
   else if (name === "task" && typeof value === "string" && value !== "") activity.filters.task = value;
   activity.page = 1;
 }
 
-/** Back to all three `all` — the reset button and the filter-empty state's own button. */
+/** Back to both `all` — the reset buttons; the caller also clears assignee. */
 export function resetActivityFilters() {
-  activity.filters = { actor: "all", event: "all", task: "all" };
+  activity.filters = { event: "all", task: "all" };
   activity.page = 1;
 }
 
@@ -129,10 +153,10 @@ export function loadOlder() {
  * R16 §4.2 — writer B: mirror the filters onto the address bar with
  * `replaceState`, so a narrowed feed is shareable and survives a reload.
  *
- * The carrier moved from the fragment to the query (`/activity?actor=agent`) —
+ * The carrier moved from the fragment to the query (`/activity?event=status`) —
  * the fragment is the drawer's own slot and must stay free for `#/task/<id>`
  * (§4.4) — and the payload's four rules moved with it, unchanged: the fixed slot
- * order, `all` never written, the whole query omitted when all three are at rest,
+ * order, `all` never written, the whole query omitted when both are at rest,
  * and a value outside its domain never written. `lib/route.js` builds and parses
  * the string; this writer is the only thing that touches `location`.
  *
@@ -154,15 +178,15 @@ export function replaceActivityQuery(location = globalThis.location, history = g
 }
 
 /**
- * §4.6 — the reader's feed half: land the three filters exactly as the address
- * states them. A slot the address does not name is `all`, which is also what the
+ * §4.6 — the reader's feed half: land the two address filters exactly as they
+ * are stated. A slot the address does not name is `all`, which is also what the
  * literal `all` and an out-of-domain value mean, so an address that names nothing
  * is not "leave the filters alone" but "no condition anywhere" — "a refresh does
  * not lose the filters" and "a back press does not leave stale ones" are the same
  * rule. It never writes history: `stores/route.js` owns that, and the address is
  * what the reader is reading.
  *
- * @param {string} source a query (`?actor=agent`) or the old fragment's payload
+ * @param {string} source a query (`?event=status`) or the old fragment's payload
  * @returns {boolean} whether the address named any condition at all
  */
 export function applyActivityQuery(source) {
@@ -205,10 +229,14 @@ onActivityStream(absorb);
  */
 let loadToken = 0;
 
-/** Drop everything and forget the project the entries came from. */
+/** Drop everything — the ledger, the per-task cache, and the project. */
 export function resetActivity() {
   loadToken += 1;
+  taskEpoch += 1;
   activity.entries = [];
+  activity.taskEntries = {};
+  taskLoaded.clear();
+  taskPending.clear();
   activity.loaded = false;
   activity.loading = false;
   activity.page = 1;
@@ -243,6 +271,11 @@ export async function loadActivities() {
   if (activity.projectId !== projectId) {
     activity.entries = [];
     activity.page = 1;
+    // The per-task cache described the project we just left, too.
+    activity.taskEntries = {};
+    taskLoaded.clear();
+    taskPending.clear();
+    taskEpoch += 1;
     // `loaded` described the project we just left; it may not memoise this one.
     activity.loaded = false;
   }
@@ -272,4 +305,44 @@ export async function loadActivities() {
     if (token === loadToken) activity.loading = false;
   }
   return activity.entries;
+}
+
+/**
+ * Backfill one task's own history when the Task control selects it.
+ *
+ * The board-wide ledger holds the newest 1000 rows across every card, so a
+ * single task's older rows can fall outside it. This read asks the server for
+ * that task (`?task_id=`) and keeps the answer in `taskEntries`, merged only
+ * while the filter names it — `All tasks` stays the one board-wide read.
+ *
+ * Memoised per identifier and de-duplicated while in flight. A failure is
+ * **not** an error state for the view: the promise resolves `{ ok: false }`, no
+ * cache entry is written (so a later selection retries), and the caller owns the
+ * one toast. The loaded ledger is never cleared.
+ *
+ * @param {string} identifier the task control's value
+ * @returns {Promise<{ok: boolean, cached?: boolean, stale?: boolean, error?: unknown}>}
+ */
+export async function loadTaskActivities(identifier) {
+  if (typeof identifier !== "string" || identifier === "" || identifier === "all") return { ok: false };
+  const task = board.tasks.find((entry) => entry.identifier === identifier);
+  // The board-wide task list is the discovery set (its 500-card cap is the known
+  // scale residual); a task it does not hold has no internal id to ask for.
+  if (!task?.id) return { ok: false };
+  if (taskLoaded.has(identifier) || taskPending.has(identifier)) return { ok: true, cached: true };
+
+  const epoch = taskEpoch;
+  const projectId = activity.projectId;
+  taskPending.add(identifier);
+  try {
+    const data = await api.boardActivities({ task_id: task.id, limit: LEDGER_LIMIT, order: "desc" });
+    if (epoch !== taskEpoch || activity.projectId !== projectId) return { ok: false, stale: true };
+    activity.taskEntries[identifier] = data.activities ?? [];
+    taskLoaded.add(identifier);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error };
+  } finally {
+    taskPending.delete(identifier);
+  }
 }

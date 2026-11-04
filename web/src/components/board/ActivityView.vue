@@ -25,18 +25,26 @@
  *   * **One number, three readers** — the sidebar pill, the boundary and the
  *     boundary's count all read one derivation, so they cannot disagree, and a
  *     filter that hides the new rows takes all three off screen together (§6).
- *   * **The address bar shadows the filters.** The three controls write
- *     `/activity?actor=…&event=…&task=…` through `replaceState` (R16 §4.4 moved
- *     the payload from the fragment to the query), so a narrowed feed is
- *     shareable and survives a reload — and never touches `#/task/<id>`, which is
- *     the drawer's own path back to the board (§6).
+ *   * **The address bar shadows the address's two slots.** Event and Task write
+ *     `/activity?event=…&task=…` through `replaceState` (R16 §4.4 moved the
+ *     payload from the fragment to the query), so a narrowed feed is shareable
+ *     and survives a reload — and never touches `#/task/<id>`, which is the
+ *     drawer's own path back to the board (§6). Assignee is the board's shared
+ *     value and, like every board filter, is not in the address (TP-0090).
  *   * **`j` / `k` walk the rows.** The keyboard's route through the feed, over
  *     the same `[data-activity-open]` buttons the row already has, standing down
  *     while the reader is typing in a field (§6).
  */
-import { computed, onMounted, onUnmounted, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 
 import { changeLines, landingFor } from "../../lib/activity-feed.js";
+import {
+  assigneeMenuRows,
+  assigneeTriggerText,
+  firstUnpinnedIndex,
+  moveActive,
+  taskMenuRows,
+} from "../../lib/filter-menu.js";
 import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import { t } from "../../i18n/index.js";
 import {
@@ -44,6 +52,7 @@ import {
   feed,
   loadActivities,
   loadOlder,
+  loadTaskActivities,
   markAllRead,
   projectEmpty,
   replaceActivityQuery,
@@ -51,30 +60,104 @@ import {
   unreadCount,
   writeActivityFilter,
 } from "../../stores/activity.js";
-import { board, openDetail, projectLoading, writeAssigneeFilter } from "../../stores/board.js";
+import {
+  ASSIGNEE_STATIC_VALUES,
+  assigneeFilterValue,
+  board,
+  namedAssignee,
+  openDetail,
+  projectLoading,
+  writeAssigneeFilter,
+} from "../../stores/board.js";
 import { pushToast, view } from "../../stores/ui.js";
 
 /**
- * The three filter domains, from the design's own value tables (§3.4).
+ * The three controls, from the design's value tables (§3.4) and TP-0090.
  *
- * R15 ① (口径 B) — each control is now the **same component** as the board bar's
+ * R15 ① (口径 B) — each control is the **same component** as the board bar's
  * four: a daisyUI `dropdown` panel (`<details class="dropdown"
  * data-dismiss-on-outside>` + `<summary class="btn btn-sm td-label-trigger">` +
  * a menu of rows), not a native `<select>`. The chosen value rides the control's
- * own `data-activity-filter-value`, because a `<details>` has no form value —
- * which is also why the `.td-select-caret` wrapper and its inline glyph are
- * gone: a `<select>` cannot hold a child, so that caret had to be a sibling
- * glyph, and a `<summary>` holds the family's own (`design/fidelity-r15.md`
- * §2.1/§2.3).
+ * own `data-activity-filter-value`, because a `<details>` has no form value.
+ *
+ * TP-0090 replaces the old Actor control with **Assignee** (the board's shared
+ * `board.filters.assignee`, so the same condition as the sidebar roster and the
+ * board bar) and gives Assignee and Task a search row: the query narrows the
+ * menu only, and Enter / a press writes the exact value. Only Event and Task are
+ * the *address's* two slots — Assignee is shared board state and is not written
+ * to the URL, exactly as it is not on board/list.
  */
-const ACTOR_OPTIONS = ["all", "human", "agent"];
 const EVENT_OPTIONS = ["all", "status", "comment", "delivery"];
 
-/** The three slots, in the bar's own order (the address's order, §6). */
-const CONTROLS = Object.freeze(["actor", "event", "task"]);
+/** The three controls, in the bar's own order (Assignee · Event · Task, §6). */
+const CONTROLS = Object.freeze(["assignee", "event", "task"]);
 
 const days = computed(() => feed.value.days);
 const taskOptions = computed(() => feed.value.taskOptions);
+
+/* ---------------------------------------------------- the two search menus --
+ * One state machine for both searchable panels, keyed by slot. The query only
+ * narrows the rendered rows; the control's value changes on Enter / press.
+ * Opening focuses the search box, closing clears the query and the highlight,
+ * so a reopened panel is the resting list again.
+ */
+const assigneeQuery = ref("");
+const taskQuery = ref("");
+const assigneeActive = ref(-1);
+const taskActive = ref(-1);
+
+const queryOf = (slot) => (slot === "assignee" ? assigneeQuery : taskQuery);
+const activeOf = (slot) => (slot === "assignee" ? assigneeActive : taskActive);
+/** The row highlight a slot paints; Event has no search row and never highlights. */
+const activeIndex = (slot) => (slot === "assignee" ? assigneeActive.value : slot === "task" ? taskActive.value : -1);
+
+function onMenuToggle(slot, event) {
+  if (slot !== "assignee" && slot !== "task") return;
+  const panel = event.target;
+  if (!panel?.open) {
+    queryOf(slot).value = "";
+    activeOf(slot).value = -1;
+    return;
+  }
+  // The row is inside a `v-for`, so a template ref would collect an array; the
+  // toggle event's own member is the panel that just opened.
+  nextTick(() => panel.querySelector("[data-activity-filter-search]")?.focus());
+}
+
+function onMenuInput(slot, event) {
+  queryOf(slot).value = event.target.value;
+  activeOf(slot).value = firstUnpinnedIndex(filterRows.value[slot]);
+}
+
+function onMenuKeydown(slot, event) {
+  const rows = filterRows.value[slot];
+  const active = activeOf(slot);
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    active.value = moveActive(active.value, event.key === "ArrowDown" ? 1 : -1, rows.length);
+    return;
+  }
+  if (event.key === "Enter") {
+    const row = rows[active.value];
+    if (!row) return;
+    event.preventDefault();
+    chooseFilter(slot, row.value, event);
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget?.closest?.("[data-dismiss-on-outside]")?.removeAttribute("open");
+  }
+}
+
+/** Clear both panels' typed state (Clear and the empty state's reset). */
+function clearMenuState() {
+  assigneeQuery.value = "";
+  taskQuery.value = "";
+  assigneeActive.value = -1;
+  taskActive.value = -1;
+}
 
 /**
  * The feed's loading window. Two reads can be behind it, and the view shows its
@@ -95,27 +178,47 @@ const loadingNow = computed(
 const optionText = (slot, value) => t(`activity.filter.${slot}.${value}`);
 
 /**
- * Each control's rows, as `{ value, text }`. A row's text is the trigger's text:
- * a domain value's own sentence, or — for the task control, whose domain is open
- * — the identifier itself, because an identifier is data and not a catalogue key
- * (`design/fidelity-r15.md` §2.3).
+ * Each control's rows. A row's text is the trigger's text: a domain value's own
+ * sentence, or — for Assignee and Task — the exact value, because a name or an
+ * identifier is data and not a catalogue key (`design/fidelity-r15.md` §2.3).
+ * The two searchable menus are built by `lib/filter-menu.js`, the pure half the
+ * board bar's controls already use.
  */
 const filterRows = computed(() => ({
-  actor: ACTOR_OPTIONS.map((value) => ({ value, text: optionText("actor", value) })),
-  event: EVENT_OPTIONS.map((value) => ({ value, text: optionText("event", value) })),
-  task: ["all", ...taskOptions.value.map((entry) => entry.identifier)].map((value) => ({
-    value,
-    text: value === "all" ? optionText("task", value) : value,
-  })),
+  assignee: assigneeMenuRows({
+    staticValues: ASSIGNEE_STATIC_VALUES,
+    actors: board.assignees,
+    named: namedAssignee.value,
+    query: assigneeQuery.value,
+    t,
+  }),
+  event: EVENT_OPTIONS.map((value) => ({ value, text: optionText("event", value), pinned: true })),
+  task: taskMenuRows({
+    tasks: taskOptions.value,
+    query: taskQuery.value,
+    allText: optionText("task", "all"),
+  }),
 }));
 
-/** The control's chosen value, `all` when unset — the same reading the hash uses. */
-const filterValue = (slot) => activity.filters[slot] ?? "all";
+/**
+ * The control's chosen value. Assignee is the board's shared value (it has no
+ * activity slot of its own); Event and Task are the two the address carries.
+ */
+function filterValue(slot) {
+  if (slot === "assignee") return assigneeFilterValue();
+  return activity.filters[slot] ?? "all";
+}
 
-/** The trigger states the chosen row's own copy, in the active language. */
+/**
+ * The trigger states the chosen value's own copy, **derived from the value and
+ * never from the query-narrowed menu**: typing must not change what the control
+ * claims to be set to.
+ */
 function filterSummary(slot) {
   const value = filterValue(slot);
-  return filterRows.value[slot].find((row) => row.value === value)?.text ?? value;
+  if (slot === "assignee") return assigneeTriggerText(value, ASSIGNEE_STATIC_VALUES, t);
+  if (slot === "task") return value === "all" ? optionText("task", "all") : value;
+  return filterRows.value.event.find((row) => row.value === value)?.text ?? value;
 }
 
 /**
@@ -169,14 +272,19 @@ function onTask(event, item) {
   openItem(item);
 }
 
-/** R15 ① — a press on a row writes the value, closes the panel (choosing is what
- *  the panel was open for — the family's own rule) and re-runs the pass. */
+/**
+ * R15 ① — a press (or Enter) on a row writes the value and closes the panel
+ * (choosing is what the panel was open for — the family's own rule).
+ *
+ * Assignee writes the **shared board value** and therefore writes no address;
+ * Event and Task are the feed's own slots and mirror onto `?event=` / `?task=`.
+ */
 function chooseFilter(slot, value, event) {
   dismissMemberFrom(event);
-  onFilter(slot, value);
-}
-
-function onFilter(slot, value) {
+  if (slot === "assignee") {
+    writeAssigneeFilter(value);
+    return;
+  }
   writeActivityFilter(slot, value);
   replaceActivityQuery();
 }
@@ -194,19 +302,25 @@ function onFilter(slot, value) {
 function onReset() {
   resetActivityFilters();
   writeAssigneeFilter("all");
+  clearMenuState();
   replaceActivityQuery();
 }
 
 /**
  * R15 ③ — the bar's clear control is B04's own: `[data-filter-clear]` wearing
  * `filters.clear`, in the bar's tail. The document-level rule tells the two
- * apart by **the bar the press came from**, so this one resets the three
- * activity slots and touches no board filter (`design/fidelity-r15.md` §2.4).
+ * apart by **the bar the press came from** (`design/fidelity-r15.md` §2.4).
+ *
+ * TP-0090 — this bar now shows the shared Assignee condition, so Clear must
+ * clear it too; leaving a visible control at a value would contradict the
+ * action. It still touches no *other* board filter (priority, status, label).
  * The confirmation toast is the board bar's own behaviour, which the ruling
  * extends here (Elon 2026-10-13T10:45Z, ④).
  */
 function onClear() {
   resetActivityFilters();
+  writeAssigneeFilter("all");
+  clearMenuState();
   replaceActivityQuery();
   pushToast(t("toast.filtersCleared"), "info");
 }
@@ -263,6 +377,28 @@ watch(
   },
 );
 
+/**
+ * TP-0090 — a selected task's own history is backfilled on demand. The board-wide
+ * ledger is capped at the newest 1000 rows, so a card's older rows can fall
+ * outside it; this read asks the server for that card and the store merges it
+ * only while the filter names it. The view is part of the watch source so a
+ * deep-linked `/activity?task=…` gets its backfill once the address lands, and
+ * `board.tasks` is there because the read needs the card's internal id.
+ *
+ * `activity.loading` is deliberately untouched: a backfill must not raise the
+ * page's skeleton. A failure is one toast — the already-loaded ledger stays
+ * usable and no cache entry is written, so a later selection retries.
+ */
+watch(
+  () => [view.value, activity.filters.task, board.tasks],
+  async ([current, task]) => {
+    if (current !== "activity" || task === "all") return;
+    const result = await loadTaskActivities(task);
+    if (result?.ok === false && result.error) pushToast(t("activity.taskReadFailed"), "danger");
+  },
+  { immediate: true },
+);
+
 onMounted(() => {
   // R16 §4.5 — this view no longer reads the address. "A `/activity` address is a
   // link into the feed" is a rule about *the shell's* boot, so the router owns it
@@ -295,9 +431,10 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <!-- B26.1 · header + filters. Three controls, three domains; the count is the
-         number of rows the reader can see, `aria-live` so a narrowing announces
-         itself without stealing focus.
+    <!-- B26.1 · header + filters. Three controls — Assignee, Event, Task (TP-0090
+         replaced the old Actor control with the board's shared Assignee value);
+         the count is the number of rows the reader can see, `aria-live` so a
+         narrowing announces itself without stealing focus.
 
          R15 ①/③ — the bar is a named `section` whose control row is the board
          bar's component, hook for hook (`[data-activity-filter]` +
@@ -306,7 +443,12 @@ onUnmounted(() => {
          restatement), and whose tail is B04's own `[data-filter-clear]`. The
          bar's accessible name is the one word this surface does **not** share
          with the board's: two landmarks reading "Filters" would be the same
-         region twice to a screen reader (Elon 2026-10-13T10:45Z, ⑤). -->
+         region twice to a screen reader (Elon 2026-10-13T10:45Z, ⑤).
+
+         TP-0090 — Assignee and Task lead their menus with a search row. The
+         query narrows the menu only; Enter / a press writes the exact value.
+         The two rows carry the same hook (`[data-activity-filter-search]`), and
+         the bar still carries exactly one `[data-filter-clear]`. -->
     <section
       class="flex min-w-0 flex-wrap items-center gap-2"
       data-activity-filters
@@ -320,6 +462,7 @@ onUnmounted(() => {
         :data-activity-filter="slot"
         :data-activity-filter-value="filterValue(slot)"
         data-dismiss-on-outside
+        @toggle="onMenuToggle(slot, $event)"
       >
         <summary
           class="btn btn-sm td-label-trigger cursor-pointer list-none [&::-webkit-details-marker]:hidden"
@@ -335,11 +478,38 @@ onUnmounted(() => {
           </svg>
         </summary>
         <ul class="td-details-menu menu">
-          <li v-for="row in filterRows[slot]" :key="row.value">
+          <li v-if="slot === 'assignee'" class="td-menu-search">
+            <input
+              type="search"
+              class="input input-sm w-full"
+              data-activity-filter-search
+              autocomplete="off"
+              :value="assigneeQuery"
+              :placeholder="$t('filters.assigneeSearch')"
+              :aria-label="$t('filters.assigneeSearch')"
+              @input="onMenuInput('assignee', $event)"
+              @keydown="onMenuKeydown('assignee', $event)"
+            />
+          </li>
+          <li v-else-if="slot === 'task'" class="td-menu-search">
+            <input
+              type="search"
+              class="input input-sm w-full"
+              data-activity-filter-search
+              autocomplete="off"
+              :value="taskQuery"
+              :placeholder="$t('activity.filter.task.search')"
+              :aria-label="$t('activity.filter.task.search')"
+              @input="onMenuInput('task', $event)"
+              @keydown="onMenuKeydown('task', $event)"
+            />
+          </li>
+          <li v-for="(row, index) in filterRows[slot]" :key="row.value">
             <button
               type="button"
               data-activity-filter-option
               :data-activity-value="row.value"
+              :data-filter-active="index === activeIndex(slot) ? 'true' : 'false'"
               :aria-current="row.value === filterValue(slot) ? 'true' : 'false'"
               @click="chooseFilter(slot, row.value, $event)"
             >{{ row.text }}</button>
@@ -363,7 +533,7 @@ onUnmounted(() => {
     <div class="td-activity-feed" data-activity-feed>
       <!-- The ledger's loading window — a day caption and six 30px rows, the
            shape the feed will replace it with. It carries no `data-activity-*`
-           name: that vocabulary is closed at 39 (B26), and a placeholder is not
+           name: that vocabulary is closed at 40 (B26), and a placeholder is not
            an event. The view's `aria-busy` is the announcement. -->
       <div v-if="loadingNow" class="td-activity-skeleton" data-view-skeleton="activity" aria-hidden="true">
         <div class="td-activity-skeleton-day">
@@ -469,7 +639,7 @@ onUnmounted(() => {
                       <template v-for="(line, at) in entry.lines" :key="at">
                         <!-- The field label is copy, not a hook: the change line's
                              own `[data-activity-change]` already names the kind,
-                             and B26's `data-activity-*` list is closed at 35. -->
+                             and B26's `data-activity-*` list is closed at 40. -->
                         <span class="td-activity-change-field">{{ $t(line.field) }}</span>
                         <span v-if="line.transition" class="td-activity-change-value td-mono td-activity-transition">
                           <span class="status td-status-dot" :data-status="line.transition.from" aria-hidden="true"></span>

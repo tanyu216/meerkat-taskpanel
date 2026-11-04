@@ -50,11 +50,6 @@ export const BURST_WINDOW_MS = 5 * MINUTE;
 export const DAY_PAGE_SIZE = 3;
 
 /**
- * The feed's actor filter domain (§3.4 / the prototype's `[data-activity-filter="actor"]`).
- */
-export const ACTOR_VALUES = Object.freeze(["all", "human", "agent"]);
-
-/**
  * The feed's event filter domain. Exactly four values, and the mapping is
  * explicit rather than inferred (§3.4): `status` = a status move, `comment` = a
  * comment, `delivery` = a report/delivery, everything else is background and
@@ -478,34 +473,53 @@ export function changeLines(item) {
 /* ------------------------------------------------------------- selection */
 
 /**
- * §6 — the three filters, ANDed, plus the sidebar's assignee narrowing.
+ * §6 — the feed's controls, ANDed.
  *
- * A row passes the actor filter on its actor's kind, the event filter on its
- * group, and the task filter on the identifier it names. `all` in any slot is
- * the un-filtered state, not a value to compare.
+ * The bar has three controls: **Assignee**, **Event** and **Task**. Only the
+ * last two are the feed's own slots (they are the two the address carries); the
+ * assignee value is the board's own, written by the sidebar roster, the board
+ * bar and (since TP-0090) this bar — one value for all three surfaces. A row
+ * survives when the **actor it already shows** passes it (`actorMatches`).
  *
- * `assignee` is **not** one of B26's three controls: it is the board's own
- * assignee value, written by the sidebar roster and the board bar. The activity
- * view reads it as a fourth, ANDed condition — a row survives when the **actor
- * it already shows** passes the condition (`actorMatches`). The feed's `actor`
- * slot and this clause can both narrow at once; two conditions on one axis AND,
- * which is the only reading that does not silently drop one of them.
+ * A row passes the event filter on its group and the task filter on the
+ * identifier it names. `all` in any slot is the un-filtered state, not a value
+ * to compare.
  *
  * @param {object[]} items
- * @param {{actor?: string, event?: string, task?: string, assignee?: string, assigneeMe?: string}} filters
+ * @param {{event?: string, task?: string, assignee?: string, assigneeMe?: string}} filters
  */
 export function filterItems(items, filters = {}) {
-  const actor = filters.actor ?? "all";
   const event = filters.event ?? "all";
   const task = filters.task ?? "all";
   const assignee = filters.assignee ?? "all";
   return items.filter((item) => {
-    if (actor !== "all" && item.actorKind !== actor) return false;
     if (event !== "all" && item.group !== event) return false;
     if (task !== "all" && item.identifier !== task) return false;
     if (!actorMatches(assignee, item.actor, item.actorKind, filters.assigneeMe)) return false;
     return true;
   });
+}
+
+/**
+ * Merge a task's separately-read history into the board-wide ledger by row id.
+ *
+ * The base list wins on a duplicate: it is the ledger the live stream already
+ * feeds, so its row is the freshest one this store holds. The addition only
+ * appends rows the base lacks, which is what makes `mergeById` idempotent and
+ * safe to run on every render.
+ *
+ * @param {object[]} base
+ * @param {object[]} extra
+ */
+export function mergeById(base, extra) {
+  const merged = new Map();
+  for (const entry of Array.isArray(base) ? base : []) {
+    if (entry?.id != null) merged.set(entry.id, entry);
+  }
+  for (const entry of Array.isArray(extra) ? extra : []) {
+    if (entry?.id != null && !merged.has(entry.id)) merged.set(entry.id, entry);
+  }
+  return [...merged.values()];
 }
 
 /** The distinct task identifiers the feed can be narrowed to, newest first. */
@@ -575,7 +589,7 @@ export function markUnread(items, seenAt) {
  * @param {{
  *   activities: object[],
  *   tasks: object[],
- *   filters?: {actor?: string, event?: string, task?: string, assignee?: string, assigneeMe?: string},
+ *   filters?: {event?: string, task?: string, assignee?: string, assigneeMe?: string},
  *   seenAt?: string|null,
  *   page?: number,
  *   lang?: string,

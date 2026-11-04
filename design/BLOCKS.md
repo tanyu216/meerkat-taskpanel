@@ -1297,8 +1297,8 @@ copy. Its own page stays in the repository as the design source and as its own e
 | | |
 |---|---|
 | Root | `[data-activity-view]` — third child of `main.td-main`, beside `[data-board-view]` and `[data-list]`; ships **`hidden`**, because the no-script default view is the board |
-| B26.1 header + controls | `[data-activity-title]` · `[data-activity-mark-read]` (the header's own title and subtitle carry `data-i18n` hooks only, no `data-activity-*` of their own) · `[data-activity-filters]` (a `section`, named `filters.label`, R15 ①) → `[data-activity-filter="actor" \| "event" \| "task"]` (**each a `<details class="dropdown" data-dismiss-on-outside>`**, R15 ①) + `[data-filter-clear]` (R15 ③) + `[data-activity-filter-count]` (`aria-live="polite"`) |
-| B26.1a one activity control | `[data-activity-filter="…"]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-activity-filter-value`, the trigger states it via `[data-activity-filter-text]`, and the menu holds `[data-activity-filter-option]` × N, each with `data-activity-value` and `aria-current` on the chosen one |
+| B26.1 header + controls | `[data-activity-title]` · `[data-activity-mark-read]` (the header's own title and subtitle carry `data-i18n` hooks only, no `data-activity-*` of their own) · `[data-activity-filters]` (a `section`, named `filters.label`, R15 ①) → `[data-activity-filter="assignee" \| "event" \| "task"]` (**each a `<details class="dropdown" data-dismiss-on-outside>`**, R15 ①) + `[data-filter-clear]` (R15 ③) + `[data-activity-filter-count]` (`aria-live="polite"`) |
+| B26.1a one activity control | `[data-activity-filter="…"]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-activity-filter-value`, the trigger states it via `[data-activity-filter-text]`, and the menu holds `[data-activity-filter-option]` × N, each with `data-activity-value` and `aria-current` on the chosen one. **TP-0090**: Assignee and Task lead the menu with a search row (`[data-activity-filter-search]`); the query narrows the menu only |
 | B26.2 feed | `[data-activity-feed]` → `[data-activity-day]` → `[data-activity-row]` → `[data-activity-actor]` / `[data-activity-sentence]` / `[data-activity-task]` / `[data-activity-at]` / `[data-activity-detail]` |
 | B26.3 unread boundary | `[data-activity-unread-divider]` + `[data-activity-unread-count]`; the same press that clears it is `[data-activity-mark-read]` |
 | B26.4 burst | `[data-activity-burst]` + `[data-activity-burst-count]` (`×N`) + one `[data-activity-burst-item]` per folded event |
@@ -1365,12 +1365,11 @@ What the round changed, in full:
 | rows | the select's `<option>`s | `[data-activity-filter-option]` + `data-activity-value`, `aria-current` on the chosen one |
 | clear | `[data-activity-filter-reset]` / `Reset` | `[data-filter-clear]` / `Clear` (R15 ③) |
 
-The three domains are B26's own and unchanged (`actor` · `event` · `task`, with the same
-row counts 3 / 4 / 10 and the same copy), the bar keeps its own count
-(`[data-activity-filter-count]`, `aria-live="polite"`), and the feed's URL contract is
-unchanged (`#/activity?actor=…`). The aux hook family grows by exactly two names — the
-trigger seat and the row seat — and the round retires one (`[data-activity-filter-reset]`,
-R15 ②). The implementation's divergence — each control wrapped in a `span.td-select-caret`
+The three controls are `assignee` · `event` · `task`, the bar keeps its own count
+(`[data-activity-filter-count]`, `aria-live="polite"`), and the feed's URL contract carries
+the two *address* slots (`/activity?event=…&task=…`). The aux hook family grows by exactly
+two names from R15 — the trigger seat and the row seat — and the round retires one
+(`[data-activity-filter-reset]`, R15 ②). The implementation's divergence — each control wrapped in a `span.td-select-caret`
 carrying an inline caret `svg`, invented because the app sheet may not carry the prototype's
 caret data-URI, and with no counterpart on the board's controls — is registered in
 `design/fidelity-r15.md` §4 as R15-B01, with the selector-level target for the
@@ -1383,19 +1382,36 @@ along, in the same tail position (Clear · count) and the same `btn btn-ghost bt
 The prototype tells the two presses apart **by the bar the press came from**
 (`[data-activity-filters]` is the activity bar's own root), not by a second hook name — one
 control family, two bars. The filter-empty state's own inline `[data-activity-empty-reset]`
-(B26.5) is a different affordance in a different place and is **not** touched.
+(B26.5) is a different affordance in a different place and is **not** touched. Since TP-0090
+the bar shows the shared Assignee condition, so Clear resets that value too; the board's
+other conditions (priority, status, label) stay untouched.
+
+**TP-0090 — Assignee replaces Actor, and two menus search.** The old `actor` control was the
+same axis as the board's Assignee and the two could contradict each other; the bar's first
+control is now **Assignee**, bound to the shared `board.filters.assignee` (so the sidebar
+roster, the board bar and this bar write one value), with `All / Me / Human / Agent` plus the
+roster's given names. Assignee and Task each lead their menu with a search row
+(`[data-activity-filter-search]`); the query narrows the menu only and Enter / a press writes
+the exact value. Only `event` and `task` are the address's slots — Assignee, like every board
+filter, is not written to the URL, and an old `?actor=` pair is ignored. Selecting a task also
+backs the feed with that card's own history (`GET /activities?task_id=`), merged only while
+the card is the filter; `All tasks` remains the one board-wide read. This is the card's
+delivery record, not a new block: the block contract's selectors and counts are unchanged
+apart from the domain value and the one new hook below.
 
 **Auxiliary hooks** (implementation detail, not part of the block contract), the full
-`data-activity-*` set the document carries — **39 names, no more**, measured off the shipped
+`data-activity-*` set the document carries — **40 names, no more**, measured off the shipped
 document (R15 ① added the five the dropdown conversion needs —
 `[data-activity-filter-summary]` (the trigger seat), `[data-activity-filter-text]` (the
 trigger's value seat, the board's `-text` shape), `[data-activity-filter-option]` (a menu
 row), `[data-activity-filter-value]` (the control's value carrier, the board's
-`-value` shape), and `[data-activity-value]` (a row's own value) — and R15 ③ retired one,
-`[data-activity-filter-reset]`; `[data-filter-clear]` is B04's hook, not this family's):
+`-value` shape), and `[data-activity-value]` (a row's own value) — R15 ③ retired one,
+`[data-activity-filter-reset]`, and TP-0090 added `[data-activity-filter-search]`; the two
+`[data-filter-clear]` controls are B04's hook, not this family's):
 `[data-activity-view]` · `[data-activity-title]` · `[data-activity-mark-read]` ·
 `[data-activity-filters]` · `[data-activity-filter]` · `[data-activity-filter-summary]` ·
-`[data-activity-filter-text]` · `[data-activity-filter-option]` · `[data-activity-filter-value]` ·
+`[data-activity-filter-text]` · `[data-activity-filter-option]` · `[data-activity-filter-search]` ·
+`[data-activity-filter-value]` ·
 `[data-activity-value]` · `[data-activity-filter-count]` · `[data-activity-feed]` · `[data-activity-day]` ·
 `[data-activity-day-label]` · `[data-activity-day-kind]` · `[data-activity-page]` ·
 `[data-activity-row]` · `[data-activity-line]` · `[data-activity-actor]` ·
