@@ -129,8 +129,9 @@ Options:
                     per-kind config; also asked interactively on a TTY (default yes).
   --assignee-only   Alias for --claim-unassigned=no (claim only my own cards)
   --recover-stale=yes|no
-                    Recover stale in_progress claims (same holder after 30 min,
-                    any agent after 6 hours). Persisted to the per-kind config;
+                    Recover stale in_progress claims (the holder after 30 min;
+                    past 6 hours the card's assignee, anyone else only with
+                    --allow-steal --reason). Persisted to the per-kind config;
                     default yes.
   --workflow=yes|no Run the supervisor's workflow sub-pass (reconcile, review
                     dispatch, applying verdicts). Persisted to the per-kind config;

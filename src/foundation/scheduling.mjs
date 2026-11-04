@@ -364,6 +364,11 @@ function defer(why) {
  *   4. a role that names the *other* lane is a misroute, deferred — never swapped;
  *   5. the assignee's role in this card's lane, when it can start, is the claim
  *      identity — **even when another agent scanned the card first**;
+ *   5a. a `stale_same` claim is holder-only on the board. The candidate is
+ *      offered only to the holder's scan; when the route moved off that holder
+ *      (an audited override, or an `issue assign` of an `in_progress` card)
+ *      claiming as the assignee is refused with EXECUTION_ACTIVE on every tick,
+ *      so the card is **deferred** and the six-hour bound recovers it;
  *   6. a review card is never handed to Worker (that is how a card gets
  *      self-reviewed on the wrong lane);
  *   7. only a rotted stale (`reason: "stale_any"`) **work** card may be formally
@@ -406,19 +411,34 @@ export function planClaimIdentity(candidate, input = {}) {
     return defer(`assigned to a human (${assignee})`);
   }
 
-  // 4. No role layer loaded (a test, or a caller that injected none): the
-  //    assignee name is the only identity available.
-  if (roleSet === null) return { kind: "claim", agent: assignee };
-
   const lane = review ? "reviewer" : "worker";
   const otherLane = lane === "worker" ? "reviewer" : "worker";
-  const role = selectRole(roleSet, assignee, lane);
+  // 4. No role layer loaded (a test, or a caller that injected none): the
+  //    assignee name is the only identity available.
+  const role = roleSet === null ? null : selectRole(roleSet, assignee, lane);
 
   // 4a. The name is a role, just not the lane this card needs: a misroute is a
   //     deferral for the director, never a quiet swap to another role.
-  if (role === null && selectRole(roleSet, assignee, otherLane) !== null) {
+  if (roleSet !== null && role === null && selectRole(roleSet, assignee, otherLane) !== null) {
     return defer(`assignee ${assignee} is a ${otherLane}-lane role, not a ${lane}`);
   }
+
+  // 5a. The board's holder-only window: only the holder may re-claim a
+  //     `stale_same` card (10min–6h). The pool lists it for the holder's scan,
+  //     so a claim as the assignee succeeds only while the route still names
+  //     that holder. After an audited override or an `issue assign` of an
+  //     in_progress card, claiming as the assignee is refused with
+  //     EXECUTION_ACTIVE on every tick and the card waits for six hours
+  //     anyway — so say so once and defer. Past the bound the route recovers it.
+  const claimAgent = role === null ? assignee : role.agent;
+  if (candidate.reason === "stale_same" && scanAgent !== null && !sameName(claimAgent, scanAgent)) {
+    return defer(
+      `stale_same: ${scanAgent} holds the live claim, but the card is assigned to ${assignee} ` +
+        `(only the holder may re-claim it within 6 hours)`,
+    );
+  }
+
+  if (roleSet === null) return { kind: "claim", agent: assignee };
 
   if (review) {
     // 6. A review is only ever run by its assigned reviewer role.
