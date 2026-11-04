@@ -313,7 +313,7 @@ export function createCodexPool(input) {
 
   child.on("error", (err) => {
     initError = `spawn error: ${err.message}`;
-    log(`codex: ${initError}`);
+    log(`codex: ${initError}`, { level: "error", event: "turn_spawn_failed" });
     failAll(initError);
   });
   child.on("exit", (code, signal) => {

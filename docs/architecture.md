@@ -54,7 +54,7 @@ The four layers and the import rule they carry:
 | `src/foundation/` | DTOs, constants, the env loader, the logger, domain errors, the HTTP/CLI transport helpers, pure helpers | nothing under `src/` (Node builtins only) |
 | `src/core/` | the domain model and invariants, SQLite storage and migrations, use-cases and `openBoard()` | `foundation` |
 | `src/cli/`, `src/server/` | the `taskctl` surface; the `taskd` HTTP + SSE surface | `core`, `foundation` |
-| `src/orchestrator/` | the loop: patrol, dispatch, claim, session pool | `foundation` only — it speaks to the board through `taskctl`, never through the HTTP API |
+| `src/orchestrator/` | the loop: patrol, dispatch, claim, session pool | `foundation` only — it speaks to the board through `taskctl`, never through the board's HTTP API; the one exception is the ping's read-only `GET /health` liveness probe, which mutates nothing ([`scheduling.md`](scheduling.md#the-boards-own-health)) |
 
 `src/core/domain/` imports **no Node builtins**, so the model stays testable as pure logic.
 Decision and rejected alternatives: [`docs/adr/0001-architecture-style.md`](adr/0001-architecture-style.md).
@@ -74,7 +74,10 @@ One owner per module, one reason to change:
   `handoff-round.mjs` (the only reader of a handoff round marker) and `constants.mjs` (the only
   home for a shared literal).
 - **`src/orchestrator/`** — the loop. It carries no board discovery or token code; that belongs
-  to the CLI it spawns.
+  to the CLI it spawns. Its one outbound HTTP call is the ping's read-only `GET /health`
+  liveness probe, with the runtime pointer as the fallback URL
+  (`src/orchestrator/runtime.mjs#probeBoardHealth`); no board mutation goes through it
+  ([`scheduling.md`](scheduling.md#the-boards-own-health)).
 
 Shared constants and the closed enumerations have one home each —
 `src/foundation/constants.mjs` and `src/core/domain/enums.mjs` (plus `priority.mjs`,

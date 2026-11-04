@@ -2,7 +2,9 @@
 /**
  * The external scheduler — the loop's two clocks.
  *
- *   * **ping** (60s) — prune worker pids that are gone. No board read, no LLM.
+ *   * **ping** (60s) — prune worker pids that are gone and probe the board's
+ *     `/health` for liveness (log-only; it never stops the board). No board API
+ *     read, no LLM.
  *   * **continue** (600s) — run patrol → workflow → poll in-process; the
  *     runs `taskctl loop patrol|workflow|poll`, in that order.
  *
@@ -19,7 +21,7 @@
  * Run with: taskctl loop run --help
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
@@ -38,11 +40,13 @@ import { loadRoles } from "../foundation/roles.mjs";
 import { describeRolePlatforms } from "../foundation/role-platforms.mjs";
 import { runContinueOnce } from "./runners.mjs";
 import {
+  boardProbeUrl,
   createLogger,
   drainInFlight,
   isProcessAlive,
   killWedgedPool,
   loadRegistry,
+  probeBoardHealth,
   runPingTick,
   saveRegistry,
 } from "./runtime.mjs";
@@ -52,10 +56,11 @@ import {
  * registry read is fail-soft by construction.
  *
  * @param {object} opts
- * @param {(line: string) => void} log
- * @returns {number} exit code
+ * @param {NodeJS.ProcessEnv} env
+ * @param {(line: string, meta?: object) => void} log
+ * @returns {Promise<number>} exit code
  */
-function runPingOnce(opts, env, log) {
+async function runPingOnce(opts, env, log) {
   try {
     if (!opts.dryRun && !existsSync(opts.state)) {
       log("ping: registry missing — nothing to prune");
@@ -74,16 +79,28 @@ function runPingOnce(opts, env, log) {
     // `wedgeKillAction`/`killWedgedPool`; the ping owns the marker file.
     if (!opts.dryRun) {
       const { config } = resolveLoopConfig(opts, env);
+      const paths = statePathsForDir(dirname(opts.sessionState));
       if (config.recoverWedged) {
-        const markerPath = statePathsForDir(dirname(opts.sessionState)).poolWedge;
         killWedgedPool({
           state: readJsonFile(opts.sessionState),
-          marker: readJsonFile(markerPath),
+          marker: readJsonFile(paths.poolWedge),
           isAlive: isProcessAlive,
-          saveMarker: (marker) => writeJsonFile(markerPath, marker),
+          saveMarker: (marker) => writeJsonFile(paths.poolWedge, marker),
           log,
         });
       }
+      // Board liveness, from the outside. This is observability only — the
+      // probe has no kill path, because a board that answers slowly is not a
+      // board the ping may stop (single writer + data safety).
+      await probeBoardHealth({
+        url: boardProbeUrl({ opts, env }),
+        state: readJsonFile(paths.boardHealth),
+        save: (record) => {
+          mkdirSync(dirname(paths.boardHealth), { recursive: true });
+          writeJsonFile(paths.boardHealth, record);
+        },
+        log,
+      });
     }
     return 0;
   } catch (err) {
@@ -118,17 +135,17 @@ export async function runDaemon(opts, env, log, hooks = {}) {
 
   let firstTickDone = false;
   const ping = () => {
-    try {
-      runPingOnce(opts, env, log);
-    } catch (err) {
-      log(`ping error: ${err.message}`, { level: "error" });
-    } finally {
-      // The daemon ran: a later crash is not a failed boot and is never delayed.
-      if (!firstTickDone) {
-        firstTickDone = true;
-        hooks.onFirstTick?.();
-      }
-    }
+    // The probe is awaited inside the pass; the timer only needs to know the
+    // tick happened, and its own failure is already logged by `runPingOnce`.
+    runPingOnce(opts, env, log)
+      .catch((err) => log(`ping error: ${err.message}`, { level: "error" }))
+      .finally(() => {
+        // The daemon ran: a later crash is not a failed boot and is never delayed.
+        if (!firstTickDone) {
+          firstTickDone = true;
+          hooks.onFirstTick?.();
+        }
+      });
   };
   // The liveness clock runs immediately; the judgment clock waits one cadence,
   // mirroring the units' RunAtLoad=false.

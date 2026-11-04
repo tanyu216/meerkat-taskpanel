@@ -27,7 +27,7 @@ board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `session`); the
 | `loop tick [--passes <list>]` | Run `patrol,workflow,poll` (or `--passes` order) in one command — the cron/unit entry. |
 | `loop console` | One read-only question / frontier cycle. |
 | `loop doctor` | One read-only daily-inspection report: supervisor verdict, the resolved scan set, the patrol's last-successful-run marker, the log tail, queue and ledger depth, the cards whose heartbeat is stale or unreadable, the stale claims whose handoff rows are all terminal or absent (`undispatched_claims` — nothing can re-dispatch them; only a human release frees the card), the `in_review` cards waiting on a human (age only — review aging stays the workflow pass's judgement), and the cards carrying an acceptance marker for their current round while still `in_review` (`blocked_acceptance` — the board refused the close), and the `done` cards whose lane branch is not in the project's current branch (`unlanded`), and the cards that keep going round the same loop (`looping`: rework rounds, review reopens, dispatch retries, subagent failures — read-only facts, with the loop's own queue/ledger windows). Writes nothing and exits 0 whenever it produced a report — read `attention` from `--json`. |
-| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict, the agent platform (`--actor-kind`), the discovered role platforms and the scan set it resolved; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
+| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict (including `unresponsive` and `wedged`), the pool's tick age, the boot ledger (`lastCrash`, the consecutive failed-start streak, the recent starts), the agent platform (`--actor-kind`), the discovered role platforms and the scan set it resolved; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
 | `loop run [--ping-once] [--continue-once]` | The two clocks as a daemon; either `--*-once` runs one pass and exits. |
 | `loop subscribe` | The event subscriber daemon; it requests an early tick. |
 | `loop session` | The resident session pool daemon. |
@@ -37,8 +37,11 @@ board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `session`); the
 verbs a human runs while the daemons are up. Every verb writes its **own** output: `loop status --json` is the
 loop's JSON, not the `{ok:true,data}` envelope, and none of them adds `token_source`.
 `loop status --json` carries `platform` (`claude|codex|pi`) and `agents` (the resolved scan
-set); the human output prints the same two facts as `platform:` and `scan set:` lines. They
-are output fields, not new flags.
+set); the human output prints the same two facts as `platform:` and `scan set:` lines. It
+also carries `pool.tickAgeMs` (the in-flight tick's age, `null` when idle) and `health` —
+the `supervisor.health.json` projection `{startedAt, pid, version, lastCrash, starts,
+bootFailures}`, or `null` when no long-lived entry has ever run. The human output prints
+those as `tick:` and `health:` lines. They are output fields, not new flags.
 
 
 The retired single-purpose flags are gone: `--once` (bare poll), `--poll-interval`,

@@ -44,10 +44,12 @@ describe("loop-state — the loop's state vocabulary", () => {
       deferrals: join("/state", "deferrals.json"),
       poolWedge: join("/state", "pool-wedge.json"),
       health: join("/state", "supervisor.health.json"),
+      boardHealth: join("/state", "board-health.json"),
     });
     assert.equal(STATE_FILES.deferrals, "deferrals.json");
     assert.equal(STATE_FILES.poolWedge, "pool-wedge.json");
     assert.equal(STATE_FILES.health, "supervisor.health.json");
+    assert.equal(STATE_FILES.boardHealth, "board-health.json");
   });
 
   it("pins the queue, liveness and session constants", () => {

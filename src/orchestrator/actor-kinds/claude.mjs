@@ -127,7 +127,10 @@ class ClaudeSession {
     this.child.stdout.on("data", lineSplitter((line) => this.handleLine(line)));
     this.child.stderr.on("data", lineSplitter((line) => this.log(`claude[${this.cwd}] ${line}`)));
     this.child.on("error", (err) => {
-      this.log(`claude[${this.cwd}] spawn error: ${err.message}`);
+      this.log(`claude[${this.cwd}] spawn error: ${err.message}`, {
+        level: "error",
+        event: "turn_spawn_failed",
+      });
       this.finish({
         ok: false,
         resumeFailed: this.resumeId !== null && !this.sawResult,

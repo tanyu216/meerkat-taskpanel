@@ -100,6 +100,18 @@ export const EVENT_LEVELS = Object.freeze({
   crash_loop: "error",
   pool_start_failed: "error",
   pool_killed: "error",
+  // A pool whose phase outlived its deadline. The verdict is the evidence; the
+  // kill (when it happens) is the ping's separate `pool_killed` record.
+  pool_wedged: "error",
+  // A worker turn could not be started at all — one error per failed spawn,
+  // never a silent retry.
+  turn_spawn_failed: "error",
+  // The board's own event loop was blocked past the probe threshold. It cannot
+  // heal itself while blocked; the record is written when it frees up.
+  event_loop_blocked: "error",
+  // The ping's outside view: three consecutive `/health` probes failed. The
+  // ping never stops the board on this record (single writer + data safety).
+  board_unresponsive: "error",
   server_error: "error",
   sse_stream_failed: "error",
   container_sweep_failed: "error",

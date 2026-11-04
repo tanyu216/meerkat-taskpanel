@@ -32,6 +32,7 @@ import { fileURLToPath } from "node:url";
 import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { pidMatches } from "../foundation/daemon-state.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
+import { statePathsForDir } from "../foundation/loop-state.mjs";
 
 import {
   AGENT_DIRS,
@@ -76,6 +77,32 @@ function readJson(path) {
 function writeJson(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/**
+ * The boot ledger the long-lived entries write (`orchestrator/boot-health.mjs`),
+ * projected for a report. Absent or malformed reads as `null` — a status read
+ * never fails on a state file.
+ *
+ * `bootFailures` is the **consecutive** count of starts that never completed a
+ * first tick; a completed first tick resets it (TP-0032's restart ladder).
+ *
+ * @param {string} stateDir
+ */
+function readBootHealth(stateDir) {
+  const record = readJson(statePathsForDir(stateDir).health);
+  if (record === null || typeof record !== "object" || Array.isArray(record)) return null;
+  return {
+    startedAt: typeof record.startedAt === "string" ? record.startedAt : null,
+    pid: Number.isInteger(record.pid) ? record.pid : null,
+    version: typeof record.version === "string" ? record.version : null,
+    lastCrash: typeof record.lastCrash === "string" ? record.lastCrash : null,
+    starts: Array.isArray(record.starts)
+      ? record.starts.filter((entry) => typeof entry === "string")
+      : [],
+    bootFailures:
+      Number.isInteger(record.bootFailures) && record.bootFailures > 0 ? record.bootFailures : 0,
+  };
 }
 
 /** `<stateDir>/supervisor.session.json` — the pool this session started. */
@@ -172,6 +199,9 @@ export function probeSupervisor(opts, deps = {}) {
   const record = readJson(recordPath(opts));
   const recordLive =
     record !== null && Number.isInteger(record.poolPid) && isAlive(record.poolPid);
+  // The boot ledger is the only record of *why* a long-lived entry kept dying;
+  // `poolStatus` reports the current tick, this reports the last crash.
+  const health = readBootHealth(stateDir);
 
   let verdict;
   if (oneShotLive) verdict = "busy";
@@ -244,6 +274,10 @@ export function probeSupervisor(opts, deps = {}) {
     },
     units,
     sessionStarted: record === null ? null : { ...record, live: recordLive },
+    // Last crash, the consecutive failed-start streak and the recent starts —
+    // `supervisor.health.json` projected, `null` when the ledger has never been
+    // written (a loop that never ran a long-lived entry).
+    health,
   };
 }
 
@@ -374,6 +408,19 @@ function humanReport(report) {
     (record) => String(record?.role ?? "worker") === "reviewer",
   );
   const reviewerRunning = reviewerRecords.filter((record) => workerRecordIsRunning(record)).length;
+  // The tick age is the evidence behind the `busy`/`wedged` verdict; the boot
+  // ledger is the evidence behind a restart loop. Both are reported even when
+  // the pool is absent, because "no ledger" is itself a fact.
+  const tickLine =
+    typeof report.pool.tickAgeMs === "number"
+      ? `${Math.round(report.pool.tickAgeMs / 1000)}s in flight`
+      : "idle";
+  const healthLine =
+    report.health === null
+      ? "no boot ledger"
+      : `last crash ${report.health.lastCrash ?? "never"} · ` +
+        `${report.health.bootFailures} consecutive failed starts · ` +
+        `last start ${report.health.startedAt ?? "unknown"}`;
   const workerLine =
     `${runningCount} running / ${workerRecords.length} total` +
     (reviewerRecords.length > 0
@@ -388,6 +435,8 @@ function humanReport(report) {
     `  scan set:  ${report.agents.length > 0 ? report.agents.join(",") : "(none)"}`,
     ...(Array.isArray(report.roles) ? report.roles.map((line) => `  ${line}`) : []),
     `  pool:      ${pool}`,
+    `  tick:      ${tickLine}`,
+    `  health:    ${healthLine}`,
     ...(workerRecords.length > 0 ? [`  sessions:  ${workerLine}`] : []),
     `  continue:  ${report.continue.oneShot ? `one-shot pid ${report.continue.oneShot.pid}` : "idle"}`,
     `  subscribe: ${report.subscribe.live ? `running (pid ${report.subscribe.pid})` : "not running"}`,
