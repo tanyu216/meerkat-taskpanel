@@ -162,6 +162,109 @@ describe("hub server (in process)", () => {
     assert.ok(types.includes("idle"));
   });
 
+  /** Emit a card event on a timer until `pending` settles, so registration races never lose it. */
+  const emitUntilDone = async (pending, emit) => {
+    const timer = setInterval(emit, 20);
+    try {
+      return await pending;
+    } finally {
+      clearInterval(timer);
+    }
+  };
+
+  const emitted = (result) =>
+    result.stdout
+      .trim()
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line));
+
+  it("ends a hold at the first event a filter matches", async () => {
+    const pending = cli([
+      "events", "follow", "--after", "0", "--idle", "0", "--hold", "5000",
+      "--event", "task_moved:changes.to=awaiting",
+    ]);
+    const result = await emitUntilDone(pending, () =>
+      board.emit("uuid-1", "task_moved", { from: "todo", to: "awaiting" }),
+    );
+
+    assert.equal(result.exit, 0, result.stderr);
+    const records = emitted(result);
+    assert.deepEqual(records[0], { type: "open" });
+    assert.equal(records.at(-1).type, "event");
+    assert.equal(records.at(-1).data.event, "task_moved");
+    assert.equal(records.at(-1).data.changes.to, "awaiting");
+  });
+
+  it("emits only the event names --event names", async () => {
+    const pending = cli([
+      "events", "follow", "--after", "0", "--idle", "0", "--hold", "5000",
+      "--event", "task_created",
+    ]);
+    const result = await emitUntilDone(pending, () => {
+      board.emit("uuid-1", "comment_added");
+      board.emit("uuid-1", "task_created");
+    });
+
+    assert.equal(result.exit, 0, result.stderr);
+    const names = emitted(result).filter((record) => record.type === "event");
+    assert.deepEqual(names.map((record) => record.data.event), ["task_created"]);
+  });
+
+  it("matches a predicate path under the event payload", async () => {
+    const pending = cli([
+      "events", "follow", "--after", "0", "--idle", "0", "--hold", "5000",
+      "--event", "comment_added:task_id=uuid-1",
+    ]);
+    const result = await emitUntilDone(pending, () => {
+      board.emit("uuid-2", "comment_added");
+      board.emit("uuid-1", "comment_added");
+    });
+
+    assert.equal(result.exit, 0, result.stderr);
+    const events = emitted(result).filter((record) => record.type === "event");
+    assert.equal(events.length, 1);
+    assert.equal(events[0].data.task_id, "uuid-1");
+  });
+
+  it("ORs repeated --event flags", async () => {
+    const pending = cli([
+      "events", "follow", "--after", "0", "--idle", "0", "--hold", "5000",
+      "--event", "task_created", "--event", "comment_added",
+    ]);
+    const result = await emitUntilDone(pending, () => board.emit("uuid-1", "comment_added"));
+
+    assert.equal(result.exit, 0, result.stderr);
+    const events = emitted(result).filter((record) => record.type === "event");
+    assert.equal(events.length, 1);
+    assert.equal(events[0].data.event, "comment_added");
+  });
+
+  it("does not extend the hold for an event a filter drops", async () => {
+    const pending = cli([
+      "events", "follow", "--after", "0", "--idle", "0", "--hold", "300",
+      "--event", "task_created",
+    ]);
+    let stoppedEmitting = false;
+    const timer = setInterval(() => board.emit("uuid-1", "comment_added"), 20);
+    const stop = setTimeout(() => {
+      stoppedEmitting = true;
+      clearInterval(timer);
+    }, 1500);
+    let result;
+    try {
+      result = await pending;
+    } finally {
+      clearInterval(timer);
+      clearTimeout(stop);
+    }
+
+    assert.equal(stoppedEmitting, false, "a dropped event must not reset the hold");
+    assert.equal(result.exit, 0, result.stderr);
+    const records = emitted(result);
+    assert.deepEqual(records.at(-1), { type: "idle", data: { idle_ms: 300 } });
+  });
+
   it("serves a foreground watch and ends it at the TTL", async () => {
     board.add("DEMO-0002", "uuid-2", "# foreground\n");
     const result = await cli(["export", "watch", "DEMO-0002", "--dir", projectDir, "--ttl", "300"]);

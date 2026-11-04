@@ -114,7 +114,7 @@ Read-only; it moves no card.
 |---|---|
 | `events hub` | Run the local event hub: one board SSE connection for every local consumer. |
 | `events hub --stop` | Stop the running local event hub for this board and exit. |
-| `events follow [--after <rev>] [--idle <ms>]` | Follow the hub as **newline-delimited JSON**; the same line types as `events tail`. |
+| `events follow [--after <rev>] [--idle <ms>] [--hold <ms>] [--event <name>[:<path>=<value>]]…` | Follow the hub as **newline-delimited JSON**; the same line types as `events tail`. |
 | `events tail [--after <rev>] [--idle <ms>]` | Direct board SSE (diagnostic/fallback), the same NDJSON shape. |
 
 `events hub` is normally started on demand by `export watch` or `events follow`; running it
@@ -137,6 +137,15 @@ still retains the cursor (otherwise it starts live; the next board rescan is the
 and `--idle` ends the local stream after that many milliseconds with no records (heartbeats
 count, exactly like the direct stream); the default is **45 000 ms**. Output is the same NDJSON
 as `events tail`.
+
+`--hold` is a **one-shot wait**, not another silence bound: the command ends **0** at the first
+emitted event, or — when no event is emitted for that many milliseconds — writes the same
+`{"type":"idle","data":{"idle_ms":<hold>}}` line and ends 0. It starts when `open` is written, so
+hub start-up is not charged to it; heartbeats and filtered-out records do not reset it; `0`
+disables it. `--event <name>[:<path>=<value>]` is a client-side filter, repeatable and OR-ed:
+only a record whose `data.event` is the name — and, with a predicate, whose dot-path under `data`
+compares equal as text — is written. Neither flag changes the hub protocol. The loop's
+subscriber uses neither: it needs the whole stream and the byte-silence bound.
 
 `events tail` remains the direct implementation: no hub, one SSE connection, the same output.
 Use it to diagnose the board stream itself; do not run it as a background consumer.

@@ -148,7 +148,7 @@ error · `3` `export md --check` found stale cards.
 |---|---|
 | `events hub` | See [cli/core.md](cli/core.md). |
 | `events hub --stop` | See [cli/core.md](cli/core.md). |
-| `events follow [--after <rev>] [--idle <ms>]` | See [cli/core.md](cli/core.md). |
+| `events follow [--after <rev>] [--idle <ms>] [--hold <ms>] [--event <name>[:<path>=<value>]]…` | See [cli/core.md](cli/core.md). |
 | `events tail [--after <rev>] [--idle <ms>]` | See [cli/core.md](cli/core.md). |
 ### `loop`
 

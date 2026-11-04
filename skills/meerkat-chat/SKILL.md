@@ -52,9 +52,9 @@ Lead with one short digest before answering the specific question:
 
 Then answer what they asked. Re-run the reads when a write changed the board, when the human
 asks for fresh state, or when a while has passed — not between every sentence. Watch mode (§2)
-is the one exception to that cadence: it re-reads on a signal and on a 60-second safety read,
-and never writes between them. If a read fails, report the failure as the failure; never
-substitute a guess.
+is the one exception to that cadence: it re-reads after every hold — on a matching event or on
+the ten-minute expiry — and never writes between them. If a read fails, report the failure as
+the failure; never substitute a guess.
 
 Reply in the human's language. Mirror the language of their own messages — do not default to
 English, and do not reproduce the English examples in this skill as if they were the default.
@@ -108,41 +108,53 @@ you have not yet shown it, show it before the detail work.
 ### Watch mode
 
 When the human asks you to watch — "keep checking", "notify me when a card needs me" — you may
-hold a foreground watch over this register. It is a conversation cadence over read-only
-projections, not a scheduler, a daemon or a second dispatcher, and it is not `taskctl export
-watch` (that refreshes one card's brief).
+hold a watch over this register. It is a read-only wait on the board's event clock, not a
+scheduler, a daemon or a second dispatcher, and it is not `taskctl export watch` (that refreshes
+one card's brief).
 
 - **Scope is this register only.** `questions[]` and `pending_acceptance[]`; `loop doctor` stays
   a one-shot read or an answer to a direct question.
-- **The tick.** Wait on `taskctl events follow --after <rev> --idle 10000`; read
-  `taskctl loop console --json` for the baseline, on a signal, on the sixth idle tick or about
-  every 60 seconds (whichever comes first), and after a degraded read. The idle bound must stay
-  below the hub's 15-second heartbeat — a larger value never fires. Cap the call at about
-  30 seconds with the runtime's command timeout (`events follow` has no timeout flag); a cap is
-  a tick, not a failure.
+- **The hold.** One wait is one command:
+
+  ```bash
+  taskctl events follow --after <rev> --hold 600000 \
+    --event task_moved:changes.to=awaiting \
+    --event comment_added:changes.kind=question \
+    --event task_delivered
+  ```
+
+  It ends the moment one of those records arrives, or after ten minutes with none. The first is
+  the signal to read the console and announce; the second is the safety read. `--idle` cannot
+  express this: the hub's 15-second heartbeat resets it, so any value at or above 15 seconds
+  never fires.
+- **The console read.** Read `taskctl loop console --json` for the baseline, after every hold,
+  and after a degraded read. That is the whole cadence; do not poll between holds.
+- **One follower.** Run the hold in the runtime's background execution when it has one, so the
+  conversation stays live; otherwise run the same command in the foreground — it bounds itself.
+  Never start a second hold while one is running. Never delegate the watch to a subagent or a
+  background script: a subagent cannot receive the human's reply or record it. A subagent may
+  take one one-shot read, not `events follow`. Unattended notification is the supervisor's
+  `loop patrol` / `loop subscribe` / SLA path, never this skill's; never start one of those.
 - **Notify only.** Announce only the changed set (new, changed, resolved); never reprint the
-  whole queue on a tick, and announce nothing on a quiet one. Never write, accept, claim, move,
+  whole queue, and announce nothing when a hold returns quiet. Never write, accept, claim, move,
   heartbeat, deliver or comment on your own.
 - **One session.** Prefer a dedicated session for a long watch, and never run the watch beside
   another task. If the human asks for another task, suspend the watch first and resume it after,
   from a fresh read, only if they still want it. A quick question about the queue is answered
   inline and the watch continues.
-- **Never talk over the human.** If their message arrives while a tick is out, answer them
-  first; announce the change after that answer is complete, never in the middle of it.
-- **No delegation, no background.** Never delegate the watch to a subagent or a background
-  script: a subagent cannot receive the human's reply or record it, and a second follower is a
-  second poller. A subagent may take one one-shot read, not `events follow`. Unattended
-  notification is the supervisor's `loop patrol` / `loop subscribe` / SLA path, never this
-  skill's; never start one of those.
+- **Never talk over the human.** A hold may be running while their message arrives — answer them
+  first; announce the changed set after that answer is complete, never in the middle of it.
 - **Identity.** `loop console` is local; `events follow` needs the session's actor identity
   (`--actor-kind` or `TASKCTL_ACTOR_KIND`). It is a read: never `--as-human`.
 - **Dedupe, and fail honestly.** Do not re-raise a shown item. The snapshot lives in the
   conversation, not a state file: after a compaction or a lost snapshot, re-read the console and
   announce the current queue once, saying the watch lost its place. A failed console read
-  (`ok:false` or non-empty `errors[]`) resolves nothing. If `events follow` cannot open, say the
-  watch is degraded and fall back to the console re-read.
-- **The human's answer is §3 / §4.** When they reply, stop watching, apply the existing
-  show-then-write flow unchanged, then resume from a fresh read if they still want it.
+  (`ok:false` or non-empty `errors[]`) resolves nothing. If the hold cannot open, say the watch
+  is degraded and fall back to the console re-read.
+- **Stopping.** When the human says stop or changes topic, stop the running hold and start no
+  new one. Never leave a hold running after the watch ends.
+- **The human's answer is §3 / §4.** When they reply, the watch stops, the existing
+  show-then-write flow applies unchanged, and a fresh hold starts only if they still want it.
 
 Full protocol: [`references/watch.md`](references/watch.md).
 

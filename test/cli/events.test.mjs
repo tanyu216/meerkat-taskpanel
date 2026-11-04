@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { after, describe, it } from "node:test";
 
+import { matchesEventFilter, parseEventFilters } from "../../src/cli/commands/events.mjs";
 import { run } from "../../src/cli/index.mjs";
 
 const servers = [];
@@ -133,5 +134,70 @@ describe("taskctl events tail", () => {
     const negative = await invoke(["--url", "http://127.0.0.1:1", "--idle", "-1", "--json"]);
     assert.equal(negative.exit, 2);
     assert.equal(JSON.parse(negative.stdout).error.code, "CLI_USAGE");
+  });
+});
+
+describe("taskctl events follow --event filters", () => {
+  it("parses a bare name and a name:path=value predicate", () => {
+    assert.deepEqual(parseEventFilters(undefined), []);
+    assert.deepEqual(parseEventFilters([]), []);
+    assert.deepEqual(parseEventFilters(["task_delivered"]), [
+      { name: "task_delivered", path: null, value: null },
+    ]);
+    assert.deepEqual(parseEventFilters(["task_moved:changes.to=awaiting"]), [
+      { name: "task_moved", path: ["changes", "to"], value: "awaiting" },
+    ]);
+  });
+
+  it("rejects a malformed spec as a usage error", () => {
+    for (const spec of [
+      "",
+      "   ",
+      ":changes.to=awaiting",
+      "task_moved:changes.to",
+      "task_moved:=awaiting",
+      "task_moved:changes..to=awaiting",
+      "task_moved:.",
+    ]) {
+      assert.throws(
+        () => parseEventFilters([spec]),
+        (err) => err.code === "CLI_USAGE",
+        `expected a usage error for ${JSON.stringify(spec)}`,
+      );
+    }
+  });
+
+  it("matches the event name and a dot path, and misses cleanly", () => {
+    const [moved] = parseEventFilters(["task_moved:changes.to=awaiting"]);
+    assert.equal(matchesEventFilter(moved, { event: "task_moved", changes: { to: "awaiting" } }), true);
+    assert.equal(matchesEventFilter(moved, { event: "task_moved", changes: { to: "todo" } }), false);
+    assert.equal(
+      matchesEventFilter(moved, { event: "comment_added", changes: { to: "awaiting" } }),
+      false,
+    );
+    assert.equal(matchesEventFilter(moved, null), false);
+    assert.equal(matchesEventFilter(moved, { event: "task_moved" }), false);
+
+    const [delivered] = parseEventFilters(["task_delivered"]);
+    assert.equal(matchesEventFilter(delivered, { event: "task_delivered" }), true);
+    assert.equal(matchesEventFilter(delivered, { event: "task_delivered", changes: {} }), true);
+  });
+
+  it("reads array indexes and compares a number as its text", () => {
+    const [indexed] = parseEventFilters(["comment_added:changes.fields.0=body"]);
+    assert.equal(
+      matchesEventFilter(indexed, { event: "comment_added", changes: { fields: ["body"] } }),
+      true,
+    );
+    assert.equal(
+      matchesEventFilter(indexed, { event: "comment_added", changes: { fields: ["title"] } }),
+      false,
+    );
+
+    const [numbered] = parseEventFilters(["task_moved:changes.revision=3"]);
+    assert.equal(
+      matchesEventFilter(numbered, { event: "task_moved", changes: { revision: 3 } }),
+      true,
+    );
   });
 });

@@ -333,6 +333,22 @@
               "short": null
             },
             {
+              "flag": "event",
+              "as": "string",
+              "value": "<name>[:<path>=<value>]",
+              "required": false,
+              "repeat": true,
+              "short": null
+            },
+            {
+              "flag": "hold",
+              "as": "number",
+              "value": "<ms>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
               "flag": "idle",
               "as": "number",
               "value": "<ms>",

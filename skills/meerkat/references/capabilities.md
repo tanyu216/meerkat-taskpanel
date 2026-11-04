@@ -233,7 +233,7 @@ and is never edited by the worker.
 
 | Invocation | Output | Consumer |
 |---|---|---|
-| `events follow [--after <rev>] [--idle <ms>]` | NDJSON lines from the local event hub | the event subscriber |
+| `events follow [--after <rev>] [--idle <ms>] [--hold <ms>] [--event <name>[:<path>=<value>]]…` | NDJSON lines from the local event hub | the event subscriber; `--hold`/`--event` for a one-shot human-console wait |
 | `events tail [--after <rev>] [--idle <ms>]` | NDJSON lines from a direct board SSE | diagnostics only; not a background consumer |
 | `events hub` | the foreground hub process | started on demand by `follow`/`watch` |
 
@@ -241,6 +241,8 @@ The hub is per user and per board, binds loopback, publishes an owner-only point
 the single board connection (and its reconnect ladder). `events follow` reconnects to the hub
 and replays from its bounded ring when the cursor is still retained; an older cursor starts
 live. The loop reads `type` on every line and `event.id` as the board revision, passing the
-maximum back as `--after` to resume; `open` means the stream answered. The line shapes, the
-exit semantics and the 15 s heartbeat / 45 s idle defaults are in
+maximum back as `--after` to resume; `open` means the stream answered. `--hold` and `--event`
+are CLI-side: a one-shot wait that ends at the first emitted event (or the bound), and a
+repeatable name/path filter. The hub protocol has neither, and the loop's subscriber uses
+neither. The line shapes, the exit semantics and the 15 s heartbeat / 45 s idle defaults are in
 [`cli.md#events`](cli.md#events).

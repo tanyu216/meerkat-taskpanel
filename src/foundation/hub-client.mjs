@@ -135,12 +135,14 @@ export function hubError(data) {
  *
  * @param {{port: number, token: string}} pointer
  * @param {object} request
- * @param {{idleMs?: number}} [options] end the local stream after this long with
- *   no records; heartbeats count, exactly like the direct SSE stream
+ * @param {{idleMs?: number, signal?: AbortSignal}} [options] end the local stream after this long with
+ *   no records; heartbeats count, exactly like the direct SSE stream. `signal` ends a stream whose
+ *   caller no longer wants it: the hub heartbeats forever, so a silence bound alone can never
+ *   express "wait for one record".
  * @returns {AsyncGenerator<object, void, void>}
  */
 export async function* hubRecords(pointer, request, options = {}) {
-  const { idleMs = 0 } = options;
+  const { idleMs = 0, signal = null } = options;
   if (typeof pointer?.port !== "number" || typeof pointer?.token !== "string") {
     throw new DomainError("CLI_IO", {
       message: "events hub: the hub pointer is not usable",
@@ -148,11 +150,21 @@ export async function* hubRecords(pointer, request, options = {}) {
     });
   }
 
+  const abortError = () =>
+    signal?.reason instanceof Error
+      ? signal.reason
+      : new DomainError("CLI_IO", {
+          message: "events hub: the stream was aborted",
+          details: { reason: "aborted" },
+        });
+  if (signal?.aborted) throw abortError();
+
   const socket = connect(Number(pointer.port), "127.0.0.1");
   socket.setEncoding("utf8");
   let authed = false;
   let buffer = "";
   let idleTimer = null;
+  let onAbort = null;
 
   const armIdle = () => {
     if (idleTimer !== null) clearTimeout(idleTimer);
@@ -176,6 +188,10 @@ export async function* hubRecords(pointer, request, options = {}) {
   if (typeof helloTimeout.unref === "function") helloTimeout.unref();
 
   try {
+    if (signal !== null) {
+      onAbort = () => socket.destroy(abortError());
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
     socket.write(`${JSON.stringify({ op: "hello", protocol: HUB_PROTOCOL, token: pointer.token })}\n`);
     for await (const chunk of socket) {
       buffer += chunk;
@@ -218,6 +234,7 @@ export async function* hubRecords(pointer, request, options = {}) {
   } finally {
     clearTimeout(helloTimeout);
     if (idleTimer !== null) clearTimeout(idleTimer);
+    if (onAbort !== null) signal.removeEventListener("abort", onAbort);
     socket.destroy();
   }
 }

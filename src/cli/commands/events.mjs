@@ -46,6 +46,67 @@ function nonNegativeInteger(flags, key, flag) {
 }
 
 /**
+ * `--event <name>[:<path>=<value>]` — a client-side filter over the records the
+ * hub forwards. No `--event` means every record is emitted, exactly as before;
+ * repeated flags OR together, and each one is a name AND an optional predicate
+ * read under the record's `data`.
+ *
+ * The filter lives here rather than in the hub protocol on purpose: the hub
+ * serves one board connection to every consumer, and the loop's subscriber must
+ * keep seeing the whole stream.
+ *
+ * @param {string|string[]|undefined} raw
+ * @returns {{name: string, path: string[]|null, value: string|null}[]}
+ */
+export function parseEventFilters(raw) {
+  const specs = raw === undefined || raw === null ? [] : Array.isArray(raw) ? raw : [raw];
+  return specs.map((spec) => {
+    if (typeof spec !== "string" || spec.trim() === "") {
+      throw usageError("--event expects <name>[:<path>=<value>]");
+    }
+    const colon = spec.indexOf(":");
+    const name = (colon === -1 ? spec : spec.slice(0, colon)).trim();
+    if (name === "") {
+      throw usageError(`--event expects a name before the predicate (got ${JSON.stringify(spec)})`);
+    }
+    if (colon === -1) return { name, path: null, value: null };
+    const predicate = spec.slice(colon + 1);
+    const equals = predicate.indexOf("=");
+    if (equals <= 0) {
+      throw usageError(`--event expects <path>=<value> after the name (got ${JSON.stringify(spec)})`);
+    }
+    const path = predicate.slice(0, equals).split(".");
+    if (path.some((segment) => segment === "")) {
+      throw usageError(`--event has an empty path segment (got ${JSON.stringify(spec)})`);
+    }
+    return { name, path, value: predicate.slice(equals + 1) };
+  });
+}
+
+/**
+ * One record against one filter. Values compare as strings so a number matches
+ * its text; a missing intermediate simply does not match.
+ *
+ * @param {{name: string, path: string[]|null, value: string|null}} filter
+ * @param {object|null|undefined} data
+ */
+export function matchesEventFilter(filter, data) {
+  if (data?.event !== filter.name) return false;
+  if (filter.path === null) return true;
+  let cursor = data;
+  for (const segment of filter.path) {
+    if (typeof cursor !== "object" || cursor === null) return false;
+    cursor = cursor[segment];
+  }
+  return String(cursor) === filter.value;
+}
+
+/** No filter means "everything"; several filters OR together. */
+function matchesAnyEvent(filters, data) {
+  return filters.length === 0 || filters.some((filter) => matchesEventFilter(filter, data));
+}
+
+/**
  * Build and start the hub for one resolved board. Exported so a test can drive
  * the same server in-process and stop it deliberately; the command wraps it
  * with signal handlers and waits for idle or shutdown.
@@ -214,7 +275,7 @@ export const COMMANDS = [
   {
     name: "follow",
     summary: "Follow the local event hub (NDJSON; one board connection per host).",
-    usage: "events follow [--after <rev>] [--idle <ms>]",
+    usage: "events follow [--after <rev>] [--idle <ms>] [--hold <ms>] [--event <name>[:<path>=<value>]]…",
     positionals: [],
     flags: [
       {
@@ -231,10 +292,27 @@ export const COMMANDS = [
         value: "<ms>",
         summary: `End the stream after this long with no bytes (0 disables; default ${SSE_SUBSCRIBE_IDLE_MS}).`,
       },
+      {
+        flag: "hold",
+        key: "hold",
+        as: "number",
+        value: "<ms>",
+        summary: "End at the first emitted event, or after this long with none (heartbeats do not count; 0 disables).",
+      },
+      {
+        flag: "event",
+        key: "events",
+        as: "string",
+        value: "<name>[:<path>=<value>]",
+        repeat: true,
+        summary: "Only emit these activity names, optionally matching a data path; repeatable.",
+      },
     ],
     async run(ctx) {
       const after = nonNegativeInteger(ctx.flags, "after", "after");
       const idleMs = nonNegativeInteger(ctx.flags, "idle", "idle") ?? SSE_SUBSCRIBE_IDLE_MS;
+      const holdMs = nonNegativeInteger(ctx.flags, "hold", "hold") ?? 0;
+      const eventFilters = parseEventFilters(ctx.flags.events);
       if (ctx.board === null || typeof ctx.board?.url !== "string") {
         throw new DomainError("CLI_IO", {
           message: "events follow: the board coordinates are not resolved",
@@ -253,25 +331,45 @@ export const COMMANDS = [
         env: ctx.env,
       });
 
+      // `--hold` is a one-shot wait, not a silence bound: the hub heartbeats
+      // every 15 s, so `--idle` (which every record resets) can never fire a
+      // wait the caller actually wants. The clock starts when the stream opens,
+      // and only an emitted event ends it early.
+      const controller = holdMs > 0 ? new AbortController() : null;
+      let holdTimer = null;
+      const armHold = () => {
+        if (controller === null) return;
+        holdTimer = setTimeout(() => {
+          controller.abort(new DomainError("CLI_IO", {
+            message: `events follow: no matching event within ${holdMs}ms`,
+            details: { reason: "hold", idle_ms: holdMs },
+          }));
+        }, holdMs);
+        if (typeof holdTimer.unref === "function") holdTimer.unref();
+      };
+
       let opened = false;
       try {
         for await (const record of hubRecords(pointer, {
           op: "follow",
           after,
           idle_ms: idleMs,
-        }, { idleMs })) {
+        }, { idleMs, signal: controller?.signal ?? null })) {
           if (record?.type === "heartbeat") continue;
           if (record?.type === EVENT_STREAM_LINE.OPEN) {
             opened = true;
             ctx.emit({ type: EVENT_STREAM_LINE.OPEN });
+            armHold();
             continue;
           }
           if (record?.type === EVENT_STREAM_LINE.EVENT) {
+            if (!matchesAnyEvent(eventFilters, record.data)) continue;
             ctx.emit({
               type: EVENT_STREAM_LINE.EVENT,
               id: Number.isInteger(record.id) ? record.id : null,
               data: record.data,
             });
+            if (controller !== null) return { streamed: true, exit: CLI_EXIT.OK };
             continue;
           }
           if (record?.type === EVENT_STREAM_LINE.IDLE) {
@@ -292,6 +390,10 @@ export const COMMANDS = [
           }
         }
       } catch (err) {
+        if (err?.details?.reason === "hold" && opened) {
+          ctx.emit({ type: EVENT_STREAM_LINE.IDLE, data: { idle_ms: holdMs } });
+          return { streamed: true, exit: CLI_EXIT.OK };
+        }
         if (err?.details?.reason === "idle" && opened) {
           ctx.emit({ type: EVENT_STREAM_LINE.IDLE, data: { idle_ms: idleMs } });
           return { streamed: true, exit: CLI_EXIT.OK };
@@ -299,6 +401,8 @@ export const COMMANDS = [
         if (!opened) throw err;
         ctx.emit({ type: EVENT_STREAM_LINE.ERROR, data: errorPayload(err) });
         return { streamed: true, exit: CLI_EXIT.ERROR };
+      } finally {
+        if (holdTimer !== null) clearTimeout(holdTimer);
       }
 
       if (!opened) {

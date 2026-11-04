@@ -524,6 +524,12 @@ closed after 10 s; a line over 1 MB closes the session. A `follow` request can c
 bound: with no record for that long the hub writes `idle` and ends the session, and `--idle 0`
 disables the bound. The subscriber and the direct `events tail` both default it to 45 s.
 
+Two further bounds are **client-side, in the CLI**: `--hold <ms>` ends the command at the first
+emitted event, or after that long with no emitted event (heartbeats do not count), and
+`--event <name>[:<path>=<value>]` keeps only matching records. The hub protocol has neither. Its
+idle timer is reset by every record, so a silence bound can never express "wait for one event";
+`--hold` is the one-shot wait.
+
 ### 6.5 Registrations: owner, viewer, covered
 
 A registration is a request to keep one or more card files fresh. It has a TTL and a lifetime

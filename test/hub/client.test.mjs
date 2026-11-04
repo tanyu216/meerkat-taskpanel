@@ -169,6 +169,38 @@ describe("hub client", () => {
     );
   });
 
+  it("ends the stream when the caller aborts", async () => {
+    let seen = 0;
+    const { port } = await listen((socket) => {
+      seen += 1;
+      if (seen === 1) socket.write('{"op":"hello","ok":true}\n');
+    });
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new Error("hold expired")), 30);
+    await assert.rejects(
+      async () => {
+        for await (const _record of hubRecords(
+          { port, token: "t" },
+          { op: "follow" },
+          { signal: controller.signal },
+        )) {
+          /* the hub sends nothing */
+        }
+      },
+      /hold expired/,
+    );
+  });
+
+  it("refuses a stream aborted before it starts", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("too late"));
+    await assert.rejects(
+      () =>
+        hubRecords({ port: 1, token: "t" }, { op: "follow" }, { signal: controller.signal }).next(),
+      /too late/,
+    );
+  });
+
   it("reports a connection failure as a domain error", async () => {
     const { server, port } = await listen(() => {});
     await new Promise((done) => server.close(done));
