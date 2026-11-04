@@ -333,10 +333,16 @@ describe("commands/relations", () => {
     });
   });
 
-  it("refuses a parent edge whose source is a review card promoted to epic", async () => {
+  it("refuses a parent edge whose source is a review card", async () => {
     await board(({ commands }) => {
       const review = makeReview(commands);
-      commands.updateTask({ id: review.id, patch: { kind: "epic" }, actor: AGENT });
+      // ADR 0014 — the marker and the kind are one fact, so a review cannot be
+      // promoted to epic out from under the marker guard: the flip itself is
+      // refused (the DB trigger and the domain check agree).
+      assert.throws(
+        () => commands.updateTask({ id: review.id, patch: { kind: "epic" }, actor: AGENT }),
+        (err) => err.code === "REVIEW_OF_IMMUTABLE",
+      );
       const child = commands.createTask({
         projectId: "proj",
         title: "Child",

@@ -30,6 +30,7 @@ import {
   deliverySummaryOf,
   PENDING_STATUS,
 } from "../../web/src/lib/acceptance.js";
+import { reviewRoundsFor } from "../../web/src/lib/review.js";
 import { EXTRA } from "../../web/src/i18n/extra.mjs";
 
 const report = (text, status, note = "") => ({ text, status, note });
@@ -153,6 +154,87 @@ describe("web/acceptance — the delivery summary above the criteria", () => {
       "drawer.acceptance.summary",
       "drawer.acceptance.author",
     ]) {
+      assert.ok(EXTRA.en[key], `en is missing ${key}`);
+      assert.ok(EXTRA.zh[key], `zh is missing ${key}`);
+    }
+  });
+});
+
+describe("web/review — the Acceptance tab's review rounds", () => {
+  const card = { id: "orig", identifier: "PROJ-1" };
+
+  it("lists only the reviews of the open card, oldest round first", () => {
+    const tasks = [
+      {
+        id: "rev-2",
+        identifier: "PROJ-3",
+        kind: "review",
+        role: "review",
+        status: "done",
+        review_of_id: "orig",
+        review_of: "PROJ-1",
+        review_round: 2,
+        assignee: { display_name: "reviewer" },
+      },
+      { id: "plain", identifier: "PROJ-2", kind: "task", status: "todo", review_of_id: null },
+      {
+        id: "rev-1",
+        identifier: "PROJ-4",
+        kind: "review",
+        role: "review",
+        status: "in_review",
+        review_of_id: "orig",
+        review_of: "PROJ-1",
+        review_round: 1,
+        assignee: { display_name: "reviewer" },
+      },
+      {
+        id: "other-review",
+        identifier: "PROJ-5",
+        kind: "review",
+        role: "review",
+        status: "in_review",
+        review_of_id: "other",
+        review_of: "PROJ-9",
+        review_round: 1,
+      },
+    ];
+    assert.deepEqual(
+      reviewRoundsFor(card, tasks).map((row) => [row.round, row.identifier, row.status]),
+      [
+        [1, "PROJ-4", "in_review"],
+        [2, "PROJ-3", "done"],
+      ],
+    );
+  });
+
+  it("still finds a legacy meta-only review by its identifier", () => {
+    // The migration resolves every mirror it can; an unresolvable one keeps the
+    // meta fallback, which the wire's `review_of` carries. The panel must not
+    // lose that row.
+    const legacy = {
+      id: "legacy",
+      identifier: "PROJ-6",
+      kind: "task",
+      status: "in_review",
+      review_of_id: null,
+      review_of: "PROJ-1",
+      review_round: 1,
+    };
+    assert.deepEqual(
+      reviewRoundsFor(card, [legacy]).map((row) => row.identifier),
+      ["PROJ-6"],
+    );
+  });
+
+  it("has no rows for a card nothing reviews, and tolerates no reading", () => {
+    assert.deepEqual(reviewRoundsFor(card, []), []);
+    assert.deepEqual(reviewRoundsFor(null, [{ review_of: "PROJ-1" }]), []);
+    assert.deepEqual(reviewRoundsFor(card, undefined), []);
+  });
+
+  it("names its section and the switch in both languages", () => {
+    for (const key of ["drawer.acceptance.reviews", "filters.reviews"]) {
       assert.ok(EXTRA.en[key], `en is missing ${key}`);
       assert.ok(EXTRA.zh[key], `zh is missing ${key}`);
     }

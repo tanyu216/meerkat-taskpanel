@@ -87,6 +87,7 @@ import {
   ASSIGNEE_STATIC_VALUES,
   assigneeFilterValue,
   board,
+  boardTaskTotal,
   labelRoster,
   namedAssignee,
   PRIORITIES,
@@ -113,15 +114,16 @@ const countText = computed(() => {
   // TP-0094 — the list is server-paged: its count is the loaded page against
   // the server's filtered total, whether or not a filter is active. The board
   // keeps its working-set reading (unfiltered: the project's real size;
-  // filtered: how much of the loaded working set matched).
+  // filtered: how much of the loaded working set matched). ADR 0014 — the board
+  // denominator is what it may show, not the raw reading: a hidden review card
+  // must not make the unfiltered count say "8 tasks" over seven rendered ones.
   if (view.value === "list") {
     return list.loaded
       ? t("filters.count.filtered", list.tasks.length, list.total)
       : t("filters.count.initial");
   }
-  const loaded = board.tasks.length;
-  const total = board.taskTotal > 0 ? board.taskTotal : loaded;
-  if (activeFilterCount.value > 0) return t("filters.count.filtered", totalVisible.value, loaded);
+  const total = boardTaskTotal.value;
+  if (activeFilterCount.value > 0) return t("filters.count.filtered", totalVisible.value, total);
   return total === 1 ? t("filters.count.one") : t("filters.count.many", total);
 });
 
@@ -541,6 +543,28 @@ function chooseLabel(value, event) {
         </li>
       </ul>
     </details>
+
+    <!-- ADR 0014 — an implementation-only control: the prototype predates the
+         third kind and has no review work at all. The board/list hide
+         `kind='review'` by default (it is the loop's bookkeeping card), and
+         this switch is the one way to show it. It sits beside the filters but
+         is **not** one: it changes what the board is, so it does not enter
+         `activeFilterCount` and Clear filters leaves it alone. -->
+    <label
+      class="flex shrink-0 cursor-pointer items-center gap-2 text-[12px] text-(--brand-text-2)"
+      data-filter-reviews
+      :data-filter-reviews-value="board.showReviews ? 'true' : 'false'"
+    >
+      <input
+        type="checkbox"
+        class="toggle toggle-sm"
+        data-filter-reviews-switch
+        :checked="board.showReviews"
+        :aria-label="$t('filters.reviews')"
+        @change="board.showReviews = $event.target.checked"
+      />
+      <span data-i18n="filters.reviews">{{ $t("filters.reviews") }}</span>
+    </label>
 
     <button type="button" class="btn btn-ghost btn-sm shrink-0" data-filter-clear :data-i18n="'filters.clear'" @click="clearFilters">
       {{ $t("filters.clear") }}

@@ -29,9 +29,13 @@ import {
   TS,
   cleanupTempDirs,
   createTempBoard,
+  insertProject,
+  insertTask,
   makeTempDir,
   reasonCode,
+  withBoard,
 } from "../../helpers/sqlite-fixture.mjs";
+import { checkInSets } from "../../helpers/sql-parse.mjs";
 
 after(cleanupTempDirs);
 
@@ -51,8 +55,13 @@ const TINY = {
 describe("storage/migrations — the shipped set", () => {
   it("reads the shipped migrations in version order with stable checksums", () => {
     const migrations = listMigrations();
-    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003"]);
-    assert.deepEqual(migrations.map((m) => m.name), ["init", "card_acceptance_model", "drop_project_reviewer"]);
+    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003", "0004"]);
+    assert.deepEqual(migrations.map((m) => m.name), [
+      "init",
+      "card_acceptance_model",
+      "drop_project_reviewer",
+      "review_kind",
+    ]);
     for (const migration of migrations) {
       assert.match(migration.checksum, /^[0-9a-f]{64}$/);
       assert.equal(migration.checksum, checksumFor(migration.sql));
@@ -65,17 +74,17 @@ describe("storage/migrations — the shipped set", () => {
     const board = await createTempBoard({ migrate: false });
     try {
       const first = applyMigrations(board.db);
-      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003"]);
+      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003", "0004"]);
       assert.deepEqual(first.skipped, []);
       for (const entry of first.applied) assert.equal(typeof entry.ms, "number");
 
       const second = applyMigrations(board.db);
       assert.deepEqual(second.applied, [], "re-apply must be a no-op");
-      assert.deepEqual(second.skipped, ["0001", "0002", "0003"]);
+      assert.deepEqual(second.skipped, ["0001", "0002", "0003", "0004"]);
 
       const rows = board.db.prepare("SELECT version, checksum FROM schema_migrations ORDER BY version").all();
       assert.equal(rows.length, listMigrations().length, "one bookkeeping row per shipped file");
-      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003"]);
+      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003", "0004"]);
     } finally {
       board.close();
     }
@@ -133,6 +142,233 @@ describe("storage/migrations — the shipped set", () => {
     } finally {
       board.close();
     }
+  });
+});
+
+describe("storage/migrations — 0004 review kind", () => {
+  /** A dir holding the shipped files up to (and including) `version`. */
+  function stageThrough(version) {
+    const dir = makeTempDir("meerkat-taskpanel-review-kind-");
+    for (const migration of listMigrations()) {
+      if (migration.version <= version) writeFileSync(join(dir, migration.file), migration.sql, "utf8");
+    }
+    return dir;
+  }
+
+  function addMigration(dir, version) {
+    const migration = listMigrations().find((m) => m.version === version);
+    writeFileSync(join(dir, migration.file), migration.sql, "utf8");
+  }
+
+  /** Seed the pre-0004 shape: a review is kind=task + marker. */
+  function seedOldBoard(db) {
+    insertProject(db);
+    insertTask(db, { id: "orig", identifier: "PROJ-1", status: "in_review", kind: "task", acceptance_mode: "off" });
+    insertTask(db, {
+      id: "rev",
+      identifier: "PROJ-2",
+      status: "in_review",
+      kind: "task",
+      acceptance_mode: "off",
+      review_of_id: "orig",
+      review_round: 1,
+    });
+    insertTask(db, { id: "plain", identifier: "PROJ-3", kind: "task" });
+    insertTask(db, { id: "plainEpic", identifier: "PROJ-4", kind: "epic" });
+    // A legacy mirror was never subject to the marker trigger, so it may carry
+    // any acceptance mode. The copy must land it on `off` once it becomes a
+    // review, or the migrated row breaks the review invariant.
+    insertTask(db, {
+      id: "legacy",
+      identifier: "PROJ-5",
+      kind: "task",
+      acceptance_mode: "auto",
+      meta_json: JSON.stringify({ review_of: "PROJ-1", review_round: 1 }),
+    });
+    insertTask(db, {
+      id: "legacyStr",
+      identifier: "PROJ-6",
+      kind: "task",
+      acceptance_mode: "human",
+      meta_json: JSON.stringify({ review_of: "PROJ-1", review_round: "2" }),
+    });
+    insertTask(db, {
+      id: "badLegacy",
+      identifier: "PROJ-7",
+      kind: "task",
+      meta_json: JSON.stringify({ review_of: "NOPE-9" }),
+    });
+    insertTask(db, {
+      id: "selfRef",
+      identifier: "PROJ-8",
+      kind: "task",
+      meta_json: JSON.stringify({ review_of: "PROJ-8" }),
+    });
+  }
+
+  it("flips every marker row, backfills resolvable legacy mirrors, and leaves the rest alone", async () => {
+    const dir = stageThrough("0003");
+    const board = await createTempBoard({ migrate: false });
+    try {
+      applyMigrations(board.db, { dir });
+      seedOldBoard(board.db);
+
+      addMigration(dir, "0004");
+      const applied = applyMigrations(board.db, { dir });
+      assert.deepEqual(applied.applied.map((entry) => entry.version), ["0004"]);
+
+      const rows = Object.fromEntries(
+        board.db
+          .prepare("SELECT id, kind, review_of_id, review_round, acceptance_mode, meta_json FROM tasks")
+          .all()
+          .map((row) => [row.id, row]),
+      );
+      assert.equal(rows.orig.kind, "task", "an original card stays task");
+      assert.equal(rows.rev.kind, "review", "a marker row is now a review kind");
+      assert.equal(rows.rev.review_of_id, "orig");
+      assert.equal(rows.rev.review_round, 1);
+      assert.equal(rows.plain.kind, "task");
+      assert.equal(rows.plainEpic.kind, "epic");
+
+      assert.equal(rows.legacy.kind, "review", "a resolvable meta mirror is backfilled and flipped");
+      assert.equal(rows.legacy.review_of_id, "orig");
+      assert.equal(rows.legacy.review_round, 1, "the meta round lands in the column");
+      assert.equal(rows.legacy.acceptance_mode, "off", "a backfilled review lands on the review mode");
+      assert.equal(rows.legacyStr.kind, "review");
+      assert.equal(rows.legacyStr.review_round, 2, "a digit-string round is read as an integer");
+      assert.equal(rows.legacyStr.acceptance_mode, "off", "the copy overrides any legacy mode");
+
+      assert.equal(rows.badLegacy.kind, "task", "an unresolvable mirror is the documented read-only exception");
+      assert.equal(rows.badLegacy.review_of_id, null);
+      assert.match(rows.badLegacy.meta_json, /NOPE-9/, "its meta mirror is kept");
+      assert.equal(rows.selfRef.kind, "task", "a mirror naming its own card is not a review");
+      assert.equal(rows.selfRef.review_of_id, null);
+
+      // The invariant is structural, in both directions.
+      assert.equal(
+        board.db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE (kind = 'review') <> (review_of_id IS NOT NULL)").get().n,
+        0,
+      );
+      const ddl = board.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get().sql;
+      assert.match(ddl, /kind IN \('task','epic','review'\)/);
+      assert.match(ddl, /\(kind = 'review'\) = \(review_of_id IS NOT NULL\)/);
+      assert.equal(board.db.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
+      assert.deepEqual(board.db.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("rebuilds all eight indexes and every trigger", async () => {
+    const dir = stageThrough("0004");
+    const board = await createTempBoard({ migrate: false });
+    try {
+      applyMigrations(board.db, { dir });
+      const indexes = (prefix) =>
+        board.db
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'tasks' AND name LIKE ?")
+          .all(`${prefix}%`)
+          .map((row) => row.name)
+          .sort();
+      assert.deepEqual(indexes("ix_"), [
+        "ix_tasks_assignee",
+        "ix_tasks_board",
+        "ix_tasks_heartbeat",
+        "ix_tasks_review_of",
+        "ix_tasks_source",
+      ]);
+      assert.deepEqual(indexes("ux_"), ["ux_tasks_idem_active", "ux_tasks_identifier", "ux_tasks_source"]);
+
+      const taskTriggers = board.db
+        .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tasks'")
+        .all();
+      assert.equal(taskTriggers.length, 22, "every task trigger came back");
+      const immutable = taskTriggers.find((row) => row.name === "tr_tasks_review_marker_immutable");
+      assert.match(immutable.sql, /UPDATE OF kind, review_of_id, review_round/);
+      assert.match(immutable.sql, /OLD\.kind='review'\) <> \(NEW\.kind='review'/);
+
+      for (const name of [
+        "tr_dict_actors_delete",
+        "tr_rel_block_chain",
+        "tr_rel_block_cycle",
+        "tr_rel_cross_project",
+        "tr_rel_parent_block_pair",
+        "tr_rel_parent_epic",
+        "tr_rel_parent_guard",
+        "tr_reports_rollup_valid",
+        "tr_rel_review_no_parent",
+      ]) {
+        assert.equal(
+          board.db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(name).n,
+          1,
+          `${name} was recreated`,
+        );
+      }
+    } finally {
+      board.close();
+    }
+  });
+
+  it("refuses a kind without its marker, a marker without the review kind, and every kind flip", async () => {
+    await withBoard(({ db }) => {
+      insertProject(db);
+      insertTask(db, { id: "orig", identifier: "PROJ-9", status: "in_review", acceptance_mode: "off" });
+      assert.throws(
+        () => insertTask(db, { id: "noMarker", identifier: "PROJ-10", kind: "review", acceptance_mode: "off" }),
+        /CHECK constraint failed/,
+        "kind=review without review_of_id is refused by the CHECK",
+      );
+      assert.throws(
+        () =>
+          insertTask(db, {
+            id: "markerTask",
+            identifier: "PROJ-11",
+            kind: "task",
+            review_of_id: "orig",
+            acceptance_mode: "off",
+          }),
+        /CHECK constraint failed/,
+        "a marker without kind=review is refused",
+      );
+
+      insertProject(db, { id: "flip" });
+      insertTask(db, { id: "flipOrig", identifier: "PROJ-12", status: "in_review", acceptance_mode: "off", kind: "task", project_id: "flip" });
+      insertTask(db, {
+        id: "flipRev",
+        identifier: "PROJ-13",
+        kind: "review",
+        status: "in_review",
+        acceptance_mode: "off",
+        review_of_id: "flipOrig",
+        review_round: 1,
+        project_id: "flip",
+      });
+      assert.equal(
+        reasonCode(() => db.prepare("UPDATE tasks SET kind = 'task' WHERE id = 'flipRev'").run()),
+        "REVIEW_OF_IMMUTABLE",
+        "review → non-review is refused",
+      );
+      assert.equal(
+        reasonCode(() => db.prepare("UPDATE tasks SET kind = 'review' WHERE id = 'flipOrig'").run()),
+        "REVIEW_OF_IMMUTABLE",
+        "non-review → review is refused",
+      );
+      assert.equal(
+        reasonCode(() => db.prepare("UPDATE tasks SET review_of_id = NULL WHERE id = 'flipRev'").run()),
+        "REVIEW_OF_IMMUTABLE",
+        "clearing the marker is refused",
+      );
+      assert.equal(
+        reasonCode(() => db.prepare("UPDATE tasks SET kind = 'epic' WHERE id = 'flipOrig'").run()),
+        "NO_ERROR",
+        "an ordinary task → epic is still allowed",
+      );
+    });
+  });
+
+  it("moves the SQL enum parity to the three-value set", () => {
+    const allSql = listMigrations().map((m) => m.sql).join("\n");
+    assert.deepEqual(checkInSets(allSql).get("tasks.kind"), ["epic", "review", "task"]);
   });
 });
 

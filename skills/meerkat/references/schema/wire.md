@@ -51,7 +51,7 @@ Without `--include` the payload is byte-identical to what it always was.
 | `description` | string | copied — opaque markdown; the export writes it under `## Background` |
 | `status` | string | copied — the eight lifecycle words |
 | `priority` | string | copied — `low` · `medium` · `high` · `urgent` |
-| `kind` | string | copied — `task` · `epic`; a review card is still `task` |
+| `kind` | string | copied — `task` · `epic` · `review`; a review row carries `review` with its marker |
 | `sort_order` | number | copied — the repository's stored order key (always `0` in practice) |
 | `assignee_id` | string \| null | copied |
 | `assignee_kind` | string \| null | copied — the kind recorded with the reference |
