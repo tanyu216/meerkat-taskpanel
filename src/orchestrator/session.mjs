@@ -30,6 +30,7 @@ import {
   skillLoadMode,
 } from "../foundation/roles.mjs";
 import { buildQuestionPrompt } from "../foundation/scheduling.mjs";
+import { holdCard } from "./holds.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
 import { readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, readTriageOutcome, runCli } from "./runtime.mjs";
@@ -549,7 +550,7 @@ export function createSessionPool(input = {}) {
    * @param {object} entry
    * @param {{command: string, flags: string, fingerprint: string|null}|null} opener
    * @param {string|null} [fingerprint] the skill fingerprint for an inline lane
-   * @returns {Promise<{ok: boolean, sent: boolean}>}
+   * @returns {Promise<{ok: boolean, sent: boolean, error?: string}>}
    */
   async function ensureOpener(entry, opener, fingerprint = null) {
     if (opener === null || typeof opener.command !== "string" || opener.command === "") {
@@ -565,10 +566,9 @@ export function createSessionPool(input = {}) {
     const text = `${opener.command}\nFlags: ${opener.flags}`;
     const outcome = await entry.handle.send(text, { timeoutMs: turnTimeoutMs });
     if (outcome?.ok !== true) {
-      log(
-        `session: ${entry.key} skill opener failed (${outcome?.error ?? "unknown"}) — falling back to paths`,
-      );
-      return { ok: false, sent: true };
+      const error = String(outcome?.error ?? "unknown error");
+      log(`session: ${entry.key} skill opener failed (${error}) — falling back to paths`);
+      return { ok: false, sent: true, error };
     }
     markOpener(entry, opener.fingerprint ?? null);
     log(`session: ${entry.key} opened with ${opener.command}`);
@@ -836,6 +836,9 @@ export function createSessionPool(input = {}) {
         sessionId: entry.handle.sessionId ?? entry.sessionId ?? null,
         pid: null,
         closedAt: nowIso(now),
+        // A closed conversation is not running. Without this a mid-turn snapshot
+        // (`status:"running"`) keeps the card out of the stale re-claim.
+        ...(isWorkerKey(entry.key) ? { status: "idle" } : {}),
       };
     }
     persistState();
@@ -1352,12 +1355,15 @@ export function createSessionPool(input = {}) {
       } catch (err) {
         if (String(cards[0].role ?? "worker") === "reviewer") {
           // A review has no human to wake; a failed open is retried by the queue
-          // on a later tick.
-          requeueCards(stateDir, [cards[0].id], { error: err.message });
-          log(`session: review ${cards[0].card} could not open a session: ${err.message} — requeued`);
+          // on a later tick, and held at the row's attempt bound.
+          settleFailedHandoff(cards[0], true, err.message);
         } else {
+          // An unrestorable worker session is not retried: the row fails and the
+          // card is parked at once (docs/scheduling.md, "worker session
+          // unrestorable"), never left `in_progress` for a stale recovery.
           completeCards(stateDir, [cards[0].id], { status: "failed", error: err.message });
           log(`session: worker ${cards[0].card} could not open a session: ${err.message} — failed`);
+          parkCard(cards[0].card, err.message);
         }
         continue;
       }
@@ -1408,7 +1414,7 @@ export function createSessionPool(input = {}) {
         await closeEntry(entry, { dropSession: true });
         entry = await ensureSession(key, openOptions);
       }
-      jobs.push({ key, dir, lane, entry, cards: batch, roleSet, skill });
+      jobs.push({ key, dir, lane, entry, cards: batch, roleSet, skill, openOptions });
     }
 
     // Fan out: each job owns a distinct card session, so no two sends share a
@@ -1428,11 +1434,32 @@ export function createSessionPool(input = {}) {
         entry.worker.status = "running";
         persistState();
         try {
+          // A closed handle answers every send with `session is closed`; sending
+          // the card prompt into it would spend the row's attempt budget on a
+          // dead pipe. Report it so the caller can open a fresh conversation.
+          if (entry.handle?.closed === true) {
+            return {
+              ok: false,
+              error: "session is closed",
+              sessionId: entry.sessionId,
+              cwd: entry.cwd,
+            };
+          }
           const opened = await ensureOpener(
             entry,
             job.skill?.opener ?? null,
             job.skill?.fingerprint ?? null,
           );
+          // The opener's own turn can time out and leave the handle closed. That
+          // is the failed turn; the card prompt must not follow it into the pipe.
+          if (opened.ok !== true && entry.handle?.closed === true) {
+            return {
+              ok: false,
+              error: opened.error ?? "session is closed",
+              sessionId: entry.sessionId,
+              cwd: entry.cwd,
+            };
+          }
           const prompt =
             planMode === "replay"
               ? buildWorkerReplayPrompt({
@@ -1463,10 +1490,31 @@ export function createSessionPool(input = {}) {
           entry.lastUsedAt = nowIso(now);
         }
       };
-      let entry = job.entry;
-      let usedPlan = plan;
-      let outcome = await run(entry, plan);
-      if (outcome?.resumeFailed === true && plan === "resume") {
+      // Normalize through the one seam that replaces a closed handle: a session
+      // that died between ticks must not cost the card a turn.
+      let entry = await ensureSession(job.key, job.openOptions);
+      job.entry = entry;
+      let usedPlan = entry.worker?.planMode ?? plan;
+      let reopened = false;
+      // A closed handle is not work: reopen once, without touching the row's
+      // attempt budget, and send the same card to the fresh conversation.
+      const runTurn = async (current, planMode) => {
+        const result = await run(current, planMode);
+        if (result?.error !== "session is closed" || reopened === true) {
+          return { result, current, planMode };
+        }
+        reopened = true;
+        await closeEntry(current, { dropSession: true });
+        const next = await ensureSession(job.key, job.openOptions);
+        job.entry = next;
+        const nextPlan = next.worker?.planMode ?? "fresh";
+        return { result: await run(next, nextPlan), current: next, planMode: nextPlan };
+      };
+      let turn = await runTurn(entry, usedPlan);
+      entry = turn.current;
+      usedPlan = turn.planMode;
+      let outcome = turn.result;
+      if (outcome?.resumeFailed === true && usedPlan === "resume") {
         await closeEntry(entry, { dropSession: false });
         entry = openSession(job.key, {
           cwd: job.dir,
@@ -1475,8 +1523,10 @@ export function createSessionPool(input = {}) {
           worker: { row, workspace: row.workspace ?? null, forceReplay: true },
         });
         job.entry = entry;
-        usedPlan = "replay";
-        outcome = await run(entry, "replay");
+        turn = await runTurn(entry, "replay");
+        entry = turn.current;
+        usedPlan = turn.planMode;
+        outcome = turn.result;
         entry.worker.resumeState = "resumed_by_replay";
         persistState();
       }
@@ -1492,8 +1542,9 @@ export function createSessionPool(input = {}) {
       const settledJob = settled[index];
       if (settledJob.status === "rejected") {
         const error = String(settledJob.reason?.message ?? settledJob.reason ?? "card turn failed");
-        requeueCards(stateDir, batch.map((card) => card.id), { error });
-        log(`session: ${lane} turn for ${dir} failed: ${error} — ${batch.length} card(s) requeued`);
+        for (const failedCard of batch) {
+          settleFailedHandoff(failedCard, lane === "reviewer", error);
+        }
         entry.worker.status = "idle";
         entry.worker.lastError = error;
         persistState();
@@ -1510,12 +1561,10 @@ export function createSessionPool(input = {}) {
         if (review && revalidateCard !== null) {
           const live = await revalidateCard({ card: row.card, row });
           if (live?.ok === true && live.status === "in_progress") {
-            requeueCards(stateDir, [row.id], {
-              error: "review turn ended without delivering a verdict",
-            });
+            const error = "review turn ended without delivering a verdict";
+            settleFailedHandoff(row, true, error);
             entry.worker.status = "idle";
-            entry.worker.lastError = "review turn ended without delivering a verdict";
-            log(`session: review ${row.card} ended without a verdict — requeued`);
+            entry.worker.lastError = error;
             persistState();
             continue;
           }
@@ -1556,16 +1605,11 @@ export function createSessionPool(input = {}) {
       if (plan === "replay" || outcome?.resumeFailed === true) {
         entry.worker.lastError = error;
         if (review) {
-          // A review must never park: there is no question lane to release it
-          // and no human move to wait for. Drop the dead conversation and let
-          // the next tick open a fresh one; the queue's attempt budget bounds it.
-          requeueCards(stateDir, [row.id], {
-            error: `review session resume/replay failed: ${error}`,
-          });
+          // A review has no question lane of its own: the session record is not
+          // marked blocked, and the queue's attempt budget is what stops it. At
+          // the bound the card gets the same execution hold as a worker's.
+          settleFailedHandoff(row, true, `review session resume/replay failed: ${error}`);
           entry.worker.status = "idle";
-          log(`session: review ${row.card} is requeued after a failed resume: ${error}`, {
-            level: "error",
-          });
           await closeEntry(entry, { dropSession: true });
           persistState();
           continue;
@@ -1606,8 +1650,7 @@ export function createSessionPool(input = {}) {
         }
       }
       if (stillWorkable) {
-        requeueCards(stateDir, [row.id], { error });
-        log(`session: ${review ? "review " : "worker "}${row.card} failed: ${error} — requeued`);
+        settleFailedHandoff(row, review, error);
       }
       if (/closed|exited|spawn error|timed out/.test(error)) {
         await closeEntry(entry, { dropSession: false });
@@ -1714,6 +1757,55 @@ export function createSessionPool(input = {}) {
     );
   }
 
+  /**
+   * Settle a failed card handoff. Below the queue's attempt bound the same
+   * claim is retried; at the bound the row is terminal, so the card gets the
+   * execution hold instead of being left `in_progress` for a stale recovery
+   * that may never come (docs/scheduling.md, ADR 0009).
+   *
+   * @param {object} row queue row (one card)
+   * @param {boolean} review
+   * @param {string} error
+   * @returns {{terminal: boolean}}
+   */
+  function settleFailedHandoff(row, review, error) {
+    const label = review ? "review " : "worker ";
+    const result = requeueCards(stateDir, [row.id], { error });
+    if (result.ok !== true) {
+      log(`session: ${label}${row.card} could not record the failure: ${result.error ?? "unknown error"}`, {
+        level: "error",
+      });
+      return { terminal: false };
+    }
+    if (result.failed > 0) {
+      const attempts = Number(result.attempts?.[String(row.id)] ?? 0);
+      log(
+        `session: ${label}${row.card} failed: ${error} — row failed after ${attempts} attempt(s); card held blocked/resource`,
+        { level: "error" },
+      );
+      holdCard(opts, log, row.card, {
+        code: "HANDOFF_FAILED",
+        reason: error,
+        body: [
+          `The loop stopped dispatching this card after ${attempts} failed handoff turn(s).`,
+          "",
+          String(error ?? "").slice(0, 500),
+          "",
+          "It will not be retried automatically. Fix the cause, then move this card back to `todo` (or `in_progress`).",
+        ].join("\n"),
+      });
+      return { terminal: true };
+    }
+    if (result.requeued > 0) {
+      log(`session: ${label}${row.card} failed: ${error} — requeued`);
+    } else {
+      log(`session: ${label}${row.card} failed: ${error} — no live row to requeue`, {
+        level: "warn",
+      });
+    }
+    return { terminal: false };
+  }
+
   function parkCard(ref, reason, blockedReason = "resource") {
     const card = String(ref ?? "");
     if (card === "") return;
@@ -1722,21 +1814,12 @@ export function createSessionPool(input = {}) {
       "",
       "It will not be dispatched again automatically. Fix the cause (the agent CLI, the session, the workspace), then move this card back to `todo` or `in_progress`.",
     ].join("\n");
-    runCli(
-      opts,
-      ORCHESTRATOR_ACTOR_ID,
-      ["comment", "add", card, "--kind", "question", "--body", body],
-      { actorKind: SYSTEM_KIND },
-    );
-    const moved = runCli(
-      opts,
-      ORCHESTRATOR_ACTOR_ID,
-      ["issue", "move", card, "blocked", "--blocked-reason", blockedReason, "--reason", "the loop stopped dispatching this card"],
-      { actorKind: SYSTEM_KIND },
-    );
-    if (moved.ok !== true) {
-      log(`session: could not park ${card}: ${moved.error ?? "unknown error"}`, { level: "warn" });
-    }
+    holdCard(opts, log, card, {
+      code: "WORKER_SESSION_UNRESTORABLE",
+      reason,
+      blockedReason,
+      body,
+    });
   }
 
   /**

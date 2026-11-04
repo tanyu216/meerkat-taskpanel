@@ -48,6 +48,7 @@ import {
   subscribeStatePath,
 } from "./runtime.mjs";
 import { SESSION_LOCK_FILE, poolStatus } from "./session.mjs";
+import { workerRecordIsRunning } from "./worker-session.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SUPERVISOR = join(HERE, "supervisor.mjs");
@@ -366,15 +367,13 @@ function humanReport(report) {
     `cron:block=${report.units.cron.any ? "present" : "absent"}`,
   ].join(", ");
   const workerRecords = Object.values(report.pool.workers ?? {});
-  const runningCount = workerRecords.filter((record) => String(record?.status) === "running").length;
+  const runningCount = workerRecords.filter((record) => workerRecordIsRunning(record)).length;
   // A card session is a worker or a reviewer; the split says which lane is
   // actually running, without a second command.
   const reviewerRecords = workerRecords.filter(
     (record) => String(record?.role ?? "worker") === "reviewer",
   );
-  const reviewerRunning = reviewerRecords.filter(
-    (record) => String(record?.status) === "running",
-  ).length;
+  const reviewerRunning = reviewerRecords.filter((record) => workerRecordIsRunning(record)).length;
   const workerLine =
     `${runningCount} running / ${workerRecords.length} total` +
     (reviewerRecords.length > 0

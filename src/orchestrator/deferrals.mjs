@@ -35,6 +35,13 @@ export const DEFERRAL_THRESHOLD = 3;
 export const DEFERRAL_HOLD = 5;
 
 /**
+ * A dispatch failure hands the claim back immediately and is bounded tighter
+ * than an admission failure: `docs/scheduling.md` (failure table) and ADR 0009
+ * both say the card is parked at the third consecutive dispatch failure.
+ */
+export const DEFERRAL_HOLD_DISPATCH = 3;
+
+/**
  * The wait after the streak becomes a pattern: 30 s, 1 min, 2 min, … capped at
  * one hour. A card that cannot be admitted is re-offered by every poll, so the
  * backoff is what keeps a persistent failure from spinning the scan.

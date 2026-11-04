@@ -31,6 +31,7 @@ import {
   roundOf,
   transcriptFile,
   workerKey,
+  workerRecordIsRunning,
 } from "../../src/orchestrator/worker-session.mjs";
 
 const row = {
@@ -246,5 +247,18 @@ describe("worker transcript", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("worker record liveness", () => {
+  it("treats a closed record as not running even when its old status says running", () => {
+    assert.equal(workerRecordIsRunning({ status: "running" }), true);
+    assert.equal(
+      workerRecordIsRunning({ status: "running", closedAt: "2026-01-01T00:00:00.000Z" }),
+      false,
+      "closeEntry stamps closedAt; the mid-turn status must not keep the card claimed",
+    );
+    assert.equal(workerRecordIsRunning({ status: "idle" }), false);
+    assert.equal(workerRecordIsRunning(null), false);
   });
 });

@@ -46,7 +46,7 @@ import { liveSubagents, readLedger } from "./ledger.mjs";
 import { parseArgs } from "./options.mjs";
 import { readCards } from "./queue.mjs";
 import { isProcessAlive, readPeerMarker } from "./runtime.mjs";
-import { readWorkerSessions } from "./worker-session.mjs";
+import { readWorkerSessions, workerRecordIsRunning } from "./worker-session.mjs";
 import { probeSupervisor } from "./status.mjs";
 import {
   isStaleWorkspaceRecord,
@@ -685,6 +685,45 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   stuck.total = stuck.in_progress.length;
   waiting.total = waiting.in_review.length;
 
+  // 6a. A stale claim is only recoverable while some handoff row can still be
+  // dispatched. When every row for the card is terminal (`failed`/`done`) the
+  // stale re-claim has no work to pick up and the card waits for a human — the
+  // exact dead state TP-0077 sat in for ten hours. Reported, never acted on.
+  const undispatched = { cards: [], total: 0 };
+  if (board.error === null && queue.error === null) {
+    const handoffRows = queueRows.filter(
+      (row) => String(row?.queue_kind ?? "handoff") !== "question",
+    );
+    const liveCards = new Set(
+      handoffRows
+        .filter((row) => row?.status === "pending" || row?.status === "processing")
+        .map((row) => String(row?.card ?? "")),
+    );
+    const lastByCard = new Map();
+    for (const row of handoffRows) {
+      const ref = String(row?.card ?? "");
+      if (ref !== "") lastByCard.set(ref, row);
+    }
+    undispatched.cards = stuck.in_progress
+      .filter((entry) => !liveCards.has(String(entry.ref)))
+      .map((entry) => {
+        const row = lastByCard.get(String(entry.ref)) ?? null;
+        return {
+          ...entry,
+          queue_row:
+            row === null
+              ? null
+              : {
+                  status: row?.status ?? null,
+                  attempts: row?.attempts ?? null,
+                  retry_at: row?.retry_at ?? null,
+                  last_error: row?.lastError ?? null,
+                },
+        };
+      });
+  }
+  undispatched.total = undispatched.cards.length;
+
   // 6b. The admission-deferral ledger. A missing file is a fresh install, not an
   // error; only a malformed one is reported.
   let deferralRows = [];
@@ -1065,7 +1104,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     for (const [key, record] of records) {
       const status = String(record?.status ?? "idle");
       workers.by_status[status] = (workers.by_status[status] ?? 0) + 1;
-      if (status === "running") workers.running += 1;
+      if (workerRecordIsRunning(record)) workers.running += 1;
       const resumeState = String(record?.resumeState ?? "fresh");
       workers.by_resume_state[resumeState] = (workers.by_resume_state[resumeState] ?? 0) + 1;
       if (record?.blocked === true || status === "blocked") {
@@ -1094,6 +1133,9 @@ export function doctorReport(opts, env = process.env, deps = {}) {
 
   const attentionReasons = [];
   if (stuck.total > 0) attentionReasons.push(`stuck_cards: ${stuck.total}`);
+  if (undispatched.total > 0) {
+    attentionReasons.push(`undispatched_claims: ${undispatched.total}`);
+  }
   if (looping.total > 0) attentionReasons.push(`looping: ${looping.total}`);
   if (blockedAcceptance.total > 0) {
     attentionReasons.push(`blocked_acceptance: ${blockedAcceptance.total}`);
@@ -1142,6 +1184,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     queue,
     subagents,
     stuck_cards: stuck,
+    undispatched_claims: undispatched,
     looping,
     waiting,
     handoff_unconsumed: handoffUnconsumed,
@@ -1224,6 +1267,20 @@ function humanReport(report) {
         ? `stale ${minutes(card.age_ms)} > ${minutes(card.threshold_ms)}`
         : `heartbeat-unreadable (${card.detail ?? "unknown"})`;
     lines.push(`  ${card.ref}  in_progress  ${why}  ${card.title ?? ""}`.trimEnd());
+  }
+
+  if (report.undispatched_claims.total > 0) {
+    lines.push(
+      `undispatched ${report.undispatched_claims.total} card(s): a stale claim with no pending/processing handoff row`,
+    );
+    for (const card of report.undispatched_claims.cards) {
+      const row = card.queue_row;
+      const queueText =
+        row === null
+          ? "no queue row"
+          : `queue ${row.status ?? "?"} after ${row.attempts ?? "?"} attempt(s), retry_at ${row.retry_at ?? "null"}`;
+      lines.push(`  ${card.ref}  ${queueText}  ${card.title ?? ""}`.trimEnd());
+    }
   }
 
   const loopKinds = [

@@ -152,6 +152,23 @@ function installRole(dir, { id, agent, lanes, kind = "claude" }) {
   writeFileSync(join(skill, "references", "self-check.md"), `# ${agent} self-check\n`, "utf8");
 }
 
+/** Stub the loop's `taskctl` child and return the argv it was called with. */
+function recordCli(f) {
+  const calls = join(f.dir, "calls.jsonl");
+  writeFileSync(
+    join(f.dir, "cli.mjs"),
+    [
+      'import { appendFileSync } from "node:fs";',
+      `appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");`,
+      'process.stdout.write(JSON.stringify({ ok: true, data: {} }));',
+    ].join("\n"),
+  );
+  return () =>
+    existsSync(calls)
+      ? readFileSync(calls, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line))
+      : [];
+}
+
 /** Force a queue row's attempt counter (a retry of a previous turn). */
 function setAttempts(dir, ref, attempts) {
   const file = join(dir, "cards.queue.json");
@@ -1322,6 +1339,194 @@ describe("session pool", () => {
     const [row] = readCards(f.dir).value.cards;
     assert.equal(row.status, "pending", "an unreadable check is not proof the handoff landed");
     assert.equal(row.attempts, 1);
+    await pool.stop();
+  });
+
+  it("fails the row and parks the card when its worker session cannot be restored", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    writeFileSync(
+      join(f.dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 3,
+        projects: {
+          "worker:T-1:r1": {
+            status: "blocked",
+            blocked: true,
+            card: "T-1",
+            round: 1,
+            sessionId: "sid-1",
+          },
+        },
+      }),
+    );
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "failed");
+    assert.equal(row.attempts, 0, "an unrestorable session is not a turn attempt");
+    assert.ok(
+      calls().some(
+        (argv) =>
+          argv.includes("move") &&
+          argv.includes("T-1") &&
+          argv.includes("blocked") &&
+          argv.includes("resource"),
+      ),
+      "the card is parked at once instead of waiting for the stale recovery",
+    );
+    assert.equal(fake.opened.length, 0, "no session is opened for a blocked record");
+    await pool.stop();
+  });
+
+  it("requeues below the handoff bound and holds the card at it", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    const lines = [];
+    const fake = fakePool({ behavior: () => ({ ok: false, error: "boom" }) });
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: () => ({ ok: true, status: "todo", error: null }),
+      log: (line) => lines.push(line),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+
+    await pool.tick();
+    let [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "pending");
+    assert.equal(row.attempts, 1);
+    assert.equal(
+      calls().some((argv) => argv.includes("move")),
+      false,
+      "a turn below the bound leaves the claim in place",
+    );
+
+    await pool.tick();
+    [row] = readCards(f.dir).value.cards;
+    assert.equal(row.attempts, 2);
+
+    const beforeBound = lines.length;
+    await pool.tick();
+    [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "failed", "the third failed turn exhausts the row's budget");
+    assert.equal(row.attempts, 3);
+    const recorded = calls();
+    assert.ok(
+      recorded.some(
+        (argv) => argv.includes("comment") && argv.includes("add") && argv.includes("T-1") && argv.includes("question"),
+      ),
+      "the card gets a question explaining why it stopped",
+    );
+    assert.ok(
+      recorded.some(
+        (argv) =>
+          argv.includes("move") &&
+          argv.includes("T-1") &&
+          argv.includes("blocked") &&
+          argv.includes("resource"),
+      ),
+      "the card is parked blocked/resource at the bound",
+    );
+    assert.ok(
+      lines
+        .slice(beforeBound)
+        .some((line) => /row failed after 3 attempt\(s\); card held blocked\/resource/.test(line)),
+      "the log names the terminal state",
+    );
+    assert.equal(
+      lines.slice(beforeBound).some((line) => /failed: boom — requeued/.test(line)),
+      false,
+      "the third failure is not reported as a requeue",
+    );
+    await pool.stop();
+  });
+
+  it("holds a review card blocked/resource when its handoff attempts are exhausted", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    const fake = fakePool({ behavior: () => ({ ok: false, error: "boom" }) });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "R-1", f.app, "reviewer"));
+    setAttempts(f.dir, "R-1", 2);
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "failed");
+    assert.equal(row.attempts, 3);
+    assert.ok(
+      calls().some(
+        (argv) => argv.includes("move") && argv.includes("R-1") && argv.includes("blocked"),
+      ),
+      "a review that cannot finish is held, not left in_progress",
+    );
+    await pool.stop();
+  });
+
+  it("replaces a closed handle and retries once without spending an attempt", async (t) => {
+    const f = fixture(t);
+    let closedOnce = false;
+    const fake = fakePool({
+      behavior: ({ handle }) => {
+        if (!closedOnce) {
+          closedOnce = true;
+          handle.closed = true;
+          return { ok: false, error: "session is closed" };
+        }
+        return {};
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "done");
+    assert.equal(row.attempts, 0, "a dead handle is not a work attempt");
+    assert.equal(
+      fake.opened.filter((handle) => handle.role === "worker" && handle.cwd === f.app).length,
+      2,
+      "a fresh conversation replaces the closed one",
+    );
+    await pool.stop();
+  });
+
+  it("treats a timed-out opener as the failed turn and never sends the card to a closed handle", async (t) => {
+    const f = fixture(t);
+    installRole(f.dir, { id: "jobs", agent: "Jobs", lanes: ["worker"] });
+    const fake = fakePool({
+      behavior: ({ handle, prompt }) => {
+        if (prompt.startsWith("/jobs")) {
+          handle.closed = true;
+          return { ok: false, error: "turn timed out after 1800000ms" };
+        }
+        return {};
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), { ...card(f, "T-1", f.app, "worker"), agent: "Jobs" });
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "pending");
+    assert.equal(row.attempts, 1);
+    assert.match(row.lastError, /timed out/);
+    const worker = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
+    assert.equal(worker.prompts.length, 1, "the card prompt is not sent into the dead handle");
+    assert.match(worker.prompts[0], /^\/jobs/);
     await pool.stop();
   });
 

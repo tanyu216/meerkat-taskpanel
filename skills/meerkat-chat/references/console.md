@@ -68,6 +68,7 @@ only for what the human asks about or what the reasons name.
 | `queue` | `depth`, `pending`, `processing`, `failed` | failed rows are the loop's to retry; report |
 | `subagents` | live and total subagent rows | context for a stalled fleet |
 | `stuck_cards` | stale or unreadable heartbeat on claimed cards | name holder and age; never heartbeat or steal |
+| `undispatched_claims` | a stale claim whose handoff rows are all terminal (or absent): nothing left to dispatch it | show the last row's status/attempts/`last_error`; this card waits for a human, not for the stale recovery |
 | `looping` | cards going round the same loop, including `held` cards the loop already parked (`meta.loop_hold_code`, blocked) | explain the pattern; the fix is a decision — never move a held card back without one |
 | `looping.awaiting` | cards parked on a human question (`awaiting_reason`, age) | surface them in the human's waiting register |
 | `looping.question_lane` | director rows that exhausted their two attempts (question, route or triage) | explain the failed turn; a route card is parked, a question card still waits, a triage leaves the producer `done` |
@@ -90,6 +91,12 @@ holder, the stale pool, takeover) are the board skill's
 than inventing a number. Do not heartbeat, re-claim or steal — the loop owns stale recovery,
 and a chat-side pulse would hide the problem. If the human asks to recover it, the director's
 operational rules apply, not yours.
+
+**Undispatched (`undispatched_claims`).** The card is claimed, its heartbeat is stale, and every
+handoff row for it is terminal (or there is no row): the stale recovery has nothing to re-dispatch
+and only a human move frees it. Show the last row's `status`, `attempts` and `last_error` — a
+`failed` row at its attempt bound is the loop's execution hold, not a transient hiccup. Report it;
+releasing the card is the human's explicit act.
 
 **Blocked.** Read `issue list --status blocked --json`; for each, `issue get <ref> --json` and
 `relation list <ref> --json`. Show `blocked_reason`, the open `blocked_by` predecessor and the

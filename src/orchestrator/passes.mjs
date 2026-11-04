@@ -33,6 +33,7 @@ import {
   runWorkflowPass,
 } from "./board.mjs";
 import { briefCards, openCardWatch, registerCardWatch, stopCardWatch } from "./card-watch.mjs";
+import { holdCard as holdOnBoard } from "./holds.mjs";
 import {
   createDeferralRecorder,
   deferralGate,
@@ -44,7 +45,7 @@ import { effectiveScanAgents, parseArgs, resolveLoopConfig, roleIsReviewer, role
 import { isKindAvailable } from "./platforms.mjs";
 import { defaultReviewerAgent, loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
-import { parseWorkerKey, readWorkerSessions } from "./worker-session.mjs";
+import { parseWorkerKey, readWorkerSessions, workerRecordIsRunning } from "./worker-session.mjs";
 import {
   createWorkspace,
   findWorkspace,
@@ -799,7 +800,7 @@ export async function runPollOnce(opts, env = process.env) {
   const { workers } = readWorkerSessions(stateDir);
   const runningCards = new Set();
   for (const [key, record] of Object.entries(workers)) {
-    if (String(record?.status ?? "") !== "running") continue;
+    if (!workerRecordIsRunning(record)) continue;
     const parsed = parseWorkerKey(key);
     if (parsed !== null) runningCards.add(String(parsed.card));
   }
@@ -883,29 +884,8 @@ export async function runPollOnce(opts, env = process.env) {
     // The execution-fault hold: a card the loop cannot advance is parked as a
     // human-owned decision, never auto-cancelled and never retried forever.
     holdCard: (identifier, { code, reason }) => {
-      if (opts.dryRun) return { ok: true, dryRun: true };
       const blockedReason = code === "DISPATCH_FAILED" ? "resource" : "external";
-      const body = [
-        `The loop stopped dispatching this card after repeated \`${code}\` failures.`,
-        "",
-        String(reason ?? "").slice(0, 500),
-        "",
-        "It will not be retried automatically. Fix the cause, then move this card back to `todo` (or `in_progress`).",
-      ].join("\n");
-      const commented = runCli(
-        opts,
-        ORCHESTRATOR_ACTOR_ID,
-        ["comment", "add", identifier, "--kind", "question", "--body", body],
-        { actorKind: SYSTEM_KIND },
-      );
-      if (!commented.ok) log(`hold ${identifier}: comment failed: ${commented.error}`, { level: "warn" });
-      const moved = runCli(
-        opts,
-        ORCHESTRATOR_ACTOR_ID,
-        ["issue", "move", identifier, "blocked", "--blocked-reason", blockedReason, "--reason", "the loop stopped dispatching after repeated failures"],
-        { actorKind: SYSTEM_KIND },
-      );
-      return moved.ok ? { ok: true } : { ok: false, error: moved.error };
+      return holdOnBoard(opts, log, identifier, { code, reason, blockedReason });
     },
     limit: budget,
     verb: "enqueued",

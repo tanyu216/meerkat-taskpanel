@@ -311,6 +311,65 @@ describe("loop doctor — the report", () => {
     assert.equal(report.stuck_cards.total, 1);
   });
 
+  it("reports a stale claim whose handoff rows are all terminal", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        { identifier: "T-1", title: "Dead dispatch", status: "in_progress", heartbeat_at: at(600 * MIN) },
+        { identifier: "T-2", title: "No row at all", status: "in_progress", heartbeat_at: null },
+      ],
+    });
+    seedState(dir, {
+      cards: [
+        {
+          card: "T-1",
+          queue_kind: "handoff",
+          status: "failed",
+          attempts: 3,
+          retry_at: null,
+          lastError: "session is closed",
+        },
+      ],
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(
+      report.undispatched_claims.cards.map((card) => card.ref),
+      ["T-1", "T-2"],
+      "a stale claim with no pending/processing handoff row has no dispatcher left",
+    );
+    const terminal = report.undispatched_claims.cards.find((card) => card.ref === "T-1");
+    assert.deepEqual(terminal.queue_row, {
+      status: "failed",
+      attempts: 3,
+      retry_at: null,
+      last_error: "session is closed",
+    });
+    assert.equal(
+      report.undispatched_claims.cards.find((card) => card.ref === "T-2").queue_row,
+      null,
+      "a card with no queue row at all is still reported",
+    );
+    assert.equal(report.stuck_cards.total, 2, "the stuck judgement itself is unchanged");
+    assert.ok(report.attention_reasons.includes("undispatched_claims: 2"));
+  });
+
+  it("does not report a stale claim that still has a dispatchable handoff row", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [{ identifier: "T-1", title: "Still queued", status: "in_progress", heartbeat_at: at(600 * MIN) }],
+    });
+    seedState(dir, {
+      cards: [{ card: "T-1", queue_kind: "handoff", status: "pending", attempts: 1 }],
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.equal(report.undispatched_claims.total, 0);
+    assert.equal(report.stuck_cards.total, 1, "stale is still reported; only the dead-end is not");
+  });
+
   it("calls out an acceptance the board refused: the marker says accepted, the card does not", () => {
     const dir = tempDir();
     const { script } = sentinel(dir, {

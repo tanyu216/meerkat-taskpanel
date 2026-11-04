@@ -860,6 +860,62 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     );
   });
 
+  it("offers a card whose worker record was closed while it still says running", () => {
+    const dir = tempDir("tp-poll-closed-worker-");
+    const app = join(dir, "app");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(dir, "projects.json"), JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
+    // Older pools stamped `closedAt` without resetting the mid-turn `running`
+    // status. A closed conversation is not running, so the stale re-claim must
+    // see the card.
+    writeLivePool(dir, {
+      version: 2,
+      capabilities: ["question-lane"],
+      projects: {
+        "worker:T-1:r1": {
+          status: "running",
+          sessionId: "sid-1",
+          closedAt: "2026-01-01T00:00:00.000Z",
+        },
+      },
+    });
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "closed-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "let data = { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } };",
+        "if (argv.includes('candidates')) {",
+        "  data = { candidates: [{ identifier: 'T-1', project: 'P', agent: 'alice', status: 'in_progress', reason: 'stale_same' }] };",
+        "}",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
+      ].join("\n"),
+    );
+    const run = runEntry(
+      "passes.mjs",
+      [
+        "--actor-kind", "claude", "--agent", "alice",
+        "--cli", script, "--repo", dir, "--workspace", "shared",
+        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      ],
+      { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
+      "poll",
+    );
+    assert.equal(run.status, 0, run.stderr);
+    // The card reaches the claim path: either it is claimed, or admission
+    // defers it. Before the fix it was filtered out and never offered at all.
+    const offered =
+      calls(record).some((call) => call.includes("claim")) ||
+      /defer T-1/.test(readFileSync(join(dir, "log"), "utf8"));
+    assert.ok(
+      offered,
+      "a closed worker record does not keep the card out of the stale re-claim",
+    );
+  });
+
   it("scans every discovered worker-lane role", () => {
     const dir = tempDir("tp-scan-roles-");
     const home = join(dir, "home");
@@ -2185,6 +2241,32 @@ describe("poll deferral accounting", () => {
     );
     assert.equal(result.deferred, 1);
     assert.deepEqual(recorded, []);
+  });
+
+  it("parks a dispatch failure at three, while an admission failure waits for five", async () => {
+    const held = [];
+    const runFor = (code, count) =>
+      runPollTick(
+        base({
+          admit: async () => ({ ok: false, why: "x", code, accounted: true }),
+          recordDefer: () => ({ count, code, reason: "x" }),
+          holdCard: async (id, payload) => {
+            held.push({ id, code: payload.code });
+            return { ok: true };
+          },
+          clearDeferral: () => {},
+        }),
+      );
+    await runFor("DISPATCH_FAILED", 3);
+    assert.deepEqual(
+      held,
+      [{ id: "T-1", code: "DISPATCH_FAILED" }],
+      "the documented dispatch-failure bound is three",
+    );
+    await runFor("ADMISSION_FAILED", 3);
+    assert.equal(held.length, 1, "an admission streak at three keeps retrying");
+    await runFor("ADMISSION_FAILED", 5);
+    assert.equal(held.length, 2, "admission holds at five");
   });
 
   it("releases the reservation when dispatch fails", async () => {

@@ -32,7 +32,7 @@ import {
   skillLoadMode,
 } from "../foundation/roles.mjs";
 import { resolveRolePlatform } from "../foundation/role-platforms.mjs";
-import { DEFERRAL_HOLD } from "./deferrals.mjs";
+import { DEFERRAL_HOLD, DEFERRAL_HOLD_DISPATCH } from "./deferrals.mjs";
 import { resolveLoopConfig } from "./options.mjs";
 import * as passes from "./passes.mjs";
 import { poolStatus } from "./session.mjs";
@@ -141,7 +141,8 @@ export async function runPollTick(deps) {
    */
   const holdIfExhausted = async (identifier, entry) => {
     if (entry === null || entry === undefined) return;
-    if (Number(entry.count ?? 0) < DEFERRAL_HOLD) return;
+    const bound = entry.code === "DISPATCH_FAILED" ? DEFERRAL_HOLD_DISPATCH : DEFERRAL_HOLD;
+    if (Number(entry.count ?? 0) < bound) return;
     if (holdCard === null) return;
     const held = await holdCard(identifier, {
       code: entry.code ?? "ADMISSION_FAILED",
