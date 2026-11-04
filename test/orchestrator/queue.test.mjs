@@ -372,6 +372,108 @@ describe("card queue", () => {
     assert.equal(readCards(dir).value.cards[0].status, "pending");
   });
 
+  // TP-0031: a SIGKILLed pool leaves a processing row whose agent child still
+  // runs. The ledger proves the subagent is working and the session record still
+  // names its process; requeueing would put a second worker on the card. The
+  // claim moves to the new pool instead — no queue field is added for it.
+  it("repoints a row owned by a live ledger subagent and session pid", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    claimCards(dir, { claimedBy: "/work/app", pid: 999999, limit: 1 });
+    writeFileSync(
+      join(dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 3,
+        projects: {
+          "/work/app": { pid: process.pid, cwd: "/work/app", sessionId: "sid-live" },
+        },
+      }),
+    );
+    writeFileSync(
+      join(dir, "subagents.state.json"),
+      JSON.stringify({
+        version: 1,
+        subagents: [
+          {
+            sessionKey: "/work/app",
+            card: "T-1",
+            role: "worker",
+            queueId: "T-1-worker",
+            status: "running",
+            startedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+
+    const result = recoverStaleCards(dir, {
+      isAlive: (pid) => pid === process.pid,
+      maxAttempts: 3,
+      poolPid: 4242,
+    });
+    assert.equal(result.recovered, 0, "a live orphan keeps its claim");
+    assert.equal(result.reowned, 1, "the claim is re-pointed at the new pool");
+    const [row] = readCards(dir).value.cards;
+    assert.equal(row.status, "processing");
+    assert.equal(row.claimedByPid, 4242);
+  });
+
+  it("recovers the row once the session pid is gone, even if the ledger row is live", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    claimCards(dir, { claimedBy: "/work/app", pid: 999999, limit: 1 });
+    writeFileSync(
+      join(dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 3,
+        projects: { "/work/app": { pid: 999998, cwd: "/work/app", sessionId: "sid-dead" } },
+      }),
+    );
+    writeFileSync(
+      join(dir, "subagents.state.json"),
+      JSON.stringify({
+        version: 1,
+        subagents: [
+          {
+            sessionKey: "/work/app",
+            card: "T-1",
+            role: "worker",
+            queueId: "T-1-worker",
+            status: "running",
+            startedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+
+    const result = recoverStaleCards(dir, {
+      isAlive: (pid) => pid === process.pid,
+      maxAttempts: 3,
+      poolPid: 4242,
+    });
+    assert.deepEqual({ recovered: result.recovered, reowned: result.reowned }, { recovered: 1, reowned: 0 });
+    assert.equal(readCards(dir).value.cards[0].status, "pending");
+  });
+
+  it("repoints to the current process by default", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    claimCards(dir, { claimedBy: "/work/app", pid: 999999, limit: 1 });
+    writeFileSync(
+      join(dir, "sessions.state.json"),
+      JSON.stringify({ version: 3, projects: { "/work/app": { pid: process.pid, cwd: "/work/app" } } }),
+    );
+    writeFileSync(
+      join(dir, "subagents.state.json"),
+      JSON.stringify({
+        version: 1,
+        subagents: [{ card: "T-1", role: "worker", status: "running" }],
+      }),
+    );
+    recoverStaleCards(dir, { isAlive: (pid) => pid === process.pid });
+    assert.equal(readCards(dir).value.cards[0].claimedByPid, process.pid);
+  });
+
   it("retires a legacy dispatched row to done", (t) => {
     const dir = dirFor(t);
     enqueueCard(dir, card("T-1"));

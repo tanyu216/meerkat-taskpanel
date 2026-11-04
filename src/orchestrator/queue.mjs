@@ -25,7 +25,7 @@ import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
 // The names live in the shared foundation module now; re-exported because this
 // module was their first home and the loop tests import them from here.
 export { QUEUE_FILES } from "../foundation/loop-state.mjs";
-import { QUEUE_FILES } from "../foundation/loop-state.mjs";
+import { LIVE_STATUSES, QUEUE_FILES } from "../foundation/loop-state.mjs";
 
 /** A card handoff's terminal failure threshold. */
 const DEFAULT_CARD_MAX_ATTEMPTS = 3;
@@ -665,24 +665,68 @@ function liveOwnerDirs(stateDir, isAlive) {
   return live;
 }
 
+/**
+ * Ledger rows an agent is still working. The ledger is the application-level
+ * proof of in-flight subagent work; its status outlives a dead pid.
+ *
+ * @param {string} stateDir
+ * @returns {object[]}
+ */
+function liveLedgerRows(stateDir) {
+  const read = readJsonFile(queuePaths(stateDir).ledger, null);
+  const rows = Array.isArray(read.value?.subagents) ? read.value.subagents : [];
+  return rows.filter((entry) => LIVE_STATUSES.includes(String(entry?.status ?? "")));
+}
+
+/**
+ * Does a ledger row own this queue row? `queueId` is the precise key; an older
+ * row written before the id existed falls back to (card, role).
+ */
+function ledgerOwnsRow(ledgerRow, row) {
+  const queueId = ledgerRow?.queueId;
+  if (queueId !== undefined && queueId !== null && queueId !== "") {
+    return String(queueId) === String(row.id);
+  }
+  return (
+    typeof ledgerRow?.card === "string" &&
+    ledgerRow.card === String(row.card ?? "") &&
+    String(ledgerRow?.role ?? "worker") === String(row.role ?? "worker")
+  );
+}
+
 function recoverStaleCardsUnlocked(stateDir, options = {}) {
   const isAlive = options.isAlive ?? (() => true);
   const now = options.now ?? Date.now();
   const maxAgeMs = Number(options.maxAgeMs ?? 2 * 60 * 60 * 1000);
   const maxAttempts = Number(options.maxAttempts ?? DEFAULT_CARD_MAX_ATTEMPTS);
+  const poolPid = Number.isInteger(options.poolPid) ? options.poolPid : process.pid;
   const isResumableWorker =
     typeof options.isResumableWorker === "function" ? options.isResumableWorker : null;
   const read = readCards(stateDir);
-  if (read.error !== null) return { ok: false, recovered: 0, failed: 0, error: read.error };
+  if (read.error !== null) return { ok: false, recovered: 0, failed: 0, reowned: 0, error: read.error };
   const value = read.value;
   const liveDirs = liveOwnerDirs(stateDir, isAlive);
+  const liveLedger = liveLedgerRows(stateDir);
   const stale = [];
+  const orphaned = [];
   for (const entry of value.cards) {
     if (entry.status !== "processing") continue;
     // A live agent child still owns the work even when the pool that claimed it
     // is gone; re-queueing would start a second worker on the same card.
-    const ownerDir = String(entry.target_dir ?? entry.claimedBy ?? "");
-    if (ownerDir !== "" && liveDirs.has(ownerDir)) continue;
+    const ownerIds = [entry.target_dir, entry.claimedBy, entry.worker_key]
+      .filter((id) => typeof id === "string" && id !== "")
+      .map(String);
+    if (ownerIds.some((id) => liveDirs.has(id))) {
+      // The ledger proves a subagent is still working this row (not merely that
+      // a session process exists). Re-point the claim at this pool: the row is
+      // owned by a live process again, so a later pass does not mistake the dead
+      // claimant for a stale one. No queue field is added; the pids already in
+      // `sessions.state.json` are the evidence.
+      if (liveLedger.some((ledgerRow) => ledgerOwnsRow(ledgerRow, entry))) {
+        orphaned.push(String(entry.id));
+      }
+      continue;
+    }
     // A worker session with a durable record is recovered by `recoverWorkerSessions`,
     // which resumes the same conversation instead of putting a second worker on the card.
     if (entry.worker_key && isResumableWorker !== null && isResumableWorker(entry)) continue;
@@ -692,7 +736,24 @@ function recoverStaleCardsUnlocked(stateDir, options = {}) {
     const old = Number.isFinite(claimedAt) && now - claimedAt > maxAgeMs;
     if (dead || old) stale.push(String(entry.id));
   }
-  if (stale.length === 0) return { ok: true, recovered: 0, failed: 0, error: null };
+  const reowned = orphaned.length > 0
+    ? reownCards(stateDir, orphaned, { claimedByPid: poolPid, now: new Date(now).toISOString() })
+    : { ok: true, cards: [], error: null };
+  if (stale.length === 0) {
+    return {
+      ok: reowned.ok,
+      recovered: 0,
+      failed: 0,
+      reowned: reowned.cards.length,
+      error: reowned.error,
+    };
+  }
   const result = requeueCards(stateDir, stale, { maxAttempts, error: "stale claim recovered" });
-  return { ok: result.ok, recovered: result.requeued, failed: result.failed, error: result.error };
+  return {
+    ok: result.ok && reowned.ok,
+    recovered: result.requeued,
+    failed: result.failed,
+    reowned: reowned.cards.length,
+    error: result.error ?? reowned.error,
+  };
 }

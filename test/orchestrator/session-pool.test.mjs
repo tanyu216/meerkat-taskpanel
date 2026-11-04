@@ -11,12 +11,21 @@
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { processStartToken } from "../../src/foundation/daemon-state.mjs";
+import { createClaudePool } from "../../src/orchestrator/actor-kinds/claude.mjs";
 import {
   claimCards,
   enqueueCard,
@@ -2756,5 +2765,240 @@ describe("pool liveness — state facts and a non-blocking startup", () => {
     const result = pool.announceStarting();
     assert.equal(result.ok, false, "a live pool is not ours to announce");
     assert.deepEqual(readState(f), live, "the live pool's file is untouched");
+  });
+});
+
+describe("pool startup reaps the previous incarnation's children", () => {
+  /** A real, living child; optionally one that traps SIGTERM. */
+  async function startSleeper(t, { ignoreSigterm = false } = {}) {
+    const source = ignoreSigterm
+      ? "process.on('SIGTERM', () => {}); process.stdout.write('ready\\n'); setInterval(() => {}, 1000);"
+      : "process.stdout.write('ready\\n'); setInterval(() => {}, 1000);";
+    const child = spawn(process.execPath, ["-e", source], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    t.after(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    });
+    await new Promise((resolveStarted, rejectStarted) => {
+      child.once("spawn", resolveStarted);
+      child.once("error", rejectStarted);
+    });
+    // "spawn" means the OS process exists, not that the trap is installed: a
+    // SIGTERM sent in that window would use the default action and kill it.
+    await new Promise((resolveReady) => child.stdout.once("data", resolveReady));
+    return child;
+  }
+
+  function waitUntil(predicate, timeoutMs = 5000) {
+    const deadline = Date.now() + timeoutMs;
+    return new Promise((resolve) => {
+      const tick = () => {
+        if (predicate()) return resolve(true);
+        if (Date.now() >= deadline) return resolve(false);
+        setTimeout(tick, 20);
+      };
+      tick();
+    });
+  }
+
+  const exited = (child) => child.exitCode !== null || child.signalCode !== null;
+
+  /** The prior incarnation's state file: a dead manager and one child record. */
+  function priorState(f, { managerPid, childPid, childStart }) {
+    writeFileSync(
+      join(f.dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 3,
+        poolPid: managerPid,
+        phase: "running",
+        projects: {
+          "/old-lane": {
+            pid: childPid,
+            pidStart: childStart,
+            cwd: "/old-lane",
+            sessionId: "sid-old",
+          },
+        },
+      }),
+    );
+  }
+
+  it("SIGTERMs a live, token-matched child from the previous incarnation", async (t) => {
+    const f = fixture(t);
+    const sleeper = await startSleeper(t);
+    const token = processStartToken(sleeper.pid);
+    assert.ok(token, "the platform reports a start token");
+    priorState(f, { managerPid: 999_999, childPid: sleeper.pid, childStart: token });
+
+    const lines = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      log: (line) => lines.push(line),
+      reapGraceMs: 500,
+    });
+    t.after(() => pool.stop());
+
+    const started = await pool.start();
+    assert.equal(started.ok, true);
+    assert.equal(await waitUntil(() => exited(sleeper)), true, "the orphan is gone before reattach");
+    assert.match(lines.join("\n"), /reaped 1 orphaned child process/);
+  });
+
+  it("never kills a live pid whose start token no longer matches", async (t) => {
+    const f = fixture(t);
+    const sleeper = await startSleeper(t);
+    priorState(f, { managerPid: 999_999, childPid: sleeper.pid, childStart: "pid-reused" });
+
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      reapGraceMs: 100,
+    });
+    t.after(() => pool.stop());
+    assert.equal((await pool.start()).ok, true);
+    await new Promise((resolveDone) => setTimeout(resolveDone, 100));
+    assert.equal(exited(sleeper), false, "a mismatched token is not proof of ownership");
+  });
+
+  it("SIGKILLs a child that ignores SIGTERM after the grace", async (t) => {
+    const f = fixture(t);
+    const stubborn = await startSleeper(t, { ignoreSigterm: true });
+    const token = processStartToken(stubborn.pid);
+    assert.ok(token, "the platform reports a start token");
+    priorState(f, { managerPid: 999_999, childPid: stubborn.pid, childStart: token });
+
+    const lines = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      log: (line) => lines.push(line),
+      reapGraceMs: 50,
+    });
+    t.after(() => pool.stop());
+
+    assert.equal((await pool.start()).ok, true);
+    assert.equal(await waitUntil(() => exited(stubborn), 3000), true, "the grace is bounded");
+    assert.equal(stubborn.signalCode, "SIGKILL");
+    assert.match(lines.join("\n"), /1 needed SIGKILL/);
+  });
+
+  it("leaves a live previous pool's children alone", async (t) => {
+    const f = fixture(t);
+    const manager = await startSleeper(t);
+    const child = await startSleeper(t);
+    const token = processStartToken(child.pid);
+    priorState(f, { managerPid: manager.pid, childPid: child.pid, childStart: token });
+
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      reapGraceMs: 100,
+    });
+    t.after(() => pool.stop());
+    assert.equal((await pool.start()).ok, true);
+    await new Promise((resolveDone) => setTimeout(resolveDone, 100));
+    assert.equal(exited(child), false, "a live manager still owns its children");
+  });
+});
+
+describe("worker session failure", () => {
+  it("fails a worker whose agent child exits before its first result", async (t) => {
+    const f = fixture(t);
+    const bin = join(f.dir, "fake-claude.sh");
+    writeFileSync(bin, "#!/bin/sh\nexit 1\n");
+    chmodSync(bin, 0o755);
+
+    const lines = [];
+    const opts = optsFor(f);
+    const claude = createClaudePool({ opts, log: (line) => lines.push(line), bin });
+    t.after(async () => {
+      await claude.close();
+    });
+    const pool = createSessionPool({
+      opts,
+      kindPools: new Map([["claude", claude]]),
+      log: (line) => lines.push(line),
+    });
+    t.after(() => pool.stop());
+
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    assert.equal((await pool.start()).ok, true);
+    await pool.routeCards();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.notEqual(row.status, "processing", "a child that exited is not left in flight");
+    assert.match(
+      String(row.lastError),
+      /exited|closed|spawn/i,
+      `the child's exit is the recorded failure: ${JSON.stringify(row)}`,
+    );
+    assert.ok(
+      lines.some((line) => /failed/.test(line)),
+      `the failure is reported: ${lines.join("\n")}`,
+    );
+  });
+});
+
+describe("pool shutdown — the in-flight tick is drained, never abandoned", () => {
+  it("stops within the drain bound when a turn never settles", async (t) => {
+    const f = fixture(t);
+    const home = join(f.dir, "home");
+    for (const name of ["meerkat", "meerkat-director"]) {
+      const dir = join(home, ".claude", "skills", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`);
+    }
+
+    let markStarted;
+    const sendStarted = new Promise((resolveStarted) => {
+      markStarted = resolveStarted;
+    });
+    const fake = fakePool({
+      behavior: async () => {
+        markStarted();
+        // A turn that will not settle inside the bound.
+        return await new Promise(() => {});
+      },
+    });
+    const controller = new AbortController();
+    const logs = [];
+    const opts = optsFor(f, { home, actorKind: "claude", sessionPollMs: 50 });
+    const running = runSession(opts, {
+      log: (line, meta) => logs.push({ line, meta }),
+      kindPool: fake,
+      stopDrainMs: 40,
+      signal: controller.signal,
+    });
+
+    /** A fallback that does not keep the test process alive after the race. */
+    const after = (ms, value) =>
+      new Promise((resolveTimeout) => {
+        const timer = setTimeout(() => resolveTimeout(value), ms);
+        timer.unref?.();
+      });
+
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await Promise.race([sendStarted, after(5000, "timeout")]);
+    const begin = Date.now();
+    controller.abort();
+    const code = await Promise.race([running, after(5000, "timeout")]);
+    const elapsed = Date.now() - begin;
+
+    assert.equal(code, 0, `the pool stops without waiting out the turn (${elapsed}ms)`);
+    assert.ok(elapsed < 3000, `the drain is bounded (${elapsed}ms)`);
+    assert.ok(
+      logs.some((entry) => entry.meta?.event === "stop_drain_timeout" && entry.meta.level === "warn"),
+      `the abandoned pass leaves one warn record: ${JSON.stringify(logs)}`,
+    );
   });
 });
