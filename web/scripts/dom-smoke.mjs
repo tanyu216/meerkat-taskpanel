@@ -264,9 +264,13 @@ export function fixtureApi() {
     // in_progress (the seventh column count does not change) and it wears the
     // badge; `awaiting_reason` is the entry category the badge carries.
     fixture("p1", "awaiting", { identifier: "TD-13", title: "Confirm the release scope before the cut", priority: "urgent", labels: ["design"], assignee: AGENT.claude, awaiting_reason: "E1" }),
-    fixture("p1", "done", { identifier: "TD-10", title: "Ship the CLI", priority: "low", labels: [], assignee: AGENT.human }),
-    fixture("p1", "canceled", { identifier: "TD-11", title: "Drop the legacy importer", priority: "none", labels: ["perf"], assignee: AGENT.openclaw }),
-    fixture("p1", "done", { identifier: "TD-12", title: "Lock down the webhooks", priority: "medium", labels: ["security", "design"], assignee: AGENT.pi }),
+    // TP-0092 — the board's working set puts done/canceled after every active
+    // card, newest finish first. The three terminals carry distinct finish
+    // clocks so the ordering is measurable: canceled (10-05) → done TD-12
+    // (10-03) → done TD-10 (09-28).
+    fixture("p1", "done", { identifier: "TD-10", title: "Ship the CLI", priority: "low", labels: [], assignee: AGENT.human, status_changed_at: "2026-09-28T00:00:00Z" }),
+    fixture("p1", "canceled", { identifier: "TD-11", title: "Drop the legacy importer", priority: "none", labels: ["perf"], assignee: AGENT.openclaw, status_changed_at: "2026-10-05T00:00:00Z" }),
+    fixture("p1", "done", { identifier: "TD-12", title: "Lock down the webhooks", priority: "medium", labels: ["security", "design"], assignee: AGENT.pi, status_changed_at: "2026-10-03T00:00:00Z" }),
     // TP-0075 ② — one epic, two direct children and one grandchild. The drawer
     // opens TD-14 to prove the Children group is the **recursive** descendant
     // list (TD-17 is two levels down), and every descendant row carries the
@@ -685,7 +689,38 @@ export function startServer() {
     if (path === "/api/v1/projects") return ok({ projects: data.projects, order_debug: data.orderDebug });
     if (path === "/api/v1/tasks") {
       const projectId = url.searchParams.get("project_id");
-      return ok({ tasks: data.tasks.filter((t) => !projectId || t.project_id === projectId) });
+      const statuses = url.searchParams.getAll("status").filter(Boolean);
+      const scoped = data.tasks.filter(
+        (task) =>
+          (!projectId || task.project_id === projectId) &&
+          (statuses.length === 0 || statuses.includes(task.status)),
+      );
+      const terminal = new Set(["done", "canceled"]);
+      const activeTotal = scoped.filter((task) => !terminal.has(task.status)).length;
+      // TP-0092 — board=1 mirrors the real route: active cards first (the
+      // fixture order is the weight order), then done/canceled by finish time.
+      const ordered =
+        url.searchParams.get("board") === "1"
+          ? [
+              ...scoped.filter((task) => !terminal.has(task.status)),
+              ...scoped
+                .filter((task) => terminal.has(task.status))
+                .sort(
+                  (left, right) =>
+                    (right.status_changed_at ?? "").localeCompare(left.status_changed_at ?? "") ||
+                    (right.created_at ?? "").localeCompare(left.created_at ?? "") ||
+                    left.identifier.localeCompare(right.identifier),
+                ),
+            ]
+          : scoped;
+      const offset = Number(url.searchParams.get("offset") ?? 0) || 0;
+      const limitText = url.searchParams.get("limit");
+      const limit = limitText === null ? ordered.length : Number(limitText);
+      return ok({
+        tasks: ordered.slice(offset, offset + limit),
+        total: scoped.length,
+        active_total: activeTotal,
+      });
     }
     const refOf = (prefix) => decodeURIComponent(path.slice(prefix.length).split("/")[0]);
     const readJsonBody = (done) => {
@@ -1300,6 +1335,16 @@ export async function run() {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => pageErrors.push(String(err)));
+    /**
+     * TP-0092 — the board's task reads. The list request is the one the board
+     * issues on entry; the assertion below reads its `board=1&limit=500` mode
+     * from the wire, not from the store's internal state.
+     */
+    const taskListRequests = [];
+    page.on("request", (request) => {
+      if (/(^|\/)api\/v1\/tasks\?/.test(request.url())) taskListRequests.push(request.url());
+    });
+    const boardSetFailures = [];
 
     /**
      * R9 ③ — the harness, not the app, is what lingers on a list read.
@@ -1368,6 +1413,53 @@ export async function run() {
     const waitingRules = EVALUATED_RULES.filter((e) => e.rule.when === "waiting view").map((e) => ({ block: e.block, rule: e.rule }));
 
     const boardResults = await evaluateRuleSet(boardRules);
+
+    // TP-0092 — the board reads a working set: `board=1&limit=500`, the active
+    // cards first, then done/canceled by finish time (TD-11 10-05 → TD-12 10-03
+    // → TD-10 09-28). The fixture's p1 is smaller than the page, so every card
+    // loads and the banner stays down.
+    const boardWorkingSet = await page.evaluate(() => {
+      const columnIds = (status) =>
+        [...document.querySelectorAll(`[data-column][data-status="${status}"] [data-card]`)].map((card) =>
+          card.getAttribute("data-identifier"),
+        );
+      const first = document.querySelector("[data-card]");
+      const banner = document.querySelector("[data-board-truncated]");
+      return {
+        firstStatus: first?.getAttribute("data-status") ?? null,
+        done: columnIds("done"),
+        canceled: columnIds("canceled"),
+        bannerHidden: banner?.hidden === true,
+        bannerKind: banner?.getAttribute("data-truncated-kind") ?? null,
+        bannerTotal: banner?.getAttribute("data-truncated-total") ?? null,
+      };
+    });
+    const boardRead = taskListRequests
+      .map((url) => new URL(url))
+      .find((url) => url.searchParams.get("board") === "1");
+    boardSetFailures.push(
+      ...(boardRead === undefined
+        ? ["the board never requested `board=1`"]
+        : [
+            ...(boardRead.searchParams.get("limit") === "500"
+              ? []
+              : [`the board read's limit is ${boardRead.searchParams.get("limit")}, expected 500`]),
+          ]),
+      ...(boardWorkingSet.firstStatus !== null && !["done", "canceled"].includes(boardWorkingSet.firstStatus)
+        ? []
+        : [`the first card's status is ${boardWorkingSet.firstStatus}, expected an active one`]),
+      ...(JSON.stringify(boardWorkingSet.done) === JSON.stringify(["TD-12", "TD-10"])
+        ? []
+        : [`the done column is [${boardWorkingSet.done.join(", ")}], expected [TD-12, TD-10]`]),
+      ...(JSON.stringify(boardWorkingSet.canceled) === JSON.stringify(["TD-11"])
+        ? []
+        : [`the canceled column is [${boardWorkingSet.canceled.join(", ")}], expected [TD-11]`]),
+      ...(boardWorkingSet.bannerHidden ? [] : ["the working-set banner is visible on a board smaller than one page"]),
+      ...(boardWorkingSet.bannerKind === "terminal"
+        ? []
+        : [`the banner's data-truncated-kind is ${boardWorkingSet.bannerKind}, expected terminal`]),
+    );
+
     await page.click('[data-view="list"]');
     await waitForListSettled();
     await page.waitForTimeout(120);
@@ -8126,6 +8218,7 @@ export async function run() {
         forward: r16Forward,
         afterAnchor: r16AfterAnchor,
       },
+      workingSet: { failures: boardSetFailures, ...boardWorkingSet },
       geometry,
       notMeasured,
       counts: { rules: results.length, failed: failures.length, notMeasured: notMeasured.length, ...geometry },
@@ -8337,6 +8430,16 @@ if (isEntryPoint) run().then(
             "the confirm enforces the 8-character reason, and the card returns to todo",
         );
       }
+      if (report.workingSet.failures.length > 0) {
+        console.log(`TP-0092 (board working set) — ${report.workingSet.failures.length} failed:`);
+        for (const failure of report.workingSet.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          `TP-0092 (board working set) — the board reads board=1&limit=500, the first card is active, ` +
+            `done is [${report.workingSet.done.join(", ")}] and canceled is [${report.workingSet.canceled.join(", ")}] (finish-time DESC), ` +
+            `and the banner stays down (${report.workingSet.bannerKind}) on a board smaller than one page`,
+        );
+      }
       if (report.acceptanceActs.failures.length > 0) {
         console.log(`M6 (acceptance acts) — ${report.acceptanceActs.failures.length} failed:`);
         for (const failure of report.acceptanceActs.failures) console.log(`  ✗ ${failure}`);
@@ -8384,6 +8487,7 @@ if (isEntryPoint) run().then(
       report.r16.failures.length === 0 &&
       report.reopen.failures.length === 0 &&
       report.acceptanceActs.failures.length === 0 &&
+      report.workingSet.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

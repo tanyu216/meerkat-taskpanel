@@ -808,6 +808,165 @@ describe("web/board — loads", () => {
   });
 });
 
+/* --------------------------------------------------- the 500-card working set */
+
+describe("web/board — the 500-card working set", () => {
+  const queryOf = (url) => new URL(url, "http://board.test").searchParams;
+  const ids = (tasks) => tasks.map((task) => task.id);
+
+  it("reads board=1&limit=500 and records the project totals", async () => {
+    const { board, loadTasks } = await freshBoard();
+    board.currentProjectId = "p1";
+    const calls = installFetch({
+      "GET /api/v1/tasks": () =>
+        ok({ tasks: [{ id: "a", status: "todo" }], total: 7, active_total: 1 }),
+    });
+
+    await loadTasks();
+
+    assert.equal(calls.length, 1);
+    assert.equal(queryOf(calls[0].url).get("board"), "1");
+    assert.equal(queryOf(calls[0].url).get("limit"), "500");
+    assert.equal(board.taskTotal, 7);
+    assert.equal(board.activeTotal, 1);
+    assert.equal(board.tasksTruncated, true, "seven cards in the project, one loaded");
+    assert.equal(board.tasksIncomplete, false);
+    assert.equal(board.loaded, true);
+  });
+
+  it("supplements the non-terminal set when the active cards exceed the page, and merges without reordering", async () => {
+    const { board, loadTasks } = await freshBoard();
+    board.currentProjectId = "p1";
+    const calls = installFetch({
+      "GET /api/v1/tasks": (call) =>
+        queryOf(call.url).get("board") === "1"
+          ? ok({ tasks: [{ id: "a", status: "todo" }, { id: "b", status: "in_progress" }], total: 4, active_total: 4 })
+          : ok({
+              tasks: [
+                { id: "a", status: "todo" },
+                { id: "b", status: "in_progress" },
+                { id: "c", status: "blocked" },
+                { id: "d", status: "todo" },
+              ],
+              total: 4,
+              active_total: 4,
+            }),
+    });
+
+    await loadTasks();
+
+    assert.equal(calls.length, 2);
+    const supplement = queryOf(calls[1].url);
+    assert.equal(supplement.get("limit"), "5000");
+    assert.equal(supplement.get("board"), null);
+    assert.deepEqual(
+      supplement.getAll("status"),
+      ["backlog", "todo", "in_progress", "in_review", "blocked", "awaiting"],
+      "the supplement asks for exactly the non-terminal statuses",
+    );
+    assert.deepEqual(ids(board.tasks), ["a", "b", "c", "d"], "the page keeps its order; new cards follow");
+    assert.equal(board.taskTotal, 4);
+    assert.equal(board.tasksTruncated, false);
+    assert.equal(board.tasksIncomplete, false);
+  });
+
+  it("keeps the primary page when the supplement fails, and says the active half is incomplete", async () => {
+    const { board, loadTasks } = await freshBoard();
+    board.currentProjectId = "p1";
+    installFetch({
+      "GET /api/v1/tasks": (call) =>
+        queryOf(call.url).get("board") === "1"
+          ? ok({ tasks: [{ id: "a", status: "todo" }], total: 3, active_total: 2 })
+          : failure(500, "INTERNAL", "boom"),
+    });
+
+    await loadTasks();
+
+    assert.deepEqual(ids(board.tasks), ["a"]);
+    assert.equal(board.tasksIncomplete, true, "the banner names the missing active half");
+    assert.equal(board.error, null, "a supplement failure is not a page-level failure");
+    assert.equal(board.loading, false);
+  });
+
+  it("marks the active half incomplete when the supplement is itself truncated", async () => {
+    const { board, loadTasks } = await freshBoard();
+    board.currentProjectId = "p1";
+    installFetch({
+      "GET /api/v1/tasks": (call) =>
+        queryOf(call.url).get("board") === "1"
+          ? ok({ tasks: [{ id: "a", status: "todo" }], total: 3, active_total: 2 })
+          : ok({ tasks: [{ id: "a", status: "todo" }, { id: "b", status: "todo" }], total: 3 }),
+    });
+
+    await loadTasks();
+
+    assert.deepEqual(ids(board.tasks), ["a", "b"]);
+    assert.equal(board.tasksIncomplete, true, "the active half is incomplete");
+    assert.equal(board.tasksTruncated, true, "and the project still holds a third card");
+  });
+
+  it("falls back to the loaded rows when an older server sends no totals", async () => {
+    const { board, loadTasks } = await freshBoard();
+    board.currentProjectId = "p1";
+    const calls = installFetch({
+      "GET /api/v1/tasks": () =>
+        ok({ tasks: [{ id: "a", status: "todo" }, { id: "b", status: "done" }] }),
+    });
+
+    await loadTasks();
+
+    assert.equal(calls.length, 1, "no supplement without an `active_total`");
+    assert.equal(board.taskTotal, 2);
+    assert.equal(board.activeTotal, 1);
+    assert.equal(board.tasksTruncated, false);
+    assert.equal(board.tasksIncomplete, false);
+  });
+
+  it("resets the totals when the project is cleared", async () => {
+    const { board, loadTasks } = await freshBoard();
+    board.currentProjectId = null;
+    board.taskTotal = 9;
+    board.activeTotal = 4;
+    board.tasksTruncated = true;
+    board.tasksIncomplete = true;
+    installFetch({});
+
+    await loadTasks();
+
+    assert.equal(board.taskTotal, 0);
+    assert.equal(board.activeTotal, 0);
+    assert.equal(board.tasksTruncated, false);
+    assert.equal(board.tasksIncomplete, false);
+  });
+
+  it("does not append a late supplement to a project the board has already left", async () => {
+    const { board, loadTasks } = await freshBoard();
+    board.currentProjectId = "p1";
+    let releaseMain;
+    let releaseSupplement;
+    let supplementStarted = false;
+    installFetch({
+      "GET /api/v1/tasks": (call) =>
+        queryOf(call.url).get("board") === "1"
+          ? new Promise((resolve) => (releaseMain = resolve))
+          : ((supplementStarted = true), new Promise((resolve) => (releaseSupplement = resolve))),
+    });
+
+    const pending = loadTasks();
+    releaseMain(ok({ tasks: [{ id: "a", status: "todo" }], total: 2, active_total: 2 }));
+    await settle();
+    assert.equal(supplementStarted, true, "the supplement is in flight");
+
+    board.currentProjectId = "p2";
+    releaseSupplement(ok({ tasks: [{ id: "a", status: "todo" }, { id: "b", status: "todo" }], total: 2 }));
+    await pending;
+
+    assert.deepEqual(board.tasks, [], "the left project's supplement never repaints the board");
+    assert.equal(board.taskTotal, 0);
+    assert.equal(board.loaded, false);
+  });
+});
+
 /* ------------------------------------------------------- loading the board */
 /*
  * The skeleton screens read one signal: "the current project's read is in

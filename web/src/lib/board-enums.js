@@ -38,6 +38,23 @@ export const AWAITING = "awaiting";
 /** The seven *stage* statuses — the board's columns, and `[data-card]`'s `data-status`. */
 export const COLUMN_STATUSES = Object.freeze(STATUSES.filter((status) => status !== AWAITING));
 
+/**
+ * The finished statuses — the board's working set puts them **after** every
+ * active card, newest completion first. Mirrors
+ * `src/core/domain/status.mjs#TERMINAL_STATUSES`;
+ * `test/web/enums.drift.test.mjs` keeps the two in lockstep.
+ */
+export const TERMINAL_STATUSES = Object.freeze(["done", "canceled"]);
+
+/**
+ * The statuses the board's supplementary active read asks for (the complement of
+ * the terminal pair, derived so a new status joins it automatically). `awaiting`
+ * is a non-terminal overlay and belongs on the board's active side.
+ */
+export const NON_TERMINAL_STATUSES = Object.freeze(
+  STATUSES.filter((status) => !TERMINAL_STATUSES.includes(status)),
+);
+
 /** The five priorities, most urgent first (contract `DOMAINS.PRIORITY`; `none` is the display band for an unset value). */
 export const PRIORITIES = Object.freeze(["urgent", "high", "medium", "low", "none"]);
 

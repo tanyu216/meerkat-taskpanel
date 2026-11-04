@@ -1870,6 +1870,27 @@ describe("server/routes — the board read's filters (GET /api/v1/tasks)", () =>
   });
 });
 
+describe("server/routes — the board read's totals (GET /api/v1/tasks)", () => {
+  it("answers `total` and `active_total` beside every list page", async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "cnt", name: "Counts" }));
+    const first = dataOf(await call("POST", "/api/v1/tasks", { project_id: "cnt", title: "one" })).task;
+    const second = dataOf(await call("POST", "/api/v1/tasks", { project_id: "cnt", title: "two" })).task;
+
+    const plain = dataOf(await call("GET", "/api/v1/tasks?project_id=cnt&limit=1"));
+    assert.equal(plain.total, 2, "the whole scoped set, not the page");
+    assert.equal(plain.active_total, 2);
+    assert.equal(plain.tasks.length, 1);
+
+    // A terminal card moves from `active_total` to the terminal remainder but
+    // stays in `total` (`todo → canceled` is on the whitelist).
+    dataOf(await call("POST", `/api/v1/tasks/${first.identifier}/move`, { to: "canceled" }));
+    const after = dataOf(await call("GET", "/api/v1/tasks?project_id=cnt"));
+    assert.equal(after.total, 2);
+    assert.equal(after.active_total, 1);
+    assert.ok(after.tasks.some((task) => task.id === second.id));
+  });
+});
+
 describe("actorFromRequest — the configured human default", () => {
   it("uses TASKCTL_HUMAN when the request carries no actor header", () => {
     assert.deepEqual(

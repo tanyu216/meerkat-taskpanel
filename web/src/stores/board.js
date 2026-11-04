@@ -24,7 +24,15 @@ import { api, ApiError } from "../services/api.js";
 // re-exported here so a component has one import site.
 import { actorMatches } from "../lib/assignee-filter.js";
 import { authorLabel, isAgentKind, kindLabel, platformForActor, platformOfKind } from "../lib/actor-kind.js";
-import { AWAITING, COLUMN_STATUSES, PRIORITIES, STATUSES } from "../lib/board-enums.js";
+import {
+  AWAITING,
+  COLUMN_STATUSES,
+  NON_TERMINAL_STATUSES,
+  PRIORITIES,
+  STATUSES,
+  TERMINAL_STATUSES,
+} from "../lib/board-enums.js";
+import { mergeById } from "../lib/board-merge.js";
 
 export { authorLabel, isAgentKind, kindLabel, platformForActor, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
@@ -140,7 +148,21 @@ export const board = reactive({
   /** id → `order_debug` entry (score/rank) from `/projects?order_debug=1`. */
   orderDebug: {},
   currentProjectId: null,
+  /**
+   * The board's **working set**, not the whole project: the server sends every
+   * non-terminal card in the weight order, then done/canceled by finish time,
+   * and the read stops at `BOARD_TASK_LIMIT`. An active set larger than one page
+   * is fetched by a supplementary non-terminal read and merged (see `loadTasks`).
+   */
   tasks: [],
+  /** The scoped set's true size (all non-archived cards), or the loaded count on an older server. */
+  taskTotal: 0,
+  /** The non-terminal slice of that set — the half the waiting/acceptance queues read. */
+  activeTotal: 0,
+  /** Some terminal cards were left out of the working set (`taskTotal > tasks.length`). */
+  tasksTruncated: false,
+  /** The supplementary active read was truncated or failed — active cards may be missing. */
+  tasksIncomplete: false,
   // One actor list since 0019 (the `assignees`/`reporters` tables merged into
   // `actors`). Kept under the name the components already read; it now holds
   // every actor, not only assignees.
@@ -658,6 +680,7 @@ export async function loadProjects() {
       board.currentProjectId = next;
       board.loaded = false;
       board.tasks = [];
+      resetTaskTotals();
     }
   }
 }
@@ -683,18 +706,83 @@ let loadToken = 0;
 const taskRefreshSeq = new Map();
 const taskRefreshTimers = new Map();
 
+/** The board's working-set page. One project's active set is normally far smaller. */
+export const BOARD_TASK_LIMIT = 500;
+/** The supplementary non-terminal read. A set this large is flagged, never silently cut. */
+export const ACTIVE_READ_LIMIT = 5_000;
+
+/** One project's totals never describe another (or a cleared board). */
+function resetTaskTotals() {
+  board.taskTotal = 0;
+  board.activeTotal = 0;
+  board.tasksTruncated = false;
+  board.tasksIncomplete = false;
+}
+
+/**
+ * Read the current project's board working set.
+ *
+ * The primary read asks for `board=1&limit=500`: every active card in the
+ * weight order, then the newest done/canceled. `total` / `active_total` say how
+ * large the project really is; when the active set itself exceeds the page, a
+ * second read fetches the non-terminal set and `mergeById` appends only the
+ * cards the page did not carry. The active half is therefore never silently
+ * truncated — that is what keeps the waiting and acceptance queues correct.
+ *
+ * A failed supplement keeps the primary page and raises `tasksIncomplete`; it
+ * is not a page-level failure, so `board.error` stays for the B17 surface.
+ */
 export async function loadTasks() {
   const projectId = board.currentProjectId;
   if (!projectId) {
     board.tasks = [];
+    resetTaskTotals();
     return;
   }
   const token = ++loadToken;
   board.loading = true;
   try {
-    const data = await api.tasks({ project_id: projectId, include_archived: 0, limit: 500 });
+    const data = await api.tasks({
+      project_id: projectId,
+      include_archived: 0,
+      board: 1,
+      limit: BOARD_TASK_LIMIT,
+    });
     if (token !== loadToken || board.currentProjectId !== projectId) return;
-    board.tasks = data.tasks ?? [];
+
+    const page = data.tasks ?? [];
+    const fallbackActive = page.filter((task) => !TERMINAL_STATUSES.includes(task.status)).length;
+    const taskTotal = Number.isInteger(data.total) ? data.total : page.length;
+    const activeTotal = Number.isInteger(data.active_total) ? data.active_total : fallbackActive;
+
+    let merged = page;
+    let tasksIncomplete = false;
+    if (activeTotal > page.length) {
+      try {
+        const supplement = await api.tasks({
+          project_id: projectId,
+          include_archived: 0,
+          status: NON_TERMINAL_STATUSES,
+          limit: ACTIVE_READ_LIMIT,
+        });
+        if (token !== loadToken || board.currentProjectId !== projectId) return;
+        const extra = supplement.tasks ?? [];
+        merged = mergeById(page, extra);
+        const supplementTotal = Number.isInteger(supplement.total) ? supplement.total : extra.length;
+        tasksIncomplete = supplementTotal > extra.length;
+      } catch {
+        // The primary page is still a valid reading; the banner says the active
+        // half is incomplete.
+        tasksIncomplete = true;
+      }
+    }
+
+    if (token !== loadToken || board.currentProjectId !== projectId) return;
+    board.tasks = merged;
+    board.taskTotal = taskTotal;
+    board.activeTotal = activeTotal;
+    board.tasksTruncated = taskTotal > merged.length;
+    board.tasksIncomplete = tasksIncomplete;
     // The read landed, so the board may now say what it read — including "nothing"
     // (see `boardEmpty`). A throw skips this on purpose: a failed read is not a
     // reading, and the shell's error surface carries it instead.
@@ -777,6 +865,7 @@ export async function selectProject(projectId) {
   // window: `loaded` first, so no instant exists in which the emptied list reads
   // as "this project is empty" (`boardEmpty` needs both).
   board.tasks = [];
+  resetTaskTotals();
   await loadTasks();
 }
 

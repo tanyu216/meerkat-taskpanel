@@ -367,6 +367,110 @@ describe("task-order — assertion 10: the scope reaches SQL before the order do
   });
 });
 
+describe("task-order — board mode: active first, terminal by finish time", () => {
+  /**
+   * One project with both halves of the working set:
+   *   - three active cards created low → medium → urgent, so the weight order
+   *     (urgency first) is the reverse of creation order;
+   *   - three terminal cards whose *priorities* are inverted against their
+   *     finish times, so the board mode's `status_changed_at DESC` differs from
+   *     the default weight order's terminal sub-sequence.
+   */
+  const activeIds = new Set();
+  let terminalOrder;
+
+  before(() => {
+    createProject("brd", "Board working set");
+    ["low", "medium", "urgent"].forEach((priority, index) => {
+      const task = createTask({ projectId: "brd", title: `active ${index}`, priority });
+      activeIds.add(task.identifier);
+    });
+
+    const terminal = [
+      // [to, status_changed_at, priority, title]
+      ["done", "2026-01-01T00:00:00.000Z", "urgent", "done old"],
+      ["canceled", "2026-01-15T00:00:00.000Z", "medium", "canceled mid"],
+      ["done", "2026-02-01T00:00:00.000Z", "low", "done new"],
+    ];
+    const created = [];
+    for (const [to, changedAt, priority, title] of terminal) {
+      const task = createTask({ projectId: "brd", title, priority, acceptanceMode: "off" });
+      if (to === "done") {
+        commands().moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
+        commands().moveStatus({ id: task.id, to: "done", actor: AGENT });
+      } else {
+        commands().moveStatus({ id: task.id, to: "canceled", actor: AGENT });
+      }
+      // Pin the finish clock. `moveStatus` stamps `now`, and three moves inside
+      // one millisecond would leave the ordering untestable.
+      db().prepare("UPDATE tasks SET status_changed_at = ? WHERE id = ?").run(changedAt, task.id);
+      created.push(task.identifier);
+    }
+    // Newest finish first: 2026-02, 2026-01-15, 2026-01-01.
+    terminalOrder = [created[2], created[1], created[0]];
+  });
+
+  it("returns all active cards in weight order, then terminal cards by status_changed_at DESC", async () => {
+    const data = dataOf(await call("GET", "/api/v1/tasks?project_id=brd&board=1"));
+    const listed = data.tasks.map((task) => task.identifier);
+    const active = listed.filter((id) => activeIds.has(id));
+
+    // The active half is exactly the default (weight) order over the same cards.
+    const defaultOrder = await listedOrder("?project_id=brd");
+    assert.deepEqual(active, defaultOrder.filter((id) => activeIds.has(id)));
+    assert.deepEqual(listed.slice(0, active.length), active, "every active card precedes every terminal one");
+    assert.deepEqual(listed.slice(active.length), terminalOrder, "terminal: newest finish first");
+    // The same set, a different order: the default weight order puts the old
+    // urgent `done` card first among terminals, the board mode puts the newest.
+    assert.notDeepEqual(listed, defaultOrder);
+    assert.deepEqual([...listed].sort(), [...defaultOrder].sort());
+  });
+
+  it("carries `total` and `active_total` for the whole scoped set, not the page", async () => {
+    const data = dataOf(await call("GET", "/api/v1/tasks?project_id=brd&board=1&limit=2"));
+    assert.equal(data.total, 6);
+    assert.equal(data.active_total, 3);
+    assert.equal(data.tasks.length, 2);
+
+    const filtered = dataOf(await call("GET", "/api/v1/tasks?project_id=brd&board=1&status=done"));
+    assert.equal(filtered.total, 2);
+    assert.equal(filtered.active_total, 0);
+    assert.deepEqual(filtered.tasks.map((task) => task.identifier), [terminalOrder[0], terminalOrder[2]]);
+  });
+
+  it("keeps limit/offset paging over the board order", async () => {
+    const full = (await listedOrder("?project_id=brd&board=1"));
+    const first = await listedOrder("?project_id=brd&board=1&limit=2");
+    const second = await listedOrder("?project_id=brd&board=1&limit=2&offset=2");
+    const third = await listedOrder("?project_id=brd&board=1&limit=2&offset=4");
+    assert.deepEqual([...first, ...second, ...third], full);
+    assert.deepEqual(second, full.slice(2, 4));
+    assert.deepEqual(third, full.slice(4, 6));
+  });
+
+  it("ignores `order_debug` in board mode — the page order is not the weight order", async () => {
+    const data = dataOf(await call("GET", "/api/v1/tasks?project_id=brd&board=1&order_debug=1"));
+    assert.equal("order_debug" in data, false);
+  });
+
+  it("leaves the default read exactly as it was", async () => {
+    const plain = dataOf(await call("GET", "/api/v1/tasks?project_id=brd"));
+    assert.equal(plain.total, 6);
+    assert.equal(plain.active_total, 3);
+    assert.deepEqual(
+      plain.tasks.map((task) => task.identifier),
+      await listedOrder("?project_id=brd"),
+    );
+    // The default order is the command layer's own weight order, still.
+    assert.deepEqual(
+      plain.tasks.map((task) => task.identifier),
+      commands()
+        .listTasks({ projectId: "brd", limit: null })
+        .map((task) => task.identifier),
+    );
+  });
+});
+
 describe("task-order — the candidate projection is unchanged by the order", () => {
   it("still emits the card's fields, its meta and `reason`, and writes nothing", async () => {
     const before = currentRevision(db());

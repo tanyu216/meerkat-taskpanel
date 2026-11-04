@@ -777,6 +777,9 @@
             "assignee_id": {
               "type": "string"
             },
+            "board": {
+              "type": "string"
+            },
             "include_archived": {
               "type": "string"
             },
