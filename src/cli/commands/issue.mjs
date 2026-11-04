@@ -616,12 +616,15 @@ export const COMMANDS = [
       // CLI's `--meta` values are strings).
       const task = (await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`)).task;
       const meta = { ...(task.meta ?? {}), ...ctx.flags.meta };
-      // The version read above is the CAS guard: if the card moved between the
-      // read and this write, the board refuses rather than silently dropping
-      // the other writer's change (a merge cannot be expressed on the wire).
+      // The caller's `--if-version`, when given, is the CAS guard: a global the
+      // CLI accepts is forwarded, never silently dropped, so a caller cannot
+      // believe it holds a guard it does not have. Without it the version read
+      // above guards the merge instead — if the card moved between the read and
+      // this write, the board refuses rather than silently dropping the other
+      // writer's change (a merge cannot be expressed on the wire).
       const payload = await ctx.client.patch(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`, {
         meta,
-        if_version: task.version,
+        if_version: ctx.flags.ifVersion ?? task.version,
       });
       return { data: payload, human: `updated metadata on ${payload.task.identifier}` };
     },

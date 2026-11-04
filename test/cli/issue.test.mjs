@@ -1326,6 +1326,46 @@ describe("cli/issue — `issue meta` is a merge, not a replace", () => {
       assert.equal(again.task.meta.accepted_by, "loop-review");
     });
   });
+
+  it("refuses a stale --if-version instead of re-reading and writing anyway", async () => {
+    await board(async ({ run }) => {
+      const created = createIssue(run, [
+        "--acceptance", "cli works",
+        "--target", "src/x",
+        "--meta", "flow=A",
+      ]);
+      const stale = created.task.version;
+      // Any write bumps the row: the caller's read is now out of date.
+      dataOf(run(["issue", "update", created.task.identifier, "--title", "moved on", "--json"]));
+
+      const refused = run([
+        "issue", "meta", created.task.identifier,
+        "--meta", "accepted_by=loop-review",
+        "--if-version", String(stale),
+        "--json",
+      ]);
+      assert.equal(refused.status, 1, "a stale guard must not silently succeed");
+      assert.equal(errorOf(refused).code, "VERSION_CONFLICT");
+
+      const after = dataOf(run(["issue", "get", created.task.identifier, "--json"])).task;
+      assert.equal(after.meta.accepted_by, undefined, "the refused write did not land");
+      assert.equal(after.meta.flow, "A", "the untouched metadata is still there");
+      assert.equal(after.meta.target, "src/x");
+      assert.deepEqual(after.meta.acceptance, ["cli works"]);
+
+      // Retry with the current version: the same merge now lands.
+      const fresh = dataOf(run([
+        "issue", "meta", created.task.identifier,
+        "--meta", "accepted_by=loop-review",
+        "--if-version", String(after.version),
+        "--json",
+      ]));
+      assert.equal(fresh.task.meta.accepted_by, "loop-review");
+      assert.equal(fresh.task.meta.flow, "A", "a guarded merge still preserves the other keys");
+      assert.equal(fresh.task.meta.target, "src/x");
+      assert.deepEqual(fresh.task.meta.acceptance, ["cli works"], "and their value types");
+    });
+  });
 });
 
 describe("cli/issue — claim and stale recovery", () => {
