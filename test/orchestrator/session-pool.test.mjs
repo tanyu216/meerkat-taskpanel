@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
+import { processStartToken } from "../../src/foundation/daemon-state.mjs";
 import {
   claimCards,
   enqueueCard,
@@ -1966,6 +1967,9 @@ describe("worker session resume", () => {
     });
     claimCards(join(f.dir), { claimedBy: f.app, pid: 999999, limit: 1 });
     assert.equal((await pool.start()).ok, true);
+    // Recovery is the background reattach pass now, not part of start(); the
+    // runSession entry runs it after the tick and heartbeat start.
+    await pool.reattachOnStart();
     await pool.tick();
 
     const handle = fake.opened.find((entry) => entry.role === "worker");
@@ -2325,5 +2329,227 @@ describe("worker session resume — route verification", () => {
       `the card is parked for a human; calls: ${JSON.stringify(recorded)}`,
     );
     await pool.stop();
+  });
+});
+
+describe("pool liveness — state facts and a non-blocking startup", () => {
+  const readState = (f) => JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
+
+  /** Put one processing row in the queue and one durable worker record for it. */
+  function processingWorkerRow(f, ref) {
+    const key = workerKey(ref, 1);
+    const record = {
+      kind: "worker-session",
+      card: ref,
+      round: 1,
+      worktree: f.app,
+      cwd: f.app,
+      sessionId: `sid-${ref}`,
+      status: "running",
+      startedAt: new Date().toISOString(),
+      lastUsedAt: new Date().toISOString(),
+    };
+    const file = join(f.dir, "sessions.state.json");
+    const state = existsSync(file)
+      ? JSON.parse(readFileSync(file, "utf8"))
+      : { version: 3, projects: {} };
+    state.projects = { ...(state.projects ?? {}), [key]: record };
+    writeFileSync(file, JSON.stringify(state));
+    enqueueCard(join(f.dir), {
+      ...card(f, ref, f.app),
+      round: 1,
+      worker_key: key,
+    });
+    return key;
+  }
+
+  it("announces phase:starting before start(), then flips to running", async (t) => {
+    const f = fixture(t);
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    t.after(() => pool.stop());
+
+    const announced = pool.announceStarting();
+    assert.equal(announced.ok, true);
+    const starting = readState(f);
+    assert.equal(starting.phase, "starting", "the startup window is published before start()");
+    assert.ok(Date.parse(starting.startStartedAt) > 0, "the start began at a recorded instant");
+    assert.equal(starting.poolPid, process.pid);
+    assert.ok("poolPidStart" in starting, "the pool records its own start token");
+    assert.ok("previousPoolPid" in starting, "the previous incarnation is named");
+    assert.equal(starting.tickStartedAt, null);
+    assert.ok("lastTickOkAt" in starting);
+    assert.equal(starting.turnTimeoutMs, optsFor(f).sessionTurnTimeoutMs);
+
+    assert.equal((await pool.start()).ok, true);
+    assert.equal(readState(f).phase, "running", "start() flips the phase once the lock is held");
+  });
+
+  it("runSession publishes phase:starting before pool.start() can be refused", async (t) => {
+    const f = fixture(t);
+    const home = join(f.dir, "home");
+    for (const name of ["meerkat", "meerkat-director"]) {
+      const dir = join(home, ".claude", "skills", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`);
+    }
+    // A live lock makes start() refuse before it writes any state. Only an
+    // announce that ran before start() can have published the starting phase.
+    writeFileSync(
+      join(f.dir, "session.lock"),
+      JSON.stringify({
+        version: 1,
+        pid: process.pid,
+        pidStart: processStartToken(process.pid),
+        startedAt: Date.now(),
+        token: "other-holder",
+      }),
+    );
+    const code = await runSession(
+      { ...optsFor(f), home, actorKind: "claude" },
+      { log: () => {}, kindPool: fakePool() },
+    );
+    assert.equal(code, 1, "a refused start is a runnable-but-not-owned exit");
+    assert.equal(readState(f).phase, "starting");
+  });
+
+  it("records a tick in flight, then clears it and marks the last successful tick", async (t) => {
+    const f = fixture(t);
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const fake = fakePool({
+      behavior: async () => {
+        await gate;
+        return {};
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+
+    const tick = pool.tick();
+    const during = readState(f);
+    assert.equal(typeof during.tickStartedAt, "string", "a tick in flight is written before it awaits");
+
+    release();
+    await tick;
+    const after = readState(f);
+    assert.equal(after.tickStartedAt, null, "a finished tick leaves no in-flight marker");
+    assert.ok(Date.parse(after.lastTickOkAt) > 0, "the finished tick is the last successful one");
+  });
+
+  it("writes a pidStart beside every open session", async (t) => {
+    const f = fixture(t);
+    const fake = {
+      opened: [],
+      openSession({ cwd, role, sessionId }) {
+        const handle = {
+          cwd,
+          role,
+          sessionId: sessionId ?? "sid-1",
+          pid: process.pid,
+          closed: false,
+          prompts: [],
+          async send() {
+            return { ok: true, result: "ok" };
+          },
+          async close() {
+            this.closed = true;
+          },
+        };
+        this.opened.push(handle);
+        return handle;
+      },
+      async close() {},
+    };
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    const record = Object.entries(readState(f).projects).find(([key]) =>
+      key.startsWith("worker:"),
+    )?.[1];
+    assert.ok(record, "the open worker session is persisted");
+    assert.equal(record.pid, process.pid);
+    assert.ok("pidStart" in record, "each session pid carries its start token");
+    const token = processStartToken(process.pid);
+    if (token !== null) assert.equal(record.pidStart, token);
+  });
+
+  it("does not reattach inside start(), only when the background pass runs", async (t) => {
+    const f = fixture(t);
+    processingWorkerRow(f, "T-1");
+    claimCards(join(f.dir), { claimedBy: f.app, pid: 999_999, limit: 1 });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    t.after(() => pool.stop());
+
+    await pool.start();
+    assert.equal(
+      readCards(f.dir).value.cards[0].status,
+      "processing",
+      "start() returns without waiting on reattach; the tick and heartbeat own liveness",
+    );
+    await pool.reattachOnStart();
+    assert.equal(readCards(f.dir).value.cards[0].status, "pending", "the background pass resumes it");
+  });
+
+  it("bounds reattach per group and records reattach_timeout", async (t) => {
+    const f = fixture(t);
+    const first = processingWorkerRow(f, "T-1");
+    const second = processingWorkerRow(f, "T-2");
+    claimCards(join(f.dir), { claimedBy: f.app, pid: 999_999, limit: 2 });
+
+    let clock = Date.parse("2026-01-01T00:00:00.000Z");
+    const logs = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      now: () => clock,
+      log: (line, meta) => logs.push({ line, meta }),
+      revalidateCard: async () => {
+        // The first group's board read is slower than the whole reattach budget.
+        clock += optsFor(f).sessionTurnTimeoutMs + 1_000;
+        return { ok: true, status: "in_progress" };
+      },
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    const result = await pool.reattachOnStart();
+
+    const rows = readCards(f.dir).value.cards;
+    assert.equal(rows.find((row) => row.card === "T-1").status, "pending", "the first group resumed");
+    assert.equal(rows.find((row) => row.card === "T-2").status, "processing", "the deadline stops the pass");
+    assert.equal(result.timedOut, 1);
+    assert.ok(
+      logs.some((entry) => entry.meta?.event === "reattach_timeout" && entry.meta.level === "warn"),
+      `a timed-out group leaves one warn record: ${JSON.stringify(logs)}`,
+    );
+    assert.deepEqual(
+      logs.find((entry) => entry.meta?.event === "reattach_timeout").meta.cards,
+      ["T-2"],
+    );
+    assert.ok(first !== second);
+  });
+
+  it("never clobbers a live pool's state when announcing", (t) => {
+    const f = fixture(t);
+    const live = {
+      version: 3,
+      poolPid: process.pid,
+      phase: "running",
+      heartbeatAt: new Date().toISOString(),
+      projects: {},
+    };
+    writeFileSync(join(f.dir, "sessions.state.json"), JSON.stringify(live));
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    t.after(() => pool.stop());
+
+    const result = pool.announceStarting();
+    assert.equal(result.ok, false, "a live pool is not ours to announce");
+    assert.deepEqual(readState(f), live, "the live pool's file is untouched");
   });
 });

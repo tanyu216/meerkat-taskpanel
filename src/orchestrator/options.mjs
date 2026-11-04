@@ -826,7 +826,8 @@ Options:
   --claim-unassigned=yes|no Also claim unassigned cards (default: yes).
   --assignee-only           Alias for --claim-unassigned=no.
   --recover-stale=yes|no    Also recover stale in_progress claims (default: yes).
-  --recover-wedged=yes|no   Stop a pool whose tick outlived 2× the turn timeout (default: yes).
+  --recover-wedged=yes|no   Stop a pool whose tick outlived its send deadline
+                            (turn + 2 min) (default: yes).
   --workflow=yes|no         Run the workflow pass in each tick (default: yes).
   --reviewer <agent>        Deprecated no-op (the review card's assignee picks the role).
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).

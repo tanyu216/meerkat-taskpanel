@@ -20,12 +20,15 @@
  */
 
 import { existsSync } from "node:fs";
+import { dirname } from "node:path";
 
 import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
+import { readJsonFile, writeJsonFile } from "../foundation/daemon-state.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
+import { statePathsForDir } from "../foundation/loop-state.mjs";
 
 import * as passesEntry from "./passes.mjs";
-import { poolStatus, runSession } from "./session.mjs";
+import { runSession } from "./session.mjs";
 import * as subscribeEntry from "./subscribe.mjs";
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./options.mjs";
 import { availableKinds, isKindAvailable } from "./platforms.mjs";
@@ -35,8 +38,8 @@ import { runContinueOnce } from "./runners.mjs";
 import {
   createLogger,
   isProcessAlive,
+  killWedgedPool,
   loadRegistry,
-  recoverWedgedPool,
   runPingTick,
   saveRegistry,
 } from "./runtime.mjs";
@@ -62,12 +65,21 @@ function runPingOnce(opts, env, log) {
       dryRun: opts.dryRun,
       log,
     });
-    // The liveness clock is also the pool's watchdog: a live pid whose tick has
-    // outlived twice the turn timeout is stopped, and the unit restarts it.
+    // The ping is the loop's only kill authority: a pool whose event loop is
+    // blocked cannot run an in-process timer, and every other timer may only
+    // observe. The decision, its grace and the once-per-wedge marker live in
+    // `wedgeKillAction`/`killWedgedPool`; the ping owns the marker file.
     if (!opts.dryRun) {
       const { config } = resolveLoopConfig(opts, env);
       if (config.recoverWedged) {
-        recoverWedgedPool({ pool: poolStatus({ opts, isAlive: isProcessAlive }), log });
+        const markerPath = statePathsForDir(dirname(opts.sessionState)).poolWedge;
+        killWedgedPool({
+          state: readJsonFile(opts.sessionState),
+          marker: readJsonFile(markerPath),
+          isAlive: isProcessAlive,
+          saveMarker: (marker) => writeJsonFile(markerPath, marker),
+          log,
+        });
       }
     }
     return 0;

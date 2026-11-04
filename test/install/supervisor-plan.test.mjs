@@ -514,8 +514,8 @@ describe("supervisor: the docs and the implementation agree", () => {
   it("reports the resident pool's runtime state, best effort", () => {
     const dir = makeTempDir();
     assert.deepEqual(
-      { live: poolReport(dir).live, reason: poolReport(dir).reason },
-      { live: false, reason: "no session state" },
+      { live: poolReport(dir).live, verdict: poolReport(dir).verdict, reason: poolReport(dir).reason },
+      { live: false, verdict: "gone", reason: "no session state" },
     );
 
     const now = Date.parse("2026-01-01T00:00:00.000Z");
@@ -546,10 +546,24 @@ describe("supervisor: the docs and the implementation agree", () => {
 
     const live = poolReport(dir, { isAlive: () => true, now: () => now });
     assert.equal(live.live, true);
+    assert.equal(live.verdict, "running", "the report reads the one shared verdict");
     assert.equal(live.pid, 4242);
     assert.equal(live.heartbeatAgeMs, 3_000);
     assert.equal(live.runningSessions, 2, "running card sessions are the load");
     assert.equal(live.cardsQueued, 1);
+
+    // A live pid with a stale heartbeat is unresponsive, never absent.
+    writeFileSync(
+      join(dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 3,
+        poolPid: 4242,
+        heartbeatAt: new Date(now - 10 * 60_000).toISOString(),
+      }),
+    );
+    const stale = poolReport(dir, { isAlive: () => true, now: () => now });
+    assert.equal(stale.live, true);
+    assert.equal(stale.verdict, "unresponsive");
 
     assert.equal(poolReport(dir, { isAlive: () => false, now: () => now }).live, false);
   });

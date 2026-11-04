@@ -45,6 +45,7 @@ import { loadRoles } from "../../../src/foundation/roles.mjs";
 import { effectiveScanAgents } from "../../../src/orchestrator/options.mjs";
 import {
   QUEUE_FILES,
+  poolVerdict,
 } from "../../../src/foundation/loop-state.mjs";
 
 import { runStep, systemdUserDir } from "./taskd-guard.mjs";
@@ -152,8 +153,8 @@ export function scanSetFromConfig(path, options = {}) {
  *
  * @param {string} stateDir the directory holding `sessions.state.json` etc.
  * @param {{isAlive?: (pid: number) => boolean, now?: () => number}} [options]
- * @returns {{live: boolean, pid: number|null, heartbeatAgeMs: number|null, runningSessions: number,
- *            cardsQueued: number, reason: string}}
+ * @returns {{live: boolean, verdict: string, pid: number|null, heartbeatAgeMs: number|null,
+ *            runningSessions: number, cardsQueued: number, reason: string}}
  */
 export function poolReport(stateDir, options = {}) {
   const isAlive = options.isAlive ?? pidAlive;
@@ -181,26 +182,41 @@ export function poolReport(stateDir, options = {}) {
           String(row?.queue_kind ?? "handoff") === "handoff",
       ).length
     : 0;
-  const pid = Number.isInteger(sessions?.poolPid) ? sessions.poolPid : null;
-  const beat = Date.parse(String(sessions?.heartbeatAt ?? ""));
-  const heartbeatAgeMs = Number.isFinite(beat) ? Math.max(0, now() - beat) : null;
-  if (pid === null || !isAlive(pid)) {
+  if (sessions === null || typeof sessions !== "object") {
     return {
       live: false,
-      pid,
-      heartbeatAgeMs,
+      verdict: "gone",
+      pid: null,
+      heartbeatAgeMs: null,
       runningSessions,
       cardsQueued,
-      reason: pid === null ? "no session state" : `pool pid ${pid} is gone`,
+      reason: "no session state",
     };
   }
+  const pid = Number.isInteger(sessions.poolPid) ? sessions.poolPid : null;
+  const beat = Date.parse(String(sessions.heartbeatAt ?? ""));
+  const heartbeatAgeMs = Number.isFinite(beat) ? Math.max(0, now() - beat) : null;
+  // The one shared verdict: `live` is `verdict !== "gone"`, so an unresponsive
+  // or wedged pool is still a pool and this report never calls it absent.
+  const verdict = poolVerdict({
+    poolPid: pid,
+    poolPidStart: sessions.poolPidStart ?? null,
+    phase: sessions.phase,
+    startStartedAt: sessions.startStartedAt ?? null,
+    heartbeatAt: sessions.heartbeatAt ?? null,
+    tickStartedAt: sessions.tickStartedAt ?? null,
+    turnTimeoutMs: sessions.turnTimeoutMs,
+    isAlive,
+    now,
+  });
   return {
-    live: true,
+    live: verdict.live,
+    verdict: verdict.verdict,
     pid,
     heartbeatAgeMs,
     runningSessions,
     cardsQueued,
-    reason: "",
+    reason: verdict.reason ?? "",
   };
 }
 

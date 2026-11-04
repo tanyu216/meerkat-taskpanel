@@ -47,11 +47,15 @@ import {
   readCardForRedispatch,
   readRouteOutcome,
   recordContinuePid,
-  recoverWedgedPool,
+  killWedgedPool,
   releaseContinueLock,
   runCli,
   runPingTick,
 } from "../../src/orchestrator/runtime.mjs";
+import {
+  POOL_START_BUDGET_MS,
+  killDeadlineMs,
+} from "../../src/foundation/loop-state.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const tempDirs = [];
@@ -195,28 +199,108 @@ describe("runPingTick", () => {
   });
 });
 
-describe("the pool watchdog", () => {
-  it("stops a wedged pool and nothing else", () => {
+describe("the ping's one kill authority", () => {
+  const NOW = Date.parse("2026-01-01T02:00:00.000Z");
+  const TURN = 30 * 60 * 1_000;
+  const iso = (ms) => new Date(ms).toISOString();
+  const liveState = (extra = {}) => ({
+    poolPid: 4242,
+    poolPidStart: "token-1",
+    phase: "running",
+    tickStartedAt: iso(NOW - (killDeadlineMs(TURN) + 1_000)),
+    turnTimeoutMs: TURN,
+    ...extra,
+  });
+  const harness = (extra = {}) => {
     const kills = [];
-    const kill = (pid, signal) => kills.push([pid, signal]);
-    const log = () => {};
+    const markers = [];
+    const logs = [];
+    return {
+      kills,
+      markers,
+      logs,
+      run: (input = {}) =>
+        killWedgedPool({
+          state: liveState(),
+          marker: null,
+          isAlive: () => true,
+          now: () => NOW,
+          kill: (pid, signal) => kills.push([pid, signal]),
+          saveMarker: (marker) => markers.push(marker),
+          log: (line, meta) => logs.push({ line, ...meta }),
+          ...extra,
+          ...input,
+        }),
+    };
+  };
 
-    for (const verdict of ["running", "starting", "unresponsive", "gone"]) {
-      const result = recoverWedgedPool({
-        pool: { live: verdict !== "gone", verdict, poolPid: 4242 },
-        kill,
-        log,
-      });
-      assert.equal(result.killed, false, `${verdict} is not wedged`);
-    }
-
-    const stopped = recoverWedgedPool({
-      pool: { live: true, verdict: "wedged", poolPid: 4242, reason: "tick in flight for 3h" },
-      kill,
-      log,
+  it("does nothing while a phase is inside its own deadline", () => {
+    const h = harness();
+    const starting = h.run({
+      state: liveState({
+        phase: "starting",
+        startStartedAt: iso(NOW - (POOL_START_BUDGET_MS - 1)),
+      }),
     });
-    assert.equal(stopped.killed, true);
-    assert.deepEqual(kills, [[4242, "SIGTERM"]], "the unit restarts the stopped pool");
+    assert.equal(starting.acted, false);
+    assert.deepEqual(h.kills, []);
+    assert.deepEqual(h.markers, []);
+  });
+
+  it("SIGTERMs a wedged pool once, records wedgedKillAt and logs pool_killed", () => {
+    const h = harness();
+    const first = h.run();
+    assert.equal(first.acted, true);
+    assert.equal(first.signal, "SIGTERM");
+    assert.deepEqual(h.kills, [[4242, "SIGTERM"]]);
+    assert.equal(h.markers[0].wedgedKillAt, iso(NOW));
+    assert.equal(h.logs[0].event, "pool_killed");
+    assert.equal(h.logs[0].level, "error");
+    assert.match(h.logs[0].line, /SIGTERM/);
+  });
+
+  it("does not act twice in one ping cadence", () => {
+    const h = harness();
+    const first = h.run();
+    const second = h.run({ marker: h.markers[0] });
+    assert.equal(first.acted, true);
+    assert.equal(second.acted, false);
+    assert.deepEqual(h.kills, [[4242, "SIGTERM"]], "one action per wedge per ping");
+  });
+
+  it("SIGKILLs a pool that survives on a later ping, once", () => {
+    const h = harness();
+    h.run();
+    const later = h.run({ marker: h.markers[0], now: () => NOW + 60_000 });
+    assert.equal(later.acted, true);
+    assert.equal(later.signal, "SIGKILL");
+    assert.equal(h.markers[1].wedgedSigkillAt, iso(NOW + 60_000));
+    const after = h.run({ marker: h.markers[1], now: () => NOW + 120_000 });
+    assert.equal(after.acted, false);
+    assert.deepEqual(h.kills, [[4242, "SIGTERM"], [4242, "SIGKILL"]]);
+  });
+
+  it("never kills on lastTickOkAt's age", () => {
+    const h = harness();
+    const result = h.run({
+      state: liveState({ tickStartedAt: null, lastTickOkAt: iso(NOW - 6 * 60 * 60 * 1_000) }),
+    });
+    assert.equal(result.acted, false);
+    assert.deepEqual(h.kills, []);
+  });
+
+  it("writes no marker and logs one error when the signal throws", () => {
+    const h = harness({
+      kill: () => {
+        throw new Error("EPERM");
+      },
+    });
+    const result = h.run();
+    assert.equal(result.acted, false);
+    assert.equal(result.error, "EPERM");
+    assert.deepEqual(h.markers, [], "no marker for a signal that did not go out");
+    assert.equal(h.logs[0].level, "error");
+    assert.match(h.logs[0].line, /EPERM/);
   });
 });
 
@@ -332,6 +416,56 @@ describe("continue — the event path needs a live pool", () => {
     assert.equal(notified, false, "the timer owns the no-resident alert");
     assert.equal(logs.some((line) => /event dispatch skipped/.test(line)), true);
     assert.equal(existsSync(join(dir, "continue.state.json")), false, "no lock is taken");
+  });
+
+  it("treats starting and unresponsive as a live pool — the shared verdict gates the tick", async () => {
+    const dir = tempDir("tp-require-pool-live-");
+    const stateFile = join(dir, "sessions.state.json");
+    const cases = [
+      // No heartbeat yet: the startup window is published before start().
+      { phase: "starting", startStartedAt: new Date().toISOString(), heartbeatAt: null },
+      // A blocked event loop: stale heartbeat, live pid.
+      { phase: "running", heartbeatAt: new Date(Date.now() - 10 * 60_000).toISOString() },
+    ];
+    for (const fields of cases) {
+      writeFileSync(
+        stateFile,
+        JSON.stringify({ version: 3, poolPid: process.pid, projects: {}, ...fields }),
+      );
+      const ran = [];
+      let acquired = 0;
+      const code = await runContinue(opts(dir), {
+        requirePool: true,
+        runPatrol: async () => ran.push("patrol"),
+        runWorkflow: async () => ran.push("workflow"),
+        runPoll: async () => ran.push("poll"),
+        onAcquired: () => {
+          acquired += 1;
+        },
+        log: () => {},
+      });
+      assert.equal(code, 0);
+      assert.deepEqual(ran, ["patrol", "workflow", "poll"], `${fields.phase} is a live pool`);
+      assert.equal(acquired, 1, `${fields.phase}: the tick lock is taken, and only one`);
+    }
+
+    // The same real state file with a dead pid is absent: no tick, no lock.
+    writeFileSync(stateFile, JSON.stringify({ version: 3, poolPid: 2147483646, projects: {} }));
+    const ran = [];
+    let acquired = 0;
+    const code = await runContinue(opts(dir), {
+      requirePool: true,
+      runPatrol: async () => ran.push("patrol"),
+      runWorkflow: async () => ran.push("workflow"),
+      runPoll: async () => ran.push("poll"),
+      onAcquired: () => {
+        acquired += 1;
+      },
+      log: () => {},
+    });
+    assert.equal(code, 0);
+    assert.deepEqual(ran, [], "a gone pool buys no tick");
+    assert.equal(acquired, 0);
   });
 
   it("still runs the timer turn with no pool (patrol + workflow only)", async () => {
