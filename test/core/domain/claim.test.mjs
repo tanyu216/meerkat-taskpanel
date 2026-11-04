@@ -3,9 +3,9 @@
  *
  * T-20261009-230500-claimassignee tightened what a claim means on the execution
  * side: a card routed to someone (`assignee`) may only be claimed by that
- * someone; an unassigned card is an open pool; a takeover is either the
- * documented `--allow-steal` or a claim stale for more than six hours — and both
- * are audited.
+ * someone; an unassigned card is an open pool. Past six hours the lock rots but
+ * the route does not: the assignee recovers its own card, and anybody else needs
+ * the documented `--allow-steal --reason` — every takeover is audited.
  */
 
 import assert from "node:assert/strict";
@@ -261,9 +261,59 @@ describe("domain/claim — the in_progress windows", () => {
     const theirs = decideClaim(held({ heartbeatAt: MID }), { actor: "linus", now: NOW, resolveAssignee: resolveNone });
     assert.equal(theirs.action, CLAIM_ACTIONS.CONFLICT);
     assert.equal(theirs.code, "EXECUTION_ACTIVE");
+
+    // Inside the holder-only window the *holder* is still the gate, even for the
+    // card's own assignee: the route does not override a live claim early.
+    const assigned = decideClaim(held({ assigneeId: "dict-linus", claimedBy: "jobs", heartbeatAt: MID }), {
+      actor: "linus",
+      now: NOW,
+      resolveAssignee: resolveLinus,
+    });
+    assert.equal(assigned.action, CLAIM_ACTIONS.CONFLICT);
+    assert.equal(assigned.code, "EXECUTION_ACTIVE");
   });
 
-  it("anybody may take a claim older than six hours, and it is audited", () => {
+  it("lets the assignee take its own rotten claim back, without an override", () => {
+    const verdict = decideClaim(held({ assigneeId: "dict-linus", heartbeatAt: VERY_STALE }), {
+      actor: "linus",
+      now: NOW,
+      resolveAssignee: resolveLinus,
+    });
+    assert.equal(verdict.action, CLAIM_ACTIONS.TAKE);
+    assert.equal(verdict.reclaim, true);
+    assert.equal(verdict.steal, true, "the takeover is still audited");
+    assert.equal(verdict.override, undefined, "the assignee is not overriding the route");
+    assert.equal(verdict.stolenFrom, "elon");
+    assert.match(verdict.reason, /stale/);
+  });
+
+  it("refuses a non-assignee stale takeover without an explicit, reasoned override", () => {
+    const verdict = decideClaim(held({ assigneeId: "dict-linus", heartbeatAt: VERY_STALE }), {
+      actor: "elon",
+      now: NOW,
+      resolveAssignee: resolveLinus,
+    });
+    assert.equal(verdict.action, CLAIM_ACTIONS.INVALID);
+    assert.equal(verdict.code, "not_assignee");
+    assert.match(verdict.reason, /--allow-steal/);
+  });
+
+  it("lets a non-assignee take over past six hours with --allow-steal, and marks the override", () => {
+    const verdict = decideClaim(held({ assigneeId: "dict-linus", heartbeatAt: VERY_STALE }), {
+      actor: "elon",
+      now: NOW,
+      allowSteal: true,
+      resolveAssignee: resolveLinus,
+    });
+    assert.equal(verdict.action, CLAIM_ACTIONS.TAKE);
+    assert.equal(verdict.reclaim, true);
+    assert.equal(verdict.steal, true);
+    assert.equal(verdict.override, true, "a non-assignee takeover is an override of the route");
+    assert.equal(verdict.assignedTo, "Linus", "the change comment can name the assignee");
+    assert.equal(verdict.stolenFrom, "elon");
+  });
+
+  it("keeps the unassigned pool open past six hours", () => {
     const verdict = decideClaim(held({ heartbeatAt: VERY_STALE }), {
       actor: "linus",
       now: NOW,
@@ -273,10 +323,10 @@ describe("domain/claim — the in_progress windows", () => {
     assert.equal(verdict.reclaim, true);
     assert.equal(verdict.steal, true);
     assert.equal(verdict.stolenFrom, "elon");
-    assert.match(verdict.reason, /stale/);
+    assert.equal(verdict.override, undefined, "there is no route to override");
   });
 
-  it("pins the 6-hour boundary: inclusive for the holder-only window, then open", () => {
+  it("pins the 6-hour boundary: inclusive for the holder-only window, then the route decides", () => {
     // Exactly CLAIM_STALE_ANY_MS old: still inside the holder-only window, so a
     // non-holder is refused with EXECUTION_ACTIVE — not not_assignee.
     const atEdge = decideClaim(held({ heartbeatAt: AT_SIX_HOURS }), {
@@ -287,7 +337,8 @@ describe("domain/claim — the in_progress windows", () => {
     assert.equal(atEdge.action, CLAIM_ACTIONS.CONFLICT, "the 6h window is inclusive at exactly CLAIM_STALE_ANY_MS");
     assert.equal(atEdge.code, "EXECUTION_ACTIVE");
 
-    // One millisecond past it: the claim has rotted — anyone may take it.
+    // One millisecond past it: the claim has rotted. An unassigned card is the
+    // open pool, so anyone may take it.
     const justPast = decideClaim(held({ heartbeatAt: JUST_PAST_SIX_HOURS }), {
       actor: "linus",
       now: NOW,
@@ -298,18 +349,27 @@ describe("domain/claim — the in_progress windows", () => {
     assert.equal(justPast.stolenFrom, "elon");
   });
 
-  it("treats a holder with no heartbeat as a rotted claim anyone may take", () => {
+  it("treats a holder with no heartbeat as rotted, and applies the same assignee gate", () => {
     // A card in_progress whose holder left no heartbeat at all: the claim is not
-    // a claim — the takeover is audited like any >6h rotted claim.
+    // a claim — the takeover is audited like any >6h rotted claim. The *route*
+    // still decides who may take it.
     for (const heartbeatAt of [null, undefined, ""]) {
-      const verdict = decideClaim(held({ heartbeatAt }), {
+      const open = decideClaim(held({ heartbeatAt }), {
         actor: "linus",
         now: NOW,
         resolveAssignee: resolveNone,
       });
-      assert.equal(verdict.action, CLAIM_ACTIONS.TAKE, `heartbeatAt=${String(heartbeatAt)}`);
-      assert.equal(verdict.steal, true, "no heartbeat ⇒ the claim is not a claim");
-      assert.equal(verdict.stolenFrom, "elon");
+      assert.equal(open.action, CLAIM_ACTIONS.TAKE, `heartbeatAt=${String(heartbeatAt)}`);
+      assert.equal(open.steal, true, "no heartbeat ⇒ the claim is not a claim");
+      assert.equal(open.stolenFrom, "elon");
+
+      const refused = decideClaim(held({ assigneeId: "dict-linus", heartbeatAt }), {
+        actor: "elon",
+        now: NOW,
+        resolveAssignee: resolveLinus,
+      });
+      assert.equal(refused.action, CLAIM_ACTIONS.INVALID, `heartbeatAt=${String(heartbeatAt)}`);
+      assert.equal(refused.code, "not_assignee");
     }
   });
 
@@ -378,7 +438,7 @@ describe("domain/claim — the throw and the race explainer", () => {
         assert.equal(err.code, "not_assignee");
         assert.equal(err.http, 409);
         assert.equal(err.details.assignee, "dict-linus");
-        assert.match(err.hint.fix, /--allow-steal/);
+        assert.match(err.hint.fix, /taskctl issue claim .*--allow-steal --reason/);
         return true;
       },
     );

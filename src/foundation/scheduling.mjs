@@ -31,6 +31,8 @@ import {
 } from "./constants.mjs";
 import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
+import { resolveRolePlatform } from "./role-platforms.mjs";
+import { selectRole, selectWorkerRole } from "./roles.mjs";
 import { isContainer } from "./task-kind.mjs";
 import { reviewIdentityOf } from "./review-identity.mjs";
 import {
@@ -305,6 +307,161 @@ export function parseHeartbeat(value) {
 function runningCount(registry) {
   const running = registry?.running;
   return running && typeof running === "object" ? Object.keys(running).length : 0;
+}
+
+/** A non-blank string, or `null`. */
+function nonBlank(value) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  return text === "" ? null : text;
+}
+
+/** The same person/role name under the board's identity rule. */
+function sameName(a, b) {
+  return (
+    typeof a === "string" &&
+    typeof b === "string" &&
+    a.trim().toLowerCase() === b.trim().toLowerCase()
+  );
+}
+
+/** Can a kind that carries this role actually start? */
+function roleCanStart(role, input) {
+  if (role === null || role === undefined) return false;
+  // Older fixtures (and a caller that injected a hand-made role record) carry no
+  // installation facts; the role is then assumed startable, exactly as the
+  // pre-0014 scan treated it. A discovered role always states `installedOn`.
+  if (!Array.isArray(role.installedOn) || role.installedOn.length === 0) return true;
+  const platform = resolveRolePlatform(role, {
+    primaryKind: input.primaryKind ?? null,
+    order: input.kindOrder ?? null,
+    available: input.kindAvailable ?? null,
+  });
+  return platform.effective !== null;
+}
+
+/** A deferred candidate: the loop leaves the card alone this tick. */
+function defer(why) {
+  return { kind: "defer", why };
+}
+
+/**
+ * Who claims this candidate — and whether its route must change first.
+ *
+ * The board's route (`assignee`) decides the executor; the scanner is only the
+ * reader that happened to see the card. This is the tail of ADR 0007's
+ * "the card's assignee selects the executing role", which the board cannot
+ * enforce for the stale-recovery pool because a rotted claim is visible to every
+ * scanner (ADR 0013 keeps role knowledge out of the board).
+ *
+ * The decisions, in order:
+ *
+ *   1. no `assignee` field (an older projection / a hand-made test row): keep
+ *      the pre-0014 scan identity;
+ *   2. `assignee: null` — the public pool — is Worker (`defaultAgent`), else the
+ *      scanner; an unassigned review card is deferred;
+ *   3. a `human` assignee is deferred: the loop never claims or reassigns it;
+ *   4. a role that names the *other* lane is a misroute, deferred — never swapped;
+ *   5. the assignee's role in this card's lane, when it can start, is the claim
+ *      identity — **even when another agent scanned the card first**;
+ *   6. a review card is never handed to Worker (that is how a card gets
+ *      self-reviewed on the wrong lane);
+ *   7. only a rotted stale (`reason: "stale_any"`) **work** card may be formally
+ *      re-routed to Worker, and only when its assignee role is missing or
+ *      cannot start; the plan carries the `reassign` write that must land
+ *      before the claim;
+ *   8. everything else defers (`ready` and `stale_same` never fall back: a live
+ *      holder or a live route is not a recovery case).
+ *
+ * Pure: no clock, no I/O. `input.kindAvailable` is the caller's CLI probe.
+ *
+ * @param {object|null} candidate a candidate from `issue candidates`
+ * @param {{roleSet?: object|null, primaryKind?: string|null, kindOrder?: string|string[]|null, kindAvailable?: ((kind: string) => boolean)|null, defaultAgent?: string|null, scanAgent?: string|null}} [input]
+ * @returns {{kind: "claim", agent: string, reassign?: {from: string, to: string, reason: string}}|{kind: "defer", why: string}}
+ */
+export function planClaimIdentity(candidate, input = {}) {
+  const scanAgent = nonBlank(candidate?.agent) ?? nonBlank(input.scanAgent);
+  const defaultAgent = nonBlank(input.defaultAgent);
+  const roleSet = input.roleSet ?? null;
+
+  // 1. A projection from before the assignee facts existed. Keep the scan
+  //    identity (and the public pool's explicit default) byte-for-byte.
+  if (candidate === null || typeof candidate !== "object" || !Object.hasOwn(candidate, "assignee")) {
+    const agent = candidate?.reason === "unassigned" ? (defaultAgent ?? scanAgent) : scanAgent;
+    return agent === null ? defer("no claim identity") : { kind: "claim", agent };
+  }
+
+  const review = typeof candidate.review_of === "string" && candidate.review_of !== "";
+  const assignee = nonBlank(candidate.assignee);
+
+  // 2. The public pool: an unassigned card is Worker's, explicitly.
+  if (assignee === null) {
+    if (review) return defer("an unassigned review card has no reviewer to run it");
+    const agent = defaultAgent ?? scanAgent;
+    return agent === null ? defer("no claim identity") : { kind: "claim", agent };
+  }
+
+  // 3. A person owns the card: the loop never claims or re-routes it.
+  if (String(candidate.assignee_kind ?? "").trim().toLowerCase() === "human") {
+    return defer(`assigned to a human (${assignee})`);
+  }
+
+  // 4. No role layer loaded (a test, or a caller that injected none): the
+  //    assignee name is the only identity available.
+  if (roleSet === null) return { kind: "claim", agent: assignee };
+
+  const lane = review ? "reviewer" : "worker";
+  const otherLane = lane === "worker" ? "reviewer" : "worker";
+  const role = selectRole(roleSet, assignee, lane);
+
+  // 4a. The name is a role, just not the lane this card needs: a misroute is a
+  //     deferral for the director, never a quiet swap to another role.
+  if (role === null && selectRole(roleSet, assignee, otherLane) !== null) {
+    return defer(`assignee ${assignee} is a ${otherLane}-lane role, not a ${lane}`);
+  }
+
+  if (review) {
+    // 6. A review is only ever run by its assigned reviewer role.
+    if (role === null) {
+      return defer(`review card assignee ${assignee} is not an installed reviewer-lane role`);
+    }
+    if (!roleCanStart(role, input)) {
+      return defer(`reviewer role ${role.agent} is installed on no available kind`);
+    }
+    return { kind: "claim", agent: role.agent };
+  }
+
+  // 5. The assignee's own role, when it can start, is the executor.
+  if (role !== null && roleCanStart(role, input)) return { kind: "claim", agent: role.agent };
+
+  const why = role === null ? "not installed" : "installed on no available kind";
+
+  // 8. Only a rotted stale work card is a recovery case that may be re-routed.
+  if (candidate.reason !== "stale_any") {
+    return defer(`assignee ${assignee} is ${why}`);
+  }
+
+  // 7. Worker is the explicit, audited fallback — a formal reassignment whose
+  //    comment names the old assignee and why it could not run.
+  const worker = selectWorkerRole(roleSet);
+  if (worker === null) return defer("no Worker role is installed for the fallback");
+  if (!roleCanStart(worker, input)) {
+    return defer(`Worker role ${worker.agent} is installed on no available kind`);
+  }
+  if (sameName(worker.agent, assignee) || sameName(worker.id, assignee)) {
+    return defer(`assignee ${assignee} has no available role and Worker is the assignee`);
+  }
+  return {
+    kind: "claim",
+    agent: worker.agent,
+    reassign: {
+      from: assignee,
+      to: worker.agent,
+      reason:
+        `stale reclaim: assignee ${assignee} is ${why}; ` +
+        `reassigned to ${worker.agent} and will be claimed as ${worker.agent}.`,
+    },
+  };
 }
 
 /**

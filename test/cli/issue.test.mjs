@@ -1495,7 +1495,7 @@ describe("cli/issue — claim and stale recovery", () => {
     });
   });
 
-  it("lets another agent discover and take over past six hours", async () => {
+  it("lets another agent discover a stale card, but a bare takeover is not_assignee", async () => {
     await board(async ({ run, dataDir }) => {
       const card = createIssue(run, forLinus);
       dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
@@ -1506,16 +1506,47 @@ describe("cli/issue — claim and stale recovery", () => {
       const entry = candidates.find((candidate) => candidate.identifier === card.task.identifier);
       assert.ok(entry, "the six-hour takeover must be discoverable by any agent");
       assert.equal(entry.reason, "stale_any");
+      assert.equal(entry.assignee, "linus", "the route travels with the candidate");
+      assert.equal(entry.assignee_kind, "agent");
+      assert.equal(typeof entry.assignee_id, "string");
+
+      // The lock rotted, but the route did not: a non-assignee needs the
+      // explicit, reasoned override.
+      const bare = run(["issue", "claim", card.task.identifier, "--agent", "jobs", "--actor-kind", "claude", "--json"]);
+      assert.equal(bare.status, 1);
+      assert.equal(errorOf(bare).code, "not_assignee");
+      assert.match(errorOf(bare).hint.fix, /taskctl issue claim .*--allow-steal --reason/);
 
       const took = dataOf(
-        run(["issue", "claim", card.task.identifier, "--agent", "jobs", "--actor-kind", "claude", "--json"]),
+        run([
+          "issue", "claim", card.task.identifier, "--agent", "jobs", "--actor-kind", "claude",
+          "--allow-steal", "--reason", "linus is unavailable", "--json",
+        ]),
       );
       assert.equal(took.stole, true);
       assert.equal(took.task.claimed_by_actor.display_name, "jobs");
+      assert.equal(took.task.assignee.display_name, "linus", "the takeover does not rewrite the route");
 
-      // The takeover is audited as a change comment naming the previous holder.
+      // The override is audited as a change comment naming the assignee and the reason.
       const comments = dataOf(run(["comment", "list", card.task.identifier, "--json"])).comments;
-      assert.ok(comments.some((comment) => comment.kind === "change" && /linus|Linus/.test(comment.body)));
+      assert.ok(
+        comments.some(
+          (comment) =>
+            comment.kind === "change" && /linus/i.test(comment.body) && /linus is unavailable/.test(comment.body),
+        ),
+      );
+    });
+  });
+
+  it("lets the assignee re-claim its own rotten claim without an override", async () => {
+    await board(async ({ run, dataDir }) => {
+      const card = createIssue(run, forLinus);
+      dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      ageHeartbeat(dataDir, card.task.identifier, "2020-01-01T00:00:00.000Z");
+
+      const recovered = dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      assert.equal(recovered.stole, true, "the takeover is still audited");
+      assert.equal(recovered.task.claimed_by_actor.display_name, "linus");
     });
   });
 

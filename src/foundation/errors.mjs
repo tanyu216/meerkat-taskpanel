@@ -130,7 +130,7 @@ export const ERROR_CODES = Object.freeze({
   not_assignee: spec(
     409,
     "This task is assigned to somebody else; only the assignee may claim it.",
-    { fix: 'taskctl issue move <ref> in_progress --allow-steal --reason "<why>"' },
+    { fix: 'taskctl issue claim <ref> --allow-steal --reason "<why>"' },
   ),
   // An epic is a grouping card: it carries no work, so nothing may claim it.
   not_claimable: spec(409, "Epics are grouping cards and cannot be claimed."),

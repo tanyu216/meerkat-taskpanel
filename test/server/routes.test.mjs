@@ -1160,6 +1160,9 @@ describe("server/routes — candidates (the poll read)", () => {
     assert.deepEqual(
       Object.keys(candidates.candidates[0]).sort(),
       [
+        "assignee",
+        "assignee_id",
+        "assignee_kind",
         "created_at",
         "delivery_round",
         "id",
@@ -1178,6 +1181,10 @@ describe("server/routes — candidates (the poll read)", () => {
       ],
       "the card's fields, its opaque meta, and `reason`",
     );
+    // ADR 0014: the poll routes by the card's assignee, so the read carries it.
+    assert.equal(candidates.candidates[0].assignee, "pollbot");
+    assert.equal(candidates.candidates[0].assignee_kind, "agent");
+    assert.equal(typeof candidates.candidates[0].assignee_id, "string");
     assert.equal(candidates.candidates[0].status, "todo");
     assert.equal(candidates.candidates[0].project, "cand");
     assert.equal(candidates.candidates[0].reason, "ready");
@@ -1263,6 +1270,31 @@ describe("server/routes — claim enforces the assignee (T-20261009-230500)", ()
     assert.equal(refused.status, 400, JSON.stringify(refused.body));
     assert.equal(refused.body.error.code, "VALIDATION_FAILED");
     assert.equal(refused.body.error.details.field, "reason");
+  });
+
+  it("refuses a non-assignee takeover past six hours, and takes it with allow_steal", async () => {
+    const card = await assignedCard("For linus stale");
+    const ref = card.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }, asAgent("linus")));
+    taskd.board.db
+      .prepare("UPDATE tasks SET heartbeat_at = ? WHERE identifier = ?")
+      .run("2020-01-01T00:00:00.000Z", ref);
+
+    // The lock has rotted; the route has not. A bare takeover is refused.
+    const refused = await call("POST", `/api/v1/tasks/${ref}/claim`, {}, asAgent("elon"));
+    assert.equal(refused.status, 409, JSON.stringify(refused.body));
+    assert.equal(refused.body.error.code, "not_assignee");
+
+    const took = dataOf(
+      await call(
+        "POST",
+        `/api/v1/tasks/${ref}/claim`,
+        { allow_steal: true, reason: "linus is unavailable" },
+        asAgent("elon"),
+      ),
+    );
+    assert.equal(took.task.claimed_by_actor.display_name, "elon");
+    assert.equal(took.task.assignee.display_name, "linus", "the route stands across the override");
   });
 });
 

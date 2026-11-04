@@ -476,6 +476,9 @@ describe("task-order — the candidate projection is unchanged by the order", ()
     const before = currentRevision(db());
     const { candidates } = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=linus"));
     assert.deepEqual(Object.keys(candidates[0]).sort(), [
+      "assignee",
+      "assignee_id",
+      "assignee_kind",
       "created_at",
       "delivery_round",
       "id",
@@ -492,6 +495,10 @@ describe("task-order — the candidate projection is unchanged by the order", ()
       "title",
       "version",
     ]);
+    // The route is part of the projection the order refines (ADR 0014).
+    assert.equal(candidates[0].assignee, "linus");
+    assert.equal(candidates[0].assignee_kind, "agent");
+    assert.equal(typeof candidates[0].assignee_id, "string");
     assert.equal(currentRevision(db()), before, "the ordered poll read is still read-only");
   });
 });

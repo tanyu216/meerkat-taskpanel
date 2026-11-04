@@ -953,10 +953,18 @@ function staleBound(now, stolen) {
 /** The `change` comment an audited takeover leaves behind (the readable trail). */
 function stealCommentBody(task, verdict, actor, reason) {
   if (verdict.reclaim === true) {
-    return (
+    const stale =
       `Stale-claim takeover on ${task.identifier}: the previous holder ${verdict.stolenFrom} ` +
-      `left a claim without a heartbeat for more than 6 hours; ${actor.id} re-claimed it.`
-    );
+      `left a claim without a heartbeat for more than 6 hours; `;
+    if (verdict.override === true) {
+      // The claim rotted, but the route did not: a non-assignee needed the
+      // explicit override, and the comment must say whose card it was and why.
+      return (
+        `${stale}the card is assigned to ${verdict.assignedTo}; ` +
+        `${actor.id} re-claimed it with --allow-steal. Reason: ${reason}`
+      );
+    }
+    return `${stale}${actor.id} re-claimed it.`;
   }
   return (
     `Audited takeover on ${task.identifier}: the card was assigned to ${verdict.stolenFrom}; ` +
@@ -1036,9 +1044,12 @@ function performClaim(ctx, input) {
     }
   }
 
-  // `--allow-steal` must say why. A >6h reclaim is audited too but needs no
-  // reason: the staleness *is* the reason.
-  const auditedTakeover = verdict.steal === true && verdict.reclaim !== true;
+  // `--allow-steal` must say why. An assignee's own >6h re-claim is audited too
+  // but needs no reason: the staleness *is* the reason. A non-assignee's >6h
+  // takeover is an override of the route, so it carries the same `--reason` as
+  // any other `--allow-steal`.
+  const auditedTakeover =
+    verdict.steal === true && (verdict.reclaim !== true || verdict.override === true);
   const stealReason = auditedTakeover ? assertStealReason(reason) : null;
 
   const fromStatus = task.status;
@@ -1871,7 +1882,12 @@ function orderedCandidates(ctx, input = {}) {
 
   return {
     candidates: found.map(({ task, reason }) =>
-      candidateOf(task, reason, (id) => ctx.repos.tasks.get(id)?.identifier ?? null),
+      candidateOf(
+        task,
+        reason,
+        (id) => ctx.repos.tasks.get(id)?.identifier ?? null,
+        (id) => ctx.repos.dictionary.getById("assignee", id)?.displayName ?? null,
+      ),
     ),
     // In the order the caller receives them, so the two arrays reconcile
     // line for line; `reason` rides along because the bucket is the first key.
@@ -1954,14 +1970,22 @@ function staleReason(task, assigneeIds, now) {
  * candidate to read one.
  * @param {object} task
  * @param {string} reason
+ * @param {((id: string) => string|null)|null} [resolveRef]
+ * @param {((id: string) => string|null)|null} [resolveAssigneeName]
  */
-function candidateOf(task, reason, resolveRef = null) {
+function candidateOf(task, reason, resolveRef = null, resolveAssigneeName = null) {
   const meta = task.meta ?? {};
   const identity = reviewIdentityOf(task);
   const reviewOf =
     identity.originalId === null
       ? identity.originalRef
       : (resolveRef?.(identity.originalId) ?? identity.originalRef ?? identity.originalId);
+  // The route is a board fact, so the poll gets it without a second `issue get`:
+  // the supervisor must claim and dispatch by the card's assignee, never by
+  // whichever agent happened to scan it first (ADR 0014). The board still knows
+  // nothing about roles — it reports the assignment, not a lane.
+  const assigneeId = task.assigneeId ?? null;
+  const assignee = assigneeId === null ? null : (resolveAssigneeName?.(assigneeId) ?? assigneeId);
   return {
     id: task.id,
     identifier: task.identifier,
@@ -1974,6 +1998,9 @@ function candidateOf(task, reason, resolveRef = null) {
     target: nonEmptyString(meta.target),
     meta,
     reason,
+    assignee,
+    assignee_id: assigneeId,
+    assignee_kind: task.assigneeKind ?? null,
     // A review card names the card it audits and the round it audits, so the
     // supervisor can pick the review handoff at wake time without a second
     // `issue get`. The identifier is resolved from the structural column; the
