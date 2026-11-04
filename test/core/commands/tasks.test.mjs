@@ -382,6 +382,109 @@ describe("commands/tasks — create and update", () => {
   });
 });
 
+describe("commands/tasks — the review kind (ADR 0014)", () => {
+  function deliveredOriginal(commands) {
+    const original = commands.createTask({
+      projectId: "proj",
+      title: "Original",
+      acceptanceMode: "auto",
+      actor: AGENT,
+    });
+    commands.claim({ id: original.id, actor: AGENT });
+    commands.deliver({ taskId: original.id, report: report(), actor: AGENT });
+    return original;
+  }
+
+  function reviewOf(commands, original, extra = {}) {
+    return commands.createTask({
+      projectId: "proj",
+      title: "Review",
+      allowDup: true,
+      reviewOf: original.identifier,
+      reviewRound: 1,
+      actor: AGENT,
+      ...extra,
+    });
+  }
+
+  it("lands --review-of as kind=review, and accepts an explicit review kind", async () => {
+    await board(async ({ commands }) => {
+      const original = deliveredOriginal(commands);
+      const implicit = reviewOf(commands, original);
+      assert.equal(implicit.kind, "review");
+      assert.equal(implicit.reviewOfId, original.id);
+      assert.equal(implicit.reviewRound, 1);
+
+      const explicit = reviewOf(commands, original, { kind: "review" });
+      assert.equal(explicit.kind, "review", "the resolver lands the stored kind");
+      assert.equal(explicit.reviewOfId, original.id);
+    });
+  });
+
+  it("refuses kind=review without a marker, and an epic carrying one", async () => {
+    await board(async ({ db, commands }) => {
+      const before = revision(db);
+      assert.throws(
+        () => commands.createTask({ projectId: "proj", title: "No marker", kind: "review", actor: AGENT }),
+        (err) => {
+          assert.equal(err.code, "VALIDATION_FAILED");
+          assert.equal(err.details.field, "kind");
+          assert.deepEqual(err.details.allowed, ["task", "epic"]);
+          return true;
+        },
+      );
+      assert.throws(
+        () =>
+          commands.createTask({
+            projectId: "proj",
+            title: "Epic review",
+            kind: "epic",
+            reviewOf: "PROJ-0001",
+            actor: AGENT,
+          }),
+        (err) => err.code === "VALIDATION_FAILED" && err.details.field === "kind",
+      );
+      assert.equal(revision(db), before, "a refused create changes nothing");
+    });
+  });
+
+  it("refuses to move a card between review and non-review kinds", async () => {
+    await board(async ({ commands }) => {
+      const original = deliveredOriginal(commands);
+      const review = reviewOf(commands, original);
+      const plain = commands.createTask({ projectId: "proj", title: "Plain", actor: AGENT });
+
+      assert.throws(
+        () => commands.updateTask({ id: review.id, patch: { kind: "task" }, actor: AGENT }),
+        (err) => err.code === "REVIEW_OF_IMMUTABLE" && err.details.field === "kind",
+        "review → task is refused",
+      );
+      assert.throws(
+        () => commands.updateTask({ id: plain.id, patch: { kind: "review" }, actor: AGENT }),
+        (err) => err.code === "VALIDATION_FAILED" && err.details.field === "kind",
+        "task → review is refused: only review_of creates a review",
+      );
+      assert.equal(commands.getTask({ id: review.id }).kind, "review");
+      assert.equal(commands.getTask({ id: plain.id }).kind, "task");
+    });
+  });
+
+  it("reads kind=task/epic/review literally, and role stays review", async () => {
+    await board(async ({ commands }) => {
+      const original = deliveredOriginal(commands);
+      const review = reviewOf(commands, original);
+      const task = commands.createTask({ projectId: "proj", title: "Task", actor: AGENT });
+      const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
+
+      const ids = (filter) => commands.listTasks({ projectId: "proj", ...filter }).map((card) => card.id);
+      assert.deepEqual(new Set(ids({ kind: "review" })), new Set([review.id]));
+      assert.deepEqual(new Set(ids({ kind: "epic" })), new Set([epic.id]));
+      assert.equal(ids({ kind: "task" }).includes(review.id), false, "kind=task no longer returns a review");
+      assert.deepEqual(new Set(ids({ kind: "task" })), new Set([original.id, task.id]));
+    });
+  });
+});
+
 describe("commands/tasks — an epic with children cannot be downgraded", () => {
   it("refuses the downgrade through the service and writes nothing", async () => {
     await board(async ({ db, commands }) => {
@@ -3400,7 +3503,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
     });
   });
 
-  it("requires a review card to be kind=task", async () => {
+  it("refuses an epic review card (it could never be claimed)", async () => {
     await board(async ({ commands }) => {
       const original = commands.createTask({
         projectId: "proj",
@@ -3419,7 +3522,12 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
             reviewRound: 1,
             actor: AGENT,
           }),
-        (err) => err.code === "VALIDATION_FAILED" && err.details.field === "kind",
+        (err) => {
+          assert.equal(err.code, "VALIDATION_FAILED");
+          assert.equal(err.details.field, "kind");
+          assert.deepEqual(err.details.allowed, ["task", "review"]);
+          return true;
+        },
       );
     });
   });

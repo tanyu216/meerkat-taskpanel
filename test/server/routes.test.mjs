@@ -1648,17 +1648,16 @@ describe("server/routes — the review filter", () => {
     assert.deepEqual(empty.tasks, []);
   });
 
-  it("reads the marker as `kind=review`, without narrowing `kind=task`", async () => {
+  it("reads kind literally: review returns reviews, task excludes them", async () => {
+    // ADR 0014 — `kind` is the stored type, not an alias over the marker.
     const reviews = dataOf(await call("GET", "/api/v1/tasks?project_id=rvf&kind=review"));
     assert.deepEqual(reviews.tasks.map((task) => task.identifier), [review.identifier]);
 
-    // A review card is an ordinary `kind=task` card: the alias is an **added**
-    // filter over the marker, never a replacement for `kind=task`.
     const tasks = dataOf(await call("GET", "/api/v1/tasks?project_id=rvf&kind=task"));
-    assert.ok(tasks.tasks.some((task) => task.identifier === review.identifier));
+    assert.ok(!tasks.tasks.some((task) => task.identifier === review.identifier), "kind=task no longer returns a review");
     assert.ok(tasks.tasks.some((task) => task.identifier === original.identifier));
 
-    // The readable word, derived on the wire from kind + the marker.
+    // The readable word stays the wire's discriminant.
     assert.equal(reviews.tasks[0].role, "review");
     assert.equal(tasks.tasks.find((task) => task.identifier === original.identifier).role, "task");
   });

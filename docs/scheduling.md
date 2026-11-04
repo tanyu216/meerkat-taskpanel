@@ -798,7 +798,7 @@ in this order:
 
 ### The review card, and who closes it
 
-A review card is an ordinary `kind=task` card, created with `review_of` (the original's
+A review card is `kind='review'` (ADR 0014), created with `review_of` (the original's
 identifier or id) and, optionally, `review_round` (a positive integer), plus `meta.flow=B`
 and a `review` label for discoverability. At creation the board resolves that reference and
 stamps **both** the immutable structural marker (`review_of_id` / `review_round`, 0025) and
@@ -807,9 +807,9 @@ its readable mirror in `meta` (`meta.review_of` = the original's identifier,
 falls back to `meta.review_of` for a snapshot written before 0025; the acceptance gate reads
 the column only. A caller-supplied `meta.review_of` given as an id, or a string round, is
 normalized to the resolved identifier and an integer, and a meta patch is canonicalized
-from the column, so a later PATCH cannot make the two spellings disagree. There is no
-`kind=review`: the board's kinds are `task`/`epic` (0038 retired `deploy`), and a review is
-a task like any other.
+from the column, so a later PATCH cannot make the two spellings disagree. The board's kinds
+are `task`/`epic`/`review` (0038 retired `deploy`): `review_of` forces `kind='review'`, and
+`kind='review'` without a marker is refused, so the type and the identity cannot disagree.
 
 Its lifecycle cannot skip `in_review`:
 

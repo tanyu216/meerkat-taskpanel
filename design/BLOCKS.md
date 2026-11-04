@@ -302,6 +302,16 @@ project, so every row is filled at all times.
 count.** Status sits immediately after Priority because the two are the card's own
 first-class scalars; Label is the list-valued one and follows (R11).
 
+**Implementation supplement — the review switch (ADR 0014).** 〔原型无 review 卡；
+这是记录在案的扩展〕 `[data-filter-reviews]` → `[data-filter-reviews-switch]` is an
+implementation-only control. Since a review is a stored kind, the board and list
+hide it by default, and this switch is the one way to show it. It sits between
+the label control and Clear, so the four filters keep the order above; the
+switch is **not** a filter (no `filters` entry, no `activeFilterCount`, Clear
+filters leaves it alone). The count's denominator is the switch-filtered
+reading (`boardTaskTotal` in `web/src/stores/board.js`), so a hidden review
+never inflates “N tasks”.
+
 **The label selector is a dropdown, not a `<select>`** (R3). Its hook name did not move:
 `[data-filter-label]` is still the element the interaction layer reads, but it now reads
 an attribute rather than a form value, because the addendum names this control
@@ -622,7 +632,7 @@ the distinction.
 |---|---|
 | Root | `aside[data-detail-drawer][data-state="closed\|open\|closing"]` (`role="dialog"`, `aria-modal="true"`) |
 | Scrim | `[data-detail-overlay][data-state]` |
-| Head | `[data-detail-identifier]` (**R12**: the whole id, carrying `.td-id-full`) · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · **kind** `[data-detail-kind]` (`data-kind="epic\|task"`) → `[data-detail-kind-label]` · `[data-detail-close]`. Since TP-0075 the six-tab strip also lives here, directly under the title (see the supplement below) |
+| Head | `[data-detail-identifier]` (**R12**: the whole id, carrying `.td-id-full`) · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · **kind** `[data-detail-kind]` (`data-kind="epic\|task\|review"`) → `[data-detail-kind-label]` · `[data-detail-close]`. Since TP-0075 the six-tab strip also lives here, directly under the title (see the supplement below) |
 | Save state (R10) | `[data-detail-save][data-save-state="idle \| saving \| saved \| error"]` (attribute carrier, `hidden`, no copy of its own) · `[data-detail-save-error][role="alert"]` (its only visible half) |
 | Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input while the card is `backlog`/`todo`, else a disabled box**, see B22 and the round-2 supplement) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (**read-only name + avatar since TP-0075 round 2** — see the supplement) · project `[data-detail-project]` / `[data-detail-project-label]` · **acceptance** `[data-detail-acceptance-mode]` (`data-acceptance-mode="off\|auto\|human"`, read-only — 0038: the card's acceptance mode, set at creation and changed only through the audited `--acceptance-mode` override) · **labels** `[data-detail-labels]` (editable label combo — see B25). The internal id (`[data-detail-id]` / `[data-detail-id-copy]`) and `[data-detail-version]` rows were **removed** by TP-0075; the head's human identifier is the identity |
 | Tabs | `[data-detail-tabs][role="tablist"]` → `[data-detail-tab]` ×6 (`details` · `activity` · `reports` · `acceptance` · `leftovers` · `sessions`) → `[data-detail-panel]` ×6. **Since TP-0075 the strip sits inside `.td-drawer-head`, directly under `[data-detail-title]`** (`design/BLOCKS.md` §B09 supplement). Details holds Properties / Description / Relations / Attachments; Activity holds Comments + Activity; Sessions holds the Agent-session trail; Reports / Acceptance / Leftovers read `task_reports`. `sessions` is hidden when the card has no session rows; the other five are always present |
@@ -639,11 +649,13 @@ prototype.
 均为记录在案的产品决定，原型不回改〕 Six changes, all measured in
 `web/scripts/dom-smoke.mjs` and pinned by `test/web/blocks.contract.mjs` §B09:
 
-1. **Kind badge.** `[data-detail-kind]` sits on the identifier/status row; an
-   `epic` reads **Epic**, every ordinary card and every review card (a
-   `kind=task` carrying `review_of`) reads **Task**. The word is a catalogue
-   seat (`kind.task` / `kind.epic`, zh `任务` / `epic` — GLOSSARY keeps `epic`
-   in English), never colour-only.
+1. **Kind badge.** `[data-detail-kind]` sits on the identifier/status row and
+   reads the card's stored `kind`: an `epic` reads **Epic**, an ordinary card
+   reads **Task**, and since ADR 0014 a review card (`kind='review'`, whose
+   `review_of` marker stays its identity) reads **Review**. The word is a
+   catalogue seat (`kind.task` / `kind.epic` / `kind.review`, zh `任务` /
+   `epic` / `审核` — GLOSSARY keeps `epic` in English and names a review card
+   审核卡), never colour-only.
 2. **Relations is four groups.** `[data-detail-relations]` now holds
    `[data-rel-group="parent"]`, `"children"`, `"depends"`, `"related"`. Parent
    and Related read the card's edges; **Children is the whole recursive
@@ -715,6 +727,21 @@ authority, and its refusal renders through the ordinary
 Every hook here is pinned by `test/web/blocks.contract.mjs` §B09 in `states`
 (they exist only on a waiting card), and both legs — accept and send back — are
 driven in `web/scripts/dom-smoke.mjs` (run by `test/web/blocks.dom.test.mjs`).
+
+**Implementation supplement — the review rounds (ADR 0014).** 〔原型无 review 卡；
+这是记录在案的扩展〕 The Acceptance tab also lists the review cards that audited
+the open card, oldest round first: `[data-detail-review-rounds]` → per row
+`[data-review-round]` (the round number), `[data-review-round-label]` (the round
+copy, or the identifier when the wire carries no round), `[data-review-identifier]`
+and `[data-review-status-text]`. The criteria rows keep their own
+`[data-detail-acceptance-list]` seat, so the round rows cannot be mistaken for
+verdict rows by a test that counts them. It is read-only: the review card is the loop's
+record of the round. The projection is
+`web/src/lib/review.js#reviewRoundsFor`, derived from the whole `board.tasks`
+reading — the marker (`review_of_id`), with the documented legacy `review_of`
+identifier fallback — so the panel needs no second request and follows the live
+stream. The hooks are pinned in §B09 `states`: the block exists only for a card
+that has reviews.
 
 **Implementation supplement — the panel opens before its card is read.** Opening a card
 clears the detail and flips the drawer to `open` in one act, so the panel now slides in at

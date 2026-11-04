@@ -16,15 +16,16 @@
  */
 
 /**
- * The card's kind as the badge's vocabulary: an `epic` shows Epic; every other
- * card — an ordinary `task`, and a review card (which is also `kind=task`) —
- * shows Task. An absent kind reads as the default, like the column's own.
+ * The card's kind as the badge's vocabulary: the stored `kind` itself — `task`,
+ * `epic`, or `review` (ADR 0014 made a review card its own kind, not a `task`
+ * carrying a marker). An absent or unknown kind reads as the default, like the
+ * column's own.
  *
  * @param {unknown} kind
- * @returns {"epic"|"task"}
+ * @returns {"epic"|"task"|"review"}
  */
 export function detailKind(kind) {
-  return kind === "epic" ? "epic" : "task";
+  return kind === "epic" || kind === "review" ? kind : "task";
 }
 
 /** One card as the relation rows render it, with the raw id as the identifier fallback. */

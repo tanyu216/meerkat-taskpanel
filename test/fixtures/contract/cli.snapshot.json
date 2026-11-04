@@ -780,7 +780,7 @@
             {
               "flag": "kind",
               "as": "string",
-              "value": "<task|epic>",
+              "value": "<task|epic|review>",
               "required": false,
               "repeat": false,
               "short": null

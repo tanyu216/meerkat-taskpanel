@@ -48,7 +48,7 @@ import {
   latestQuestion,
 } from "../domain/awaiting.mjs";
 import { normalizeBlockedReason } from "../domain/blocked-reason.mjs";
-import { STATUS, TASK_KIND } from "../domain/enums.mjs";
+import { CREATABLE_KINDS, STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { hasIdemDiscriminator, idemKey, idemSource, normalizeIdem } from "../domain/idem.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
 import { assertEpicDowngradeAllowed } from "../domain/relation.mjs";
@@ -219,7 +219,13 @@ export function createTask(ctx, input) {
       const marker = resolveReviewMarker(ctx, input.projectId, input, candidate.kind);
       candidate.reviewOfId = marker.reviewOfId;
       candidate.reviewRound = marker.reviewRound;
-      if (marker.reviewOfId !== null) candidate.meta = mirrorReviewMeta(candidate.meta, marker);
+      if (marker.reviewOfId !== null) {
+        // ADR 0014 — the marker is what makes the card a review. The resolver
+        // accepts `task` or `review` as the caller's word and lands the stored
+        // kind on `review`, so a marker and `kind='review'` cannot disagree.
+        candidate.kind = TASK_KIND.REVIEW;
+        candidate.meta = mirrorReviewMeta(candidate.meta, marker);
+      }
 
       // 0038/0002 — one acceptance decision, owned by the card. An explicit
       // value wins, a review card is always `off`, and an unresolved card falls
@@ -328,17 +334,27 @@ function resolveReviewMarker(ctx, projectId, input, kind = TASK_KIND.TASK) {
         hint: { fix: "pass review_of together with review_round, or drop the round" },
       });
     }
+    // ADR 0014 — the review kind is not creatable on its own. A review is a
+    // card *about* another card, so the marker is what makes it one.
+    if (kind === TASK_KIND.REVIEW) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: "kind=review requires review_of — a review exists only relative to the card it audits",
+        details: { field: "kind", received: kind, allowed: [...CREATABLE_KINDS] },
+        hint: { fix: "pass --review-of <identifier> (and optionally --review-round), or create a task" },
+      });
+    }
     return { reviewOfId: null, reviewRound: null, reviewOfIdentifier: null };
   }
 
   // A review is a work card the reviewer can claim. An epic cannot be claimed,
-  // so an epic review card would never be woken — it would only age; everything
-  // but `task` is refused.
-  if (kind !== TASK_KIND.TASK) {
+  // so an epic review card would never be woken — it would only age. `task`
+  // and the explicit `review` kind both land on the marker; everything else is
+  // refused.
+  if (kind !== TASK_KIND.TASK && kind !== TASK_KIND.REVIEW) {
     throw new DomainError("VALIDATION_FAILED", {
-      message: `a review card must be kind=task (got ${JSON.stringify(kind)})`,
-      details: { field: "kind", received: kind, allowed: [TASK_KIND.TASK] },
-      hint: { fix: "create the review card as a task; an epic cannot be claimed or reviewed" },
+      message: `a review card must be kind=task or kind=review (got ${JSON.stringify(kind)})`,
+      details: { field: "kind", received: kind, allowed: [TASK_KIND.TASK, TASK_KIND.REVIEW] },
+      hint: { fix: "create the review card as a task or a review; an epic cannot be claimed or reviewed" },
     });
   }
 
@@ -822,6 +838,30 @@ export function updateTask(ctx, input) {
       // parent edge. The DB trigger (0011) is the machine guarantee; this read is
       // the friendly refusal that names the repair before the write is attempted.
       if (patch.kind !== undefined) {
+        // ADR 0014 — the review bit is immutable. A review is created by its
+        // marker, never promoted by a patch, and it cannot be demoted while the
+        // marker stays. The DB trigger is the machine guarantee; this is the
+        // friendly refusal that names the repair.
+        const currentIsReview = current.kind === TASK_KIND.REVIEW;
+        const nextIsReview = patch.kind === TASK_KIND.REVIEW;
+        if (currentIsReview !== nextIsReview) {
+          if (nextIsReview) {
+            throw new DomainError("VALIDATION_FAILED", {
+              message: "a card becomes a review only through review_of at creation",
+              details: {
+                field: "kind",
+                received: patch.kind,
+                allowed: [...CREATABLE_KINDS],
+                hint: "create the review card with --review-of <identifier>",
+              },
+            });
+          }
+          throw new DomainError("REVIEW_OF_IMMUTABLE", {
+            message: "a review card's kind cannot be changed",
+            details: { field: "kind", taskId: current.id, kind: current.kind },
+            hint: { fix: "reopen or re-deliver the original; the loop issues the next review round" },
+          });
+        }
         assertEpicDowngradeAllowed(current, patch.kind, ctx.repos.relations.listChildren(input.id));
       }
 
@@ -1682,13 +1722,13 @@ function compareTerminalByFinish(left, right) {
  */
 function readOrdered(ctx, filter) {
   const { orderDebug: debugFlag, board: boardFlag, ...rest } = filter;
-  // `kind=review` is a filter over the review marker, not a third kind: a
-  // review card is an ordinary `kind=task` card carrying `review_of_id`. The
-  // translation lives here, at the one chokepoint both list use-cases share, so
-  // `kind=task` keeps its meaning (it still returns review cards) and the
-  // marker read is pushed into SQL — it holds under `limit`/`offset` and under
-  // the weight order, which pages in JS after a full read.
-  const scope = rest.kind === "review" ? { ...rest, kind: undefined, hasReviewMarker: true } : rest;
+  // ADR 0014 — `kind` is the stored type, read literally: `task` returns only
+  // task cards, `epic` only epics, `review` only reviews. The old translation
+  // of `kind=review` into `review_of_id IS NOT NULL` is gone, and `kind=task`
+  // no longer returns a review. The read stays in SQL so it holds under
+  // `limit`/`offset` and under the weight order, which pages in JS after a
+  // full read. `board` is TP-0092's working-set read mode, not a kind filter.
+  const scope = rest;
   const debug = debugFlag === true;
   const board = boardFlag === true;
 

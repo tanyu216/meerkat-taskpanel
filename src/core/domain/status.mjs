@@ -247,17 +247,21 @@ export function isTerminalStatus(value) {
 export function allowedTargets(from, kind = null, acceptanceMode = null, reviewCard = false) {
   const base = ALLOWED_TRANSITIONS[from];
   if (base === undefined) return Object.freeze([]);
+  // ADR 0014 — `kind='review'` is the same fact as the marker. A caller that
+  // holds only the kind must not lose the review rules, so the kind is folded
+  // into the flag here rather than left to every caller.
+  const isReview = reviewCard || kind === TASK_KIND.REVIEW;
   // A review card has no reopen edge. Reopening the *original* is what starts
   // the next round; a review card is an artefact of the round it audited, and
   // The terminal trigger (`tr_tasks_review_no_reopen`) enforces the same rule.
-  if (reviewCard && isTerminalStatus(from)) return Object.freeze([]);
+  if (isReview && isTerminalStatus(from)) return Object.freeze([]);
   const extra = [];
   if (kind === TASK_KIND.EPIC) extra.push(...(EPIC_ONLY_TRANSITIONS[from] ?? []));
   // 0038 — only an explicit `off` gains the direct edge. A missing mode keeps
   // the base table rather than the column default, so a caller that has not
   // read the card cannot widen the transitions it may offer. A review card is flow B: it must
   // deliver its verdict through `in_review`, so the direct edge is withheld.
-  if (!reviewCard && normalizeCardAcceptance(acceptanceMode) === "off") {
+  if (!isReview && normalizeCardAcceptance(acceptanceMode) === "off") {
     extra.push(...(AUTO_ONLY_TRANSITIONS[from] ?? []));
   }
   return extra.length === 0 ? base : Object.freeze([...new Set([...base, ...extra])]);
@@ -364,7 +368,9 @@ export function transitionPolicyFor(task) {
   const from = task?.status;
   const kind = task?.kind ?? null;
   const mode = task?.acceptanceMode ?? task?.acceptance_mode ?? null;
-  const reviewCard = reviewIdentityOf(task).isReview;
+  // ADR 0014 — the marker is authority, and the kind is the same fact. Either
+  // one saying "review" is enough; a legacy meta-only row has the marker path.
+  const reviewCard = reviewIdentityOf(task).isReview || kind === TASK_KIND.REVIEW;
   return {
     from,
     allowed: allowedTargets(from, kind, mode, reviewCard),

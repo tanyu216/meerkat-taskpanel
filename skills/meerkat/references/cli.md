@@ -76,7 +76,7 @@ error · `3` `export md --check` found stale cards.
 | `--reporter <text>` / `--reporter-id <id>` / `--reporter-kind <agent\|human>` | See [cli/issue.md](cli/issue.md). |
 | `--description <md>` | See [cli/issue.md](cli/issue.md). |
 | `--priority <low\|medium\|high\|urgent>` | See [cli/issue.md](cli/issue.md). |
-| `--kind task\|epic` | See [cli/issue.md](cli/issue.md). |
+| `--kind task\|epic\|review` | See [cli/issue.md](cli/issue.md). |
 | `--label <l>` / `--meta k=v` | See [cli/issue.md](cli/issue.md). |
 | `--target <t>` | See [cli/issue.md](cli/issue.md). |
 | `--parent <ref>` | See [cli/issue.md](cli/issue.md). |

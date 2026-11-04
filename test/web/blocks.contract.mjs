@@ -220,11 +220,12 @@ export const DOMAINS = Object.freeze({
   /** Detail drawer states (B09). */
   DRAWER_STATE: Object.freeze(["closed", "open", "closing"]),
   /**
-   * TP-0075 — the head badge's kind vocabulary. Two values, because the card's
-   * own `kind` is `task|epic` and a review card is an ordinary `task` (its
-   * review identity rides `review_of`, never a third kind).
+   * TP-0075 — the head badge's kind vocabulary: the card's own stored `kind`.
+   * ADR 0014 made a review card its own kind, so the three values are
+   * `task|epic|review`; `review` still carries the marker `review_of` as its
+   * identity, and the badge's word comes from `kind.<value>`.
    */
-  KIND: Object.freeze(["epic", "task"]),
+  KIND: Object.freeze(["epic", "task", "review"]),
   /** Overlay panel states (B18/B19). */
   PANEL_STATE: Object.freeze(["closed", "open"]),
   /** Token reveal icons (B19). */
@@ -977,12 +978,19 @@ const BLOCKS = [
       "[data-filter-label-summary]",
       "[data-filter-label-search]",
       "[data-filter-label-option]",
+      // ADR 0014 — the implementation-only review switch (the prototype has no
+      // review card). It sits beside the filters but is not one: it changes
+      // what the board is, so it stays out of `activeFilterCount`.
+      "[data-filter-reviews]",
+      "[data-filter-reviews-switch]",
       "[data-filter-clear]",
       "[data-filter-count]",
     ],
     states: [],
     rules: [
       { kind: "count", selector: "[data-filters]", equals: 1 },
+      { kind: "count", selector: "[data-filter-reviews]", equals: 1 },
+      { kind: "count", selector: "[data-filter-reviews-switch]", equals: 1 },
       // R15 ② — `[data-filter-clear]` is no longer the document's only one: the
       // activity bar's tail carries B04's control too (B26), and the two are
       // told apart by **the bar the press came from** rather than by a second
@@ -1664,6 +1672,7 @@ const BLOCKS = [
       // presence/absence pairs are measured in `web/scripts/dom-smoke.mjs`;
       // their copy is the implementation-only `drawer.accept*` / `drawer.sendBack*`
       // family in `web/src/i18n/extra.mjs`, like Reopen's.
+      "[data-detail-acceptance-list]",
       "[data-detail-acceptance-summary]",
       "[data-detail-acceptance-round]",
       "[data-detail-acceptance-author]",
@@ -1675,6 +1684,14 @@ const BLOCKS = [
       "[data-detail-send-back-note]",
       "[data-detail-send-back-confirm]",
       "[data-detail-send-back-cancel]",
+      // ADR 0014 — the Acceptance tab's read-only review-round rows. They exist
+      // only for a card some review card audits, so they are data-driven
+      // `states`, not resting `required` hooks.
+      "[data-detail-review-rounds]",
+      "[data-review-round]",
+      "[data-review-round-label]",
+      "[data-review-identifier]",
+      "[data-review-status-text]",
     ],
     rules: [
       { kind: "count", selector: "[data-detail-drawer]", equals: 1 },
@@ -1842,8 +1859,9 @@ const BLOCKS = [
       // design owner's ruling (F6) — the assertion lands with the ruling.
       { kind: "classes", probe: "[data-detail-status-chip]", includes: ["badge-sm", "td-chip", "td-chip-status"] },
       // TP-0075 ① — the kind badge sits beside the status chip and speaks the
-      // card's two-value vocabulary in words. The driven pass opens TD-1, an
-      // ordinary card, so it reads Task (the epic pass reads Epic in dom-smoke).
+      // card's own `task|epic|review` vocabulary in words. The driven pass opens
+      // TD-1, an ordinary card, so it reads Task; the epic pass reads Epic in
+      // dom-smoke, and the acceptance pass opens TD-REV and reads Review.
       { kind: "domain", selector: "[data-detail-kind]", attribute: "data-kind", subset: DOMAINS.KIND },
       { kind: "text", probe: "[data-detail-kind-label]", oneOf: ["Task", "任务"], when: "drawer open" },
       { kind: "computed", probe: "[data-detail-status-chip]", property: "height", equalsPx: 18, when: "drawer open" },

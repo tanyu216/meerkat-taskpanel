@@ -76,9 +76,10 @@ function boardWith(db, from, to, suffix = "", kind = "task", mode = "off", revie
   const id = `t_${from}_${to}${suffix}_${kind}_${mode}${reviewCard ? "_revcard" : ""}`;
   insertProject(db);
   if (reviewCard) {
-    // A review card is always `kind=task` and `acceptance_mode=off`
-    // (`resolveCardAcceptance`, and the 0040 trigger). The FK needs a real
-    // original, so seed one in the state the app requires at creation.
+    // A review card is `kind=review` with its marker, always
+    // `acceptance_mode=off` (`resolveCardAcceptance`, the DB CHECK and the
+    // marker trigger). The FK needs a real original, so seed one in the state
+    // the app requires at creation.
     const originalId = `orig_${id}`;
     insertTask(db, {
       id: originalId,
@@ -174,15 +175,18 @@ describe("contract/state-machine — every pair, two paths", () => {
     await withBoard(({ db }) => {
       const disagreements = [];
       const codeMismatches = [];
-      // A review card is always `kind=task` and `acceptance_mode=off`, so the
-      // review-card axis is one cell on top of the kind × mode grid — not a
-      // third cross-product (an `agent` review card cannot even be inserted;
-      // the 0040 trigger refuses it).
+      // A review card is always `kind='review'` and `acceptance_mode=off`, so
+      // the review-card axis is one cell on top of the kind × mode grid — not a
+      // third cross-product (a review card in any other acceptance mode cannot
+      // even be inserted; the marker trigger refuses it).
+      // ADR 0014 — `kind='review'` is one legal cell: `off`, with the marker.
+      // A review in any other acceptance mode is refused by the marker trigger,
+      // so it never enters the kind × mode cross-product.
       const axes = [];
-      for (const kind of TASK_KINDS) {
+      for (const kind of ["task", "epic"]) {
         for (const mode of ACCEPTANCE_MODES) axes.push({ kind, mode, reviewCard: false });
       }
-      axes.push({ kind: "task", mode: "off", reviewCard: true });
+      axes.push({ kind: "review", mode: "off", reviewCard: true });
 
       for (const { kind, mode, reviewCard } of axes) {
         const label = `${kind}/${mode}${reviewCard ? "/review" : ""}`;
@@ -216,12 +220,53 @@ describe("contract/state-machine — every pair, two paths", () => {
       // verdict through `in_review`.
       assert.equal(canTransition("in_progress", "done", "task", "off", false), true);
       assert.equal(canTransition("in_progress", "done", "task", "off", true), false);
+      assert.equal(canTransition("in_progress", "done", "review", "off", false), false, "the kind alone withholds the edge");
       assert.equal(transitionReasonCode("in_progress", "done", "task", "off", true), "INVALID_TRANSITION");
+      assert.equal(transitionReasonCode("in_progress", "done", "review", "off"), "INVALID_TRANSITION");
 
       const plain = boardWith(db, "in_progress", "done", "_plain", "task", "off", false);
-      const review = boardWith(db, "in_progress", "done", "_review", "task", "off", true);
+      const review = boardWith(db, "in_progress", "done", "_review", "review", "off", true);
       assert.equal(move(db, plain, "done"), "NO_ERROR", "the ordinary off card keeps the shortcut");
       assert.equal(move(db, review, "done"), "INVALID_TRANSITION", "the review card does not");
+    });
+  });
+
+  it("admits the review kind only in off mode (ADR 0014)", async () => {
+    await withBoard(({ db }) => {
+      insertProject(db);
+      insertTask(db, { id: "orig-review-mode", identifier: "PROJ-REV-MODE", status: "in_review", kind: "task", acceptance_mode: "off" });
+      for (const mode of ["auto", "human"]) {
+        assert.equal(
+          reasonCode(() =>
+            insertTask(db, {
+              id: `rev-mode-${mode}`,
+              identifier: `PROJ-REV-${mode}`.toUpperCase(),
+              status: "in_review",
+              kind: "review",
+              acceptance_mode: mode,
+              review_of_id: "orig-review-mode",
+              review_round: 1,
+            }),
+          ),
+          "REVIEW_CARD_MARKER_INVALID",
+          `a review in ${mode} mode is refused by the marker trigger`,
+        );
+      }
+      assert.equal(
+        reasonCode(() =>
+          insertTask(db, {
+            id: "rev-mode-off",
+            identifier: "PROJ-REV-OFF",
+            status: "in_review",
+            kind: "review",
+            acceptance_mode: "off",
+            review_of_id: "orig-review-mode",
+            review_round: 1,
+          }),
+        ),
+        "NO_ERROR",
+        "off is the one legal review cell",
+      );
     });
   });
 
@@ -275,17 +320,22 @@ describe("contract/state-machine — every pair, two paths", () => {
       const expected = { off: ["in_progress", "in_review"], auto: ["in_review"], human: ["in_review"] };
       for (const kind of TASK_KINDS) {
         for (const mode of ACCEPTANCE_MODES) {
+          // A review card exists only in `off` mode, and its marker withholds
+          // the direct edge, so its done sources are the base ones.
+          if (kind === "review" && mode !== "off") continue;
+          const reviewCard = kind === "review";
+          const expectedFor = reviewCard ? ["in_review"] : expected[mode];
           const viaSql = [];
           for (const from of STATUSES) {
             if (from === "done") continue; // done → done is a no-op, not an entry
-            const taskId = boardWith(db, from, "done", "_r", kind, mode);
+            const taskId = boardWith(db, from, "done", "_r", kind, mode, reviewCard);
             const verdict = move(db, taskId, "done");
             if (verdict === "NO_ERROR") viaSql.push(from);
           }
-          assert.deepEqual(viaSql, expected[mode], `${kind}/${mode}`);
+          assert.deepEqual(viaSql, expectedFor, `${kind}/${mode}`);
           assert.deepEqual(
-            STATUSES.filter((from) => canTransition(from, "done", kind, mode)),
-            expected[mode],
+            STATUSES.filter((from) => canTransition(from, "done", kind, mode, reviewCard)),
+            expectedFor,
             `${kind}/${mode}`,
           );
         }
@@ -554,10 +604,19 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
       // `off` adds exactly the one direct pair. "No done without in_review" is
       // deliberately false here — that is what off means — so the property is
       // "the only new entry into done is in_progress", not the old reachability
-      // invariant.
+      // invariant. A review card never gets that edge, so it adds nothing.
       const extras = PAIRS.filter(
         ([from, to]) => canTransition(from, to, kind, "off") && !canTransition(from, to, kind),
       );
+      if (kind === "review") {
+        assert.deepEqual(extras, [], "review/off is not a widening");
+        assert.deepEqual(
+          STATUSES.filter((from) => canTransition(from, "done", kind, "off")),
+          ["in_review"],
+          "review/off keeps the review exit",
+        );
+        continue;
+      }
       assert.deepEqual(extras, [["in_progress", "done"]], `${kind}/off`);
       assert.deepEqual(
         STATUSES.filter((from) => canTransition(from, "done", kind, "off")),
@@ -645,13 +704,29 @@ describe("contract/state-machine — the execution claim follows the work cycle"
         for (const from of STATUSES) {
           for (const to of allowedTargets(from, kind)) {
             const id = `t_${from}_${to}_${kind}`;
-            insertProject(db, { id: `p-${from}-${to}-${kind}` });
+            const projectId = `p-${from}-${to}-${kind}`;
+            insertProject(db, { id: projectId });
+            // ADR 0014 — a review kind exists only with its marker, so the
+            // walk seeds one original per cell.
+            let reviewOfId = null;
+            if (kind === "review") {
+              reviewOfId = `orig_${id}`;
+              insertTask(db, {
+                id: reviewOfId,
+                identifier: `${from}-${to}-${kind}-ORIG`.toUpperCase(),
+                project_id: projectId,
+                status: "in_review",
+                kind: "task",
+                acceptance_mode: "off",
+              });
+            }
             insertTask(db, {
               id,
               identifier: `${from}-${to}-${kind}`.toUpperCase(),
-              project_id: `p-${from}-${to}-${kind}`,
+              project_id: projectId,
               status: from,
               kind,
+              ...(reviewOfId === null ? {} : { review_of_id: reviewOfId, review_round: 1 }),
               // The walk measures the claim, not the review gate; `off` is the
               // one mode whose direct `in_progress → done` edge is legal.
               acceptance_mode: "off",

@@ -31,7 +31,7 @@ plain card does not grow a line.
 | `title` | One-line summary. | Non-empty string. |
 | `status` | Where the card sits in the lifecycle. | One of the canonical words (`backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`, plus the `awaiting` overlay). |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`. |
-| `kind` | The card's role. | `task` · `epic`. |
+| `kind` | The card's stored type. | `task` · `epic` · `review`; `review` requires `review_of_id` (the database CHECK ties the two). |
 | `acceptance_mode` | Who closes the card. | `off` · `auto` · `human`; a created card always carries a concrete value (`auto` when nothing was declared — task or epic). A raw write that omits it takes the column default, `auto`, and the wire always carries the column value. Any card, at any depth, may be `human`; there is no project default. A review card (flow B) is always `off`. |
 | `labels` | Free-form tags, shown in order. | Inline array. |
 | `project` | The board project. | Its id. |

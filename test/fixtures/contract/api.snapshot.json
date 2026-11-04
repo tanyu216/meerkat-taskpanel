@@ -898,6 +898,7 @@
             "kind": {
               "enum": [
                 "epic",
+                "review",
                 "task"
               ],
               "type": "string"

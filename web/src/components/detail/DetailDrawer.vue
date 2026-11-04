@@ -43,6 +43,7 @@ import {
   uploadAttachment,
 } from "../../stores/board.js";
 import { acceptanceRowsFor, deliverySummaryOf } from "../../lib/acceptance.js";
+import { reviewRoundsFor } from "../../lib/review.js";
 import { isAcceptanceWaiting } from "../../lib/waiting-queue.js";
 import { resolveDetailTab } from "../../lib/activity-feed.js";
 import { renderMarkdown } from "../../lib/markdown.js";
@@ -427,6 +428,13 @@ const acceptanceRows = computed(() =>
  * panel does not invent a round for bare criteria.
  */
 const deliverySummary = computed(() => deliverySummaryOf(latestReport.value));
+/**
+ * ADR 0014 — the reviews that audited this card, oldest round first. Read from
+ * the whole board reading: a review card is hidden by the board/list switch but
+ * `board.tasks` keeps it, so the panel needs no second request and follows the
+ * live stream when a review lands or changes status.
+ */
+const reviewRounds = computed(() => reviewRoundsFor(task.value, board.tasks));
 /**
  * Does this card still owe a human the acceptance act?
  *
@@ -1295,10 +1303,11 @@ async function submitComment() {
           <span class="td-status-dot" aria-hidden="true"></span>
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
         </span>
-        <!-- TP-0075 ① — what the card *is*, on the identifier/status row. An
-             epic reads Epic; every ordinary card, and every review card (which
-             is `kind=task` and only carries `review_of`), reads Task. The word
-             is the catalogue's, so the badge is never colour-only. -->
+        <!-- TP-0075 ① — what the card *is*, on the identifier/status row. The
+             badge reads the stored kind: Task, Epic, or Review (ADR 0014 — a
+             review card is `kind='review'`; the `review_of` marker stays its
+             identity). The word is the catalogue's, so the badge is never
+             colour-only. -->
         <span class="badge badge-sm td-chip" data-detail-kind :data-kind="kindValue">
           <span data-detail-kind-label>{{ $t(`kind.${kindValue}`) }}</span>
         </span>
@@ -2019,6 +2028,33 @@ async function submitComment() {
             </div>
             <p v-if="deliverySummary.conclusion" class="td-dv-conclusion" data-detail-acceptance-conclusion>{{ deliverySummary.conclusion }}</p>
           </div>
+          <!-- ADR 0014 — the reviews that audited this card, oldest round first.
+               Read-only: the review card is the loop's record of the round, and
+               the panel is here so a reader judging a delivery can see which
+               rounds have already run. No review card survives a reopen, so a
+               round with no row is a round that was never reviewed. -->
+          <div v-if="reviewRounds.length > 0" class="mb-3" data-detail-review-rounds>
+            <div class="td-dv-report-head">
+              <span class="td-dv-kind" data-i18n="drawer.acceptance.reviews">{{ $t("drawer.acceptance.reviews") }}</span>
+            </div>
+            <ul class="td-dv-list">
+              <li
+                v-for="row in reviewRounds"
+                :key="row.id"
+                class="td-dv-item"
+                :data-review-round="row.round ?? undefined"
+                :data-review-status="row.status"
+              >
+                <span class="td-dv-round-mono td-mono" data-review-round-label>{{
+                  row.round === null ? row.identifier : $t("drawer.report.round", row.round)
+                }}</span>
+                <span class="td-dv-text">
+                  <span class="td-mono" data-review-identifier>{{ row.identifier }}</span>
+                  <span v-if="row.status" class="td-dv-note" data-review-status-text>{{ $t(`status.${row.status}`) }}</span>
+                </span>
+              </li>
+            </ul>
+          </div>
           <!-- The act the card's own `acceptance_mode` assigns to the human,
                promoted to where the criteria are. The generic status menu in
                Details stays; this is the same write, made visible. Gated on the
@@ -2044,7 +2080,7 @@ async function submitComment() {
               <button type="button" class="btn btn-sm btn-ghost" data-detail-send-back-cancel @click="cancelSendBack">{{ $t("modal.cancel") }}</button>
             </div>
           </div>
-          <ul class="td-dv-list">
+          <ul class="td-dv-list" data-detail-acceptance-list>
             <li
               v-for="row in acceptanceRows"
               :key="row.id"

@@ -29,7 +29,14 @@ import { computed, reactive } from "vue";
 
 import { mergeById } from "../lib/board-merge.js";
 import { api } from "../services/api.js";
-import { AWAITING, assigneeFilterValue, board, ME, statusFilterValues } from "./board.js";
+import {
+  AWAITING,
+  assigneeFilterValue,
+  board,
+  isReviewTask,
+  ME,
+  statusFilterValues,
+} from "./board.js";
 import { view } from "./ui.js";
 
 /** One page of the list. */
@@ -56,6 +63,27 @@ export const list = reactive({
 
 /** Is there another page to fetch? `offset` is the raw server cursor. */
 export const more = computed(() => list.offset < list.total);
+
+/**
+ * The rows the list renders. ADR 0014 hides the review kind by default on every
+ * web surface; the FiltersBar switch shows it. `list.tasks` keeps the raw page
+ * because the cursor counts what the server returned, not what survived the
+ * projection.
+ */
+export const visibleListTasks = computed(() =>
+  board.showReviews ? list.tasks : list.tasks.filter((task) => !isReviewTask(task)),
+);
+
+/**
+ * The count denominator: the server total minus the review rows already hidden.
+ * The loaded page is the only place the client can count them, so when reviews
+ * live beyond the first page `list.total` still carries them.
+ */
+export const listTotal = computed(() => {
+  if (board.showReviews) return list.total;
+  const hidden = list.tasks.length - visibleListTasks.value.length;
+  return Math.max(0, list.total - hidden);
+});
 
 /**
  * The server's status list for the board's status filter.
