@@ -102,7 +102,8 @@ export const DEFAULT_SLA_ROWS = Object.freeze({
     warnLead: true,
     origin: "heartbeat_at",
     coveredBy: "sla-patrol+legacy-stale-alert",
-    action: "the same assignee may re-claim; past the further bound any agent may claim and report",
+    action:
+      "the holder may re-claim; past the further bound the card's assignee recovers it, and anyone else needs --allow-steal --reason",
   }),
   question_stale: Object.freeze({
     ref: "docs/sla.md §2 · question_stale · An unanswered question is aging",

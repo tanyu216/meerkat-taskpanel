@@ -971,9 +971,10 @@ function assertReopenReason(reason) {
  * The verdict already decided *that* the claim may be taken; this says *how
  * old* the heartbeat it is taking must be, so the predicate reaches SQL instead
  * of living only here. `verdict.steal` distinguishes the two cases
- * `decideClaim` folds into `reclaim`: a claim rotted past six hours (anybody may
- * take it) versus one that merely went stale for its holder (only the holder
- * may). Each bound is the threshold that verdict was decided on, one instant
+ * `decideClaim` folds into `reclaim`: a claim rotted past six hours (its
+ * assignee recovers it; anyone else is an audited override) versus one that
+ * merely went stale for its holder (only the holder may). Each bound is the
+ * threshold that verdict was decided on, one instant
  * earlier — the same comparison `decideClaim` makes, now also made by the
  * writer.
  *
@@ -1798,8 +1799,9 @@ const NO_OPEN_EDGES = Object.freeze({ blockersOpen: 0, unblocksOpen: 0 });
  *     claim (see `domain/claim.mjs#isAssignee`). This is the read a supervisor
  *     uses when its policy is "claim unassigned tasks too";
  *   * with `stale: true`, `in_progress` whose heartbeat is stale — the same
- *     holder after 30 minutes (`stale_same`) or anyone after 6 hours
- *     (`stale_any`) — the recovery pool.
+ *     holder after 30 minutes (`stale_same`), and past 6 hours a card anyone
+ *     may *see* (`stale_any`) but only its assignee may re-claim without
+ *     `--allow-steal --reason` (ADR 0014) — the recovery pool.
  *
  * An `epic` is withheld from every pool: it is a container, not a unit of work
  * (`domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`, and the claim gate refuses it
@@ -1874,10 +1876,11 @@ function orderedCandidates(ctx, input = {}) {
         .filter((task) => isAutoClaimableKind(task.kind))
     : [];
   // The recovery pool is **not** scoped to the asker's own cards: past the
-  // six-hour bound any agent may take a stale claim over, so an agent that has
-  // never seen the card must be able to discover it. `staleReason` keeps the
-  // 30-minute window holder-only (`stale_same`) — an agent cannot take a card
-  // from a live holder early.
+  // six-hour bound every agent must be able to *see* a rotted claim (only the
+  // assignee may re-claim it without `--allow-steal --reason`), so an agent
+  // that has never seen the card must be able to discover it. `staleReason`
+  // keeps the 30-minute window holder-only (`stale_same`) — an agent cannot
+  // take a card from a live holder early.
   const stale =
     input.stale === true
       ? ctx.repos.tasks

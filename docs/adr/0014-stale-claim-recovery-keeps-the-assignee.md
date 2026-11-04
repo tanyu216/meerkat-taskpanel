@@ -64,3 +64,10 @@ loop's recovery honest without teaching the board the role catalog.
 - A review card whose reviewer role is unavailable may stay stuck instead of running on the
   wrong lane. That is the intended trade.
 - ADR 0007 is unchanged; its rule is now enforced on the recovery path too.
+
+**2026-11-05 —** Inside the six-hour window the board still lets only the **holder** re-claim
+(`stale_same`). A route that changed after the claim — an audited override, or an `issue
+assign` of an `in_progress` card — therefore cannot be recovered by the loop as the assignee:
+claiming as the new assignee is refused with `EXECUTION_ACTIVE` on every tick. The supervisor
+defers that candidate (`planClaimIdentity`, rule 5a) instead of planning a claim the board
+refuses, and the six-hour bound then hands the card to its route.
