@@ -2808,13 +2808,14 @@ describe("pool startup reaps the previous incarnation's children", () => {
 
   const exited = (child) => child.exitCode !== null || child.signalCode !== null;
 
-  /** The prior incarnation's state file: a dead manager and one child record. */
-  function priorState(f, { managerPid, childPid, childStart }) {
+  /** The prior incarnation's state file: a manager and one child record. */
+  function priorState(f, { managerPid, managerStart = null, childPid, childStart }) {
     writeFileSync(
       join(f.dir, "sessions.state.json"),
       JSON.stringify({
         version: 3,
         poolPid: managerPid,
+        ...(managerStart === null ? {} : { poolPidStart: managerStart }),
         phase: "running",
         projects: {
           "/old-lane": {
@@ -2904,6 +2905,66 @@ describe("pool startup reaps the previous incarnation's children", () => {
     assert.equal((await pool.start()).ok, true);
     await new Promise((resolveDone) => setTimeout(resolveDone, 100));
     assert.equal(exited(child), false, "a live manager still owns its children");
+  });
+
+  it("leaves a live previous pool's children alone when its start token matches", async (t) => {
+    const f = fixture(t);
+    const manager = await startSleeper(t);
+    const child = await startSleeper(t);
+    const managerToken = processStartToken(manager.pid);
+    const childToken = processStartToken(child.pid);
+    assert.ok(managerToken, "the platform reports a start token");
+    assert.ok(childToken, "the platform reports a start token");
+    priorState(f, {
+      managerPid: manager.pid,
+      managerStart: managerToken,
+      childPid: child.pid,
+      childStart: childToken,
+    });
+
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      reapGraceMs: 100,
+    });
+    t.after(() => pool.stop());
+    assert.equal((await pool.start()).ok, true);
+    await new Promise((resolveDone) => setTimeout(resolveDone, 100));
+    assert.equal(exited(child), false, "a live, token-matched manager still owns its children");
+  });
+
+  it("reaps the previous children when the manager pid was reused", async (t) => {
+    const f = fixture(t);
+    // The manager pid in the state file is live again, but it is a different
+    // process: the recorded start token is stale. A pid alone is not identity,
+    // so the incarnation that owned `child` is gone and its child is an orphan.
+    const manager = await startSleeper(t);
+    const child = await startSleeper(t);
+    const token = processStartToken(child.pid);
+    assert.ok(token, "the platform reports a start token");
+    priorState(f, {
+      managerPid: manager.pid,
+      managerStart: "pid-reused",
+      childPid: child.pid,
+      childStart: token,
+    });
+
+    const lines = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fakePool(),
+      log: (line) => lines.push(line),
+      reapGraceMs: 100,
+    });
+    t.after(() => pool.stop());
+    assert.equal((await pool.start()).ok, true);
+    assert.equal(
+      await waitUntil(() => exited(child)),
+      true,
+      "a mismatched manager token means the previous incarnation is gone",
+    );
+    assert.match(lines.join("\n"), /reaped 1 orphaned child process/);
+    assert.equal(exited(manager), false, "the live manager itself is not killed");
   });
 });
 

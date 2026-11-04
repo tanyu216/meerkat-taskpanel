@@ -18,7 +18,7 @@ import { basename, dirname, join } from "node:path";
 
 import { cardFileRel } from "../foundation/card-brief.mjs";
 import { DIRECTOR_ACTOR_ID, ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
-import { processStartToken } from "../foundation/daemon-state.mjs";
+import { pidMatches, processStartToken } from "../foundation/daemon-state.mjs";
 import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
 import {
   loadRoles,
@@ -373,6 +373,9 @@ export function createSessionPool(input = {}) {
   let lastTickOkAt = null;
   let poolPidStart = null;
   let previousPoolPid = null;
+  // The previous incarnation's own start token, beside its pid: a pid alone is
+  // not identity, because the OS reuses pids.
+  let previousPoolPidStart = null;
   let warnedReviewerAllowlist = false;
 
   /**
@@ -434,6 +437,12 @@ export function createSessionPool(input = {}) {
       const priorPid = Number(prior?.poolPid);
       if (Number.isInteger(priorPid) && priorPid > 1 && priorPid !== process.pid) {
         previousPoolPid = priorPid;
+        // A missing token (a state file written before `poolPidStart`) degrades
+        // to pid-only liveness inside `pidMatches`, which is the old behaviour.
+        previousPoolPidStart =
+          typeof prior?.poolPidStart === "string" && prior.poolPidStart !== ""
+            ? prior.poolPidStart
+            : null;
       }
     }
     if (startStartedAt === null) startStartedAt = nowIso(now);
@@ -455,8 +464,14 @@ export function createSessionPool(input = {}) {
    */
   async function reapPreviousChildren() {
     // start() holds the pool lock; a live previous manager means the file is
-    // not ours to clean up (and its children are not orphans).
-    if (previousPoolPid !== null && isAlive(previousPoolPid)) {
+    // not ours to clean up (and its children are not orphans). The manager is
+    // identified by pid AND start token: a reused pid is a different process,
+    // so the incarnation that recorded the children is gone and they are
+    // orphans. A missing token degrades to pid-only liveness.
+    if (
+      previousPoolPid !== null &&
+      pidMatches(previousPoolPid, previousPoolPidStart, { isAlive })
+    ) {
       return { reaped: 0, killed: 0 };
     }
     const victims = [];
