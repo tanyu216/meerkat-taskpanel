@@ -49,6 +49,10 @@ const LIST_QUERY = shape({
   limit: str(),
   offset: str(),
   order_debug: str(),
+  // Board mode: the web board's 500-card working set — non-terminal cards in
+  // the weight order, then done/canceled by finish time. A read mode, not a
+  // second order for `/tasks`: omitting it keeps the weight order unchanged.
+  board: str(),
 });
 
 /** A `--meta` key the JSON path can name as one top-level property. */
@@ -221,9 +225,10 @@ export function registerTaskRoutes(router, surface) {
       ...(intOrUndefined(query.get("offset")) === undefined ? {} : { offset: intOrUndefined(query.get("offset")) }),
     };
     const lookup = lookupFor(repos);
-    const { tasks, orderDebug } = commands.listOrderedTasks({
+    const { tasks, orderDebug, total, activeTotal } = commands.listOrderedTasks({
       ...filter,
       orderDebug: truthy(query.get("order_debug")),
+      board: truthy(query.get("board")),
     });
     // One batched edge read: `parent_id` rides on every card so a client can
     // derive "is this a child?" without a second request (the waiting view does
@@ -233,6 +238,11 @@ export function registerTaskRoutes(router, surface) {
     );
     return {
       tasks: tasks.map((task) => taskToWire(task, { lookup, parentId: parents.get(task.id) ?? null })),
+      // The scoped set's size and its non-terminal slice: a client that reads a
+      // 500-card page can say how many cards the project really holds, and
+      // whether the active half is complete.
+      total,
+      active_total: activeTotal,
       // Only present when asked for: the diagnostic is opt-in, and an always-on
       // re-derivation of every card's score would be paid by every board poll.
       ...(orderDebug === null ? {} : { order_debug: orderDebug }),

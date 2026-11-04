@@ -101,9 +101,17 @@ import {
 import { boardArea, filtersOpen, pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
+/**
+ * The board is a **working set** (TP-0092): `board.tasks` holds every active
+ * card plus the newest terminal ones, so its length is not the project's size.
+ * Unfiltered, the count states the scoped total the server reported (with the
+ * loaded length as an older-server fallback); filtered, it states how much of
+ * the loaded working set matched.
+ */
 const countText = computed(() => {
-  const total = board.tasks.length;
-  if (activeFilterCount.value > 0) return t("filters.count.filtered", totalVisible.value, total);
+  const loaded = board.tasks.length;
+  const total = board.taskTotal > 0 ? board.taskTotal : loaded;
+  if (activeFilterCount.value > 0) return t("filters.count.filtered", totalVisible.value, loaded);
   return total === 1 ? t("filters.count.one") : t("filters.count.many", total);
 });
 

@@ -95,6 +95,7 @@ describe("route-request.mjs — the live surface", () => {
     assert.deepEqual(list.query, [
       "assignee",
       "assignee_id",
+      "board",
       "include_archived",
       "kind",
       "label",

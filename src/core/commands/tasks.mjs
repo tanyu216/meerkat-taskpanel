@@ -1606,27 +1606,56 @@ export function archive(ctx, input) {
  * order's own tie-break — never as a list-read parameter.
  *
  * @param {object} ctx
- * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], reviewOfId?: string, includeArchived?: boolean, limit?: number, offset?: number, orderDebug?: boolean}} [filter]
+ * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], reviewOfId?: string, includeArchived?: boolean, limit?: number, offset?: number, orderDebug?: boolean, board?: boolean}} [filter]
  */
 export function listTasks(ctx, filter = {}) {
   return readOrdered(ctx, filter).tasks;
 }
 
 /**
- * `listTasks` plus the `order_debug` projection, for the surface that wants both.
+ * `listTasks` plus the `order_debug` projection and the read's totals.
  *
  * A separate function rather than a changed return shape: every existing caller
  * of `listTasks` receives a bare array and must keep receiving one. `orderDebug`
  * is populated only when the caller asks (`orderDebug: true`) — the order is
- * unconditional, the per-card diagnostic is not.
+ * unconditional, the per-card diagnostic is not. `total` is the whole scoped
+ * set; `activeTotal` is its non-terminal slice (the board's working set).
  *
  * @param {object} ctx
- * @param {object} [filter] as `listTasks`, plus `orderDebug`
- * @returns {{tasks: object[], orderDebug: object[]|null}}
+ * @param {object} [filter] as `listTasks`, plus `orderDebug` and `board`
+ * @returns {{tasks: object[], orderDebug: object[]|null, total: number, activeTotal: number}}
  */
 export function listOrderedTasks(ctx, filter = {}) {
-  const { tasks, orderDebug } = readOrdered(ctx, filter);
-  return { tasks, orderDebug };
+  const { tasks, orderDebug, total, activeTotal } = readOrdered(ctx, filter);
+  return { tasks, orderDebug, total, activeTotal };
+}
+
+/** ISO-8601 millis sort lexicographically, but parse so an absent/blank value is 0. */
+function instantOf(value) {
+  const time = Date.parse(value ?? "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+/** Ascending string compare — identifiers are ASCII, so this is locale-free. */
+function compareStrings(left, right) {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+/**
+ * Board mode's terminal order: **newest finish first**.
+ *
+ * `status_changed_at` is the finish clock (written by every move); `created_at`
+ * and then `identifier` make the order total even on an old row whose
+ * `status_changed_at` was never stamped.
+ */
+function compareTerminalByFinish(left, right) {
+  const leftFinished = instantOf(left.card.statusChangedAt || left.card.createdAt);
+  const rightFinished = instantOf(right.card.statusChangedAt || right.card.createdAt);
+  if (leftFinished !== rightFinished) return rightFinished - leftFinished;
+  const byCreated = instantOf(right.card.createdAt) - instantOf(left.card.createdAt);
+  if (byCreated !== 0) return byCreated;
+  return compareStrings(String(left.card.identifier), String(right.card.identifier));
 }
 
 /**
@@ -1637,14 +1666,22 @@ export function listOrderedTasks(ctx, filter = {}) {
  * page sliced. Ordering the `LIMIT 200` page would be "the wrong page, very
  * neatly sorted" — the defect the contract names.
  *
+ * **Board mode** (`board: true`, the web board's working set) keeps the
+ * non-terminal cards in the weight order and appends the terminal ones by
+ * finish time. It is a read mode on this one route, never a second list order:
+ * the default read — `/tasks` without `board`, the CLI and the supervisor's
+ * candidates — is unchanged. The page order is no longer the weight order, so
+ * `order_debug` is ignored in this mode rather than projecting a different
+ * sequence than the caller received.
+ *
  * The relation counts come from one batched read (`relations.openEdgeCounts`),
  * never one per card.
  *
  * @param {object} ctx @param {object} filter
- * @returns {{tasks: object[], orderDebug: object[]|null}}
+ * @returns {{tasks: object[], orderDebug: object[]|null, total: number, activeTotal: number}}
  */
 function readOrdered(ctx, filter) {
-  const { orderDebug: debugFlag, ...rest } = filter;
+  const { orderDebug: debugFlag, board: boardFlag, ...rest } = filter;
   // `kind=review` is a filter over the review marker, not a third kind: a
   // review card is an ordinary `kind=task` card carrying `review_of_id`. The
   // translation lives here, at the one chokepoint both list use-cases share, so
@@ -1653,24 +1690,39 @@ function readOrdered(ctx, filter) {
   // the weight order, which pages in JS after a full read.
   const scope = rest.kind === "review" ? { ...rest, kind: undefined, hasReviewMarker: true } : rest;
   const debug = debugFlag === true;
+  const board = boardFlag === true;
 
   const scoped = ctx.repos.tasks.list({ ...scope, limit: null });
   const counts = ctx.repos.relations.openEdgeCounts(scoped.map((task) => task.id));
   const ranked = orderTasks(withRelationCounts(scoped, counts), { now: ctx.now() });
+  const activeTotal = ranked.filter((item) => !isTerminalStatus(item.card.status)).length;
+
+  // Board mode splits the same ranking: the active half keeps the weight order,
+  // the terminal half is re-sorted by finish time. `ordered` is `ranked` for the
+  // default read, so every existing caller's sequence is byte-identical.
+  const ordered = board
+    ? [
+        ...ranked.filter((item) => !isTerminalStatus(item.card.status)),
+        ...ranked.filter((item) => isTerminalStatus(item.card.status)).sort(compareTerminalByFinish),
+      ]
+    : ranked;
 
   const offset = Number.isInteger(scope.offset) ? scope.offset : 0;
   // `limit: null` is the caller's "give me the whole set" (the repository reads it
   // the same way), so the JS page must not re-impose the default on top of it.
   const limit = Number.isInteger(scope.limit) ? scope.limit : TASK_LIST_DEFAULT_LIMIT;
-  const page = scope.limit === null ? ranked.slice(offset) : ranked.slice(offset, offset + limit);
+  const page = scope.limit === null ? ordered.slice(offset) : ordered.slice(offset, offset + limit);
   return {
     tasks: page.map((item) => item.card),
+    total: ranked.length,
+    activeTotal,
     // The projection is **opt-in**, even though the order it projects is not:
     // shipping a per-card diagnostic on every list read would enlarge every
     // response for a question nobody asked. When requested, it covers the whole
     // ranking, not the page — the question it answers is "why is this card where
-    // it is", and that needs the cards it beat.
-    orderDebug: debug ? ranked.map(taskOrderDebugEntry) : null,
+    // it is", and that needs the cards it beat. In board mode the page follows a
+    // different order, so there is no honest projection to return.
+    orderDebug: !board && debug ? ranked.map(taskOrderDebugEntry) : null,
   };
 }
 

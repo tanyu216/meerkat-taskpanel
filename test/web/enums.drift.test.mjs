@@ -18,13 +18,16 @@ import { describe, it } from "node:test";
 
 import { CARD_ACCEPTANCE_MODES } from "../../src/core/domain/acceptance-mode.mjs";
 import { AWAITING_REASONS, PRIORITIES, STATUSES, STATUS } from "../../src/core/domain/enums.mjs";
+import { TERMINAL_STATUSES as DOMAIN_TERMINAL_STATUSES } from "../../src/core/domain/status.mjs";
 import {
   ACCEPTANCE_MODES,
   AWAITING,
   AWAITING_CATEGORIES,
   COLUMN_STATUSES,
+  NON_TERMINAL_STATUSES,
   PRIORITIES as WEB_PRIORITIES,
   STATUSES as WEB_STATUSES,
+  TERMINAL_STATUSES as WEB_TERMINAL_STATUSES,
 } from "../../web/src/lib/board-enums.js";
 
 describe("web/enums.drift — the browser's copies of the board's closed sets", () => {
@@ -46,6 +49,17 @@ describe("web/enums.drift — the browser's copies of the board's closed sets", 
 
   it("names the same card acceptance modes", () => {
     assert.deepEqual([...ACCEPTANCE_MODES], [...CARD_ACCEPTANCE_MODES]);
+  });
+
+  it("pins the terminal set to the domain's, and derives the non-terminal complement", () => {
+    assert.deepEqual([...WEB_TERMINAL_STATUSES], [...DOMAIN_TERMINAL_STATUSES]);
+    assert.deepEqual(
+      [...NON_TERMINAL_STATUSES],
+      [...STATUSES].filter((status) => !DOMAIN_TERMINAL_STATUSES.includes(status)),
+      "the supplement read asks for exactly the non-terminal statuses",
+    );
+    for (const status of WEB_TERMINAL_STATUSES) assert.ok(WEB_STATUSES.includes(status));
+    assert.equal(NON_TERMINAL_STATUSES.includes(AWAITING), true, "awaiting is active, not terminal");
   });
 
   it("covers every canonical priority, plus the display-only `none` band last", () => {

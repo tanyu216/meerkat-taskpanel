@@ -9,7 +9,7 @@
  * the Escape that closes whichever overlay is on top, and R9's **light dismiss**
  * for floating controls.
  */
-import { onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted } from "vue";
 
 import { installAnchoredMenus } from "./lib/anchored-menu.js";
 import { closeFloatingControls, installLightDismiss } from "./lib/light-dismiss.js";
@@ -56,6 +56,18 @@ let uninstallLightDismiss = () => {};
  * what a press paints rather than a 32px-clipped sliver.
  */
 let uninstallAnchoredMenus = () => {};
+
+/**
+ * TP-0092 — the board reads a **working set**, not every card. The banner is
+ * shown where that fact can change what the reader does: the board itself, and
+ * the waiting view (whose queue must be complete). It stays out of the List and
+ * Activity views, which have their own surfaces. `tasksIncomplete` outranks
+ * `tasksTruncated`: a missing active card is a correctness problem, a missing
+ * old terminal card is a scope statement.
+ */
+const showTruncationBanner = computed(
+  () => (view.value === "board" || view.value === "waiting") && (board.tasksTruncated || board.tasksIncomplete),
+);
 
 /**
  * R16 §4.2/§4.3 — the address's own two events. The reader is shared, so a deep
@@ -144,6 +156,33 @@ onUnmounted(() => {
           <button type="button" class="btn btn-primary btn-sm" @click="reloadConflict">{{ $t("conflict.reload") }}</button>
           <button type="button" class="btn btn-ghost btn-sm" @click="board.conflict = null">{{ $t("conflict.dismiss") }}</button>
         </div>
+      </div>
+
+      <!-- TP-0092 · the working-set banner. The prototype has no network and so
+           no 500-card read; this is an implementation-only state, recorded as a
+           deviation rather than added to the design oracle. It renders hidden at
+           rest so the document always carries the same one hook; `data-truncated-kind`
+           tells a scope statement (`terminal`) from a correctness one (`active`). -->
+      <div
+        class="flex flex-col gap-1 px-4 py-2 border border-warning/50 rounded-lg bg-warning/10"
+        data-board-truncated
+        role="status"
+        :hidden="!showTruncationBanner"
+        :data-truncated-kind="board.tasksIncomplete ? 'active' : 'terminal'"
+        :data-truncated-total="board.taskTotal"
+        :data-truncated-active="board.activeTotal"
+      >
+        <strong class="text-[13px]" data-i18n="board.truncated.title">{{ $t("board.truncated.title") }}</strong>
+        <span class="text-[12px]" data-i18n="board.truncated.hint" :data-i18n-arg="board.taskTotal">
+          {{ $t("board.truncated.hint", board.taskTotal) }}
+        </span>
+        <span
+          class="text-[12px] text-(--brand-text-2)"
+          data-i18n="board.truncated.active"
+          :hidden="!board.tasksIncomplete"
+        >
+          {{ $t("board.truncated.active") }}
+        </span>
       </div>
 
       <Board v-show="view === 'board'" />

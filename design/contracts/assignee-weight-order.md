@@ -585,6 +585,17 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 
 ## 14. 修订记录
 
+### v1.5 —— 2026-11-04（`TP-0092` 卡 A：board 读取模式；写面 `design/contracts/**` + `src/**` + `web/**`）
+
+**一句话**：新增**board 读取模式**（`GET /api/v1/tasks?board=1`，web 看板专用）：非终态仍按本契约的权重序在前，`done/canceled` 按 `status_changed_at DESC` 在后；默认 `/tasks`、CLI `issue list`、supervisor 候选读与 md 导出**仍是权重序**，一字不变。
+
+| 处 | 登记 | 依据 |
+|---|---|---|
+| §15（新增） | board 模式的顺序、`total`/`active_total`、`order_debug` 忽略、分页语义、web 工作集读取与横幅 | `TP-0092` 附件 plan.md「卡 A」；卡面冻结验收 1–6 |
+| 实现 | `readOrdered` 增 `board` / `total` / `activeTotal`；`GET /tasks` 增 `board` query 与两个响应字段；web `loadTasks` 读 `board=1&limit=500`，活动超页补读非终态并 `mergeById` | 同上 |
+
+**未改（一字未动）**：因子、权值向量、合成公式、tie-break、默认列表序、候选桶序、md 导出、`order_debug` 的默认语义。**board 模式不是第二个 `order=` 参数**：`order` 仍不存在（v1.4），默认读仍只有权重序。
+
 ### v1.4 —— 2026-10-29（operator decision；写面 `design/contracts/**` + `src/**`）
 
 **一句话**：**权重序成为唯一的列表序**（Terry 2026-10-29）。列表读不再有 `order` 参数，也没有 `board` 逃生口；md 导出不受影响（直读仓库层）；`order_debug` 仍是按需诊断——**序唯一，投影 opt-in**。
@@ -668,3 +679,68 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 ### v1.0 —— `T-20261014-033502`（基线 `2c85440`）
 
 原始交付 = 本文件 + `design/README.md` 一行登记；写面见 §12 第 1–2 条。
+
+---
+
+## 15. Board 读取模式（v1.5，`TP-0092` 卡 A）
+
+> **定位**：这是**一个读取模式**，不是第二种列表序。默认 `/tasks`（含 CLI `issue list`、
+> supervisor 的 `/tasks/candidates`、md 导出）仍是本契约 §7.1 的权重序；只有
+> `GET /api/v1/tasks?board=1` 走本节。`order` 参数仍不存在（§13.1）。
+
+### 15.1 为什么需要它
+
+看板要显示「工作集」：全部活动卡 + 最近完成的终态卡。若把整个项目按权重序一次读 500 条，
+累积的 `done/canceled` 会把活动卡挤出页面，且客户端没有任何截断信号——等待/验收队列
+（B27）因此可能漏卡。board 模式把**活动性**放在序的第一位，并暴露集合大小。
+
+### 15.2 顺序
+
+```
+ordered = active(weight order) ++ terminal(status_changed_at DESC, created_at DESC, identifier ASC)
+page    = ordered.slice(offset, offset + limit)
+```
+
+- `active` = 非终态卡（`status ∉ {"done","canceled"}`），**保持 §6 的权重序**，层内不再重排。
+- `terminal` = `done/canceled`，按 `status_changed_at` 降序（最新完成在前）；
+  该字段为空时回退 `created_at`；`identifier` 作末级，保证全序。
+- 默认（不带 `board`）的 `ordered` 就是权重序，逐项不变。
+
+### 15.3 响应字段
+
+| 字段 | 语义 |
+|---|---|
+| `tasks` | 当前页（`limit`/`offset` 切的是 **board 序**） |
+| `total` | 本次筛选范围内的**全部**卡数（未截断） |
+| `active_total` | 其中非终态的卡数 |
+| `order_debug` | board 模式下**忽略**：页面序不是权重序，给投影会与 `tasks` 不一致 |
+
+### 15.4 Web 看板的工作集读取
+
+1. 主读 `board=1&limit=500`；落 `taskTotal` / `activeTotal`（旧服务端缺字段时回退为加载数）。
+2. 若 `activeTotal > 已加载数`（活动卡本身超过一页），补读非终态：
+   `status=<全部非终态>&limit=5000`，用 `mergeById` 按 `id` 去重、保留主序、追加新卡。
+3. 补读失败：保留主数据，`tasksIncomplete = true`，**不**写整页错误。
+   补读本身被截断（`supplement.total > supplement.tasks.length`）同样 `tasksIncomplete`。
+4. `tasksTruncated = taskTotal > 已加载数`：终态卡被省略的范围事实。
+5. 横幅在 board 与 waiting 视图显示；`data-truncated-kind = active | terminal` 区分
+   「活动不完整（正确性）」与「终态截断（范围声明）」。
+
+### 15.5 已记录的偏差与边界
+
+- **board 与 list 不再同序同集**：board 是 active-first 工作集，list 在卡 B 之前仍读同一
+  工作集；老终态卡只存在于数据库，不在看板。B08 的「never disagree」由卡 B 修订。
+- **原型无此控件**：`design/prototype/**` 没有 500 截断，因此没有横幅的 oracle；
+  这是实现偏差，不为原型补交互。
+- **活动卡 > 5,000**：补读也截断，`tasksIncomplete` 明示；不静默丢卡。
+- **`status_changed_at` 可能为空**：排序回退 `created_at`，不产生 NaN。
+
+### 15.6 证据（实现锚点）
+
+- `src/core/commands/tasks.mjs#readOrdered`（`board` / `total` / `activeTotal` / `compareTerminalByFinish`）
+- `src/server/routes/tasks.mjs`（`LIST_QUERY.board`、响应 `total`/`active_total`）
+- `web/src/stores/board.js`（`BOARD_TASK_LIMIT`、`ACTIVE_READ_LIMIT`、补读与合并、四个状态字段）
+- `web/src/lib/board-merge.js#mergeById`；`web/src/lib/board-enums.js`（终态/非终态）
+- `web/src/App.vue`（`[data-board-truncated]`）；`web/src/i18n/extra.mjs`（三键，en/zh）
+- 测试：`test/server/task-order.test.mjs`（board 模式）、`test/server/routes.test.mjs`（响应字段）、
+  `test/web/board.store.test.mjs`、`test/web/board-merge.test.mjs`、`test/web/enums.drift.test.mjs`、`web/scripts/dom-smoke.mjs`
