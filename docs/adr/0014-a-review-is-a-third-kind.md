@@ -104,8 +104,9 @@ audited" because the database CHECK ties them together.
   `GLOSSARY.md` "Review card", `skills/meerkat/references/review-protocol.md`,
   and `docs/maintenance/contract.md`. The create/list vocabulary in
   `src/core/README.md`, `skills/meerkat/references/cli.md` and
-  `skills/meerkat/references/capabilities.md`, and the kind/role description in
-  `docs/architecture.md`, move with them.
+  `skills/meerkat/references/capabilities.md` moves with them;
+  `docs/architecture.md` needed no edit — it records review *identity*, not the
+  kind enum.
 - **Legacy.** The migration backfills every resolvable `meta.review_of` into
   the marker and flips the kind. An unresolvable reference stays `kind='task'`
   with its meta mirror, as the read-only exception above.
