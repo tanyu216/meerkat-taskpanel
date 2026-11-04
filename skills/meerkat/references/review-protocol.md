@@ -285,7 +285,7 @@ table, with when each fires, is in
 
 ## 8. Boundaries
 
-- A review card is an ordinary card of kind `task`: it is claimable, heartbeat-able, and delivered like any
+- A review card is `kind='review'` (ADR 0014): it is claimable, heartbeat-able, and delivered like any
   other card. It is special only in what its report must contain and in who may close it.
 - Do not promote a review card to an epic, and do not derive an acceptance list on one.
 - A `parent` edge is refused when either end is a review card (`VALIDATION_FAILED`,

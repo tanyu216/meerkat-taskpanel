@@ -82,8 +82,10 @@ function makeReview(repos, { id, status, reviewOfId, reviewRound } = {}) {
     { now: TS, id: id ?? `task-${identifier}`, identifier, projectId: "proj" },
   );
   // `normalizeTaskCreate` carries the column default (`auto`); a review card is
-  // always `off`, and the marker trigger refuses anything else.
-  return repos.tasks.insert({ ...task, acceptanceMode: "off", reviewOfId, reviewRound });
+  // always `off`, and the marker trigger refuses anything else. ADR 0014 — the
+  // marker and the kind are one fact, so the fixture stamps the stored kind with
+  // the marker (the table CHECK refuses one without the other).
+  return repos.tasks.insert({ ...task, kind: "review", acceptanceMode: "off", reviewOfId, reviewRound });
 }
 
 describe("repositories/projects", () => {
