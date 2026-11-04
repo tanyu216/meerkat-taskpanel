@@ -22,6 +22,7 @@
 
 import { cardDirRel, cardFileRel } from "./card-brief.mjs";
 import {
+  CLAIM_STALE_ANY_MS,
   CLAIM_STALE_SAME_MS,
   DEFAULT_PATROL_SECONDS,
   DEFAULT_REVIEW_AGING_MS,
@@ -499,6 +500,73 @@ export function planClaimIdentity(candidate, input = {}) {
         `reassigned to ${worker.agent} and will be claimed as ${worker.agent}.`,
     },
   };
+}
+
+/**
+ * The claim identity for a stale patrol alert.
+ *
+ * `planPatrol` alerts on an `in_progress` card whose heartbeat is older than the
+ * same-holder window; the alert carries the holder and the measured age, not the
+ * board's claim verdict. The patrol's LLM turn claims and dispatches, so it must
+ * make the **same** identity decision the poll makes (ADR 0015). This maps the
+ * wire Task DTO (`issue list` carries the assignee as an actor-ref object) onto
+ * `planClaimIdentity`'s candidate shape and derives the reason bucket:
+ *
+ *   * past six hours the claim has rotted (`stale_any`) — the assignee recovers
+ *     it, and only an unavailable assignee role falls back to Worker;
+ *   * inside the six-hour window only the holder may re-claim (`stale_same`) —
+ *     when the route names somebody else the patrol defers, exactly as rule 5a.
+ *
+ * `ageMs` is the alert's measured age. A missing/unreadable age is a deferral,
+ * never a guess: the board's heartbeat window is the authority on the branch.
+ *
+ * @param {object} task a wire Task DTO from `issue list`
+ * @param {{ageMs?: number, roleSet?: object|null, primaryKind?: string|null, kindOrder?: string|string[]|null, kindAvailable?: ((kind: string) => boolean)|null, defaultAgent?: string|null, scanAgent?: string|null}} [input]
+ * @returns {{kind: "claim", agent: string, reassign?: {from: string, to: string, reason: string}}|{kind: "defer", why: string}}
+ */
+export function planPatrolClaim(task, input = {}) {
+  const ageMs = Number(input.ageMs);
+  if (!Number.isFinite(ageMs) || ageMs < 0) return defer("patrol heartbeat age is unreadable");
+  return planClaimIdentity(
+    {
+      identifier: String(task?.identifier ?? ""),
+      assignee: wireAssigneeName(task),
+      assignee_id: wireAssigneeId(task),
+      assignee_kind: wireAssigneeKind(task),
+      review_of: typeof task?.review_of === "string" ? task.review_of : null,
+      reason: ageMs > CLAIM_STALE_ANY_MS ? "stale_any" : "stale_same",
+    },
+    input,
+  );
+}
+
+/** The assignee's readable name from a wire Task DTO (actor ref, string, or id). */
+function wireAssigneeName(task) {
+  const ref = task?.assignee;
+  if (typeof ref === "string") return ref.trim() === "" ? null : ref;
+  if (ref !== null && typeof ref === "object") {
+    const name = ref.display_name;
+    if (typeof name === "string" && name.trim() !== "") return name;
+    const id = ref.id;
+    if (typeof id === "string" && id.trim() !== "") return id;
+  }
+  return wireAssigneeId(task);
+}
+
+/** The assignee id from a wire Task DTO. */
+function wireAssigneeId(task) {
+  const id = task?.assignee_id;
+  if (typeof id === "string" && id.trim() !== "") return id;
+  const refId = task?.assignee?.id;
+  return typeof refId === "string" && refId.trim() !== "" ? refId : null;
+}
+
+/** The kind the assignee reference records on a wire Task DTO. */
+function wireAssigneeKind(task) {
+  const kind = task?.assignee_kind;
+  if (typeof kind === "string" && kind.trim() !== "") return kind;
+  const refKind = task?.assignee?.kind;
+  return typeof refKind === "string" && refKind.trim() !== "" ? refKind : null;
 }
 
 /**

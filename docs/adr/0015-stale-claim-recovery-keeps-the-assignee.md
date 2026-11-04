@@ -65,6 +65,14 @@ loop's recovery honest without teaching the board the role catalog.
   wrong lane. That is the intended trade.
 - ADR 0007 is unchanged; its rule is now enforced on the recovery path too.
 
+**2026-11-05 —** The rule binds **both supervisor lanes**. The patrol's LLM turn reads
+`issue list`, whose `assignee` is an actor-ref object, and used to claim and dispatch as the
+holder (`claimed_by_actor`) — the same cross-role execution this decision removes. It now
+derives the claim identity with the same `planClaimIdentity` (through `planPatrolClaim`) and
+performs the Worker fallback's formal, version-guarded re-assignment before claiming. A patrol
+alert inside the six-hour window whose route moved off the holder defers, exactly as the poll's
+rule 5a.
+
 **2026-11-05 —** Inside the six-hour window the board still lets only the **holder** re-claim
 (`stale_same`). A route that changed after the claim — an audited override, or an `issue
 assign` of an `in_progress` card — therefore cannot be recovered by the loop as the assignee:

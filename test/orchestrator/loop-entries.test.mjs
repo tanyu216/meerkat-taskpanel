@@ -34,6 +34,7 @@ import { after, describe, it } from "node:test";
 
 import { readOpenQuestions } from "../../src/orchestrator/board.mjs";
 import {
+  claimPatrolCard,
   createProjectAdmission,
   createQueueDispatch,
   isGitCheckout,
@@ -1042,6 +1043,109 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.match(comment.join(" "), /Ghost/);
     assert.match(comment.join(" "), /not installed/);
     assert.equal(comment[comment.indexOf("--agent") + 1], "Orchestrator");
+  });
+
+  it("claims a stale patrol card as the planned assignee, never the holder", () => {
+    const dir = tempDir("tp-patrol-claim-");
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "claim-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data: {} })}\\n`);',
+      ].join("\n"),
+      "utf8",
+    );
+    const result = claimPatrolCard(
+      { cli: script, actorKind: "claude", cliEnv: { TP_SENTINEL: record } },
+      () => {},
+      "T-1",
+      { kind: "claim", agent: "Linus" },
+      { ifVersion: 3 },
+    );
+    assert.equal(result.ok, true, JSON.stringify(result));
+    const all = calls(record);
+    assert.equal(all.length, 1, "a plain claim is one board call");
+    const claim = all[0];
+    assert.equal(claim[claim.indexOf("--agent") + 1], "Linus", "the assignee's role claims, not the holder");
+    assert.equal(claim.includes("--if-version"), false, "no reassignment, so no version guard");
+  });
+
+  it("re-routes to Worker before a patrol claim, with the version chain (ADR 0015)", () => {
+    const dir = tempDir("tp-patrol-fallback-");
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "fallback-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "const at = argv.indexOf('assign');",
+        "let data = {};",
+        "if (at !== -1) data = { task: { identifier: 'T-1', version: 4 } };",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
+      ].join("\n"),
+      "utf8",
+    );
+    const envFile = join(dir, ".env.codex");
+    writeFileSync(envFile, "");
+    const result = claimPatrolCard(
+      { cli: script, actorKind: "codex", envFile, cliEnv: { TP_SENTINEL: record } },
+      () => {},
+      "T-1",
+      {
+        kind: "claim",
+        agent: "Worker",
+        reassign: { from: "Ghost", to: "Worker", reason: "stale reclaim: Ghost is not installed" },
+      },
+      { ifVersion: 3 },
+    );
+    assert.equal(result.ok, true, JSON.stringify(result));
+    const all = calls(record);
+    const assignAt = all.findIndex((call) => call.includes("assign"));
+    const commentAt = all.findIndex((call) => call.includes("comment") && call.includes("add"));
+    const claimAt = all.findIndex((call) => call.includes("claim"));
+    assert.ok(assignAt !== -1 && commentAt !== -1 && claimAt !== -1, "all three writes ran");
+    assert.ok(assignAt < claimAt, "the route is rewritten before the claim");
+    assert.equal(all[assignAt][all[assignAt].indexOf("--if-version") + 1], "3");
+    assert.equal(all[claimAt][all[claimAt].indexOf("--agent") + 1], "Worker");
+    assert.equal(
+      all[claimAt][all[claimAt].indexOf("--if-version") + 1],
+      "4",
+      "the post-assign version guards the claim",
+    );
+  });
+
+  it("does not claim when the patrol's Worker reassignment is refused", () => {
+    const dir = tempDir("tp-patrol-refused-");
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "refuse-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "const at = argv.indexOf('assign');",
+        "if (at !== -1) { process.stdout.write(`${JSON.stringify({ ok: false, error: { code: 'VERSION_CONFLICT', message: 'changed' } })}\\n`); }",
+        "else process.stdout.write(`${JSON.stringify({ ok: true, data: {} })}\\n`);",
+      ].join("\n"),
+      "utf8",
+    );
+    const result = claimPatrolCard(
+      { cli: script, actorKind: "claude", cliEnv: { TP_SENTINEL: record } },
+      () => {},
+      "T-1",
+      { kind: "claim", agent: "Worker", reassign: { from: "Ghost", to: "Worker", reason: "x" } },
+      { ifVersion: 3 },
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.phase, "reassign");
+    assert.equal(calls(record).some((call) => call.includes("claim")), false);
   });
 
   it("reads open questions for the stale filter but enqueues nothing when the pool predates the capability", () => {

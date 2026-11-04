@@ -44,6 +44,7 @@ import {
 import { effectiveScanAgents, parseArgs, resolveLoopConfig, roleIsReviewer, roleIsWorker, USAGE } from "./options.mjs";
 import { isKindAvailable } from "./platforms.mjs";
 import { defaultReviewerAgent, loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
+import { planPatrolClaim } from "../foundation/scheduling.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
 import { parseWorkerKey, readWorkerSessions, workerRecordIsRunning } from "./worker-session.mjs";
 import {
@@ -574,6 +575,39 @@ export function reassignCard(opts, log, identifier, agent, options = {}) {
 }
 
 /**
+ * The patrol's claim step (ADR 0015): claim as the **planned identity**, and
+ * when the plan carries a Worker fallback, formally re-route the card first.
+ *
+ * The order is the poll's: the board decides the claim from the route, so the
+ * route must name the executor before the claim. Both writes carry the version
+ * the scan saw — the assignment directly, the claim from the assignment's
+ * returned version — so a concurrent edit defers instead of reverting it. The
+ * caller owns workspace and brief-watch cleanup on failure.
+ *
+ * @param {object} opts
+ * @param {(line: string, meta?: object) => void} log
+ * @param {string} identifier
+ * @param {{kind: "claim", agent: string, reassign?: {from: string, to: string, reason: string}}} plan
+ * @param {{ifVersion?: number}} [options] the scanned version guard for a reassignment
+ * @returns {{ok: boolean, phase?: "reassign"|"claim", error?: string}}
+ */
+export function claimPatrolCard(opts, log, identifier, plan, options = {}) {
+  let claimVersion;
+  if (plan.reassign !== undefined) {
+    const moved = reassignCard(opts, log, identifier, plan.reassign.to, {
+      reason: plan.reassign.reason,
+      ifVersion: options.ifVersion,
+    });
+    if (moved.ok !== true) return { ok: false, phase: "reassign", error: moved.error };
+    claimVersion = moved.version;
+  }
+  const args = ["issue", "claim", identifier];
+  if (claimVersion !== undefined) args.push("--if-version", String(claimVersion));
+  const claimed = runCli(opts, plan.agent, args, { actorKind: opts.actorKind });
+  return claimed.ok ? { ok: true } : { ok: false, phase: "claim", error: claimed.error };
+}
+
+/**
  * One poll pass: scan, atomically claim, enqueue the handoff.
  *
  * **Poll never spawns.** It claims on the board and writes the handoff to the
@@ -1027,6 +1061,24 @@ export async function runPatrolOnce(opts, env = process.env) {
     if (open.ok) for (const row of open.rows) openQuestionRefs.add(String(row.ref));
   }
 
+  // A patrol LLM turn claims and dispatches, so it needs the same role layer the
+  // poll loads: the card's assignee selects the executing role (ADR 0015). It is
+  // read only when a turn can start.
+  const patrolRoleSet =
+    config.patrolLlm === true
+      ? (opts.roles ??
+        loadRoles({
+          home: typeof opts.home === "string" ? opts.home : null,
+          primaryKind: opts.actorKind,
+          kindOrder: opts.kindOrder,
+          explicitDir: opts.rolesDir ?? null,
+        }))
+      : null;
+  const patrolKindAvailable =
+    patrolRoleSet === null ? null : (opts.kindAvailable ?? ((kind) => isKindAvailable(kind, { env })));
+  const patrolDefaultAgent =
+    patrolRoleSet === null ? null : (selectWorkerRole(patrolRoleSet)?.agent ?? null);
+
   const patrol = await runPatrolTick({
     tasks,
     config,
@@ -1060,7 +1112,25 @@ export async function runPatrolOnce(opts, env = process.env) {
         return { ok: false };
       }
       const projectDir = target.dir;
-      const action = { identifier: alert.identifier, agent: alert.agent ?? opts.agents[0] };
+      // The identity decision comes first: the card's **assignee** — not the
+      // holder that happened to scan it — selects the executor (ADR 0015). A
+      // stale_same card whose route moved off the holder, a human card, and a
+      // review card with no reviewer-lane assignee are deferred here, before any
+      // workspace or brief watch exists.
+      const claimPlan = planPatrolClaim(task, {
+        ageMs: alert.ageMs,
+        roleSet: patrolRoleSet,
+        primaryKind: opts.actorKind ?? null,
+        kindOrder: opts.kindOrder ?? null,
+        kindAvailable: patrolKindAvailable,
+        defaultAgent: patrolDefaultAgent,
+        scanAgent: alert.agent ?? opts.agents[0] ?? null,
+      });
+      if (claimPlan.kind === "defer") {
+        log(`patrol: defer ${alert.identifier} (${claimPlan.why}); notify-only, no LLM turn`);
+        return { ok: false };
+      }
+      const action = { identifier: alert.identifier, agent: claimPlan.agent };
       const prepared = prepareDispatchTarget({
         stateDir,
         workspaceMode: opts.workspace ?? "worktree",
@@ -1126,12 +1196,18 @@ export async function runPatrolOnce(opts, env = process.env) {
         }
       }
 
-      const claimed = runCli(opts, action.agent, ["issue", "claim", alert.identifier], {
-        actorKind: opts.actorKind,
+      // A Worker fallback is a **formal reassignment first**, exactly as the
+      // poll does it (ADR 0015); a plain claim runs as the planned assignee.
+      const claimed = claimPatrolCard(opts, log, alert.identifier, claimPlan, {
+        ifVersion: Number.isInteger(task?.version) ? task.version : undefined,
       });
       if (!claimed.ok) {
         if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace });
-        log(`patrol: claim refused ${alert.identifier} (${claimed.error ?? "conflict"}) — not dispatching`);
+        log(
+          `patrol: ${claimed.phase === "reassign" ? "reassign" : "claim"} refused ` +
+            `${alert.identifier} (${claimed.error ?? "conflict"}) — not dispatching`,
+          claimed.phase === "reassign" ? { level: "warn" } : undefined,
+        );
         if (owned !== null) await stopCardWatch(opts, owned);
         return { ok: false };
       }
@@ -1142,7 +1218,13 @@ export async function runPatrolOnce(opts, env = process.env) {
         opts,
         config,
         action,
-        card: task ?? { identifier: alert.identifier },
+        // The stale read still names the old assignee; the planned Worker
+        // fallback is the deliberate re-route the reassignment just landed, so
+        // the defence-in-depth check must see it.
+        card:
+          claimPlan.reassign === undefined
+            ? (task ?? { identifier: alert.identifier })
+            : { ...task, reassign: claimPlan.reassign },
         projectDir,
         round,
       });
