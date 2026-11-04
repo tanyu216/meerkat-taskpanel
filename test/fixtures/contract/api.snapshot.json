@@ -113,6 +113,10 @@
       "http": 503
     },
     {
+      "code": "DB_UNAVAILABLE",
+      "http": 503
+    },
+    {
       "code": "DELIVERY_NEEDS_COMMIT",
       "http": 422
     },

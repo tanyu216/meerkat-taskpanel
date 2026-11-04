@@ -42,12 +42,15 @@ import { QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
 import { findWorkspace, upsertWorkspaceRecord } from "../../src/orchestrator/workspace.mjs";
 import { runContinue, runPollTick, runQuestionTick } from "../../src/orchestrator/runners.mjs";
 import {
+  BOARD_UNRESPONSIVE_AFTER,
   acquireContinueLock,
+  boardProbeUrl,
   loadContinueLock,
   readCardForRedispatch,
   readRouteOutcome,
   recordContinuePid,
   killWedgedPool,
+  probeBoardHealth,
   releaseContinueLock,
   runCli,
   runPingTick,
@@ -304,6 +307,137 @@ describe("the ping's one kill authority", () => {
   });
 });
 
+describe("the ping's board /health probe", () => {
+  const NOW = Date.parse("2026-01-01T02:00:00.000Z");
+  const iso = (ms) => new Date(ms).toISOString();
+
+  /** Drive the streak the way the one-shot ping does: one call per minute. */
+  function sequence(outcomes) {
+    const logs = [];
+    const saves = [];
+    let state = null;
+    let minute = 0;
+    return {
+      logs,
+      saves,
+      run: async () => {
+        const probes = [];
+        const result = await probeBoardHealth({
+          url: "http://127.0.0.1:9527",
+          state,
+          now: () => NOW + minute * 60_000,
+          probe: async () => {
+            probes.push(minute);
+            return outcomes[minute++] !== false;
+          },
+          save: (record) => saves.push(record),
+          log: (line, meta) => logs.push({ line, ...meta }),
+        });
+        state = result;
+        return result;
+      },
+    };
+  }
+
+  it("logs board_unresponsive once the third consecutive probe fails", async () => {
+    const run = sequence([false, false, false, false]);
+    const first = await run.run();
+    const second = await run.run();
+    const third = await run.run();
+    assert.equal(first.failures, 1);
+    assert.equal(second.failures, 2);
+    assert.equal(third.failures, 3);
+    assert.equal(third.unresponsive, true);
+    assert.equal(run.logs.length, 1, "one record, not one per minute");
+    assert.equal(run.logs[0].event, "board_unresponsive");
+    assert.equal(run.logs[0].level, "error");
+    assert.equal(run.logs[0].failures, BOARD_UNRESPONSIVE_AFTER);
+    assert.equal(run.logs[0].url, "http://127.0.0.1:9527");
+
+    // Staying down does not repeat the record for the same episode.
+    const fourth = await run.run();
+    assert.equal(fourth.failures, 4);
+    assert.equal(fourth.unresponsive, true);
+    assert.equal(run.logs.length, 1);
+    assert.equal(run.saves.length, 4, "the streak is durable for the next one-shot ping");
+  });
+
+  it("a successful probe resets the streak and arms the next episode", async () => {
+    const run = sequence([false, false, true, false, false, false]);
+    await run.run();
+    await run.run();
+    const recovered = await run.run();
+    assert.equal(recovered.ok, true);
+    assert.equal(recovered.failures, 0);
+    assert.equal(recovered.unresponsive, false);
+    assert.equal(recovered.lastOkAt, iso(NOW + 2 * 60_000));
+    assert.equal(run.logs.length, 0);
+
+    await run.run();
+    await run.run();
+    const again = await run.run();
+    assert.equal(again.failures, 3);
+    assert.equal(run.logs.length, 1, "a second episode is reported again");
+  });
+
+  it("treats a missing or throwing probe as a failed health read", async () => {
+    let state = null;
+    const result = await probeBoardHealth({
+      url: null,
+      state,
+      now: () => NOW,
+      probe: async () => {
+        throw new Error("should not be called");
+      },
+      save: () => {},
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.failures, 1);
+
+    state = result;
+    const broken = await probeBoardHealth({
+      url: "http://127.0.0.1:9527",
+      state,
+      now: () => NOW,
+      probe: async () => {
+        throw new Error("EHOSTUNREACH");
+      },
+      save: () => {},
+    });
+    assert.equal(broken.ok, false);
+    assert.equal(broken.failures, 2);
+  });
+
+  it("never kills: the probe has no process or kill seam at all", async () => {
+    // The one kill authority is `killWedgedPool`, tested above. This probe is
+    // observability, so its result deliberately carries no pid, signal or kill
+    // action — a failed /health read cannot stop the board (single writer + data
+    // safety leave that to the guard/operator).
+    const result = await probeBoardHealth({
+      url: null,
+      state: null,
+      now: () => NOW,
+      save: () => {},
+      log: () => {},
+    });
+    assert.equal(Object.hasOwn(result, "pid"), false);
+    assert.equal(Object.hasOwn(result, "kill"), false);
+    assert.equal(Object.hasOwn(result, "signal"), false);
+    assert.equal(result.ok, false);
+  });
+
+  it("resolves the board URL from the flag, then the environment, then the pointer", () => {
+    const pointer = () => ({ url: "http://127.0.0.1:7000" });
+    assert.equal(boardProbeUrl({ opts: { url: "http://127.0.0.1:9000" }, env: {}, pointer }), "http://127.0.0.1:9000");
+    assert.equal(
+      boardProbeUrl({ opts: {}, env: { TASKD_URL: "http://127.0.0.1:8000" }, pointer }),
+      "http://127.0.0.1:8000",
+    );
+    assert.equal(boardProbeUrl({ opts: {}, env: {}, pointer }), "http://127.0.0.1:7000");
+    assert.equal(boardProbeUrl({ opts: {}, env: {}, pointer: () => null }), null);
+  });
+});
+
 describe("the route lane's board check", () => {
   it("settles only when the card is assigned or has left todo", () => {
     const opts = { agents: ["alice"] };
@@ -506,6 +640,34 @@ describe("ping and continue entries", () => {
     assert.equal(sup.status, 0, sup.stderr);
     assert.deepEqual(calls(record), [], "ping must not call taskctl");
     assert.deepEqual(Object.keys(JSON.parse(readFileSync(state, "utf8")).running), [], "the dead pid is pruned");
+  });
+
+  it("logs board_unresponsive after three failed /health probes and keeps a streak on disk", () => {
+    const dir = tempDir("tp-entry-ping-health-");
+    const state = join(dir, "state.json");
+    const log = join(dir, "log");
+    writeFileSync(state, JSON.stringify({ version: 1, running: {} }));
+    // A dead board: connection refused is immediate, so the 1 s probe bound is
+    // not what this test spends time on.
+    const env = { ...process.env, HOME: dir, TASKD_URL: "http://127.0.0.1:1" };
+    const argv = [
+      join(ROOT, "src", "orchestrator", "supervisor.mjs"),
+      "--actor-kind", "claude", "--agent", "alice", "--ping-only", "--once",
+      "--state", state, "--log", log,
+    ];
+    const ping = () => spawnSync(process.execPath, argv, { encoding: "utf8", env });
+
+    for (let pass = 0; pass < 2; pass += 1) {
+      assert.equal(ping().status, 0);
+      assert.equal(readFileSync(log, "utf8").includes("event=board_unresponsive"), false);
+    }
+    assert.equal(ping().status, 0, "the third failed probe is the news");
+    assert.match(readFileSync(log, "utf8"), /event=board_unresponsive/);
+
+    const record = JSON.parse(readFileSync(join(dir, "board-health.json"), "utf8"));
+    assert.equal(record.failures, 3);
+    assert.equal(record.unresponsive, true);
+    assert.equal(typeof record.lastFailureAt, "string");
   });
 
   it("tick dry-run prints the pass order and spawns nothing", () => {

@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, before, describe, it } from "node:test";
 
-import { actorFromRequest, createTaskd } from "../../src/server/index.mjs";
+import { HTTP_TIMEOUTS, actorFromRequest, createTaskd } from "../../src/server/index.mjs";
 import { intOrUndefined, truthy } from "../../src/server/requests.mjs";
 import { SSE_NOISE_EVENTS } from "../../src/foundation/constants.mjs";
 
@@ -79,6 +79,22 @@ describe("server/routes — health and meta", () => {
     assert.equal(data.status, "ok");
     assert.equal(data.stage, "taskd");
     assert.equal(typeof data.uptimeMs, "number");
+    // The truthful half: the database answered, when it last did, and how late
+    // this process's own 1 s timer fired. `status` keeps its old meaning.
+    assert.equal(data.db, "ok");
+    assert.equal(typeof data.lastOkAt, "string");
+    assert.equal(typeof data.eventLoopLagMs, "number");
+    assert.equal(typeof data.revision, "number");
+  });
+
+  it("declares the HTTP timeouts instead of inheriting them", () => {
+    assert.equal(taskd.server.requestTimeout, HTTP_TIMEOUTS.requestTimeout);
+    assert.equal(taskd.server.headersTimeout, HTTP_TIMEOUTS.headersTimeout);
+    assert.equal(taskd.server.keepAliveTimeout, HTTP_TIMEOUTS.keepAliveTimeout);
+    assert.ok(
+      taskd.server.headersTimeout <= taskd.server.requestTimeout,
+      "Node requires headersTimeout <= requestTimeout",
+    );
   });
 
   it("reports the schema position on /meta", async () => {

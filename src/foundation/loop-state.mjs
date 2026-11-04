@@ -48,6 +48,10 @@ export const STATE_FILES = Object.freeze({
   // boot-health.mjs`). One record per state directory, because one supervisor
   // runs per machine.
   health: "supervisor.health.json",
+  // The ping's board-liveness streak (`orchestrator/runtime.mjs`). The installed
+  // ping is one-shot, so the consecutive `/health` failure count has to outlive
+  // the process that measured it.
+  boardHealth: "board-health.json",
 });
 
 /** Statuses a legacy ledger row may carry while it still claims a concurrency slot. */
@@ -436,5 +440,6 @@ export function statePathsForDir(stateDir) {
     deferrals: join(dir, STATE_FILES.deferrals),
     poolWedge: join(dir, STATE_FILES.poolWedge),
     health: join(dir, STATE_FILES.health),
+    boardHealth: join(dir, STATE_FILES.boardHealth),
   };
 }

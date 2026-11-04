@@ -217,6 +217,14 @@ export const ERROR_CODES = Object.freeze({
   DB_BUSY: spec(503, "The database is locked by another writer; the write was not applied — retry.", {
     retryAfterSeconds: 1,
   }),
+  // The engine cannot use its file at all: `SQLITE_FULL` (disk full),
+  // `SQLITE_IOERR` (an I/O failure) or `SQLITE_CANTOPEN` (the file cannot be
+  // opened). The operation did not happen and a retry may succeed once the
+  // operator fixes the disk or the attachment — a 503-class service fault, not
+  // the caller's `VALIDATION_FAILED` (400).
+  DB_UNAVAILABLE: spec(503, "The database is unavailable; the operation was not applied — retry.", {
+    retryAfterSeconds: 1,
+  }),
   MIGRATION_CHECKSUM_MISMATCH: spec(500, "A migration file changed after it was applied; migrations are append-only."),
   SCHEMA_MISMATCH: spec(500, "Database schema is not at the expected migration version."),
   SQLITE_UNAVAILABLE: spec(500, "node:sqlite is unavailable in this Node runtime."),
@@ -340,6 +348,9 @@ export const SQL_CONSTRAINT_CODES = Object.freeze([
   // Not a constraint failure, but the same seam: `mapSqliteError` turns
   // `SQLITE_BUSY`/`SQLITE_LOCKED` into it (see `storage/sqlite-errors.mjs`).
   "DB_BUSY",
+  // The same seam: `SQLITE_FULL`/`SQLITE_IOERR`/`SQLITE_CANTOPEN` become this
+  // 503-class code instead of falling through to `VALIDATION_FAILED`.
+  "DB_UNAVAILABLE",
   "VALIDATION_FAILED",
   "NOT_FOUND",
 ]);
