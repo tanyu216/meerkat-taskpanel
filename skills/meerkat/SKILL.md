@@ -232,6 +232,11 @@ are in [`references/scenarios/wait.md`](references/scenarios/wait.md).
   `taskctl session id <ref> --seg <seg> --owner <name>` derives it; offline,
   [`scripts/session-id.mjs`](scripts/session-id.mjs) computes the same value from the resolved
   task UUID.
+- **A card you claimed yourself registers its session row** with `--seg manual` after the
+  claim and closes it on delivery
+  ([`references/scenarios/execute.md`](references/scenarios/execute.md#the-cards-session-row-manual-claim)).
+  A supervisor handoff already holds the claim and the loop owns its `worker`/`reviewer` row —
+  do not register a second one.
 - **Metadata has two writers.** `issue meta` is a read-modify-write with `--if-version` that
   preserves value types; `issue update --meta` merges but stringifies and sends no CAS, so a
   concurrent write can be lost. Use `issue meta` for machine keys. Neither writes

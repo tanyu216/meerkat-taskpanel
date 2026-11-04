@@ -484,6 +484,47 @@ describe("orchestrator/workspace — the registry", () => {
     );
   });
 
+  it("picks the latest usable earlier round for a rework", () => {
+    const dir = stateDir();
+    const base = { identifier: "TP-0001", project_dir: "/p", path: "/p/.worktrees/TP-0001", branch: "lane/TP-0001" };
+    ws.upsertWorkspaceRecord(dir, { ...base, round: 1 });
+    ws.upsertWorkspaceRecord(dir, { ...base, round: 2, path: "/p/.worktrees/TP-0001-r2", branch: "lane/TP-0001-r2" });
+    const branchExists = (cmd, argv) =>
+      argv.join(" ").includes("rev-parse --verify --quiet") ? OK("abc\n") : OK("");
+    const exists = (path) =>
+      path === "/p/.worktrees/TP-0001/.git" ? true : path === "/p/.worktrees/TP-0001-r2/.git";
+    const reused = ws.reusableReworkWorkspace({
+      stateDir: dir,
+      identifier: "TP-0001",
+      round: 3,
+      projectDir: "/p",
+      exists,
+      run: branchExists,
+    });
+    assert.equal(reused.round, 2, "the latest usable round wins");
+    assert.equal(reused.path, "/p/.worktrees/TP-0001-r2");
+
+    const missingTree = ws.reusableReworkWorkspace({
+      stateDir: dir,
+      identifier: "TP-0001",
+      round: 3,
+      projectDir: "/p",
+      exists: () => false,
+      run: branchExists,
+    });
+    assert.equal(missingTree, null, "a dead tree is not a reuse source");
+
+    const missingBranch = ws.reusableReworkWorkspace({
+      stateDir: dir,
+      identifier: "TP-0001",
+      round: 3,
+      projectDir: "/p",
+      exists,
+      run: () => ({ status: 1, stdout: "", stderr: "" }),
+    });
+    assert.equal(missingBranch, null, "a deleted branch is not a reuse source");
+  });
+
   it("calls a record stale only when the tree is not usable and the branch is absent", () => {
     const record = {
       identifier: "TP-0001",

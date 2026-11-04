@@ -175,6 +175,19 @@ function rowRound(row) {
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
+/**
+ * The rework-continuity flags a row carries. They are additive: a row written
+ * by an older loop has none and reads as a normal round.
+ */
+function continuityFields(row) {
+  const carry = Number(row?.carry_from_round);
+  return {
+    rework: row?.rework === true,
+    carry_from_round: Number.isInteger(carry) && carry > 0 ? carry : null,
+    force_fresh: row?.force_fresh === true,
+  };
+}
+
 /** The canonical shape of one queue row. */
 function normaliseRow(row, id = undefined) {
   return {
@@ -183,6 +196,7 @@ function normaliseRow(row, id = undefined) {
     id: id ?? row.id ?? `${row.card}-${row.role ?? "worker"}`,
     queue_kind: row.queue_kind ?? "handoff",
     role: row.role ?? "worker",
+    ...continuityFields(row),
     // The board identity selected for this handoff (Jobs/Linus/Turing). It is
     // additive metadata: the dedupe key stays (card, role).
     agent_role: row.agent_role ?? null,
@@ -243,6 +257,36 @@ function enqueueCardUnlocked(stateDir, card) {
     const sameRound = rowRound(existing) === rowRound(card);
     const sameTarget = String(existing.target_dir ?? "") === String(card.target_dir ?? "");
     if (sameRound && sameTarget) {
+      // A re-enqueue can carry the one-shot reset or the rework marker the
+      // existing pending row does not have yet; the row is the same work, so
+      // the flags merge rather than being dropped by the coalescer.
+      const merged = continuityFields({
+        rework: existing.rework === true || card.rework === true,
+        carry_from_round: card.carry_from_round ?? existing.carry_from_round,
+        force_fresh: existing.force_fresh === true || card.force_fresh === true,
+      });
+      const changed =
+        merged.rework !== (existing.rework === true) ||
+        merged.carry_from_round !== (existing.carry_from_round ?? null) ||
+        merged.force_fresh !== (existing.force_fresh === true);
+      if (changed) {
+        if (existing.status === "processing") {
+          // An in-flight row is not rewritten; the flag waits for the next
+          // round instead of being swallowed by a turn already running.
+          return { ok: true, coalesced: true, replaced: false, superseded: true, error: null };
+        }
+        const index = value.cards.indexOf(existing);
+        value.cards[index] = { ...existing, ...merged };
+        const written = writeCards(stateDir, value);
+        return {
+          ok: written.ok,
+          coalesced: true,
+          replaced: false,
+          superseded: false,
+          merged: true,
+          error: written.error,
+        };
+      }
       return { ok: true, coalesced: true, replaced: false, superseded: false, error: null };
     }
     if (existing.status === "processing") {

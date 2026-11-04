@@ -73,7 +73,10 @@ One owner per module, one reason to change:
   singletons: `review-identity.mjs` (the only reader of a review card's identity) and
   `constants.mjs` (the only home for a shared literal).
 - **`src/orchestrator/`** — the loop. It carries no board discovery or token code; that belongs
-  to the CLI it spawns.
+  to the CLI it spawns. Its own state is two files beside the queue
+  (`sessions.state.json`, `workspaces.json`); the board-visible copy of a card's conversation
+  (`agent_sessions`) is written through `taskctl session set|close`, one stable row per card per
+  lane, because the board — not the loop — owns that record.
 
 Shared constants and the closed enumerations have one home each —
 `src/foundation/constants.mjs` and `src/core/domain/enums.mjs` (plus `priority.mjs`,

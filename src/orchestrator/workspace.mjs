@@ -607,6 +607,35 @@ export function listPreviousWorkspaces(stateDir, { identifier, round }) {
 }
 
 /**
+ * The earlier round's workspace a rework should continue in.
+ *
+ * The latest record is only a candidate: its branch may already be gone while
+ * an older tree survives. A record is reusable only when its directory is
+ * still this project's checkout and its branch still resolves — otherwise the
+ * caller falls back to the ordinary new-round create.
+ *
+ * @param {{stateDir: string, identifier: string, round: number, projectDir: string, exists?: Function, run?: Function}} input
+ * @returns {object|null} the previous record, unchanged
+ */
+export function reusableReworkWorkspace({
+  stateDir,
+  identifier,
+  round,
+  projectDir,
+  exists = existsSync,
+  run = runGit,
+}) {
+  for (const previous of listPreviousWorkspaces(stateDir, { identifier, round })) {
+    if (previous.project_dir && previous.project_dir !== projectDir) continue;
+    if (!isUsableWorkspaceRecord(previous, { exists, projectDir })) continue;
+    const probe = probeRef({ projectDir, ref: previous.branch, run });
+    if (probe.ok !== true || probe.exists !== true) continue;
+    return previous;
+  }
+  return null;
+}
+
+/**
  * Remove the workspaces of terminal cards. Called from the patrol pass, which
  * already reads the board; never from a turn's completion (the reviewer may
  * still need the tree).

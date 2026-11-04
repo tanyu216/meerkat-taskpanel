@@ -1882,6 +1882,31 @@ export async function run() {
       `session goals read ${JSON.stringify(trailRead.goals)}`,
     );
 
+    /* The prototype's two session seats: Resume states the intent, and the id
+       copies itself — or, with no clipboard permission in the harness, still
+       toasts the id. Both are measured on the running row the trail leads with. */
+    const toastTexts = () => page.evaluate(() =>
+      [...document.querySelectorAll("[data-toast-region] [data-toast-text]")].map((el) => el.textContent.trim()),
+    );
+    await page.evaluate(() =>
+      document.querySelector("[data-detail-agent-session-body] [data-agent-resume]")?.click(),
+    );
+    await page.waitForTimeout(80);
+    const resumeToasts = await toastTexts();
+    drawerTabsCheck(
+      resumeToasts.includes("Resuming agent session"),
+      `Resume raised ${JSON.stringify(resumeToasts)} instead of toast.resume`,
+    );
+    await page.evaluate(() =>
+      document.querySelector("[data-detail-agent-session-body] [data-agent-session-id]")?.click(),
+    );
+    await page.waitForTimeout(80);
+    const copyToasts = await toastTexts();
+    drawerTabsCheck(
+      copyToasts.some((text) => text.includes("sess_pi_01HQ8ZM4K2")),
+      `clicking the session id raised ${JSON.stringify(copyToasts)}, expected the id in a toast`,
+    );
+
     await page.click('[data-detail-tab="reports"]');
     await page.waitForTimeout(120);
     const reportsRead = await page.evaluate(() => ({

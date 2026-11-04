@@ -22,13 +22,21 @@ import {
   buildWorkerDispatchPrompt,
   buildWorkerReplayPrompt,
   buildWorkerResumePrompt,
+  buildWorkerReworkPrompt,
+  copyWorkerTranscript,
+  dropOlderWorkerRecords,
+  isReworkDispatch,
   isWorkerHandoff,
   isWorkerKey,
+  moveWorkerTranscript,
+  planWorkerCarry,
   planWorkerOpen,
   readWorkerTranscript,
   renderReplay,
   retireWorkerGenerations,
+  reworkRoundOf,
   roundOf,
+  sessionResetRequested,
   transcriptFile,
   workerKey,
   workerRecordIsRunning,
@@ -244,6 +252,120 @@ describe("worker transcript", () => {
       assert.equal(state.projects[old], undefined);
       assert.equal(state.projects[keep].sessionId, "b");
       assert.equal(state.projects["/work/x"].sessionId, "c");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("rework continuity", () => {
+  it("recognises the rework round a reject wrote and nothing else", () => {
+    assert.equal(reworkRoundOf({ meta: { rework_round: "2" } }), 2);
+    assert.equal(reworkRoundOf({ meta: {} }), null);
+    assert.equal(reworkRoundOf({ meta: { rework_round: "nope" } }), null);
+    assert.equal(
+      isReworkDispatch({ delivery_round: 2, meta: { rework_round: "2" } }),
+      true,
+    );
+    assert.equal(
+      isReworkDispatch({ delivery_round: 1, meta: { rework_round: "1" } }),
+      false,
+      "round 1 is never a rework",
+    );
+    assert.equal(
+      isReworkDispatch({ delivery_round: 2, meta: { rework_round: "1" } }),
+      false,
+      "a marker for another round is not this pass",
+    );
+    assert.equal(isReworkDispatch({ delivery_round: 2 }), false, "no marker, no carry");
+  });
+
+  it("reads the one-shot session reset as an explicit yes only", () => {
+    assert.equal(sessionResetRequested({ meta: { session_reset: "yes" } }), true);
+    assert.equal(sessionResetRequested({ meta: { session_reset: "YES" } }), true);
+    assert.equal(sessionResetRequested({ meta: { session_reset: "no" } }), false);
+    assert.equal(sessionResetRequested({ meta: {} }), false);
+  });
+
+  it("carries only the same card, agent, kind and worktree", () => {
+    const previous = {
+      card: "TP-1",
+      agent: "Linus",
+      actorKind: "claude",
+      worktree: "/work/tp-1",
+      workspace_created_at: "2026-01-01T00:00:00.000Z",
+    };
+    const good = {
+      card: "TP-1",
+      agent: "linus",
+      actorKind: "claude",
+      worktree: "/work/tp-1",
+      workspaceCreatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    assert.equal(planWorkerCarry(previous, good).ok, true);
+    assert.equal(planWorkerCarry(previous, { ...good, card: "TP-2" }).ok, false);
+    assert.equal(planWorkerCarry(previous, { ...good, agent: "Turing" }).ok, false);
+    assert.equal(planWorkerCarry(previous, { ...good, actorKind: "codex" }).ok, false);
+    assert.equal(planWorkerCarry(previous, { ...good, worktree: "/work/other" }).ok, false);
+    assert.equal(
+      planWorkerCarry(previous, { ...good, workspaceCreatedAt: "2026-02-01T00:00:00.000Z" }).ok,
+      false,
+      "a recreated workspace is a new conversation",
+    );
+    assert.equal(planWorkerCarry({ ...previous, blocked: true }, good).ok, false);
+    assert.equal(planWorkerCarry({ ...previous, worktree_gone: true }, good).ok, false);
+    assert.equal(planWorkerCarry(null, good).ok, false);
+  });
+
+  it("writes a delta rework prompt that names the rejected round", () => {
+    const prompt = buildWorkerReworkPrompt({
+      row: { card: "TP-1", round: 3 },
+      carryFromRound: 2,
+      handoff,
+    });
+    assert.match(prompt, /rework round 3/i);
+    assert.match(prompt, /round 2 was rejected/i);
+    assert.match(prompt, /do not start over/i);
+    assert.match(prompt, /must-fix/i);
+    assert.match(prompt, /new report/i);
+    assert.match(prompt, /You are the worker for the PROJ project/);
+  });
+
+  it("adds the rework note to a replay prompt", () => {
+    const plain = buildWorkerReplayPrompt({ row, transcript: "x", rework: false });
+    const rework = buildWorkerReplayPrompt({ row, transcript: "x", rework: true });
+    assert.doesNotMatch(plain, /rework round/i);
+    assert.match(rework, /rework round 2/i);
+    assert.match(rework, /must-fix/i);
+  });
+
+  it("moves, copies and drops transcripts with the records", () => {
+    const dir = mkdtempSync(join(tmpdir(), "worker-session-"));
+    try {
+      const old = workerKey("TP-1", 1);
+      const next = workerKey("TP-1", 2);
+      appendWorkerTurn(dir, old, { kind: "note", text: "old turn" });
+      assert.equal(moveWorkerTranscript(dir, old, next).moved, true);
+      assert.deepEqual(readWorkerTranscript(dir, next).turns.map((t) => t.text), ["old turn"]);
+      assert.deepEqual(readWorkerTranscript(dir, old).turns, []);
+
+      const copySource = workerKey("TP-2", 1);
+      const copyTarget = workerKey("TP-2", 2);
+      appendWorkerTurn(dir, copySource, { kind: "note", text: "copy me" });
+      assert.equal(copyWorkerTranscript(dir, copySource, copyTarget).copied, true);
+      assert.deepEqual(readWorkerTranscript(dir, copyTarget).turns.map((t) => t.text), ["copy me"]);
+      assert.deepEqual(readWorkerTranscript(dir, copySource).turns.map((t) => t.text), ["copy me"]);
+
+      const projects = {
+        [workerKey("TP-1", 1)]: { card: "TP-1" },
+        [workerKey("TP-1", 2)]: { card: "TP-1" },
+        [workerKey("TP-2", 1)]: { card: "TP-2" },
+      };
+      const dropped = dropOlderWorkerRecords(dir, projects, "TP-1", 2);
+      assert.deepEqual(dropped.removed, [workerKey("TP-1", 1)]);
+      assert.equal(projects[workerKey("TP-1", 1)], undefined);
+      assert.ok(projects[workerKey("TP-1", 2)], "the current round is kept");
+      assert.ok(projects[workerKey("TP-2", 1)], "another card's record is kept");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

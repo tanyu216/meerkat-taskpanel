@@ -525,16 +525,36 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   appended system prompt on Pi), so each later turn carries only the rows. A missing skill
   falls back to naming the decision-policy path in every prompt.
 - **Resume and replay** — a same-round re-dispatch (a human answer to an `awaiting`
-  question, same-round rework, crash recovery) opens the stored session id **in the same
-  actor kind** and sends a **resume** prompt carrying the answer or reason, in the same
-  workspace. A **round bump**, a recreated workspace or a role migrated to another platform
-  is a new generation: the old record is retired and the card starts fresh. When the native
+  question, crash recovery) opens the stored session id **in the same actor kind** and
+  sends a **resume** prompt carrying the answer or reason, in the same workspace. A
+  **round bump**, a recreated workspace or a role migrated to another platform is a new
+  generation: the old record is retired and the card starts fresh. When the native
   session is gone (expired, deleted, or the resume is rejected), the pool replays a
   **bounded, supervisor-owned transcript** — the last 12 worker turns, at most 8 000
   characters — into a fresh session in the same workspace and marks the record
   `resumed_by_replay`. If replay fails too, the record is `stale`/`blocked`, the queue row
   fails, and the doctor raises it. The supervisor never silently starts a second worker for
   a card whose session it could not restore.
+- **Rework continuity** — a rejection is a round bump the loop itself ordered
+  (`meta.rework_round` equals the new `delivery_round`). That round reuses the rejected
+  round's **worktree and branch** (same path, same `created_at`; uncommitted work, the plan
+  and the evidence survive), so the agent's absolute-path context stays valid. The live
+  worker process is **rekeyed in place** from `worker:<card>:r<n>` to `r<n+1>`: no spawn,
+  no re-brief, the next turn is an increment of the same conversation. If the process is
+  gone, the pool copies the bounded transcript to the new key and replays it into a fresh
+  native session (`replayed_after_rework`) — the full native history is never loaded. A
+  changed agent, actor kind or unusable worktree is not carried: the old conversation is
+  closed and the card starts fresh. `meta.session_reset=yes` is the one-shot escape hatch:
+  it keeps the workspace but forces a fresh conversation for the next round and is cleared
+  to `no` once the handoff is queued (a row that runs into an in-flight turn does not take
+  it, so the marker stays for the next round).
+- **Board session rows** — the pool is the writer of the drawer's Sessions trail. Through
+  `taskctl session set|close|list` it keeps **one stable row per card per segment** (`worker`
+  or `reviewer`, keyed by `(task, seg, owner)`), mirrored turn by turn: `running` while a
+  turn is in flight, `closed` on success, `failed` on every failure branch. A crash leaves a
+  `running` row; the next start reconciles it away unless its loop id, live key or pid says
+  it belongs to a live conversation. The writes are best-effort (5 s bound, one warning per
+  process) and a board failure never fails a turn; the director lane writes no row.
 - **Ledger** (`subagents.state.json`) — the application-level record of each reviewer
   subagent: `sessionKey` (the project directory), `lane` (`worker`/`reviewer`), actor kind,
   subagent id, role, card, status. A worker session writes only a **terminal** audit row
@@ -574,7 +594,12 @@ then the current branch. A previous lane branch whose work was merged and delete
 falls back instead of failing every pass on `invalid reference`. A rework that repairs a
 missing current-round record re-attaches its lane branch (`worktree add` without `-b`, after
 `git worktree prune`); a non-checkout directory left in the slot is moved aside to
-`<path>.orphan-<epoch>`, preserving its contents. A review whose original workspace is gone is
+`<path>.orphan-<epoch>`, preserving its contents. A rejection (**rework**) does not create a
+`-r<n>` tree at all: admission registers the new round against the previous round's path,
+branch and `created_at`, and keeps the previous record, so the reviewer that audits the new
+round and the acceptance merge still resolve their own round to the same tree. The reuse is
+probed first — a tree that is no longer a checkout, or a branch that was deleted, falls back
+to the ordinary new-round create. A review whose original workspace is gone is
 deferred (`WORKSPACE_REVIEW_TARGET_MISSING`) — it never runs in the shared checkout, where a
 write would block that project's landing. A creation failure defers the card; there is no
 fallback to the shared checkout. `--workspace=shared` restores the old behaviour explicitly.

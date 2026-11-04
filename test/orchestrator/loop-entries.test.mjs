@@ -40,7 +40,7 @@ import {
   isGitCheckout,
   reassignCard,
 } from "../../src/orchestrator/passes.mjs";
-import { QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
+import { claimCards, enqueueCard, QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
 import { findWorkspace, upsertWorkspaceRecord } from "../../src/orchestrator/workspace.mjs";
 import { runContinue, runPollTick, runQuestionTick } from "../../src/orchestrator/runners.mjs";
 import {
@@ -1448,6 +1448,134 @@ describe("the resident poll dispatch", () => {
     assert.match(entry.handoff, /^You are the worker for the P project/);
     assert.match(entry.handoff, /\.meerkat\/T-1\/card\.md/);
     assert.equal(entry.handoff.includes("/meerkat-loop"), false, "a handoff is not a continue turn");
+  });
+
+  it("reuses the rejected round's worktree and branch for a rework", async () => {
+    const f = fixture();
+    mkdirSync(join(f.app, ".git"), { recursive: true });
+    const lane = join(f.dir, "app-lane");
+    mkdirSync(join(lane, ".git"), { recursive: true });
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    const original = {
+      identifier: "T-1",
+      round: 1,
+      path: lane,
+      branch: "lane/T-1",
+      project_dir: f.app,
+      created_at: createdAt,
+    };
+    upsertWorkspaceRecord(f.dir, original);
+    const runGit = (cmd, argv) =>
+      argv.join(" ").includes("rev-parse --verify --quiet")
+        ? { status: 0, stdout: "abc\n", stderr: "" }
+        : { status: 0, stdout: "", stderr: "" };
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: f.concurrency,
+      stateDir: f.dir,
+      workspaceMode: "worktree",
+      runGit,
+      watchCards: f.watchCards,
+    });
+    const action = { identifier: "T-1", agent: "alice", reason: "ready" };
+    const card = {
+      id: "uuid-1",
+      identifier: "T-1",
+      project: "P",
+      title: "do it",
+      delivery_round: 2,
+      meta: { rework_round: "2" },
+    };
+    assert.equal((await admission.admit(action, card)).ok, true);
+    assert.equal(admission.contextFor("T-1")?.targetDir, lane, "the rework runs in the rejected tree");
+    const moved = findWorkspace(f.dir, { identifier: "T-1", round: 2 });
+    assert.equal(moved.path, lane);
+    assert.equal(moved.branch, "lane/T-1");
+    assert.equal(moved.created_at, createdAt, "the workspace identity did not change");
+    assert.equal(
+      findWorkspace(f.dir, { identifier: "T-1", round: 1 }).path,
+      lane,
+      "the rejected round's record is kept for its reviewer and merge",
+    );
+  });
+
+  it("marks a rework round and carries the previous round", async () => {
+    const f = fixture();
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, watchCards: f.watchCards });
+    const action = { identifier: "T-1", agent: "alice", reason: "ready" };
+    const card = {
+      id: "uuid-1",
+      identifier: "T-1",
+      project: "P",
+      title: "do it",
+      delivery_round: 2,
+      meta: { rework_round: "2" },
+    };
+    assert.equal((await admission.admit(action, card)).ok, true);
+    const dispatch = createQueueDispatch({
+      opts: f.opts,
+      config: { reviewers: [] },
+      stateDir: f.dir,
+      admission,
+    });
+    assert.equal((await dispatch(action, card)).ok, true);
+    const [entry] = readCards(f.dir).value.cards;
+    assert.equal(entry.rework, true);
+    assert.equal(entry.carry_from_round, 1);
+    assert.equal(entry.force_fresh, false);
+  });
+
+  it("forces one fresh conversation and clears the one-shot marker", async () => {
+    const f = fixture();
+    const { script, record } = sentinelCli(f.dir);
+    const opts = { ...f.opts, cli: script, cliEnv: { TP_SENTINEL: record } };
+    const admission = createProjectAdmission({ opts, projectConcurrency: f.concurrency, watchCards: f.watchCards });
+    const action = { identifier: "T-1", agent: "alice", reason: "ready" };
+    const card = {
+      id: "uuid-1",
+      identifier: "T-1",
+      project: "P",
+      title: "do it",
+      delivery_round: 2,
+      meta: { rework_round: "2", session_reset: "yes" },
+    };
+    assert.equal((await admission.admit(action, card)).ok, true);
+    const dispatch = createQueueDispatch({ opts, config: { reviewers: [] }, stateDir: f.dir, admission });
+    assert.equal((await dispatch(action, card)).ok, true);
+    const [entry] = readCards(f.dir).value.cards;
+    assert.equal(entry.rework, true, "the workspace still follows the rework rule");
+    assert.equal(entry.force_fresh, true);
+    const calls = readFileSync(record, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    assert.ok(
+      calls.some(
+        (argv) =>
+          argv.includes("issue") &&
+          argv.includes("meta") &&
+          argv.includes("T-1") &&
+          argv.includes("session_reset=no"),
+      ),
+      `the one-shot marker is cleared after enqueue; calls: ${JSON.stringify(calls)}`,
+    );
+  });
+
+  it("leaves the reset marker for the next round when a processing row refuses it", async () => {
+    const f = fixture();
+    const { script, record } = sentinelCli(f.dir);
+    const opts = { ...f.opts, cli: script, cliEnv: { TP_SENTINEL: record } };
+    const admission = createProjectAdmission({ opts, projectConcurrency: f.concurrency, watchCards: f.watchCards });
+    const action = { identifier: "T-1", agent: "alice", reason: "ready" };
+    const card = { id: "uuid-1", identifier: "T-1", project: "P", title: "do it" };
+    assert.equal((await admission.admit(action, card)).ok, true);
+    enqueueCard(f.dir, { card: "T-1", role: "worker", target_dir: f.dir });
+    claimCards(f.dir, { claimedBy: "other-pool", pid: process.pid, limit: 1 });
+    const dispatch = createQueueDispatch({ opts, config: { reviewers: [] }, stateDir: f.dir, admission });
+    const reset = { ...card, delivery_round: 2, meta: { rework_round: "2", session_reset: "yes" } };
+    assert.equal((await dispatch(action, reset)).ok, true);
+    assert.equal(
+      existsSync(record) ? readFileSync(record, "utf8").includes("session_reset=no") : false,
+      false,
+      "an in-flight turn did not take the flag, so the marker stays",
+    );
   });
 
   it("carries the role's platform and an inline envelope while the supervisor keeps its own kind", async () => {

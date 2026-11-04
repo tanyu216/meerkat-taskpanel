@@ -53,6 +53,22 @@ On an `agent` card each `met` item's `note` must cite an anchor from the report'
 A `met` with no reference (`no_anchor`) or one past the end (`dangling_anchor`) is
 `ACCEPTANCE_INCOMPLETE`; an empty evidence list makes every reference dangle.
 
+## The card's session row (manual claim)
+
+The drawer's Sessions tab is data-driven: a conversation is visible only when a row exists.
+A card **you claimed yourself** registers its own row once, right after the claim, and closes
+it at delivery:
+
+```bash
+taskctl session set <ref> --seg manual --owner <name> --owner-kind <kind> \
+  --phase <phase> --goal "<what this conversation is doing>"
+taskctl session close <ref> --seg manual --owner <name>
+```
+
+One row per card per segment, across rounds. A **supervisor-dispatched** card is already
+claimed by the loop, which registers and closes its own `worker`/`reviewer` row — do not
+register a second one there.
+
 ## Handoff
 
 A producer card that hands work on follows `../../SKILL.md#stage-markers`: set

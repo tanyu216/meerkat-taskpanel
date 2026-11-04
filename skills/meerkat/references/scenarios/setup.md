@@ -38,6 +38,11 @@ Stamp every write with `--actor-kind <kind> --session-id <id>`. Derive the id wi
 [`../../scripts/session-id.mjs`](../../scripts/session-id.mjs) computes the same value from
 the resolved task UUID.
 
+A card you claimed yourself also **registers** that identity as its session row — the id is
+derived from `(task, owner, seg)`, so the same segment keeps the same row across rounds. Use
+`--seg manual` for a self-claimed card and close it at delivery ([`execute.md`](execute.md#the-cards-session-row-manual-claim));
+the loop owns the `worker`/`reviewer` segments of a card it dispatches.
+
 ## Working outside a card
 
 A live session doing parallel work in a project follows `<project-dir>/docs/agents/worktrees.md`
