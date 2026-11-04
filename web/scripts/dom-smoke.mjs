@@ -2307,8 +2307,9 @@ export async function run() {
       `the drawer's depends rows read ${JSON.stringify(r14DependsRows)}, expected [{TD-5, Fix the renderer}] (the one blocks edge pointing *into* this card)`,
     );
 
-    // TP-0075 ① — the head's kind badge. TD-1 is an ordinary card (and a review
-    // card would read the same); the epic leg below reads Epic.
+    // TP-0075 ① — the head's kind badge. TD-1 is an ordinary card; the epic
+    // leg below reads Epic, and the acceptance pass opens TD-REV and reads
+    // Review (ADR 0014 gave a review card its own kind).
     const r14Kind = await page.evaluate(() => ({
       kind: document.querySelector("[data-detail-kind]")?.getAttribute("data-kind") ?? null,
       label: document.querySelector("[data-detail-kind-label]")?.textContent.trim() ?? null,
@@ -8333,6 +8334,25 @@ export async function run() {
       const reviewShown = await page.evaluate(
         () => document.querySelector('[data-card][data-identifier="TD-REV"]') !== null,
       );
+      // ADR 0014 — the drawer speaks the same discriminant word as the board
+      // and the list: a review card's badge reads Review, never Task.
+      await page.evaluate(() => {
+        document.querySelector('[data-card][data-identifier="TD-REV"]')?.click();
+      });
+      await page.waitForTimeout(300);
+      const reviewKind = await page.evaluate(() => ({
+        kind: document.querySelector("[data-detail-kind]")?.getAttribute("data-kind") ?? null,
+        label: document.querySelector("[data-detail-kind-label]")?.textContent.trim() ?? null,
+      }));
+      acceptanceActCheck(
+        reviewKind.kind === "review",
+        `a review card's kind badge says data-kind=${JSON.stringify(reviewKind.kind)}, expected "review"`,
+      );
+      acceptanceActCheck(
+        ["Review", "审核"].includes(reviewKind.label),
+        `a review card's kind badge reads ${JSON.stringify(reviewKind.label)}, expected Review`,
+      );
+      await closeDrawer();
       await page.evaluate(() => document.querySelector("[data-filter-reviews-switch]")?.click());
       await page.waitForTimeout(80);
       const reviewHiddenAgain = await page.evaluate(

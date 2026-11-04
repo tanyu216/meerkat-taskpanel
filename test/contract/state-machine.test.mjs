@@ -175,10 +175,10 @@ describe("contract/state-machine — every pair, two paths", () => {
     await withBoard(({ db }) => {
       const disagreements = [];
       const codeMismatches = [];
-      // A review card is always `kind=task` and `acceptance_mode=off`, so the
-      // review-card axis is one cell on top of the kind × mode grid — not a
-      // third cross-product (an `agent` review card cannot even be inserted;
-      // the 0040 trigger refuses it).
+      // A review card is always `kind='review'` and `acceptance_mode=off`, so
+      // the review-card axis is one cell on top of the kind × mode grid — not a
+      // third cross-product (a review card in any other acceptance mode cannot
+      // even be inserted; the marker trigger refuses it).
       // ADR 0014 — `kind='review'` is one legal cell: `off`, with the marker.
       // A review in any other acceptance mode is refused by the marker trigger,
       // so it never enters the kind × mode cross-product.

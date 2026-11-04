@@ -1303,10 +1303,11 @@ async function submitComment() {
           <span class="td-status-dot" aria-hidden="true"></span>
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
         </span>
-        <!-- TP-0075 ① — what the card *is*, on the identifier/status row. An
-             epic reads Epic; every ordinary card, and every review card (which
-             is `kind=task` and only carries `review_of`), reads Task. The word
-             is the catalogue's, so the badge is never colour-only. -->
+        <!-- TP-0075 ① — what the card *is*, on the identifier/status row. The
+             badge reads the stored kind: Task, Epic, or Review (ADR 0014 — a
+             review card is `kind='review'`; the `review_of` marker stays its
+             identity). The word is the catalogue's, so the badge is never
+             colour-only. -->
         <span class="badge badge-sm td-chip" data-detail-kind :data-kind="kindValue">
           <span data-detail-kind-label>{{ $t(`kind.${kindValue}`) }}</span>
         </span>

@@ -163,9 +163,11 @@ export const EXTRA = {
     "drawer.tab.sessions": "Sessions",
     // TP-0075 — the head's kind badge and the Relations area's new groups. The
     // badge is a word, not a colour; `epic` keeps its English spelling in the
-    // Chinese mirror (GLOSSARY.md: 中文镜像沿用英文).
+    // Chinese mirror (GLOSSARY.md: 中文镜像沿用英文). ADR 0014 adds the third
+    // kind: a review card reads Review / 审核 (GLOSSARY.md: 审核卡).
     "kind.task": "Task",
     "kind.epic": "Epic",
+    "kind.review": "Review",
     "drawer.children": "Children",
     "drawer.childrenEmpty": "No child cards",
     "relations.depends": "Depends on",
@@ -335,8 +337,10 @@ export const EXTRA = {
     "drawer.tab.leftovers": "遗留",
     "drawer.tab.sessions": "会话",
     // 同上：头部卡类型徽章与 Relations 的四个分组；epic 中文沿用英文。
+    // ADR 0014 —— review 成为第三 kind，徽章读「审核」（GLOSSARY.md：审核卡）。
     "kind.task": "任务",
     "kind.epic": "epic",
+    "kind.review": "审核",
     "drawer.children": "子任务",
     "drawer.childrenEmpty": "暂无子任务",
     "relations.depends": "前置依赖",

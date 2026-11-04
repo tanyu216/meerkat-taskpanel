@@ -35,9 +35,10 @@ const roster = new Map([
 const lookup = (id) => roster.get(id);
 
 describe("web/detail-relations — the card's kind badge", () => {
-  it("reads every non-epic card as Task, including a review card", () => {
+  it("reads the stored kind, and an unknown or absent kind as Task", () => {
     assert.equal(detailKind("epic"), "epic");
     assert.equal(detailKind("task"), "task");
+    assert.equal(detailKind("review"), "review");
     assert.equal(detailKind(undefined), "task");
     assert.equal(detailKind(null), "task");
   });
@@ -119,7 +120,7 @@ describe("web/detail-relations — the area's empty predicate", () => {
 
 describe("web/detail-relations — the new copy", () => {
   it("names the kind badge, the children group and the depends group in both languages", () => {
-    for (const key of ["kind.task", "kind.epic", "drawer.children", "drawer.childrenEmpty", "relations.depends"]) {
+    for (const key of ["kind.task", "kind.epic", "kind.review", "drawer.children", "drawer.childrenEmpty", "relations.depends"]) {
       assert.ok(EXTRA.en[key], `en is missing ${key}`);
       assert.ok(EXTRA.zh[key], `zh is missing ${key}`);
     }
@@ -128,5 +129,10 @@ describe("web/detail-relations — the new copy", () => {
   it("keeps epic in English in the Chinese mirror, as GLOSSARY.md rules", () => {
     assert.equal(EXTRA.en["kind.epic"], "Epic");
     assert.equal(EXTRA.zh["kind.epic"], "epic");
+  });
+
+  it("names the review kind in both languages, following GLOSSARY.md's 审核卡", () => {
+    assert.equal(EXTRA.en["kind.review"], "Review");
+    assert.equal(EXTRA.zh["kind.review"], "审核");
   });
 });

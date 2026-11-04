@@ -220,11 +220,12 @@ export const DOMAINS = Object.freeze({
   /** Detail drawer states (B09). */
   DRAWER_STATE: Object.freeze(["closed", "open", "closing"]),
   /**
-   * TP-0075 — the head badge's kind vocabulary. Two values, because the card's
-   * own `kind` is `task|epic` and a review card is an ordinary `task` (its
-   * review identity rides `review_of`, never a third kind).
+   * TP-0075 — the head badge's kind vocabulary: the card's own stored `kind`.
+   * ADR 0014 made a review card its own kind, so the three values are
+   * `task|epic|review`; `review` still carries the marker `review_of` as its
+   * identity, and the badge's word comes from `kind.<value>`.
    */
-  KIND: Object.freeze(["epic", "task"]),
+  KIND: Object.freeze(["epic", "task", "review"]),
   /** Overlay panel states (B18/B19). */
   PANEL_STATE: Object.freeze(["closed", "open"]),
   /** Token reveal icons (B19). */
@@ -1858,8 +1859,9 @@ const BLOCKS = [
       // design owner's ruling (F6) — the assertion lands with the ruling.
       { kind: "classes", probe: "[data-detail-status-chip]", includes: ["badge-sm", "td-chip", "td-chip-status"] },
       // TP-0075 ① — the kind badge sits beside the status chip and speaks the
-      // card's two-value vocabulary in words. The driven pass opens TD-1, an
-      // ordinary card, so it reads Task (the epic pass reads Epic in dom-smoke).
+      // card's own `task|epic|review` vocabulary in words. The driven pass opens
+      // TD-1, an ordinary card, so it reads Task; the epic pass reads Epic in
+      // dom-smoke, and the acceptance pass opens TD-REV and reads Review.
       { kind: "domain", selector: "[data-detail-kind]", attribute: "data-kind", subset: DOMAINS.KIND },
       { kind: "text", probe: "[data-detail-kind-label]", oneOf: ["Task", "任务"], when: "drawer open" },
       { kind: "computed", probe: "[data-detail-status-chip]", property: "height", equalsPx: 18, when: "drawer open" },

@@ -15,10 +15,10 @@
  *   * **The board is the only source of truth.** Container start/close stays in
  *     `src/core/commands/rollup.mjs`; this module never re-derives a close
  *     predicate, it only classifies what `issue reconcile` reported.
- *   * **The reviewer reports; the loop moves.** A review card is a normal card
- *     (`kind=task`, `meta.review_of`, `meta.flow=B`) whose only job is to carry
- *     a `VERDICT:` report. Its owner never moves the original; the loop closes the
- *     review card it dispatched.
+ *   * **The reviewer reports; the loop moves.** A review card is a card of its
+ *     own kind (`kind='review'`, identified by the `review_of` marker,
+ *     `meta.flow=B`) whose only job is to carry a `VERDICT:` report. Its owner
+ *     never moves the original; the loop closes the review card it dispatched.
  *   * **Fail-safe, never half-applied.** An unreadable verdict, a stale round or
  *     an original that cannot be seen produce an **alert and no action** — a
  *     review card left in `in_review` is recoverable on the next tick; a card
