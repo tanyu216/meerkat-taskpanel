@@ -915,6 +915,10 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     }
     assert.match(linus, /product_change=none/i);
     assert.match(linus, /design_stage/);
+    // The marker's writer is the creator or the director's triage. TP-0033 burned a
+    // round because the executor classified the card in `plan.md` and proceeded.
+    assert.match(linus, /do not classify the card\s+yourself/i, "a worker never writes its own marker");
+    assert.match(linus, /hold the card/i, "an unclassified card holds instead of proceeding");
     assert.match(impl, /## Handoff/);
     assert.match(impl, /does not\s+need the design artifacts/i);
     assert.match(testDesign, /## Handoff/);

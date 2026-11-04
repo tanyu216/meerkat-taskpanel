@@ -84,6 +84,18 @@ describe("board skill: creating a card", () => {
     assert.match(create, /never invent a project default/i, "the document is not a board default");
   });
 
+  it("sets the stage marker at creation, because the reviewer rejects an unclassified card", () => {
+    // The gap that cost TP-0033 a round: the marker is written by the creator or
+    // the director's triage, but nothing at the create asked for it, so the card
+    // reached a worker unclassified and the review rejected a green delivery.
+    assert.match(create, /stage marker/i, "the marker is a create-time decision");
+    assert.match(create, /product_change=none/, "no design input has its own value");
+    assert.match(create, /design_stage/, "a design-consuming card carries the other");
+    assert.match(create, /unclassified/i, "the missing case is named as a defect");
+    assert.match(create, /epic or a review card|epic and a review card/i, "the exempt shapes are stated");
+    assert.match(create, /--meta/, "the create call carries it");
+  });
+
   it("ships this project's card-creation guidance", () => {
     const doc = readFileSync(join(ROOT, "docs/agents/create-card.md"), "utf8");
     for (const word of ["off", "auto", "human"]) {

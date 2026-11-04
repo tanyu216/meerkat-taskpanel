@@ -159,6 +159,11 @@ function oneLine(value) {
   return capLine(value.replace(/\s+/g, " ").trim());
 }
 
+/** Whether a stage marker holds a value; a blank or missing one is unclassified. */
+function markerPresent(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
 /**
  * The live log's tail, with the rotated generation used only when the live file
  * is missing or too short — enough to fill `LOG_TAIL_LINES` without reading two
@@ -1055,6 +1060,33 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   }
   unlanded.total = unlanded.cards.length;
 
+  // 9. Open task cards with no stage marker. The marker decides whether a
+  // `## Handoff` block must resolve (`meta.design_stage`) or that there is no
+  // design input (`meta.product_change`); the reviewer rejects an unclassified
+  // card, so name it here instead of spending a whole round to find out. An epic
+  // and a review card carry no marker, a closed card is no longer work, and a
+  // `backlog` card is deliberately not queued yet.
+  const unclassified = { cards: [], total: 0 };
+  if (board.error === null) {
+    for (const task of tasks) {
+      if (TERMINAL_STATUSES.includes(String(task?.status ?? ""))) continue;
+      if (String(task?.status ?? "") === "backlog") continue;
+      if (String(task?.kind ?? "") === "epic") continue;
+      if (reviewIdentityOf(task).isReview) continue;
+      const meta = task?.meta ?? {};
+      if (markerPresent(meta.design_stage) || markerPresent(meta.product_change)) continue;
+      const ref = String(task?.identifier ?? "");
+      if (ref === "") continue;
+      unclassified.cards.push({
+        ref,
+        title: task.title ?? null,
+        status: String(task.status ?? ""),
+      });
+    }
+    unclassified.cards.sort((left, right) => left.ref.localeCompare(right.ref));
+  }
+  unclassified.total = unclassified.cards.length;
+
   // A registry record whose tree and branch are both gone cannot be landed and
   // can only mislead a rework. Only cards the board snapshot knows are judged;
   // an unknown card (or a failed board read) is left alone.
@@ -1141,6 +1173,9 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     attentionReasons.push(`blocked_acceptance: ${blockedAcceptance.total}`);
   }
   if (unlanded.total > 0) attentionReasons.push(`unlanded: ${unlanded.total}`);
+  if (unclassified.total > 0) {
+    attentionReasons.push(`unclassified: ${unclassified.total}`);
+  }
   if (workspaces.stale.length > 0) {
     attentionReasons.push(`stale_workspaces: ${workspaces.stale.length}`);
   }
@@ -1189,6 +1224,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     waiting,
     handoff_unconsumed: handoffUnconsumed,
     blocked_acceptance: blockedAcceptance,
+    unclassified,
     unlanded,
     workspaces,
     workers,
@@ -1420,6 +1456,16 @@ function humanReport(report) {
         `  ${card.ref}  done  ${card.branch}${card.path === null ? "" : `  ${card.path}`}  ` +
           `${card.title ?? ""}`.trimEnd(),
       );
+    }
+  }
+
+  if (report.unclassified.total > 0) {
+    lines.push(
+      `unclassified  ${report.unclassified.total} open task card(s) with no stage marker ` +
+        "— set `meta.design_stage` or `meta.product_change` before work starts",
+    );
+    for (const card of report.unclassified.cards) {
+      lines.push(`  ${card.ref}  ${card.status}  ${card.title ?? ""}`.trimEnd());
     }
   }
 
