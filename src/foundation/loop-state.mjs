@@ -91,6 +91,14 @@ export const POOL_REATTACH_MAX_MS = 2 * 60_000;
  */
 export const POOL_KILL_GRACE_MS = 60_000;
 
+/**
+ * How long a shutdown waits for an in-flight pass before it exits anyway. The
+ * daemon's SIGTERM handler and `runSession.stop()` share this bound: a service
+ * manager gives a few seconds, not the turn timeout, and one stuck continue
+ * must not delay a restart.
+ */
+export const STOP_DRAIN_MS = 10_000;
+
 /** The six states, in one closed list. */
 export const POOL_VERDICTS = Object.freeze([
   "running",

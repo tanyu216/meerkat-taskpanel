@@ -26,7 +26,7 @@ import { dirname, join } from "node:path";
 
 import { CLI_TIMEOUT_MS, EVENT_STREAM_LINE } from "../foundation/constants.mjs";
 import { pidMatches, processStartToken } from "../foundation/daemon-state.mjs";
-import { wedgeKillAction } from "../foundation/loop-state.mjs";
+import { STOP_DRAIN_MS, wedgeKillAction } from "../foundation/loop-state.mjs";
 import {
   createFileSink,
   createLogger as createFoundationLogger,
@@ -45,6 +45,42 @@ import {
 // ---------------------------------------------------------------------------
 // Registry (crash survival) + process liveness
 // ---------------------------------------------------------------------------
+
+/**
+ * Wait for an in-flight pass to settle, but never longer than `timeoutMs`.
+ *
+ * The daemon's SIGTERM handler and `runSession.stop()` both need the same
+ * bound: a restart must not be held hostage by a pass that will not finish.
+ * A rejected or absent pass counts as drained — its outcome is already the
+ * caller's concern.
+ *
+ * @param {Promise<unknown>|null|undefined} pending
+ * @param {number} [timeoutMs]
+ * @returns {Promise<boolean>} true when it settled, false at the bound
+ */
+export async function drainInFlight(pending, timeoutMs = STOP_DRAIN_MS) {
+  if (pending === null || pending === undefined) return true;
+  // An explicit 0 means "do not wait" (a test seam); an invalid value falls
+  // back to the shared bound.
+  const requested = Number(timeoutMs);
+  const bound = Number.isFinite(requested) && requested >= 0 ? requested : STOP_DRAIN_MS;
+  let timer = null;
+  const timeout = new Promise((resolveTimeout) => {
+    timer = setTimeout(() => resolveTimeout(false), bound);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([
+      Promise.resolve(pending).then(
+        () => true,
+        () => true,
+      ),
+      timeout,
+    ]);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+}
 
 /** @returns {boolean} whether a pid is still alive. */
 export function isProcessAlive(pid) {

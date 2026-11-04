@@ -470,19 +470,27 @@ baseline("7. a restarted pool does not redispatch a card whose agent child is st
   assert.equal(isProcessAlive(scenario.orphan.pid), true, "precondition: the orphan agent is alive");
   assert.equal(isProcessAlive(scenario.oldPoolPid), false, "precondition: the old pool manager is dead");
 
-  const result = recoverStaleCards(scenario.dir, { isAlive: isProcessAlive, now: Date.now() });
+  const result = recoverStaleCards(scenario.dir, {
+    isAlive: isProcessAlive,
+    now: Date.now(),
+    poolPid: process.pid,
+  });
   const rows = readCards(scenario.dir).value.cards;
 
   assert.equal(result.recovered, 0, "a live orphan owns the claim; it is not a stale claim");
+  assert.equal(result.reowned, 1, "the claim moves to the new pool");
   assert.equal(rows[0].status, "processing", "the in-flight card must not be requeued under a live agent");
+  assert.equal(rows[0].claimedByPid, process.pid, "the live pool owns the in-flight claim");
 
   // Positive control: the same recovery must still fire once the agent child is gone.
   const deadScenario = await setupCrashScenario({ sessionAlive: false });
   const recovered = recoverStaleCards(deadScenario.dir, {
     isAlive: isProcessAlive,
     now: Date.now(),
+    poolPid: process.pid,
   });
   const recoveredRows = readCards(deadScenario.dir).value.cards;
   assert.equal(recovered.recovered, 1, "a claim with no live child is stale and is recovered");
+  assert.equal(recovered.reowned, 0, "nothing live is re-owned");
   assert.equal(recoveredRows[0].status, "pending", "the recovered card is work again");
 });

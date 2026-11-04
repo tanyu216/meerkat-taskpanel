@@ -33,7 +33,7 @@ import { buildQuestionPrompt } from "../foundation/scheduling.mjs";
 import { holdCard } from "./holds.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
-import { readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, readTriageOutcome, runCli } from "./runtime.mjs";
+import { drainInFlight, readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, readTriageOutcome, runCli } from "./runtime.mjs";
 import {
   appendWorkerTurn,
   buildWorkerDispatchPrompt,
@@ -94,12 +94,19 @@ import {
   POOL_STALE_MS,
   SESSION_DEFAULTS,
   SESSION_LOCK_FILE,
+  STOP_DRAIN_MS,
   effectiveTurnTimeoutMs,
   poolVerdict,
 } from "../foundation/loop-state.mjs";
 
 /** Actor kinds whose adapter turns `role` into a real tool allowlist. */
 const ROLE_ALLOWLIST_KINDS = new Set(["claude", "pi"]);
+
+/**
+ * How long a reaped orphan gets between SIGTERM and SIGKILL. A child that will
+ * not stop within the grace is killed; the restart must not wait on it longer.
+ */
+export const REAP_GRACE_MS = 5_000;
 
 /** Questions answered in one project-session turn. */
 const QUESTION_BATCH_MAX = 8;
@@ -317,6 +324,9 @@ export function createSessionPool(input = {}) {
   // a producer that moved on makes the row stale rather than unsettled.
   const triageOutcome = typeof input.triageOutcome === "function" ? input.triageOutcome : null;
   const stateDir = dirname(String(opts.state));
+  const reapGraceMs = Number.isFinite(input.reapGraceMs) && input.reapGraceMs >= 0
+    ? Number(input.reapGraceMs)
+    : REAP_GRACE_MS;
   // `internal` is the installed supervisor; `external` marks a pool started by a
   // live session (`loop status --take-over`). It is an observational marker only:
   // it changes neither the pool's lifetime nor what the pool dispatches, and
@@ -407,12 +417,20 @@ export function createSessionPool(input = {}) {
 
   /**
    * Capture who we are before the first state write: the previous
-   * incarnation's pid (so the next start can reap its children) and our own
-   * start token. Idempotent — announce and start both call it.
+   * incarnation's pid and child records (so the next start can reap its
+   * children) and our own start token. The file is read once, before any state
+   * write replaces it. Idempotent — announce and start both call it.
    */
+  let capturedPrior = false;
+  let previousProjects = null;
   function captureOwnership() {
-    if (previousPoolPid === null) {
+    if (!capturedPrior) {
+      capturedPrior = true;
       const prior = readJsonFile(sessionsFile(stateDir), null).value;
+      previousProjects =
+        prior && typeof prior === "object" && prior.projects && typeof prior.projects === "object"
+          ? prior.projects
+          : {};
       const priorPid = Number(prior?.poolPid);
       if (Number.isInteger(priorPid) && priorPid > 1 && priorPid !== process.pid) {
         previousPoolPid = priorPid;
@@ -420,6 +438,67 @@ export function createSessionPool(input = {}) {
     }
     if (startStartedAt === null) startStartedAt = nowIso(now);
     if (poolPidStart === null) poolPidStart = processStartToken(process.pid);
+  }
+
+  /**
+   * Kill the previous incarnation's still-live children before the reattach
+   * pass resumes their conversations. A SIGKILLed pool leaves its agent
+   * children running; resuming the same session id opens a second process for
+   * the same conversation and working directory, and the card runs twice.
+   *
+   * Only a child whose recorded start token still matches is killed: a pid
+   * alone is not identity, because the OS reuses pids. A record without a
+   * token is left alone — a wrong kill is worse than a missed reap, and the
+   * stale-claim recovery still protects the card.
+   *
+   * @returns {Promise<{reaped: number, killed: number}>}
+   */
+  async function reapPreviousChildren() {
+    // start() holds the pool lock; a live previous manager means the file is
+    // not ours to clean up (and its children are not orphans).
+    if (previousPoolPid !== null && isAlive(previousPoolPid)) {
+      return { reaped: 0, killed: 0 };
+    }
+    const victims = [];
+    for (const record of Object.values(previousProjects ?? {})) {
+      const pid = Number(record?.pid);
+      if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) continue;
+      const token =
+        typeof record?.pidStart === "string" && record.pidStart !== "" ? record.pidStart : null;
+      if (token === null) continue;
+      if (!isAlive(pid)) continue;
+      if (processStartToken(pid) !== token) continue;
+      victims.push(pid);
+    }
+    if (victims.length === 0) return { reaped: 0, killed: 0 };
+    for (const pid of victims) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // Already gone.
+      }
+    }
+    // Process timing is real even when the pool's state clock is injected.
+    const deadline = Date.now() + reapGraceMs;
+    const allGone = () => victims.every((pid) => !isAlive(pid));
+    while (!allGone() && Date.now() < deadline) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+    }
+    const survivors = victims.filter((pid) => isAlive(pid));
+    for (const pid of survivors) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    }
+    log(
+      `session: reaped ${victims.length} orphaned child process(es) from pool ${
+        previousPoolPid ?? "unknown"
+      }` + (survivors.length > 0 ? ` (${survivors.length} needed SIGKILL)` : ""),
+      survivors.length > 0 ? { level: "warn" } : {},
+    );
+    return { reaped: victims.length, killed: survivors.length };
   }
 
   function workerPersistRecord(entry, previous = {}) {
@@ -464,6 +543,10 @@ export function createSessionPool(input = {}) {
   }
 
   const persistState = () => {
+    // A stopped pool that no longer holds the lock must not publish: an
+    // abandoned in-flight tick resumes after shutdown, and its state write
+    // would clobber a new pool's file.
+    if (phase === "stopped" && lockToken === null) return false;
     const projects = { ...(state.projects ?? {}) };
     for (const [key, entry] of sessions) {
       if (isWorkerKey(key)) {
@@ -497,7 +580,7 @@ export function createSessionPool(input = {}) {
       poolPid: phase === "stopped" ? null : process.pid,
       poolPidStart: phase === "stopped" ? null : poolPidStart,
       // The incarnation whose children the next start must reap before it
-      // reattaches (TP-0031 consumes it; this card only records it).
+      // reattaches.
       previousPoolPid,
       phase,
       startStartedAt,
@@ -1126,6 +1209,8 @@ export function createSessionPool(input = {}) {
       isAlive,
       now: now(),
       maxAgeMs: 2 * turnTimeoutMs,
+      // A live orphan's claim is re-pointed at this pool, not at a dead pid.
+      poolPid: process.pid,
       // A worker with a durable record is recovered by `recoverWorkerSessions`
       // and resumed; requeueing it here would put a second worker on the card.
       isResumableWorker: (row) =>
@@ -1137,6 +1222,9 @@ export function createSessionPool(input = {}) {
     // A silent requeue hides a dead worker; one line, only when something moved.
     if (recovered.recovered > 0) {
       log(`session: recovered ${recovered.recovered} stale claim(s)`, { level: "debug" });
+    }
+    if (recovered.reowned > 0) {
+      log(`session: re-owned ${recovered.reowned} live orphan claim(s)`, { level: "debug" });
     }
     // The queue is a work list, not a log: a terminal row is dropped after its
     // retention, and the board's card remains the durable record.
@@ -1959,6 +2047,10 @@ export function createSessionPool(input = {}) {
       captureOwnership();
       const lock = await acquireLock();
       if (!lock.ok) return lock;
+      // The previous incarnation's children die before anything resumes their
+      // conversations; otherwise `--resume` opens a second process for the same
+      // session and the card executes twice.
+      const reaped = await reapPreviousChildren();
       // The lock is the ownership fact; the phase now says the pool is up. The
       // slow reattach pass is not part of start(): `runSession` starts the tick
       // and heartbeat first, then runs it in the background, so a board read in
@@ -1966,7 +2058,7 @@ export function createSessionPool(input = {}) {
       phase = "running";
       started = true;
       persistState();
-      return { ok: true };
+      return { ok: true, reaped: reaped.reaped };
     },
     /**
      * Publish `phase:starting` before `start()` is attempted, so the startup
@@ -2166,17 +2258,20 @@ export async function runSession(opts, deps = {}) {
     return 1;
   }
   log("session: pool started");
+  let stopping = false;
   let ticking = false;
+  let inFlightTick = null;
   const interval = setInterval(() => {
     // A turn can outlive many poll intervals; a second concurrent tick would
-    // re-read the same queues for no gain.
-    if (ticking) return;
+    // re-read the same queues for no gain. A stopping pool accepts no new tick.
+    if (stopping || ticking) return;
     ticking = true;
-    pool
+    inFlightTick = pool
       .tick()
       .catch((err) => log(`session: tick failed: ${err.message}`, { level: "error" }))
       .finally(() => {
         ticking = false;
+        inFlightTick = null;
       });
   }, Math.max(50, Number(opts.sessionPollMs ?? SESSION_DEFAULTS.pollMs)));
   // Questions have their own clock. The dispatch tick awaits worker turns, and a
@@ -2184,14 +2279,16 @@ export async function runSession(opts, deps = {}) {
   // routed; sharing the tick would serialize the answer behind the very turn it
   // is meant to unblock.
   let routingQuestions = false;
+  let inFlightQuestions = null;
   const questionInterval = setInterval(() => {
-    if (routingQuestions) return;
+    if (stopping || routingQuestions) return;
     routingQuestions = true;
-    pool
+    inFlightQuestions = pool
       .routeQuestionsNow()
       .catch((err) => log(`session: question tick failed: ${err.message}`, { level: "error" }))
       .finally(() => {
         routingQuestions = false;
+        inFlightQuestions = null;
       });
   }, Math.max(50, Number(opts.sessionPollMs ?? SESSION_DEFAULTS.pollMs)));
   // The heartbeat is independent of the tick: while a turn is in flight the
@@ -2214,9 +2311,27 @@ export async function runSession(opts, deps = {}) {
   let stopPromise = null;
   const stop = () =>
     (stopPromise ??= (async () => {
+      // Stop accepting new ticks first, then give the in-flight passes the same
+      // bounded drain the daemon gives a continue. A pass that outlives the
+      // bound is abandoned: a restart must not wait out a 30-minute turn.
+      stopping = true;
       clearInterval(interval);
       clearInterval(questionInterval);
       clearInterval(heartbeat);
+      const drainMs =
+        Number.isFinite(deps.stopDrainMs) && deps.stopDrainMs >= 0
+          ? Number(deps.stopDrainMs)
+          : STOP_DRAIN_MS;
+      const drained = await Promise.all([
+        drainInFlight(inFlightTick, drainMs),
+        drainInFlight(inFlightQuestions, drainMs),
+      ]);
+      if (drained.includes(false)) {
+        log(`session: an in-flight pass outlived ${drainMs}ms — stopping anyway`, {
+          level: "warn",
+          event: "stop_drain_timeout",
+        });
+      }
       await pool.stop();
       log("session: pool stopped");
     })());

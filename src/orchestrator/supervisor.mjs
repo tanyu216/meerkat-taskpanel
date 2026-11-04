@@ -25,7 +25,7 @@ import { dirname } from "node:path";
 import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { readJsonFile, writeJsonFile } from "../foundation/daemon-state.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
-import { statePathsForDir } from "../foundation/loop-state.mjs";
+import { statePathsForDir, STOP_DRAIN_MS } from "../foundation/loop-state.mjs";
 
 import * as passesEntry from "./passes.mjs";
 import { runSession } from "./session.mjs";
@@ -37,6 +37,7 @@ import { describeRolePlatforms } from "../foundation/role-platforms.mjs";
 import { runContinueOnce } from "./runners.mjs";
 import {
   createLogger,
+  drainInFlight,
   isProcessAlive,
   killWedgedPool,
   loadRegistry,
@@ -92,13 +93,22 @@ function runPingOnce(opts, env, log) {
 /**
  * The daemon: ping and continue on their own clocks.
  *
+ * `hooks` is the in-process test seam (signal, exit, the continue runner and the
+ * drain bound). Production passes nothing: the process's own SIGTERM handler
+ * exits 0 after the drain.
+ *
  * @param {object} opts
  * @param {NodeJS.ProcessEnv} env
- * @param {(line: string) => void} log
+ * @param {(line: string, meta?: object) => void} log
+ * @param {{signal?: AbortSignal, exit?: (code: number) => void, runContinue?: () => Promise<unknown>, drainMs?: number}} [hooks]
  * @returns {Promise<number>}
  */
-async function runDaemon(opts, env, log) {
+export async function runDaemon(opts, env, log, hooks = {}) {
   const { continueEnabled } = resolveLoopConfig(opts, env);
+  const exit = typeof hooks.exit === "function" ? hooks.exit : (code) => process.exit(code);
+  const runContinue =
+    typeof hooks.runContinue === "function" ? hooks.runContinue : () => runContinueOnce(opts, env);
+  const drainMs = Number.isFinite(hooks.drainMs) && hooks.drainMs >= 0 ? hooks.drainMs : STOP_DRAIN_MS;
   log(
     `scheduler: ping every ${opts.pingInterval}s; continue every ${opts.continueInterval}s ` +
       `(${continueEnabled ? "enabled" : "disabled"})${opts.dryRun ? " (dry-run)" : ""}`,
@@ -116,28 +126,50 @@ async function runDaemon(opts, env, log) {
   ping();
   const pingTimer = setInterval(ping, Math.max(1, opts.pingInterval) * 1000);
 
+  let stopping = false;
+  let inFlight = null;
   let continueTimer = null;
   if (continueEnabled) {
-    let inFlight = false;
-    continueTimer = setInterval(async () => {
-      if (inFlight) return;
-      inFlight = true;
-      try {
-        await runContinueOnce(opts, env);
-      } catch (err) {
-        log(`continue error: ${err.message}`, { level: "error" });
-      } finally {
-        inFlight = false;
-      }
+    continueTimer = setInterval(() => {
+      // A signalled daemon accepts no new tick; the one already running is
+      // drained (bounded) by the shutdown below.
+      if (stopping || inFlight !== null) return;
+      inFlight = runContinue()
+        .catch((err) => log(`continue error: ${err.message}`, { level: "error" }))
+        .finally(() => {
+          inFlight = null;
+        });
     }, Math.max(1, opts.continueInterval) * 1000);
   }
 
-  const shutdown = () => {
-    clearInterval(pingTimer);
-    if (continueTimer !== null) clearInterval(continueTimer);
-    log("scheduler: stopped");
-    process.exit(0);
-  };
+  let shutdownPromise = null;
+  const shutdown = () =>
+    (shutdownPromise ??= (async () => {
+      stopping = true;
+      clearInterval(pingTimer);
+      if (continueTimer !== null) clearInterval(continueTimer);
+      const drained = await drainInFlight(inFlight, drainMs);
+      if (!drained) {
+        log(`scheduler: an in-flight continue outlived ${drainMs}ms — exiting anyway`, {
+          level: "warn",
+          event: "shutdown_drain_timeout",
+        });
+      }
+      log("scheduler: stopped");
+      exit(0);
+      return 0;
+    })());
+
+  const signal = hooks.signal ?? null;
+  if (signal !== null) {
+    if (signal.aborted) await shutdown();
+    else signal.addEventListener("abort", () => void shutdown(), { once: true });
+    if (!signal.aborted) {
+      await new Promise((resolveAbort) => signal.addEventListener("abort", resolveAbort, { once: true }));
+    }
+    await shutdown();
+    return 0;
+  }
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
   // Daemon mode never resolves: the scheduler is a timer holder until signalled.

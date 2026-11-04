@@ -46,7 +46,7 @@ import {
 import { emptySlaLedger, planSlaPatrol } from "../../src/foundation/sla-patrol.mjs";
 import { processStartToken } from "../../src/foundation/daemon-state.mjs";
 import { POOL_KILL_GRACE_MS, sendDeadlineMs } from "../../src/foundation/loop-state.mjs";
-import { main as supervisorMain } from "../../src/orchestrator/supervisor.mjs";
+import { main as supervisorMain, runDaemon } from "../../src/orchestrator/supervisor.mjs";
 import { agentPaths, defaultRepo, parseArgs, selectMode } from "../../src/orchestrator/options.mjs";
 import { loadSlaLedger, readPeerLastOk, readPeerMarker, saveLastOk, saveSlaLedger } from "../../src/orchestrator/runtime.mjs";
 import { notifyReal, runPatrolTick, runPollTick, runWorkflowTick } from "../../src/orchestrator/runners.mjs";
@@ -2871,5 +2871,86 @@ describe("parseArgs — the writer identity and roles root", () => {
     const paths = agentPaths("/home/alice", "pi");
     assert.equal(paths.directorSkill, "/home/alice/.agents/skills/meerkat-director");
     assert.equal(Object.hasOwn(paths, "loopRoles"), false, "roles no longer live in the skill tree");
+  });
+});
+
+describe("daemon shutdown — the in-flight continue is drained, never abandoned", () => {
+  function daemonOpts(dir) {
+    return {
+      continueInterval: 1,
+      pingInterval: 600,
+      state: join(dir, "state.json"),
+      dryRun: true,
+      configFile: {},
+      actorKind: "claude",
+      agents: ["alice"],
+    };
+  }
+
+  it("waits out the in-flight continue up to the bound, then exits 0", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-daemon-drain-"));
+    try {
+      const controller = new AbortController();
+      let markStarted;
+      const started = new Promise((resolveStarted) => {
+        markStarted = resolveStarted;
+      });
+      let exited = null;
+      const begin = Date.now();
+      // Abort only once a continue is genuinely in flight, so the drain has
+      // something to wait for.
+      void started.then(() => controller.abort());
+      const code = await runDaemon(
+        daemonOpts(dir),
+        { MEERKAT_TASKPANEL_CONTINUE: "1" },
+        () => {},
+        {
+          signal: controller.signal,
+          exit: (value) => {
+            exited = value;
+          },
+          drainMs: 60,
+          runContinue: () => {
+            markStarted();
+            return new Promise(() => {});
+          },
+        },
+      );
+      const elapsed = Date.now() - begin;
+      assert.equal(code, 0);
+      assert.equal(exited, 0, "SIGTERM exits 0 even when a continue never finishes");
+      assert.ok(elapsed >= 50, `it waits for the drain bound, not less (${elapsed}ms)`);
+      assert.ok(elapsed < 3000, `the drain is bounded (${elapsed}ms)`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("exits 0 immediately when no continue is in flight", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-daemon-idle-"));
+    try {
+      const controller = new AbortController();
+      controller.abort();
+      let exited = null;
+      const begin = Date.now();
+      const code = await runDaemon(
+        daemonOpts(dir),
+        { MEERKAT_TASKPANEL_CONTINUE: "1" },
+        () => {},
+        {
+          signal: controller.signal,
+          exit: (value) => {
+            exited = value;
+          },
+          drainMs: 10_000,
+          runContinue: () => new Promise(() => {}),
+        },
+      );
+      assert.equal(code, 0);
+      assert.equal(exited, 0);
+      assert.ok(Date.now() - begin < 1000, "an empty drain does not wait out the bound");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
