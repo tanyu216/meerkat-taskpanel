@@ -265,6 +265,15 @@ export function renderReplay(transcript) {
     : text;
 }
 
+/**
+ * A worker record is running only while it has no closure fact. Records written
+ * by older pools keep `status: "running"` after `closeEntry` stamps `closedAt`;
+ * treating those as live would exclude the card from the stale re-claim forever.
+ */
+export function workerRecordIsRunning(record) {
+  return String(record?.status ?? "") === "running" && record?.closedAt == null;
+}
+
 /** Read the `worker:` records from `sessions.state.json` without touching lanes. */
 export function readWorkerSessions(stateDir) {
   const file = join(String(stateDir), "sessions.state.json");

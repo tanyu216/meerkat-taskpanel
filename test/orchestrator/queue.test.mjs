@@ -312,6 +312,9 @@ describe("card queue", () => {
     const [second] = claimCards(dir, { claimedBy: "/work/app", limit: 1 }).cards;
     const two = requeueCards(dir, [second.id], { maxAttempts: 2 });
     assert.deepEqual({ requeued: two.requeued, failed: two.failed }, { requeued: 0, failed: 1 });
+    assert.equal(one.attempts[first.id], 1, "the caller can read the attempt it just spent");
+    assert.equal(two.attempts[second.id], 2);
+    assert.deepEqual(two.failedIds, [second.id]);
     assert.equal(readCards(dir).value.cards[0].status, "failed");
   });
 

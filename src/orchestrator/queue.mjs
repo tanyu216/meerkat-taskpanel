@@ -565,11 +565,13 @@ function pruneCardsUnlocked(stateDir, options = {}) {
  * @param {string} stateDir
  * @param {string[]} ids
  * @param {{maxAttempts?: number, error?: string|null, retryAt?: string|null}} [options]
- * @returns {{ok: boolean, requeued: number, failed: number, error: string|null}}
+ * @returns {{ok: boolean, requeued: number, failed: number, failedIds: string[], attempts: Record<string, number>, error: string|null}}
  */
 export function requeueCards(stateDir, ids, options = {}) {
-  return locked(stateDir, { ok: false, requeued: 0, failed: 0, failedIds: [], error: null }, () =>
-    requeueCardsUnlocked(stateDir, ids, options),
+  return locked(
+    stateDir,
+    { ok: false, requeued: 0, failed: 0, failedIds: [], attempts: {}, error: null },
+    () => requeueCardsUnlocked(stateDir, ids, options),
   );
 }
 
@@ -577,16 +579,27 @@ function requeueCardsUnlocked(stateDir, ids, options = {}) {
   const wanted = new Set(ids.map(String));
   const maxAttempts = Number(options.maxAttempts ?? DEFAULT_CARD_MAX_ATTEMPTS);
   const read = readCards(stateDir);
-  if (read.error !== null) return { ok: false, requeued: 0, failed: 0, failedIds: [], error: read.error };
+  if (read.error !== null) {
+    return {
+      ok: false,
+      requeued: 0,
+      failed: 0,
+      failedIds: [],
+      attempts: {},
+      error: read.error,
+    };
+  }
   const value = read.value;
   let requeued = 0;
   let failed = 0;
   const failedIds = [];
+  const attemptsById = {};
   for (const entry of value.cards) {
     if (!wanted.has(String(entry.id))) continue;
     if (isTerminalCard(entry)) continue;
     const attempts = Number(entry.attempts ?? 0) + 1;
     entry.attempts = attempts;
+    attemptsById[String(entry.id)] = attempts;
     entry.claimedAt = null;
     entry.claimedBy = null;
     entry.lastError = options.error ?? null;
@@ -601,7 +614,14 @@ function requeueCardsUnlocked(stateDir, ids, options = {}) {
     }
   }
   const written = writeCards(stateDir, value);
-  return { ok: written.ok, requeued, failed, failedIds: written.ok ? failedIds : [], error: written.error };
+  return {
+    ok: written.ok,
+    requeued,
+    failed,
+    failedIds: written.ok ? failedIds : [],
+    attempts: written.ok ? attemptsById : {},
+    error: written.error,
+  };
 }
 
 /**
