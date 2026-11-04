@@ -229,6 +229,10 @@ read makes the two board-derived lists a lower bound (the board line says `TRUNC
 A `workspaces.json` record for a non-terminal card whose worktree is not a checkout **and**
 whose branch no longer resolves is reported separately as `stale_workspaces`; it can no longer
 be landed and must not seed a rework.
+An `unclassified` list names every open task card carrying neither `meta.design_stage` nor
+`meta.product_change` — an epic and a review card carry no marker, and a closed card is no
+longer work — because the reviewer rejects an unclassified card, and naming it here costs less
+than the round the discovery otherwise spends.
 `looping.total` counts **distinct cards** — one card may appear under more than one kind.
 These are current-state readings only: a worker pulsing a fresh heartbeat without progress,
 claim/release or `blocked`/`awaiting` churn inside one round, and activity-level oscillation

@@ -78,6 +78,7 @@ only for what the human asks about or what the reasons name.
 | `blocked_acceptance` | the board refused a close; the card still carries the marker | show the refusal and what it demands |
 | `handoff_unconsumed` | an accepted producer's required handoff has no decision for its round | report; the director creates the proposed card, or the human records that none is needed |
 | `unlanded` | `done` cards whose lane branch is not in the project's branch | report; the fix is a git merge |
+| `unclassified` | open task cards with neither `meta.design_stage` nor `meta.product_change` | report; the creator or the director's triage sets the marker — a worker never writes its own |
 | `workspaces` | stale workspace registry records | report |
 | `workers` | blocked, stale, missing-worktree worker records | report; never restart a daemon |
 | `errors`, `skipped` | reads that failed, projects that could not be inspected | these are findings too |

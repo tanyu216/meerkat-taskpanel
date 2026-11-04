@@ -32,6 +32,21 @@ Resolve the project's own selection rules in this order:
 The same document records the project's epic sizing boundary; read it when the card is an
 epic or you are creating children.
 
+## Set the stage marker
+
+The stage marker is decided with the card, not found later. An ordinary task card carries
+exactly one:
+
+- `--meta design_stage=yes` when the card consumes a design archive input; its description
+  then carries the `## Handoff` block naming the spec, PRD or prototype paths.
+- `--meta product_change=none` when it has no design input: a small change, a bug, or a
+  foundation, reconstruction or audit card.
+
+An unclassified card is a defect: the executor stops on it, the reviewer rejects it, and a
+whole round is spent on the discovery. An epic and a review card carry neither marker. The
+marker's writer is the creator or the director's triage — a worker never classifies its own
+card — so the create is where it is written.
+
 ## Route the card at creation
 
 The create *is* the routing decision, not a step after it. When a role skill fits the card's

@@ -26,11 +26,13 @@ source.
 Call the `meerkat` board skill to read the card, its brief and the frozen acceptance.
 
 **Triage.** `meta.design_stage` means a feature or behaviour change: read the `## Handoff` block
-in the description. If the block is missing or a named path does not exist, stop and ask.
-`meta.product_change=none` means **no design archive input** — also valid for a foundation,
-reconstruction or audit card. Neither marker is unclassified: stop and ask. A card that owes a
-follow-up (for example a regression or cleanup card) sets `meta.stage_handoff=required` and
-names it in the report's `## Handoff`; the director's triage creates it.
+in the description; a missing block or a named path that does not exist stops the turn.
+`meta.product_change=none` means **no design archive input** — valid for a foundation,
+reconstruction or audit card too. Neither marker is unclassified: **do not classify the card
+yourself or record it in `plan.md`** — the creator or the director's triage writes it. Ask and
+hold the card (`issue wait`) with the marker you propose. A follow-up sets
+`meta.stage_handoff=required` and names it in the report's `## Handoff`; the director's triage
+creates it.
 
 **Take the plan.** A `.meerkat/<id>/plan.md` that already exists is **this card's plan**; a
 rework extends it, folding in an attached plan rather than replacing it. Otherwise
@@ -74,8 +76,7 @@ opened at step 3.
 
 A card that mixes foundation and feature runs architecture first and proposes the implementation
 cards in its `## Handoff`; the director's triage decides the split. An epic child executes only
-its scope.
-Each branch file starts with its own step list. This is a pointer, not a second selection table.
+its scope. Each branch file starts with its own step list; this is a pointer, not a second table.
 
 ## Six principles
 
@@ -107,13 +108,12 @@ constrains how, never adds machinery; a boundary is not traded for speed.
 
 ## Delivery
 
-Run `references/self-check.md` (the handoff names it). Call the `meerkat` board skill to
-deliver: the board requires a committed tree and a report with the `commit` anchor. A producer card (architecture)
-also writes the `## Handoff` block; the supervisor's acceptance pass lands the delivered tree
-and cleans up.
+Run `references/self-check.md` (the handoff names it). Call the `meerkat` board skill to deliver:
+the board requires a committed tree and a report with the `commit` anchor. A producer card
+(architecture) also writes the `## Handoff` block; the supervisor's acceptance pass lands the
+delivered tree and cleans up.
 
 ## Product language
 
 The root `GLOSSARY.md` carries a `## Product language` pointer to `design/glossary.md`; do not
-copy product terms. Linus owns the root glossary and `docs/adr/`; product terms and product ADRs
-are Jobs's.
+copy product terms. Linus owns the root glossary and `docs/adr/`; product terms and their ADRs are Jobs's.
