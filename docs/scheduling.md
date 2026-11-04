@@ -376,7 +376,7 @@ ready and recovered work. Discovery and ownership are separate: the candidate re
 only *finds* stale cards; `issue claim` (backed by the board's CAS) is what
 transfers ownership. The claim identity is the card's **assignee**, not the scanner:
 the recovery pool is unscoped, but a card assigned to Linus is claimed and dispatched
-as Linus even when Jobs sees it first (ADR 0014). The candidate row carries that
+as Linus even when Jobs sees it first (ADR 0015). The candidate row carries that
 route (`assignee`, `assignee_id`, `assignee_kind`). Only when the assignee's role
 is not installed or no available kind carries it does the loop formally re-assign a
 rotted work card to Worker — a version-guarded write plus a `change` comment — and

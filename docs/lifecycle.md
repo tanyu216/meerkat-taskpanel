@@ -151,7 +151,7 @@ Heartbeats refresh `heartbeat_at` and nothing else, only in `in_progress`, only 
 holder. The thresholds are one clock with three readings: the holder may re-claim after ten
 minutes, `issue candidates --stale` offers a card after thirty, and after six hours the claim
 has rotted — its assignee takes it back as an audited takeover, while any other actor needs
-`--allow-steal --reason` (ADR 0014). The six hours are a liveness bound, not a licence to take
+`--allow-steal --reason` (ADR 0015). The six hours are a liveness bound, not a licence to take
 somebody else's card.
 
 The dependency rule is a **read** rule: `issue candidates` withholds a card whose `blocks`
