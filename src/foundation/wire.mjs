@@ -115,11 +115,11 @@ export function taskToWire(task, options = {}) {
   out.labels = Array.isArray(task.labels) ? task.labels : [];
   out.meta = task.meta ?? {};
   const identity = reviewIdentityOf(task);
-  // The readable word for what a card is *for* — `kind` plus the review marker.
-  // A review card is an ordinary `kind=task`, so this is derived on the wire,
-  // never stored as a third kind; `role=review` is also what `?kind=review`
-  // filters on.
-  out.role = identity.isReview ? "review" : task.kind === "epic" ? "epic" : "task";
+  // The readable word for what a card is *for*. ADR 0014 made `review` a stored
+  // kind; `role` stays the external discriminant, so a review still reports
+  // `review` even when a caller hands over a legacy row that carries only the
+  // meta mirror. `?kind=` now filters on the stored kind.
+  out.role = task.kind === "review" || identity.isReview ? "review" : task.kind === "epic" ? "epic" : "task";
   // The readable review target. The reader prefers the structural column; a
   // caller that holds the repository (the HTTP payload) replaces this with the
   // resolved identifier when only the id is stored. `null` for an ordinary card.

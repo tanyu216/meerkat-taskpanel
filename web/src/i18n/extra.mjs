@@ -31,6 +31,9 @@ export const EXTRA = {
     "access.envManaged": "Managed by TASKD_ALLOW_CIDRS on the host — edit the service environment to change it.",
     "access.cidr.empty": "Every range needs a value before it can be saved.",
     "access.cidr.none": "No ranges — every remote address will be refused.",
+    // ADR 0014 — implementation-only: the prototype has no review cards, so
+    // neither this switch nor the drawer's rounds section exists there.
+    "filters.reviews": "Show reviews",
     "conflict.title": "This task changed elsewhere",
     "conflict.hint": "Your change was not applied. Reload the task to see the current version, then try again.",
     "conflict.reload": "Reload task",
@@ -168,6 +171,7 @@ export const EXTRA = {
     // assigns the act to the human, and these are the words for it.
     "drawer.acceptance.summary": "Delivery",
     "drawer.acceptance.author": "Reported by %s",
+    "drawer.acceptance.reviews": "Review rounds",
     "drawer.accept": "Accept and close",
     "drawer.sendBack": "Send back for rework",
     "drawer.sendBackReason": "What should the worker fix before resubmitting?",
@@ -247,6 +251,8 @@ export const EXTRA = {
     "access.envManaged": "由主机上的 TASKD_ALLOW_CIDRS 管理；请修改服务环境变量。",
     "access.cidr.empty": "每个网段都需要填写内容后才能保存。",
     "access.cidr.none": "列表为空 —— 所有远程地址都将被拒绝。",
+    // ADR 0014 —— 仅供界面：原型没有 review 卡，这个开关与抽屉的评审轮次区都不存在。
+    "filters.reviews": "显示 review 卡",
     "conflict.title": "此任务已在别处被修改",
     "conflict.hint": "你的修改未生效。请重新载入该任务以获取最新版本，然后再试一次。",
     "conflict.reload": "重新载入任务",
@@ -314,6 +320,7 @@ export const EXTRA = {
     // 同上：原型里的验收面板只读（原型没有看板），这组词只属于实现。
     "drawer.acceptance.summary": "本次交付",
     "drawer.acceptance.author": "提交人：%s",
+    "drawer.acceptance.reviews": "评审轮次",
     "drawer.accept": "验收并关闭",
     "drawer.sendBack": "退回重做",
     "drawer.sendBackReason": "说明需要返工的地方，让执行者知道改什么。",

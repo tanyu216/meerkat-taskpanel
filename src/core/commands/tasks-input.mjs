@@ -42,7 +42,7 @@
 
 import { DomainError } from "../../foundation/errors.mjs";
 import { CARD_ACCEPTANCE_MODES } from "../domain/acceptance-mode.mjs";
-import { PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
+import { CREATABLE_KINDS, PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
 
 /** The nine operations this module covers. */
 export const TASK_OPS = Object.freeze({
@@ -147,7 +147,9 @@ const UPDATE = Object.freeze([
   both("title"),
   both("description"),
   both("priority", { vocab: PRIORITIES }),
-  both("kind", { vocab: TASK_KINDS }),
+  // ADR 0014 — an update cannot promote a card into a review: `review` is the
+  // create-time result of `review_of`, not a patchable word.
+  both("kind", { vocab: CREATABLE_KINDS }),
   both("labels", { repeat: true }),
   both("meta", { type: OBJECT }),
   both("acceptance", { repeat: true }),

@@ -69,7 +69,9 @@ export function reviewCreateArgs(action) {
   return [
     "issue", "create",
     "--project", String(action.project_id ?? ""),
-    "--kind", "task",
+    // ADR 0014 — a review is its own kind. The marker is still what the
+    // resolver resolves; `review` is the word the loop states.
+    "--kind", "review",
     "--title", action.title,
     "--description", action.description,
     "--assignee", action.reviewer,

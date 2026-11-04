@@ -158,6 +158,14 @@ export const board = reactive({
   revision: 0,
   connection: "closed",
   filters: { search: "", assignee: "all", priority: "all", status: "all", label: "all" },
+  /**
+   * ADR 0014 — show the cards that audit another card. A review is a stored
+   * kind, but it is the loop's (or a reviewer's) bookkeeping rather than board
+   * work, so the board and list hide it at rest. Deliberately **not** in
+   * `filters`: it changes what the board is, not what is narrowed, so it has no
+   * place in `activeFilterCount` and Clear filters does not reset it.
+   */
+  showReviews: false,
   selectedRef: null,
   drawerState: "closed",
   detail: null,
@@ -335,11 +343,29 @@ function passesAssignee(task) {
   return actorMatches(assigneeFilterValue(), task?.assignee?.display_name ?? "", task?.assignee?.kind, ME);
 }
 
+/** Is this card the review kind? @param {{kind?: string}} [task] */
+export function isReviewTask(task) {
+  return task?.kind === "review";
+}
+
+/**
+ * The cards the board and list may show at all: the whole reading minus the
+ * review kind while the switch is off. This is the denominator the filter
+ * count's "filtered" form divides by — a visible "3 of 8" must not count cards
+ * the reader cannot see.
+ */
+export const boardTaskTotal = computed(() =>
+  board.showReviews ? board.tasks.length : board.tasks.filter((task) => !isReviewTask(task)).length,
+);
+
 export const visibleTasks = computed(() => {
   const { search, priority, label } = board.filters;
   const needle = search.trim().toLowerCase();
   const byStatus = statusFilterValues();
   return board.tasks.filter((task) => {
+    // ADR 0014 — a review is hidden by default; the switch (FiltersBar) shows
+    // it. `board.tasks` keeps the row for the waiting queue and the drawer.
+    if (!board.showReviews && isReviewTask(task)) return false;
     if (!matchesSearch(task, needle)) return false;
     // One predicate for the board, the activity feed and the waiting queue
     // (`lib/assignee-filter.js`): an **unassigned** card is in neither the human

@@ -234,7 +234,7 @@ export function createTasksRepository(db) {
      * that a hand-edited row left malformed, so the read degrades to no match
      * rather than raising.
      *
-     * @param {{projectId?: string, kind?: string, hasReviewMarker?: boolean, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, reviewOfId?: string, parentId?: string, labels?: string[], target?: string, metaEquals?: {key: string, value: string}[], includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
+     * @param {{projectId?: string, kind?: string, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, reviewOfId?: string, parentId?: string, labels?: string[], target?: string, metaEquals?: {key: string, value: string}[], includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
      */
     list(filter = {}) {
       const clauses = [];
@@ -243,16 +243,12 @@ export function createTasksRepository(db) {
         clauses.push("project_id = ?");
         values.push(filter.projectId);
       }
-      // `kind` is the container reconciler's scope read (commands/rollup.mjs):
-      // it needs every non-terminal epic without paging the whole board.
+      // `kind` is the stored card type (ADR 0014): the list filter reads it
+      // literally, and the container reconciler uses the same filter for its
+      // non-terminal epic scope (commands/rollup.mjs).
       if (filter.kind !== undefined) {
         clauses.push("kind = ?");
         values.push(filter.kind);
-      }
-      // `kind=review`'s translated form (`commands/tasks.mjs#readOrdered`): the
-      // review identity is the marker column, never a kind of its own.
-      if (filter.hasReviewMarker === true) {
-        clauses.push("review_of_id IS NOT NULL");
       }
       if (filter.status !== undefined) {
         const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];

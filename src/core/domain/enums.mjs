@@ -117,15 +117,27 @@ export const PRIORITY = Object.freeze({
 });
 
 /**
- * Task kinds. Only `epic` may be a parent (see `domain/relation.mjs`) and only
- * `epic` is withheld from the automatic candidate read (see
- * `domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`).
+ * Task kinds (ADR 0014). `review` is the card *type*; the immutable marker
+ * `review_of_id` / `review_round` remains its identity, and the database CHECK
+ * `(kind='review') = (review_of_id IS NOT NULL)` keeps the two in lockstep.
+ * Only `epic` may be a parent (see `domain/relation.mjs`) and only `epic` is
+ * withheld from the automatic candidate read (see
+ * `domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`); a review is a claimable unit.
  *
  * 0038 retired `deploy` from the card model. Whether a card belongs to a
  * release line — and what confirming that means — is the loop's own decision;
  * a card that needs an independent gate says so with `acceptance_mode: auto`.
  */
-export const TASK_KINDS = Object.freeze(["task", "epic"]);
+export const TASK_KINDS = Object.freeze(["task", "epic", "review"]);
+
+/**
+ * What a caller may store as a kind **without a review marker**. `review` is
+ * absent: a review card is created by passing `review_of`, which resolves the
+ * marker and forces `kind='review'`. A markerless `kind='review'` is a
+ * `VALIDATION_FAILED`, and a marker without the review kind is refused by the
+ * database CHECK.
+ */
+export const CREATABLE_KINDS = Object.freeze(["task", "epic"]);
 
 /**
  * Named access to the kinds. Callers that mean "the grouping card" say
@@ -135,6 +147,7 @@ export const TASK_KINDS = Object.freeze(["task", "epic"]);
 export const TASK_KIND = Object.freeze({
   TASK: "task",
   EPIC: "epic",
+  REVIEW: "review",
 });
 
 /** Relation types. */

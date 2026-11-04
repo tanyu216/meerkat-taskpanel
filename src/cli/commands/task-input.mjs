@@ -68,7 +68,7 @@ export const SPELLING = Object.freeze({
     description: { value: "<text>" },
     status: { value: "<status>" },
     priority: { value: "<low|medium|high|urgent>" },
-    kind: { value: "<task|epic>" },
+    kind: { value: "<task|epic|review>" },
     labels: { flag: "label", value: "<label>" },
     meta: { as: "kv" },
     acceptance: { value: "<text>", summary: "Acceptance criterion; repeatable." },

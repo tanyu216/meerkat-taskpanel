@@ -27,7 +27,8 @@
 
 ## 2. The review card's identity
 
-A review card is an ordinary `kind=task` card. Its identity is two **immutable columns**:
+A review card is `kind='review'` (ADR 0014). Its identity is still two **immutable
+columns**:
 
 | Column | Meaning |
 |---|---|
@@ -45,11 +46,12 @@ round from `review_round`. The board still mirrors both into `meta.review_of` /
 is `meta.flow`.
 The `review` label is a discovery aid; it is **never** the predicate. A card is a review card
 when `issue get <ref> --json` carries `review_of_id` (or, for a legacy row, `meta.review_of`),
-and the envelope also carries the resolved `review_of` identifier for display. Its derived
-`role` is the readable word — `task`, `epic`, or `review` — while `kind` stays `task`; ask
-`role`, not `kind`, when deciding what a card is for. `issue list --kind review` (and
-`GET /tasks?kind=review`) is a **filter over the marker**, not a third kind: `--kind task`
-still returns review cards, and `issue create --kind review` is refused.
+and the envelope also carries the resolved `review_of` identifier for display. `kind` is
+`task | epic | review`; `review_of_id` forces `kind='review'`, and the database CHECK
+`(kind='review') = (review_of_id IS NOT NULL)` keeps the two in lockstep. The wire's `role`
+(`task|epic|review`) stays the readable word. `issue list --kind task|epic|review` reads the
+stored type literally — `--kind task` does **not** return review cards — and
+`issue create --kind review` is accepted only together with `--review-of`.
 
 ### Two rounds, deliberately different
 

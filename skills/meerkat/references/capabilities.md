@@ -161,7 +161,7 @@ All writes use `--actor-kind system --agent Orchestrator` and are idempotent by 
 
 | Capability | Invocation | Keys read |
 |---|---|---|
-| create a review card | `issue create --project <p> --kind task --title … --description … --assignee <reviewer> --assignee-kind agent --label review --meta flow=B --review-of <original> --review-round <n> --target <t> --idem <key> --acceptance <text>…` | `data.task.identifier` |
+| create a review card | `issue create --project <p> --kind review --title … --description … --assignee <reviewer> --assignee-kind agent --label review --meta flow=B --review-of <original> --review-round <n> --target <t> --idem <key> --acceptance <text>…` | `data.task.identifier` |
 | create a rework child | `issue create --project <p> --kind task --title … --description … [--assignee-id <id>] --acceptance-mode off --meta rework_of=<original> --meta rework_round=<n> --target … --idem …` | `data.task.identifier` |
 | list relations | `relation list <ref>` | `data.children[].target` |
 | link a parent | `relation add <ref> --type parent --target <child>` | `ok` only |

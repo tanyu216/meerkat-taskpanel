@@ -1424,6 +1424,40 @@ describe("web/board — filtered board (visible branches)", () => {
     assert.deepEqual(columns.value.find((c) => c.status === "done").tasks.map((t) => t.identifier), ["TD-2"]);
     assert.deepEqual(columns.value.find((c) => c.status === "blocked").tasks, []);
   });
+
+  it("hides review-kind cards by default, and the switch counts them honestly", async () => {
+    // ADR 0014 — a review card is a stored type now, so the board and list hide
+    // it by default; `board.tasks` still holds it because the waiting queue and
+    // the drawer read the whole reading. The count's denominator follows the
+    // switch, or a visible "3 of 4" would name a card the reader cannot see.
+    const { board, boardTaskTotal, visibleTasks } = await freshBoard();
+    const review = {
+      id: "4",
+      identifier: "TD-4",
+      title: "Audit the wire",
+      status: "in_review",
+      kind: "review",
+      role: "review",
+      review_of: "TD-1",
+      review_round: 1,
+      labels: [],
+      assignee: { display_name: "linus", kind: "agent" },
+    };
+    board.tasks = [...tasks, review];
+
+    assert.deepEqual(visibleTasks.value.map((t) => t.identifier), ["TD-1", "TD-2", "TD-3"]);
+    assert.equal(boardTaskTotal.value, 3);
+
+    board.showReviews = true;
+    assert.deepEqual(visibleTasks.value.map((t) => t.identifier), ["TD-1", "TD-2", "TD-3", "TD-4"]);
+    assert.equal(boardTaskTotal.value, 4);
+
+    // A filter still narrows; the denominator is the unfiltered reading behind
+    // the switch, never the filtered count.
+    board.filters.search = "TD-4";
+    assert.deepEqual(visibleTasks.value.map((t) => t.identifier), ["TD-4"]);
+    assert.equal(boardTaskTotal.value, 4);
+  });
 });
 
 /* ------------------------------------------------- waiting: acceptance */

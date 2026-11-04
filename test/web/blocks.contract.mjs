@@ -956,12 +956,19 @@ const BLOCKS = [
       "[data-filter-label-value]",
       "[data-filter-label-summary]",
       "[data-filter-label-option]",
+      // ADR 0014 — the implementation-only review switch (the prototype has no
+      // review card). It sits beside the filters but is not one: it changes
+      // what the board is, so it stays out of `activeFilterCount`.
+      "[data-filter-reviews]",
+      "[data-filter-reviews-switch]",
       "[data-filter-clear]",
       "[data-filter-count]",
     ],
     states: [],
     rules: [
       { kind: "count", selector: "[data-filters]", equals: 1 },
+      { kind: "count", selector: "[data-filter-reviews]", equals: 1 },
+      { kind: "count", selector: "[data-filter-reviews-switch]", equals: 1 },
       // R15 ② — `[data-filter-clear]` is no longer the document's only one: the
       // activity bar's tail carries B04's control too (B26), and the two are
       // told apart by **the bar the press came from** rather than by a second
@@ -1604,6 +1611,7 @@ const BLOCKS = [
       // presence/absence pairs are measured in `web/scripts/dom-smoke.mjs`;
       // their copy is the implementation-only `drawer.accept*` / `drawer.sendBack*`
       // family in `web/src/i18n/extra.mjs`, like Reopen's.
+      "[data-detail-acceptance-list]",
       "[data-detail-acceptance-summary]",
       "[data-detail-acceptance-round]",
       "[data-detail-acceptance-author]",
@@ -1615,6 +1623,14 @@ const BLOCKS = [
       "[data-detail-send-back-note]",
       "[data-detail-send-back-confirm]",
       "[data-detail-send-back-cancel]",
+      // ADR 0014 — the Acceptance tab's read-only review-round rows. They exist
+      // only for a card some review card audits, so they are data-driven
+      // `states`, not resting `required` hooks.
+      "[data-detail-review-rounds]",
+      "[data-review-round]",
+      "[data-review-round-label]",
+      "[data-review-identifier]",
+      "[data-review-status-text]",
     ],
     rules: [
       { kind: "count", selector: "[data-detail-drawer]", equals: 1 },

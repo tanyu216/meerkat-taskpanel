@@ -190,13 +190,10 @@ export function registerTaskRoutes(router, surface) {
       });
     }
     // An unknown kind is a caller mistake, not an empty page — the declaration
-    // states the vocabulary but does not enforce it. `review` is a read-side
-    // alias for the review marker (`review_of_id IS NOT NULL`), not a third
-    // kind: a review card is an ordinary `kind=task` card, so `kind=task` keeps
-    // returning it and `kind=review` only narrows further. `POST`/`PATCH` still
-    // take `TASK_KINDS` alone, so no card can be created as `review`.
+    // states the vocabulary but does not enforce it. ADR 0014 — `kind` is the
+    // stored type and reads literally: `task` no longer returns a review card.
     const kind = query.get("kind");
-    const listKinds = [...TASK_KINDS, "review"];
+    const listKinds = TASK_KINDS;
     if (kind !== null && !listKinds.includes(kind)) {
       throw new DomainError("VALIDATION_FAILED", {
         message: `unknown kind ${JSON.stringify(kind)}`,

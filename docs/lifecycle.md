@@ -48,11 +48,12 @@ A card has three independent axes:
 
 - **`status`** — the stage. Seven are stages on the board; `awaiting` is an eighth literal that
   is an *overlay* on an in-progress card, displayed under `in_progress`.
-- **`kind`** — `task` or `epic`. Kind changes one edge (`todo → in_review` for an `epic`) and
-  the claim rule (an epic is never claimable). Nothing else.
-- **`role`** — derived, not stored: `task`, `epic`, or `review`. A review card is a
-  `kind=task` card that carries the review marker; ask `role`, not `kind`, when deciding what
-  a card is for.
+- **`kind`** — `task`, `epic` or `review` (ADR 0014). Kind changes one edge (`todo → in_review`
+  for an `epic`) and the claim rule (an epic is never claimable); `review` is tied to the review
+  marker below. Nothing else.
+- **`role`** — the readable word on the wire: `task`, `epic`, or `review`. Since ADR 0014 it
+  equals the stored `kind` for every new row; only an unresolvable legacy `meta.review_of` row
+  keeps `kind=task` while `role` reads `review`.
 
 | Stage | Meaning |
 |---|---|
@@ -273,7 +274,7 @@ items can be appended before the card is re-queued.
 
 ### 4.1 Identity
 
-A review card is an ordinary `kind=task` card. Its identity is two immutable columns:
+A review card is `kind='review'` (ADR 0014). Its identity is still two immutable columns:
 
 | Column | Meaning |
 |---|---|
@@ -290,8 +291,9 @@ The structural rules are enforced at creation, in the domain and in triggers:
 - the original must be `in_review` at creation, and a supplied `review_round` must equal the
   original's current round;
 - a review card is always `acceptance_mode = off` — flow B is never reviewed again;
-- a review card is created as `kind=task` — an epic cannot be claimed, so an epic review would
-  never be woken; a later promotion is unsupported. It may not be either end of a `parent`
+- a review card is created as `kind='review'` by the `review_of` resolver — an epic cannot be
+  claimed, so an epic review would never be woken; a later promotion is unsupported. It may not
+  be either end of a `parent`
   edge (the trigger refuses both ends, promoted or not);
 - a review cannot be created against a review (`tr_tasks_review_not_review`);
 - the marker columns are immutable, so a later PATCH cannot re-point the audit.
@@ -639,10 +641,11 @@ Rejected alternatives:
   and leave no artefact to retry after a crash.
 - **A `status=reviewing` stage.** It would double the state machine for a fact the marker
   columns already carry.
-- **A `kind=review`.** Kinds are `task`/`epic`; a review is a task whose role is derived, which
-  keeps every claim/heartbeat/report path shared.
 - **Move the card in the same transaction as the verdict report.** The reviewer would need
   acceptance authority, and a crash would leave no review artefact.
+
+ADR 0014 supersedes the earlier rejection of a `kind=review`: review is now a stored kind,
+while identity stays in the marker so every claim/heartbeat/report path remains shared.
 
 ## 10. Known limits
 

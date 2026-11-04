@@ -77,7 +77,11 @@ function fixture(projectId, status, overrides = {}) {
     description: overrides.description ?? "# Heading\n\nSome **bold** text and `code`.",
     status,
     priority: overrides.priority ?? "medium",
-    kind: "task",
+    // ADR 0014 — a review card is a stored kind; the fixture must be able to
+    // serve one so the board's default hiding and the drawer's rounds panel are
+    // both exercised.
+    kind: overrides.kind ?? "task",
+    role: overrides.role ?? (overrides.kind === "review" ? "review" : "task"),
     labels: overrides.labels ?? ["bug"],
     // M1 — the `awaiting` entry category (`null` on every other card).
     awaiting_reason: overrides.awaiting_reason ?? null,
@@ -219,6 +223,21 @@ export function fixtureApi() {
           { filename: "build-bundle.zip", size: 1024 },
         ],
       },
+    }),
+    // ADR 0014 — the review card that audits TD-1. It is hidden from the board
+    // and list by default (the review switch shows it), and it is what the
+    // drawer's Acceptance tab lists as a review round.
+    fixture("p1", "done", {
+      identifier: "TD-REV",
+      title: "Review the onboarding copy",
+      kind: "review",
+      role: "review",
+      review_of: "TD-1",
+      review_of_id: "td_TD_1",
+      review_round: 1,
+      acceptance_mode: "off",
+      labels: [],
+      assignee: AGENT.claude,
     }),
     // R12 — the one **over-cap** identifier. Eight is the render layer's slice
     // threshold (`web/src/lib/identifier.js`), so a nine-character id is the
@@ -1473,7 +1492,7 @@ export async function run() {
     await page.click('[data-detail-tab="acceptance"]');
     await page.waitForTimeout(120);
     const acceptanceRead = await page.evaluate(() => ({
-      items: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
+      items: document.querySelectorAll('[data-detail-panel="acceptance"] [data-detail-acceptance-list] .td-dv-item').length,
       statuses: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-status]')].map((e) => e.getAttribute("data-acceptance-status")),
       paired: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-paired]')].map((e) => e.getAttribute("data-acceptance-paired")),
       notes: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-note]')].map((e) => e.textContent.trim()),
@@ -1518,8 +1537,8 @@ export async function run() {
     await page.click('[data-detail-tab="acceptance"]');
     await page.waitForTimeout(120);
     const pendingRead = await page.evaluate(() => ({
-      items: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
-      texts: [...document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-text')].map((e) => e.textContent.trim()),
+      items: document.querySelectorAll('[data-detail-panel="acceptance"] [data-detail-acceptance-list] .td-dv-item').length,
+      texts: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-detail-acceptance-list] .td-dv-text')].map((e) => e.textContent.trim()),
       statuses: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-status]')].map((e) => e.getAttribute("data-acceptance-status")),
       paired: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-paired]')].map((e) => e.getAttribute("data-acceptance-paired")),
       empty: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-empty').length,
@@ -1561,7 +1580,7 @@ export async function run() {
         selected: tabs.filter((tab) => tab.getAttribute("aria-selected") === "true").map((tab) => tab.getAttribute("data-detail-tab")),
         reports: document.querySelector('[data-detail-panel="reports"]')?.textContent ?? "",
         acceptance: document.querySelector('[data-detail-panel="acceptance"]')?.textContent ?? "",
-        acceptanceItems: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
+        acceptanceItems: document.querySelectorAll('[data-detail-panel="acceptance"] [data-detail-acceptance-list] .td-dv-item').length,
       };
     });
     drawerTabsCheck(
@@ -1612,8 +1631,8 @@ export async function run() {
     await page.click('[data-detail-tab="acceptance"]');
     await page.waitForTimeout(120);
     const deliveredRead = await page.evaluate(() => ({
-      items: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
-      texts: [...document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-text')].map((e) => e.textContent.trim()),
+      items: document.querySelectorAll('[data-detail-panel="acceptance"] [data-detail-acceptance-list] .td-dv-item').length,
+      texts: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-detail-acceptance-list] .td-dv-text')].map((e) => e.textContent.trim()),
       statuses: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-status]')].map((e) => e.getAttribute("data-acceptance-status")),
       paired: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-paired]')].map((e) => e.getAttribute("data-acceptance-paired")),
       notes: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-note]')].map((e) => e.textContent.trim()),
@@ -4190,6 +4209,9 @@ export async function run() {
         "[data-filter-priority]",
         "[data-filter-status]",
         "[data-filter-label]",
+        // ADR 0014 — implementation-only review switch; it is a bar control,
+        // not a filter, but it belongs to the closed set all the same.
+        "[data-filter-reviews]",
         "[data-filter-clear]",
         "[data-filter-count]",
       ];
@@ -4551,7 +4573,8 @@ export async function run() {
       const bar = document.querySelector("[data-filters]");
       const childHook = (el) => {
         for (const hook of ["data-filter-assignee", "data-filter-priority",
-          "data-filter-status", "data-filter-label", "data-filter-clear", "data-filter-count"]) {
+          "data-filter-status", "data-filter-label", "data-filter-reviews",
+          "data-filter-clear", "data-filter-count"]) {
           if (el.hasAttribute(hook)) return hook;
         }
         return el.tagName.toLowerCase();
@@ -4811,7 +4834,7 @@ export async function run() {
     r11Check(restR11.pressedOptions.length === 1 && restR11.pressedOptions[0] === "all", `at rest aria-pressed=${restR11.pressedOptions.join(",")}`);
     r11Check(restR11.statusDismiss === true, "[data-filter-status] must join the light-dismiss membership");
     r11Check(
-      JSON.stringify(restR11.barOrder) === JSON.stringify(["data-filter-assignee", "data-filter-priority", "data-filter-status", "data-filter-label", "data-filter-clear", "data-filter-count"]),
+      JSON.stringify(restR11.barOrder) === JSON.stringify(["data-filter-assignee", "data-filter-priority", "data-filter-status", "data-filter-label", "data-filter-reviews", "data-filter-clear", "data-filter-count"]),
       `bar order ${restR11.barOrder.join(" · ")}`,
     );
     // R13 修订 A1/A2 — the roster items, one name button each, no `x` at all.
@@ -7278,12 +7301,41 @@ export async function run() {
         summary: document.querySelector("[data-detail-acceptance-summary]") !== null && document.querySelector("[data-detail-acceptance-summary]") !== undefined,
         accept: document.querySelector("[data-detail-accept]") !== null && document.querySelector("[data-detail-accept]") !== undefined,
         sendBack: document.querySelector("[data-detail-send-back]") !== null && document.querySelector("[data-detail-send-back]") !== undefined,
+        // ADR 0014 — the review cards that audited TD-1, read-only.
+        reviewRounds: [...document.querySelectorAll("[data-detail-review-rounds] [data-review-round]")].map((el) => ({
+          round: el.getAttribute("data-review-round"),
+          identifier: el.querySelector("[data-review-identifier]")?.textContent?.trim() ?? "",
+          status: el.getAttribute("data-review-status"),
+        })),
       }));
       acceptanceActCheck(notWaiting.accept === false, "a card that is not acceptance-waiting still offers Accept and close");
       acceptanceActCheck(notWaiting.sendBack === false, "a card that is not acceptance-waiting still offers Send back");
       acceptanceActCheck(notWaiting.summary, "a backlog card with reports lost its delivery summary");
+      acceptanceActCheck(notWaiting.reviewRounds.length === 1, `the Acceptance tab lists ${notWaiting.reviewRounds.length} review rounds, expected 1`);
+      acceptanceActCheck(notWaiting.reviewRounds[0]?.round === "1", `the review round reads ${JSON.stringify(notWaiting.reviewRounds[0]?.round)}, expected 1`);
+      acceptanceActCheck(notWaiting.reviewRounds[0]?.identifier === "TD-REV", `the review round names ${JSON.stringify(notWaiting.reviewRounds[0]?.identifier)}, expected TD-REV`);
+      acceptanceActCheck(notWaiting.reviewRounds[0]?.status === "done", `the review round's status reads ${JSON.stringify(notWaiting.reviewRounds[0]?.status)}, expected done`);
 
       await closeDrawer();
+
+      // ADR 0014 — the board hides the review kind by default and the bar's
+      // switch is the one way to show it. The fixture's TD-REV audits TD-1.
+      const reviewHidden = await page.evaluate(
+        () => document.querySelector('[data-card][data-identifier="TD-REV"]') === null,
+      );
+      await page.evaluate(() => document.querySelector("[data-filter-reviews-switch]")?.click());
+      await page.waitForTimeout(80);
+      const reviewShown = await page.evaluate(
+        () => document.querySelector('[data-card][data-identifier="TD-REV"]') !== null,
+      );
+      await page.evaluate(() => document.querySelector("[data-filter-reviews-switch]")?.click());
+      await page.waitForTimeout(80);
+      const reviewHiddenAgain = await page.evaluate(
+        () => document.querySelector('[data-card][data-identifier="TD-REV"]') === null,
+      );
+      acceptanceActCheck(reviewHidden, "a review card is rendered on the board by default");
+      acceptanceActCheck(reviewShown, "the review switch did not show the review card");
+      acceptanceActCheck(reviewHiddenAgain, "the review switch did not hide the review card again");
     } catch (err) {
       acceptanceActFailures.push(`the acceptance-acts probe could not run: ${err.message}`);
     }

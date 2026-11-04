@@ -23,15 +23,18 @@ Rules that are enforced, not just documented:
   `0001..0042` history into `0001_init.sql` (`docs/maintenance/migration.md`);
 * the delivery gate is a database trigger *and* a domain check, and the two are
   tested against each other (`test/contract/`);
-* a **review card** is an ordinary `kind=task` card carrying the immutable
+* a **review card** is `kind='review'` (ADR 0014) carrying the immutable
   `review_of_id` / `review_round` marker. Every layer reads that identity through one
   reader (`foundation/review-identity.mjs`): the columns are the authority, and
-  `meta.review_of` is a readable/legacy mirror. A review card cannot be reopened, cannot
-  be a parent or a child, and cannot itself be reviewed — the command layer refuses first,
-  and the migration's triggers refuse a raw writer. The wire derives a readable `role`
-  (`task|epic|review`) from `kind` + the marker, and `kind=review` is a **filter over the
-  marker** (translated in `commands/tasks.mjs#readOrdered`), never a third kind: `kind=task`
-  keeps returning review cards and create/update still refuse `review`;
+  `meta.review_of` is a readable/legacy mirror. The table CHECK ties the two facts
+  together — `(kind='review') = (review_of_id IS NOT NULL)` — so a marker and the kind
+  cannot disagree; `review_of` forces the kind at creation, and a markerless `review`
+  is refused. A review card cannot be reopened, cannot be a parent or a child, and
+  cannot itself be reviewed — the command layer refuses first, and the migration's
+  triggers refuse a raw writer. The wire reports the readable `role`
+  (`task|epic|review`), and `kind` is the stored type read literally: `kind=task` no
+  longer returns review cards, and create/update cannot move a card between review and
+  non-review;
 * the **acceptance baseline** is a column, not writable meta: `tasks.acceptance_json` +
   `acceptance_revision` (0032) are seeded once from `meta.acceptance` / the imported
   checkboxes, can only be appended to (a human may prune an item with an audited reason),
