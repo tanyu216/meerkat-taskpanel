@@ -108,6 +108,75 @@ describe("concurrency/if-version", () => {
     }
   });
 
+  it("guards the acceptance append with the caller's ifVersion", async () => {
+    const board = await boardWithTask();
+    try {
+      const { commands, db, task } = board;
+      // The acceptance append is updateTask's first write; move the card to
+      // version 2 so a caller holding version 1 is genuinely stale.
+      commands.updateTask({ id: task.id, patch: { title: "moved on" }, actor: AGENT });
+      const before = revision(db);
+      const activitiesBefore = countRows(db, "task_activities");
+
+      assert.throws(
+        () => commands.updateTask({ id: task.id, ifVersion: 1, acceptance: ["criterion"], actor: AGENT }),
+        (err) => {
+          assert.equal(err.code, "VERSION_CONFLICT");
+          assert.equal(err.details.currentVersion, 2);
+          assert.equal(err.details.expectedVersion, 1);
+          return true;
+        },
+      );
+
+      assert.deepEqual(commands.getTask({ id: task.id }).acceptance, [], "no criterion was written");
+      assert.equal(revision(db), before, "the refused update changed nothing");
+      assert.equal(countRows(db, "task_activities"), activitiesBefore, "and wrote no audit row");
+
+      const accepted = commands.updateTask({ id: task.id, ifVersion: 2, acceptance: ["criterion"], actor: AGENT });
+      assert.deepEqual(accepted.acceptance, ["criterion"]);
+      assert.equal(accepted.version, 3);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("guards the review-mode override with the caller's ifVersion", async () => {
+    const board = await boardWithTask();
+    try {
+      const { commands, db, task } = board;
+      // The override is a second controlled write; the caller's CAS must guard
+      // it just as it guards an acceptance append.
+      commands.updateTask({ id: task.id, patch: { title: "moved on" }, actor: AGENT });
+      const before = revision(db);
+      const activitiesBefore = countRows(db, "task_activities");
+
+      assert.throws(
+        () =>
+          commands.updateTask({
+            id: task.id,
+            ifVersion: 1,
+            acceptanceMode: "off",
+            reason: "waive the review",
+            actor: AGENT,
+          }),
+        (err) => {
+          assert.equal(err.code, "VERSION_CONFLICT");
+          assert.equal(err.details.currentVersion, 2);
+          assert.equal(err.details.expectedVersion, 1);
+          return true;
+        },
+      );
+
+      const after = commands.getTask({ id: task.id });
+      assert.equal(after.acceptanceMode, task.acceptanceMode, "the override did not land");
+      assert.equal(after.version, 2, "and the card did not move");
+      assert.equal(revision(db), before, "the refused override changed nothing");
+      assert.equal(countRows(db, "task_activities"), activitiesBefore, "and wrote no audit row");
+    } finally {
+      board.close();
+    }
+  });
+
   it("teaches the retry protocol rather than looping internally", async () => {
     const board = await boardWithTask();
     try {

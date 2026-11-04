@@ -35,9 +35,9 @@
  * which is precisely the kind of thing that used to be invisible.
  *
  * `if_version` and `session_id` are supplied by *global* CLI flags, not by a
- * per-command one; the CLI-side table records that, and a command that accepts
- * the global without forwarding it (see `tasks.update`) says so by marking the
- * field `"wire"`.
+ * per-command one; the CLI-side table records that. A declared field marked
+ * `"wire"` is sent only by a direct caller; a global these commands accept is
+ * forwarded, never silently dropped (see `tasks.update` / `tasks.assign`).
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
@@ -159,7 +159,7 @@ const UPDATE = Object.freeze([
   // change leaves `agent` (waives a review).
   both("acceptance_mode", { vocab: CARD_ACCEPTANCE_MODES }),
   both("reason"),
-  wireOnly("if_version", { type: INTEGER }),
+  both("if_version", { type: INTEGER }),
   wireOnly("assignee"),
   wireOnly("reporter"),
   wireOnly("force_create", { type: BOOLEAN }),
@@ -226,7 +226,7 @@ const ASSIGN = Object.freeze([
   both("reporter"),
   both("reporter_id"),
   both("force_create", { type: BOOLEAN }),
-  wireOnly("if_version", { type: INTEGER }),
+  both("if_version", { type: INTEGER }),
 ]);
 
 const ARCHIVE = Object.freeze([
