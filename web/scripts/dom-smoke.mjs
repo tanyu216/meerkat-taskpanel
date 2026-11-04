@@ -5891,7 +5891,11 @@ export async function run() {
     await page.click('[data-assignee-filter-option="all"]');
     await page.waitForTimeout(150);
 
-    // --- label: "u" ranks ui (prefix) before bug/security (contains); no new row
+    // --- label: "u" ranks ui and urgent-ux (prefix) before bug/security
+    // (contains); no new row. `urgent-ux` is the chip the drawer's C-9 leg added
+    // to a card above — `labelRoster` folds card labels in, and TP-0094's list
+    // entry no longer reloads the board (so the local chip survives, as it
+    // should: the card really carries it).
     await openPanel("[data-filter-label]");
     r11Check(
       await page.evaluate(() => document.activeElement?.hasAttribute?.("data-filter-label-search") ?? false),
@@ -5901,7 +5905,7 @@ export async function run() {
     await page.waitForTimeout(120);
     const labelFiltered = await readR11();
     r11Check(
-      JSON.stringify(labelFiltered.labelRows) === JSON.stringify(["all", "ui", "bug", "security"]),
+      JSON.stringify(labelFiltered.labelRows) === JSON.stringify(["all", "ui", "urgent-ux", "bug", "security"]),
       `TP-0074: label search "u" ranks ${labelFiltered.labelRows.join(",")}`,
     );
     r11Check(
@@ -5916,15 +5920,15 @@ export async function run() {
     await page.keyboard.press("ArrowDown");
     await page.waitForTimeout(80);
     r11Check(
-      JSON.stringify((await readR11()).labelActiveRows) === JSON.stringify(["bug"]),
-      "TP-0074: ArrowDown must move the label highlight to bug",
+      JSON.stringify((await readR11()).labelActiveRows) === JSON.stringify(["urgent-ux"]),
+      "TP-0074: ArrowDown must move the label highlight to urgent-ux",
     );
     await page.keyboard.press("Enter");
     await page.waitForTimeout(200);
     const labelChosen = await readR11();
-    r11Check(labelChosen.labelValue === "bug", `TP-0074: Enter wrote label ${labelChosen.labelValue}`);
+    r11Check(labelChosen.labelValue === "urgent-ux", `TP-0074: Enter wrote label ${labelChosen.labelValue}`);
     r11Check(
-      labelChosen.labelText === "Label: bug",
+      labelChosen.labelText === "Label: urgent-ux",
       `TP-0074: the label trigger states ${JSON.stringify(labelChosen.labelText)}`,
     );
     r11Check(labelChosen.labelOpen === false, "TP-0074: Enter must close the label panel");
@@ -5940,7 +5944,7 @@ export async function run() {
     const labelReopened = await readR11();
     r11Check(labelReopened.labelSearchValue === "", "TP-0074: Esc must clear the label query");
     r11Check(
-      JSON.stringify(labelReopened.labelRows) === JSON.stringify(["all", "bug", "ui", "design", "perf", "security"]),
+      JSON.stringify(labelReopened.labelRows) === JSON.stringify(["all", "bug", "ui", "design", "perf", "security", "urgent-ux"]),
       `TP-0074: the reopened label list is ${labelReopened.labelRows.join(",")}`,
     );
     // Reset the label and close both panels for the sections after this one.
