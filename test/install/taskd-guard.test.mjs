@@ -179,7 +179,10 @@ describe("taskd guard: the unit templates are the contract's", () => {
     assert.match(text, /\[Service\]/);
     assert.match(text, /Type=simple/);
     assert.match(text, /Restart=always/);
-    assert.match(text, /RestartSec=5/);
+    assert.match(text, /RestartSec=2/);
+    // A permanent startup fault exits 78; systemd must not restart it in a hot
+    // loop. (launchd has no equivalent — the asymmetry is documented.)
+    assert.match(text, /RestartPreventExitStatus=78/);
     // The application owns its log file (and its rotation).
     assert.doesNotMatch(text, /^StandardOutput=/m);
     assert.doesNotMatch(text, /^StandardError=/m);
@@ -195,11 +198,19 @@ describe("taskd guard: the unit templates are the contract's", () => {
 
     // The start limit belongs in [Unit]: systemd ignores it in [Service], so a unit
     // that put it there would silently lose its crash-loop protection.
-    const unitSection = /\[Unit\]([\s\S]*?)\n\[/.exec(text)?.[1] ?? "";
-    const serviceSection = /\[Service\]([\s\S]*?)\n\[/.exec(text)?.[1] ?? "";
-    assert.match(unitSection, /StartLimitIntervalSec=60/);
-    assert.match(unitSection, /StartLimitBurst=5/);
+    // Line-anchored: the header comments mention `[Unit]` / `[Service]` too, and a
+    // substring match would capture a comment and make the assertions vacuous.
+    const unitSection = /^\[Unit\]$([\s\S]*?)^\[/m.exec(text)?.[1] ?? "";
+    const serviceSection = /^\[Service\]$([\s\S]*?)^\[/m.exec(text)?.[1] ?? "";
+    assert.notEqual(unitSection, "", "the [Unit] section must be extracted");
+    assert.notEqual(serviceSection, "", "the [Service] section must be extracted");
+    // The unit never gives up: no interval means no burst, so a crash loop can
+    // no longer land in `failed` and stay there.
+    assert.match(unitSection, /StartLimitIntervalSec=0/);
+    assert.doesNotMatch(unitSection, /StartLimitBurst/);
     assert.doesNotMatch(serviceSection, /StartLimit/);
+    // The exit-status filter is a [Service] key, beside Restart=.
+    assert.match(serviceSection, /RestartPreventExitStatus=78/);
   });
 
   it("neither unit overrides the client's autostart policy or pins an ephemeral port", () => {

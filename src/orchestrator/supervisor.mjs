@@ -23,10 +23,12 @@ import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
+import { VERSION } from "../foundation/constants.mjs";
 import { readJsonFile, writeJsonFile } from "../foundation/daemon-state.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import { statePathsForDir, STOP_DRAIN_MS } from "../foundation/loop-state.mjs";
 
+import { beginBootHealth } from "./boot-health.mjs";
 import * as passesEntry from "./passes.mjs";
 import { runSession } from "./session.mjs";
 import * as subscribeEntry from "./subscribe.mjs";
@@ -100,7 +102,7 @@ function runPingOnce(opts, env, log) {
  * @param {object} opts
  * @param {NodeJS.ProcessEnv} env
  * @param {(line: string, meta?: object) => void} log
- * @param {{signal?: AbortSignal, exit?: (code: number) => void, runContinue?: () => Promise<unknown>, drainMs?: number}} [hooks]
+ * @param {{signal?: AbortSignal, exit?: (code: number) => void, runContinue?: () => Promise<unknown>, drainMs?: number, onFirstTick?: () => void}} [hooks]
  * @returns {Promise<number>}
  */
 export async function runDaemon(opts, env, log, hooks = {}) {
@@ -114,11 +116,18 @@ export async function runDaemon(opts, env, log, hooks = {}) {
       `(${continueEnabled ? "enabled" : "disabled"})${opts.dryRun ? " (dry-run)" : ""}`,
   );
 
+  let firstTickDone = false;
   const ping = () => {
     try {
       runPingOnce(opts, env, log);
     } catch (err) {
       log(`ping error: ${err.message}`, { level: "error" });
+    } finally {
+      // The daemon ran: a later crash is not a failed boot and is never delayed.
+      if (!firstTickDone) {
+        firstTickDone = true;
+        hooks.onFirstTick?.();
+      }
     }
   };
   // The liveness clock runs immediately; the judgment clock waits one cadence,
@@ -239,30 +248,63 @@ export async function main(argv, env = process.env, io = {}) {
     }
   }
 
-  switch (mode) {
-    case "ping":
-      return runPingOnce(opts, env, log);
-    case "continue":
-      return runContinueOnce(opts, env);
-    case "patrol":
-      return passesEntry.runPatrolOnce(opts, env);
-    case "poll":
-      // Only a bare `--once` reaches this branch; the new units never use it.
-      log("mode: bare --once runs the legacy poll pass; new units use --ping-only/--continue-only");
-      return passesEntry.runPollOnce(opts, env);
-    case "subscribe":
-      return subscribeEntry.runOnce(opts, env);
-    case "session": {
-      // The resident pool is long-lived. A signal closes it cleanly; the
-      // service manager is responsible for restarting the process.
-      const controller = new AbortController();
-      const abort = () => controller.abort();
-      process.once("SIGTERM", abort);
-      process.once("SIGINT", abort);
-      return runSession(opts, { log, signal: controller.signal });
+  // The long-lived entries keep the boot ledger: a start that never completes a
+  // first tick is delayed before the service manager restarts it. The one-shot
+  // clocks exit on every tick and need none of it.
+  const boot =
+    opts.dryRun !== true && (mode === "session" || mode === "subscribe" || mode === null)
+      ? beginBootHealth({
+          path: statePathsForDir(dirname(String(opts.state))).health,
+          log,
+          version: VERSION,
+        })
+      : null;
+  const finish = async (code) => {
+    if (boot === null) return code;
+    const { delayMs } = boot.settle(code);
+    if (delayMs > 0) {
+      // `settle` has already logged `crash_loop`; the sleep is what turns the
+      // record into a slower restart.
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
-    default:
-      return runDaemon(opts, env, log);
+    return code;
+  };
+  const onFirstTick = boot === null ? undefined : boot.noteFirstTick;
+
+  try {
+    switch (mode) {
+      case "ping":
+        return runPingOnce(opts, env, log);
+      case "continue":
+        return runContinueOnce(opts, env);
+      case "patrol":
+        return passesEntry.runPatrolOnce(opts, env);
+      case "poll":
+        // Only a bare `--once` reaches this branch; the new units never use it.
+        log("mode: bare --once runs the legacy poll pass; new units use --ping-only/--continue-only");
+        return passesEntry.runPollOnce(opts, env);
+      case "subscribe":
+        return finish(await subscribeEntry.runOnce(opts, env, { log, onFirstTick }));
+      case "session": {
+        // The resident pool is long-lived. A signal closes it cleanly; the
+        // service manager is responsible for restarting the process.
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        process.once("SIGTERM", abort);
+        process.once("SIGINT", abort);
+        return finish(await runSession(opts, { log, signal: controller.signal, onFirstTick }));
+      }
+      default:
+        return finish(await runDaemon(opts, env, log, { onFirstTick }));
+    }
+  } catch (err) {
+    // An escaped throw is a failed boot too. The dispatcher will render it and
+    // exit; the ladder's delay still happens first, where it can.
+    if (boot !== null) {
+      const { delayMs } = boot.settle(1);
+      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    throw err;
   }
 }
 

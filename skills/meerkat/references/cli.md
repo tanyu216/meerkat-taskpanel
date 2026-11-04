@@ -26,7 +26,8 @@ contract test reads.
 | `-h`, `--help` | Help for the CLI, a group, or one command. |
 
 **Exit codes:** `0` success · `1` runtime failure (including the delivery gate) · `2` usage
-error · `3` `export md --check` found stale cards.
+error · `3` `export md --check` found stale cards · `78` permanent startup fault (`EX_CONFIG`:
+a missing skill, an unsupported Node) — a service manager must not restart it.
 
 ## Commands
 

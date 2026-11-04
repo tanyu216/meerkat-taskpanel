@@ -314,11 +314,12 @@ export async function run(argv, io) {
 
 // Guarded so the module can be imported by tests without running anything.
 if (isEntryPoint(import.meta.url)) {
-  // Step 0: the runtime floor. Exit 2 (the "cannot run as invoked" code, shared
-  // with `install.sh`) and one clear line — never a stack trace from node:sqlite.
+  // Step 0: the runtime floor. Exit 78 (`EX_CONFIG`): an older runtime can never
+  // succeed, so a service manager must not restart it. One clear line — never a
+  // stack trace from node:sqlite.
   if (!isSupportedNode(process.versions.node)) {
     process.stderr.write(`${unsupportedNodeMessage(process.versions.node, { bin: "taskctl" })}\n`);
-    process.exit(CLI_EXIT.USAGE);
+    process.exit(CLI_EXIT.CONFIG);
   }
 
   // One crash boundary for every CLI command, including the loop entries that

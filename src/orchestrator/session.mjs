@@ -2194,7 +2194,7 @@ export function createSessionPool(input = {}) {
  * use; production passes only `opts`.
  *
  * @param {object} opts
- * @param {{log?: (line: string) => void, kindPool?: object, now?: () => number, isAlive?: (pid: number) => boolean, signal?: AbortSignal}} [deps]
+ * @param {{log?: (line: string) => void, kindPool?: object, now?: () => number, isAlive?: (pid: number) => boolean, signal?: AbortSignal, onFirstTick?: () => void}} [deps]
  */
 export async function runSession(opts, deps = {}) {
   const log = deps.log ?? (() => {});
@@ -2215,7 +2215,10 @@ export async function runSession(opts, deps = {}) {
       `session: missing skill(s): ${missing.join(", ")} — run ` +
         `\`install.sh --target ${opts.actorKind ?? "claude"}\` first`,
     );
-    return 2;
+    // EX_CONFIG: no restart can install a skill. systemd is told not to restart
+    // this exit (`RestartPreventExitStatus=78`); launchd has no equivalent and
+    // leans on its throttle.
+    return 78;
   }
   const pool = createSessionPool({
     opts,
@@ -2261,6 +2264,7 @@ export async function runSession(opts, deps = {}) {
   let stopping = false;
   let ticking = false;
   let inFlightTick = null;
+  let firstTickDone = false;
   const interval = setInterval(() => {
     // A turn can outlive many poll intervals; a second concurrent tick would
     // re-read the same queues for no gain. A stopping pool accepts no new tick.
@@ -2272,6 +2276,12 @@ export async function runSession(opts, deps = {}) {
       .finally(() => {
         ticking = false;
         inFlightTick = null;
+        // The boot succeeded once the first tick settled: the process is alive
+        // and doing work. A crash after this point is never delayed.
+        if (!firstTickDone) {
+          firstTickDone = true;
+          deps.onFirstTick?.();
+        }
       });
   }, Math.max(50, Number(opts.sessionPollMs ?? SESSION_DEFAULTS.pollMs)));
   // Questions have their own clock. The dispatch tick awaits worker turns, and a

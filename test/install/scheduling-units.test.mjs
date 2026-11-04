@@ -121,6 +121,8 @@ describe("install.sh: scheduling units", () => {
     const subscribePlist = readFileSync(paths.subscribePlist, "utf8");
     assert.ok(subscribePlist.includes("<string>subscribe</string>"), "the subscriber runs the daemon verb");
     assert.match(subscribePlist, /<key>KeepAlive<\/key>\s*<true\/>/);
+    // launchd never gives up; 10 s is its floor, not a policy this project chose.
+    assert.match(subscribePlist, /<key>ThrottleInterval<\/key>\s*<integer>10<\/integer>/);
     assert.doesNotMatch(subscribePlist, /<key>StartInterval<\/key>/, "a daemon has no interval");
 
     // The resident session pool: another daemon, and the loop's dispatcher.
@@ -128,6 +130,7 @@ describe("install.sh: scheduling units", () => {
     assert.ok(sessionPlist.includes("<string>session</string>"), "the pool runs the session verb");
     assert.ok(sessionPlist.includes(cliPath), "the pool names the CLI entry");
     assert.match(sessionPlist, /<key>KeepAlive<\/key>\s*<true\/>/);
+    assert.match(sessionPlist, /<key>ThrottleInterval<\/key>\s*<integer>10<\/integer>/);
     assert.doesNotMatch(sessionPlist, /<key>StartInterval<\/key>/, "a daemon has no interval");
     assert.doesNotMatch(sessionPlist, /--allow-all-tools/, "full tool access is opt-in through the config");
 
@@ -141,10 +144,18 @@ describe("install.sh: scheduling units", () => {
     assert.match(subscribeService, /loop subscribe/);
     assert.match(subscribeService, /Type=simple/);
     assert.match(subscribeService, /Restart=always/);
+    // Restart in 2 s and never give up: an explicit zero interval writes the
+    // intent down, and exit 78 (a permanent fault) is not restarted at all.
+    assert.match(subscribeService, /RestartSec=2/);
+    assert.match(subscribeService, /StartLimitIntervalSec=0/);
+    assert.match(subscribeService, /RestartPreventExitStatus=78/);
     const sessionService = readFileSync(paths.sessionService, "utf8");
     assert.match(sessionService, /loop session/);
     assert.match(sessionService, /Type=simple/);
     assert.match(sessionService, /Restart=always/);
+    assert.match(sessionService, /RestartSec=2/);
+    assert.match(sessionService, /StartLimitIntervalSec=0/);
+    assert.match(sessionService, /RestartPreventExitStatus=78/);
     assert.doesNotMatch(sessionService, /--allow-all-tools/);
 
     // cron — a 1-minute ping line and a 10-minute continue line.

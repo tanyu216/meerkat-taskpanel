@@ -22,12 +22,17 @@
 [Unit]
 Description=Meerkat TaskPanel resident session pool ({{AGENT}} on {{ACTOR_KIND}})
 After=network.target
+# No start limit: the loop never gives up on itself. The only delay is the
+# boot-health ladder for a start that never completed a first tick.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ExecStart={{NODE}} {{CLI}} loop session --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
 Restart=always
-RestartSec=5
+RestartSec=2
+# EX_CONFIG (78): a missing skill cannot appear by restarting.
+RestartPreventExitStatus=78
 # No stdout/stderr redirect: the loop writes --log itself (with rotation).
 # A redirect into the same file would duplicate every line.
 

@@ -56,15 +56,18 @@ stdout is the data plane and its stderr is the product's error surface.
 | `schema_stale`, `writer_lock_stale`, `writer_lock_release_failed`, `label_gc_mismatch`, `reattach_timeout`, `allow_list_invalid`, `sla_config_invalid`, `log_level_invalid` | warn | recovered, deferred or suspicious, but the process carries on |
 | `request_failed`, `startup_failed`, `shutdown_failed`, `board_open_failed`, `migration_failed`, `sse_stream_failed`, `label_gc_failed`, `container_sweep_failed`, `server_error` | error | an exception boundary |
 | `process_crash` | error | the process-level boundary caught an escaped exception or rejection; one record, then exit 1 |
+| `crash_loop` | error | a long-lived loop entry has failed more than three boots without completing a first tick; the `supervisor.health.json` record is written and the restart is delayed 5/15/60/300 s |
 | `pool_killed` | error | the ping clock's only enforcement: a pool past a phase deadline plus one minute — SIGTERM once per wedge, then SIGKILL on a later ping; `wedgedKillAt`/`wedgedSigkillAt` are in `pool-wedge.json` |
 | `cli_command`, `cli_failure` | debug | CLI diagnostics (off unless `TASKD_LOG_LEVEL=debug`) |
 
 The loop writes free-form lines rather than event objects (`time=… level=info
 component=supervisor msg="…"`), and marks a failure with the same levels: `session: tick
 failed`, `continue error`, `workflow: … failed`, `subscribe: dispatch failed` are `error`;
-a recoverable one (`notify failed`, a refused question enqueue) is `warn`. A resident pool
-whose `start()` throws is the exception that names its event: `event=pool_start_failed`,
-one `error` line, exit 2.
+a recoverable one (`notify failed`, a refused question enqueue) is `warn`. Two exceptions name
+their event: a resident pool whose `start()` throws writes `event=pool_start_failed` (one
+`error` line, exit 2), and a long-lived entry past the boot-failure threshold writes
+`event=crash_loop` at `error` before it delays its own restart. A missing skill and an
+unsupported Node exit 78 (`EX_CONFIG`), which systemd is told not to restart.
 
 ### The line
 

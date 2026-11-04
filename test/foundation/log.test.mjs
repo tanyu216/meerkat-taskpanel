@@ -112,6 +112,15 @@ describe("log — the callable contract", () => {
     assert.equal(EVENT_LEVELS.label_gc_failed, "error");
   });
 
+  it("registers the boot-loop record at error", () => {
+    // A boot that keeps failing is an exception boundary, not ordinary progress;
+    // the event name is the one the health ladder emits before it delays a restart.
+    assert.equal(EVENT_LEVELS.crash_loop, "error");
+    const { lines, logger } = capture();
+    logger({ event: "crash_loop", boot_failures: 4, delay_ms: 5000 });
+    assert.equal(levelOf(lines[0]), "error");
+  });
+
   it("exposes .info/.warn/.error/.debug methods", () => {
     const { lines, logger } = capture({ level: "debug" });
     logger.debug("d");

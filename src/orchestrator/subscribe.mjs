@@ -37,8 +37,11 @@ import {
   SUBSCRIBE_RETRY_MS,
   SUBSCRIBE_STATE_WRITE_MIN_MS,
   SYSTEM_KIND,
+  VERSION,
 } from "../foundation/constants.mjs";
+import { statePathsForDir } from "../foundation/loop-state.mjs";
 
+import { beginBootHealth } from "./boot-health.mjs";
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./options.mjs";
 import { createLogger, saveSubscribeState, streamCli, subscribeStatePath } from "./runtime.mjs";
 import { runContinueOnce } from "./runners.mjs";
@@ -475,6 +478,7 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
 
   let cursor = deps.initialCursor ?? null;
   let backoff = 1000;
+  let firstTickDone = false;
 
   while (!signal.aborted) {
     let result;
@@ -489,6 +493,12 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
           state.nextAttemptAt = null;
           flushState(true);
           log("subscribe: connected");
+          // The boot worked: the subscriber reached the hub. A later crash is
+          // not a failed boot and is never delayed.
+          if (!firstTickDone) {
+            firstTickDone = true;
+            deps.onFirstTick?.();
+          }
         },
         onEvent: ({ id, data }) => {
           cursor = advanceCursor(cursor, { id });
@@ -531,13 +541,13 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
 }
 
 /** One subscriber process, owning SIGINT/SIGTERM. */
-export async function runOnce(opts, env = process.env) {
+export async function runOnce(opts, env = process.env, deps = {}) {
   const controller = new AbortController();
   const stop = () => controller.abort();
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   try {
-    return await runSubscribe(opts, env, { controller });
+    return await runSubscribe(opts, env, { ...deps, controller });
   } finally {
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
@@ -567,7 +577,29 @@ export async function main(argv, env = process.env, io = {}) {
     writeErr("subscribe: pass --subscribe (a daemon mode, not an --once entry)\n");
     return 2;
   }
-  return runOnce(opts, env);
+  // The long-lived entry keeps the boot ledger: a start that never reaches the
+  // hub is delayed before the service manager restarts it.
+  const log = createLogger(opts);
+  const boot = beginBootHealth({
+    path: statePathsForDir(dirname(String(opts.state))).health,
+    log,
+    version: VERSION,
+  });
+  try {
+    const code = await runOnce(opts, env, { log, onFirstTick: boot.noteFirstTick });
+    const { delayMs } = boot.settle(code);
+    if (delayMs > 0) {
+      // `settle` has already logged `crash_loop`; the sleep delays the restart.
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return code;
+  } catch (err) {
+    // An escaped throw is a failed boot too; the dispatcher renders it after
+    // the ladder's delay.
+    const { delayMs } = boot.settle(1);
+    if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    throw err;
+  }
 }
 
 if (isEntryPoint(import.meta.url)) {

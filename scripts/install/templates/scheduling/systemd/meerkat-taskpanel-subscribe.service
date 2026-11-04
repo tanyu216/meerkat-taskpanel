@@ -9,12 +9,17 @@
 # also reconnects with backoff, so a restart is the last resort.
 [Unit]
 Description=Meerkat TaskPanel event subscriber ({{AGENT}} on {{ACTOR_KIND}})
+# No start limit: the subscriber never gives up on itself. The only delay is the
+# boot-health ladder for a start that never reached the hub.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ExecStart={{NODE}} {{CLI}} loop subscribe --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
 Restart=always
-RestartSec=5
+RestartSec=2
+# EX_CONFIG (78): an unsupported runtime cannot appear by restarting.
+RestartPreventExitStatus=78
 # No stdout/stderr redirect: the loop writes --log itself (with rotation).
 # A redirect into the same file would duplicate every line.
 
