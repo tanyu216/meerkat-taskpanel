@@ -118,6 +118,12 @@ export const EXTRA = {
     // 2026-10-13T10:45Z, ⑤) gives this one a **dedicated** word instead, so the
     // two named landmarks do not read as the same region to a screen reader.
     "activity.filters.label": "Activity filters",
+    // TP-0090 — the Activity bar's Assignee control reuses the board bar's
+    // static / named row copy, so only its label, the task menu's search box and
+    // the backfill failure sentence are new here.
+    "activity.filter.assignee.label": "Assignee",
+    "activity.filter.task.search": "Filter tasks…",
+    "activity.taskReadFailed": "Could not load that task's full history.",
     // R10 ② — the drawer's save failure. The prototype inlines this one string
     // (its catalogue is mirrored byte for byte by `test/web/i18n.catalogue.mjs`),
     // so it has no catalogue key to reuse: it lives here, like every other
@@ -294,6 +300,9 @@ export const EXTRA = {
     "attachment.previewLoading": "正在加载预览…",
     "attachment.previewError": "该附件无法加载。",
     "activity.filters.label": "动态筛选",
+    "activity.filter.assignee.label": "负责人",
+    "activity.filter.task.search": "筛选任务…",
+    "activity.taskReadFailed": "无法加载该任务的完整历史。",
     "detail.saveError": "保存失败 —— 请重试。",
     "detail.focusMiss": "该记录较旧，未在已加载历史中",
     // 同上：抽屉的六枚 tab 与报告/验收/会话轨迹文案。

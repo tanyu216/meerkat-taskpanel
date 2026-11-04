@@ -440,6 +440,9 @@
             },
             "order": {
               "type": "string"
+            },
+            "task_id": {
+              "type": "string"
             }
           },
           "required": [],

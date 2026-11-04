@@ -141,6 +141,13 @@
 其余准入事件是背景，在 `All events` 下完整出现。**没有被隐藏的事件**——`All events` 是默认档，
 且筛选计数永远等于当前可见行数（§机检断言 · 5）。
 
+**TP-0090 — 操作者轴并入 Assignee。** 原 `actor` 控件（`Anyone / Humans / Agents`）与看板的
+Assignee 完全同轴，两条并存会产生同轴矛盾（Actor=Agents + Assignee=Human ⇒ 0 行）。筛选条因此
+改为 **Assignee · Event · Task**：Assignee 绑定共享的 `board.filters.assignee`，取值
+`All / Me / Human / Agent` + 花名册人名，按**行内 actor** 过滤（`actorMatches`）；Event 的
+四档映射不变（本节上表）。Assignee 与 Task 的菜单各带搜索框：输入只收窄菜单，Enter / 点击写入
+**精确值**；Task 的搜索键是 identifier + title。
+
 ---
 
 ## 4. 层级
@@ -235,9 +242,9 @@
 | 点行 | `[data-activity-line]` | **就地打开该任务详情抽屉**（与看板卡点击同一路径：`[data-detail-drawer][data-state="open"]` + `[data-detail-overlay]`） |
 | 点任务标识 / 标题 | `[data-activity-task]` | 真实 `<a href="#/task/<id>">` 回看板并聚焦；**JS 关闭下仍是可点链接** |
 | 展开变更 | `[data-activity-detail]` | 原生 `<details>`，JS 关闭下可用 |
-| 筛选 | `[data-activity-filter="actor\|event\|task"]` | 三档独立；**R15 ① 起三条都是 daisyUI `dropdown` 面板**（`<details class="dropdown" data-dismiss-on-outside>` + `summary.btn.btn-sm.td-label-trigger` + `ul.dropdown-content.menu.td-label-menu`），所选值挂在控件的 `data-activity-filter-value` 上、触发器 `[data-activity-filter-text]` 陈述所选行**自己的文案**；点行即写值、关自己的菜单、重述触发器、重跑筛选。命中行数实时进 `[data-activity-filter-count]`（`aria-live="polite"`） |
-| 重置 | `[data-filter-clear]`（条上）、`[data-activity-empty-reset]`（筛选空态内嵌） | 条上的 Clear 回到 `All` 三档（**R15 ③ 起是 B04 的 Clear**：钩子与键 `filters.clear` 与看板条同款，脚本按「按下的那条条」分流）；筛选空态的内嵌 reset 是**另一处的另一种 affordance**，保留自己的钩子与键（B26.5） |
-| 筛选态入 URL | `history.replaceState` | `#/activity?actor=agent&event=status&task=TD-128`——可分享、刷新不丢。**不污染** `#/task/<id>` |
+| 筛选 | `[data-activity-filter="assignee\|event\|task"]` | 三档独立；**R15 ① 起三条都是 daisyUI `dropdown` 面板**（`<details class="dropdown" data-dismiss-on-outside>` + `summary.btn.btn-sm.td-label-trigger` + `ul.dropdown-content.menu.td-label-menu`），所选值挂在控件的 `data-activity-filter-value` 上、触发器 `[data-activity-filter-text]` 陈述所选行**自己的文案**；点行即写值、关自己的菜单、重述触发器、重跑筛选。**TP-0090**：Assignee 与 Task 的菜单首位是搜索行 `[data-activity-filter-search]`，输入只收窄菜单，Enter / 点击写入精确值；Assignee 写共享的 `board.filters.assignee`（不写 URL）。命中行数实时进 `[data-activity-filter-count]`（`aria-live="polite"`） |
+| 重置 | `[data-filter-clear]`（条上）、`[data-activity-empty-reset]`（筛选空态内嵌） | 条上的 Clear 回到 `All` 三档（**R15 ③ 起是 B04 的 Clear**：钩子与键 `filters.clear` 与看板条同款，脚本按「按下的那条条」分流）；**TP-0090** 起 Assignee 在这条 bar 上是可见控件，Clear 同时把共享 assignee 清回 `all`，但不动 board 的其它筛选（priority / status / label）；筛选空态的内嵌 reset 是**另一处的另一种 affordance**，保留自己的钩子与键（B26.5） |
+| 筛选态入 URL | `history.replaceState` | `/activity?event=status&task=TD-128`——可分享、刷新不丢。**不污染** `#/task/<id>`。Assignee 是共享 board 值，与 board/list 一样不进 URL；旧 `?actor=` 链接仍可打开，actor 被忽略（TP-0090） |
 | 一键已读 | `[data-activity-mark-read]` | 清 `[data-activity-unread]`，分界线与侧栏计数一起归零 |
 | 侧栏计数 | `[data-nav-count="activity"]` | 复用 B03 的 `.badge.td-count`；**0 时 `hidden`**，与 `waiting` 同一规则 |
 | 加载更早 | `[data-activity-more]` | 掀开下一页天分组；**不做无限滚动**——诚实、键盘可达、位置确定。**翻完即退场**，**项目级空时一开始就没有**（没有「更早」可加载，摆一个按钮就是死控件那套谎）；但**筛选空时它留着**——命中的行可能就在没掀开的那一页 |
@@ -344,6 +351,9 @@ gap 12px、padding 40px 24px、title 14px、hint 12px）；`.td-activity-empty` 
 | `activity.filter.actor.all` | Anyone | 任何人 |
 | `activity.filter.actor.human` | Humans | 人类 |
 | `activity.filter.actor.agent` | Agents | 智能体 |
+| `activity.filter.assignee.label` | Assignee | 负责人 |
+| `activity.filter.task.search` | Filter tasks… | 筛选任务… |
+| `activity.taskReadFailed` | Could not load that task's full history. | 无法加载该任务的完整历史。 |
 | `activity.filter.event.label` | Event | 事件 |
 | `activity.filter.event.all` | All events | 全部事件 |
 | `activity.filter.event.status` | Status | 状态 |
@@ -379,6 +389,10 @@ gap 12px、padding 40px 24px、title 14px、hint 12px）；`.td-activity-empty` 
 | `activity.empty.filter.hint` | Widen the filters to see the full log. | 放宽筛选即可看到完整记录。 |
 | `activity.empty.filter.reset` | Reset filters | 重置筛选 |
 
+> **TP-0090** — the four `activity.filter.actor.*` keys stay in the catalogue because the
+> prototype page still renders the old control; the shipped board no longer consumes them.
+> The three new keys above are implementation-authored (`web/src/i18n/extra.mjs`).
+
 **复用键（31，取值取自实现侧现有 `MESSAGES`，不重写）**
 
 `app.brand`、`app.tagline`、`topbar.view`、`topbar.view.board`、`topbar.view.list`、`topbar.live`、
@@ -413,8 +427,8 @@ gap 12px、padding 40px 24px、title 14px、hint 12px）；`.td-activity-empty` 
 | 块 | Root | 钩子 / 角色 |
 |---|---|---|
 | **B26** | `[data-activity-view]` | 视图根（main 区当 `view=activity` 时显示） |
-| B26.1 头部 + 筛选 | `[data-activity-filters]`（一个 `section.td-filters`，无障碍名 `filters.label`，R15 ①） | `[data-activity-filter="actor\|event\|task"]`（**各是一个 `<details class="dropdown" data-dismiss-on-outside>`**，R15 ①）、`[data-filter-clear]`（R15 ③）、`[data-activity-filter-count]`（`aria-live="polite"`）；头部另有 `[data-activity-title]` 与 `[data-activity-mark-read]` |
-| B26.1a 一个筛选控件 | `[data-activity-filter="…"]` | `<details class="dropdown" data-dismiss-on-outside>`；所选值在 `data-activity-filter-value` 上，触发器 `[data-activity-filter-summary]` → `[data-activity-filter-text]` 陈述所选行**自己的文案**，菜单 `[data-activity-filter-option]` × N 每行带 `data-activity-value`、所选行 `aria-current="true"` |
+| B26.1 头部 + 筛选 | `[data-activity-filters]`（一个 `section.td-filters`，无障碍名 `filters.label`，R15 ①） | `[data-activity-filter="assignee\|event\|task"]`（**各是一个 `<details class="dropdown" data-dismiss-on-outside>`**，R15 ①）、`[data-filter-clear]`（R15 ③）、`[data-activity-filter-count]`（`aria-live="polite"`）；头部另有 `[data-activity-title]` 与 `[data-activity-mark-read]` |
+| B26.1a 一个筛选控件 | `[data-activity-filter="…"]` | `<details class="dropdown" data-dismiss-on-outside>`；所选值在 `data-activity-filter-value` 上，触发器 `[data-activity-filter-summary]` → `[data-activity-filter-text]` 陈述所选行**自己的文案**，菜单 `[data-activity-filter-option]` × N 每行带 `data-activity-value`、所选行 `aria-current="true"`。**TP-0090**：Assignee 与 Task 的菜单另有 `[data-activity-filter-search]` 搜索行（输入只收窄菜单）；Assignee 写共享的 `board.filters.assignee`，不进 URL |
 | B26.2 feed | `[data-activity-feed]` | → `[data-activity-day]` → `[data-activity-row]` → `[data-activity-actor]` / `[data-activity-sentence]` / `[data-activity-task]` / `[data-activity-at]` / `[data-activity-detail]` |
 | B26.3 未读分界 | `[data-activity-unread-divider]` | + `[data-activity-unread-count]`（计数）、`[data-activity-mark-read]`（一键已读） |
 | B26.4 突发折叠 | `[data-activity-burst]` | + `[data-activity-burst-count]`（`×N`）、`[data-activity-burst-item]`（展开后的逐条） |
@@ -436,6 +450,7 @@ gap 12px、padding 40px 24px、title 14px、hint 12px）；`.td-activity-empty` 
 | `data-activity-day` / `data-day` / `data-activity-day-kind` | 天分组根、ISO 日期、相对/绝对标题 |
 | `data-activity-page` | 第几页（`2` 起为 `Load older` 揭开的部分） |
 | `data-activity-change` | 变更行的种类（`status` / `label` / `assignee` / …） |
+| `[data-activity-filter-search]` | Assignee / Task 菜单的搜索框（TP-0090；输入只收窄菜单，Enter / 点击写精确值） |
 | `[data-activity-burst-count-label]` | 突发 `<details>` 的 summary 文本 |
 | `[data-activity-unread-count]` | 分界线上的未读计数（自带 `.td-activity-unread-count`，**不用** `.td-count`——后者在 ≤1023px 被移植样式表整体隐藏，那是给 64px rail 让位的规则，不该波及主区） |
 | `[data-activity-i18n]` | 词典的静态载体（`<script type="application/json">`） |

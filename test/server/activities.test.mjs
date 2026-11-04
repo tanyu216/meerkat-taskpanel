@@ -143,4 +143,53 @@ describe("server/routes — the board-wide activity trail", () => {
       assert.equal((await response.json()).error.code, "VALIDATION_FAILED", query);
     }
   });
+
+  // TP-0090 — the selected-task backfill's server half: the same route narrowed
+  // to one card, accepting either reference the per-task route accepts.
+  it("filters by task_id — identifier or internal id", async () => {
+    const taskId = taskd.board.repos.tasks.findByIdentifierAnyProject(identifier).id;
+    for (const ref of [identifier, taskId]) {
+      const body = await boardGet(`?task_id=${encodeURIComponent(ref)}&order=asc`);
+      assert.equal(body.ok, true, ref);
+      assert.deepEqual(
+        body.data.activities.map((entry) => entry.event),
+        ["task_created", "comment_added", "task_claimed"],
+        ref,
+      );
+      assert.ok(
+        body.data.activities.every((entry) => entry.task_id === taskId),
+        `${ref} leaked another task's rows`,
+      );
+    }
+  });
+
+  it("404s an unknown task_id, and an empty one is no filter", async () => {
+    const response = await fetch(`${base}/api/v1/activities?task_id=PROJ-9999`);
+    assert.equal(response.status, 404);
+    assert.equal((await response.json()).error.code, "NOT_FOUND");
+
+    for (const query of ["?task_id=&order=asc", "?task_id=%20&order=asc"]) {
+      const body = await boardGet(query);
+      assert.deepEqual(
+        body.data.activities.map((entry) => entry.event),
+        ["project_created", "task_created", "comment_added", "task_claimed"],
+        query,
+      );
+    }
+  });
+
+  it("combines task_id with the cursor, the limit and the order", async () => {
+    const newest = (await boardGet(`?task_id=${identifier}&limit=1&order=desc`)).data.activities;
+    assert.deepEqual(newest.map((entry) => entry.event), ["task_claimed"]);
+    assert.deepEqual(
+      (await boardGet(`?task_id=${identifier}&after=${newest[0].revision}&order=asc`)).data.activities,
+      [],
+    );
+    const first = (await boardGet(`?task_id=${identifier}&limit=1&order=asc`)).data.activities;
+    assert.deepEqual(first.map((entry) => entry.event), ["task_created"]);
+
+    const response = await fetch(`${base}/api/v1/activities?task_id=${identifier}&limit=0`);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error.code, "VALIDATION_FAILED");
+  });
 });

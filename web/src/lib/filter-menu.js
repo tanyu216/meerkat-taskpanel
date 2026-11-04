@@ -1,7 +1,7 @@
 /**
- * The assignee and label filter menus' pure half (B04).
+ * The assignee, label and activity-task menus' pure half (B04 · B26).
  *
- * Both controls are still the `<details class="dropdown">` family R15 ② built;
+ * The controls are still the `<details class="dropdown">` family R15 ② built;
  * what this module owns is **which rows the menu shows**, given the control's
  * value and a search query. The ranking is `combo.js`'s `matchEntries` — the
  * matcher the drawer's comboboxes already use — so a typed prefix never loses
@@ -41,6 +41,23 @@ function row(t, key, ...args) {
 }
 
 /**
+ * The assignee control's trigger sentence, read from the **value** and never
+ * from a (possibly query-narrowed) menu: a static value keeps its
+ * `filters.assignee.<value>` sentence, a given name is `filters.assigneeOption`.
+ * `""` / `null` read as `all`, the control's own resting value.
+ *
+ * @param {string|null|undefined} value
+ * @param {readonly string[]} staticValues
+ * @param {(key: string, ...args: unknown[]) => string} t
+ */
+export function assigneeTriggerText(value, staticValues, t) {
+  const chosen = value == null || value === "" ? "all" : String(value);
+  return staticValues.includes(chosen)
+    ? row(t, `filters.assignee.${chosen}`)
+    : row(t, "filters.assigneeOption", chosen);
+}
+
+/**
  * The assignee menu's rows: pinned static values, then ranked matching actors.
  *
  * @param {{
@@ -55,7 +72,7 @@ function row(t, key, ...args) {
 export function assigneeMenuRows({ staticValues, actors = [], named = null, query = "", t }) {
   const pinned = staticValues.map((value) => ({
     value,
-    text: row(t, `filters.assignee.${value}`),
+    text: assigneeTriggerText(value, staticValues, t),
     pinned: true,
   }));
 
@@ -89,6 +106,48 @@ export function assigneeMenuRows({ staticValues, actors = [], named = null, quer
     matched.map((entry) => ({
       value: entry.name,
       text: row(t, "filters.assigneeOption", entry.name),
+      pinned: false,
+    })),
+  );
+}
+
+/**
+ * The activity feed's task menu: `All tasks` pinned, then every task the query
+ * matches on **identifier + title** (labels are deliberately not a key).
+ *
+ * The task control's domain is open (an identifier is data, not a catalogue
+ * key), so unlike the assignee menu an empty query shows the whole task list —
+ * there is no long roster to keep out of the resting panel.
+ *
+ * @param {{
+ *   tasks?: readonly {identifier?: string, title?: string}[],
+ *   query?: string,
+ *   allText: string,
+ * }} input
+ * @returns {{value: string, text: string, pinned: boolean}[]}
+ */
+export function taskMenuRows({ tasks = [], query = "", allText }) {
+  const pinned = [{ value: "all", text: allText, pinned: true }];
+  // `all` is the pinned row's value, so a task that somehow carries it would be
+  // indistinguishable from "no task filter" — it is the pinned row.
+  const seen = new Set(["all"]);
+  const entries = [];
+  for (const task of tasks) {
+    const identifier = String(task?.identifier ?? "").trim();
+    const key = rosterKey(identifier);
+    if (key === "" || seen.has(key)) continue;
+    seen.add(key);
+    const title = String(task?.title ?? "").trim();
+    entries.push({ name: identifier, keys: [identifier, title].filter((value) => value !== "") });
+  }
+
+  const needle = String(query ?? "").trim();
+  const matched = needle === "" ? entries : matchEntries(entries, needle);
+
+  return pinned.concat(
+    matched.map((entry) => ({
+      value: entry.name,
+      text: entry.name,
       pinned: false,
     })),
   );

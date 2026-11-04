@@ -24,7 +24,6 @@ import { describe, it } from "node:test";
 
 import {
   ACTIVITY_GROUPS,
-  ACTOR_VALUES,
   BURST_WINDOW_MS,
   DAY_PAGE_SIZE,
   EVENT_VALUES,
@@ -41,6 +40,7 @@ import {
   kindOf,
   landingFor,
   markUnread,
+  mergeById,
   resolveDetailTab,
   rowFrom,
   taskOptions,
@@ -239,7 +239,7 @@ describe("B26 · the row's visible time", () => {
   });
 });
 
-describe("B26 · the three filters", () => {
+describe("B26 · the feed's own filters", () => {
   const items = [
     { id: "a1", identifier: "TD-1", actorKind: "agent", group: "status", title: "t" },
     { id: "a2", identifier: "TD-2", actorKind: "human", group: "comment", title: "t" },
@@ -247,25 +247,56 @@ describe("B26 · the three filters", () => {
     { id: "a4", identifier: "TD-1", actorKind: "human", group: "delivery", title: "t" },
   ];
 
-  it("passes everything at `all` and ANDs the three conditions", () => {
+  it("passes everything at `all` and ANDs event with task", () => {
     assert.equal(filterItems(items).length, 4);
-    assert.deepEqual(filterItems(items, { actor: "agent" }).map((i) => i.id), ["a1", "a3"]);
+    assert.deepEqual(filterItems(items, { event: "status" }).map((i) => i.id), ["a1"]);
     assert.deepEqual(filterItems(items, { event: "comment" }).map((i) => i.id), ["a2"]);
     assert.deepEqual(filterItems(items, { event: "delivery" }).map((i) => i.id), ["a4"]);
-    assert.deepEqual(filterItems(items, { actor: "agent", task: "TD-2" }).map((i) => i.id), ["a3"]);
-    assert.deepEqual(filterItems(items, { actor: "human", event: "delivery", task: "TD-1" }).map((i) => i.id), ["a4"]);
-    assert.deepEqual(filterItems(items, { actor: "human", event: "delivery", task: "TD-2" }), []);
+    assert.deepEqual(filterItems(items, { task: "TD-2" }).map((i) => i.id), ["a2", "a3"]);
+    assert.deepEqual(filterItems(items, { event: "delivery", task: "TD-1" }).map((i) => i.id), ["a4"]);
+    assert.deepEqual(filterItems(items, { event: "delivery", task: "TD-2" }), []);
+  });
+
+  it("ignores the retired actor value — the kind is the assignee control's axis", () => {
+    // `filterItems` has no actor clause any more: an `actor` key on the object is
+    // not a condition, exactly as the address layer no longer names it.
+    assert.equal(filterItems(items, { actor: "agent" }).length, 4);
   });
 
   it("offers the feed's own tasks, newest first, one entry each", () => {
     assert.deepEqual(taskOptions(items).map((entry) => entry.identifier), ["TD-1", "TD-2"]);
   });
 
-  it("keeps the three domains the design fixes", () => {
-    assert.deepEqual([...ACTOR_VALUES], ["all", "human", "agent"]);
+  it("keeps the domains the design fixes", () => {
     assert.deepEqual([...EVENT_VALUES], ["all", "status", "comment", "delivery"]);
     assert.deepEqual([...ACTIVITY_GROUPS], ["status", "comment", "delivery", "meta"]);
     assert.equal(DAY_PAGE_SIZE, 3);
+  });
+});
+
+describe("B26 · the task backfill's merge", () => {
+  const row = (id, taskId = "td_1") => ({ id, task_id: taskId, event: "task_created" });
+
+  it("merges by id, keeps the base row, and appends only what the base lacks", () => {
+    const base = [row("a1"), row("a2")];
+    const extra = [row("a2"), row("a3")];
+    const merged = mergeById(base, extra);
+    assert.deepEqual(merged.map((entry) => entry.id), ["a1", "a2", "a3"]);
+    assert.equal(merged[1], base[1], "a duplicate keeps the board-wide ledger's own row");
+  });
+
+  it("tolerates missing input and rows without an id", () => {
+    assert.deepEqual(mergeById(undefined, undefined), []);
+    assert.deepEqual(mergeById([row("a1")], [{ event: "no-id" }]).map((entry) => entry.id), ["a1"]);
+    assert.deepEqual(mergeById([{ event: "no-id" }], [row("a1")]).map((entry) => entry.id), ["a1"]);
+  });
+
+  it("does not mutate either input", () => {
+    const base = Object.freeze([Object.freeze(row("a1"))]);
+    const extra = [row("a2")];
+    mergeById(base, extra);
+    assert.deepEqual(base.map((entry) => entry.id), ["a1"]);
+    assert.deepEqual(extra.map((entry) => entry.id), ["a2"]);
   });
 });
 
@@ -288,14 +319,16 @@ describe("B26 · the sidebar's assignee narrowing", () => {
     assert.deepEqual(filterItems(items, { assignee: "jobs", assigneeMe: me }).map((i) => i.id), ["a1", "a3"]);
   });
 
-  it("ANDs with the feed's own three controls", () => {
-    assert.deepEqual(filterItems(items, { actor: "agent", assignee: "jobs", assigneeMe: me }).map((i) => i.id), ["a1", "a3"]);
+  it("ANDs with the feed's event and task controls", () => {
     assert.deepEqual(
-      filterItems(items, { actor: "human", assignee: "jobs", assigneeMe: me }),
-      [],
-      "the sidebar narrowing and the actor control are two conditions on one axis — both must hold",
+      filterItems(items, { event: "status", assignee: "jobs", assigneeMe: me }).map((i) => i.id),
+      ["a1"],
     );
     assert.deepEqual(filterItems(items, { event: "comment", assignee: "jobs", assigneeMe: me }), []);
+    assert.deepEqual(
+      filterItems(items, { task: "TD-2", assignee: "human", assigneeMe: me }).map((i) => i.id),
+      ["a2"],
+    );
   });
 });
 
@@ -425,24 +458,25 @@ describe("B26 · the store's address-bar shadow", () => {
     const history = { replaceState: (...args) => calls.push(args) };
     store.replaceActivityQuery(location, history);
     assert.equal(calls.length, 0, "the resting address is already the resting query");
-    store.writeActivityFilter("actor", "agent");
+    store.writeActivityFilter("event", "status");
     store.replaceActivityQuery(location, history);
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0], [null, "", "/activity?actor=agent#/task/TD-1"]);
+    assert.deepEqual(calls[0], [null, "", "/activity?event=status#/task/TD-1"]);
     store.resetActivityFilters();
   });
 
   it("lands the filters exactly as the address states them", async () => {
     const store = await import("../../web/src/stores/activity.js");
-    store.applyActivityQuery("?actor=agent&event=status&task=TD-1");
-    assert.deepEqual({ ...store.activity.filters }, { actor: "agent", event: "status", task: "TD-1" });
+    // The retired `actor` slot is ignored; event and task are the address's two.
+    assert.equal(store.applyActivityQuery("?actor=agent&event=status&task=TD-1"), true);
+    assert.deepEqual({ ...store.activity.filters }, { event: "status", task: "TD-1" });
     assert.equal(store.applyActivityQuery("?actor=nonsense"), false, "an out-of-domain value is no condition");
-    assert.deepEqual({ ...store.activity.filters }, { actor: "all", event: "all", task: "all" });
-    store.writeActivityFilter("actor", "agent");
+    assert.deepEqual({ ...store.activity.filters }, { event: "all", task: "all" });
+    store.writeActivityFilter("event", "status");
     store.applyActivityQuery("");
     assert.deepEqual(
       { ...store.activity.filters },
-      { actor: "all", event: "all", task: "all" },
+      { event: "all", task: "all" },
       "a slot the address does not name is `all` — the address is the truth for this slot group",
     );
   });

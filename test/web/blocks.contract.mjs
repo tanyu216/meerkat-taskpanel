@@ -152,8 +152,8 @@ export const DOMAINS = Object.freeze({
   LANG: Object.freeze(["en", "zh"]),
   /** `html[data-theme-mode]` and the theme cell's mirrored state (B01/B03). */
   THEME_MODE: Object.freeze(["light", "dark", "auto"]),
-  /** B26 — the feed's three filter slots (§6). */
-  ACTIVITY_FILTER: Object.freeze(["actor", "event", "task"]),
+  /** B26 — the feed's three controls (§6; TP-0090 replaced Actor with Assignee). */
+  ACTIVITY_FILTER: Object.freeze(["assignee", "event", "task"]),
   /** B26 — a row's event bucket, as the **event** filter reads it (§3.4). */
   ACTIVITY_GROUP: Object.freeze(["status", "comment", "delivery", "meta"]),
   /** B26 — the two mutually exclusive empty states (§8). */
@@ -2991,6 +2991,7 @@ const BLOCKS = [
       "[data-activity-filter-summary]",
       "[data-activity-filter-text]",
       "[data-activity-filter-option]",
+      "[data-activity-filter-search]",
       "[data-activity-value]",
       "[data-filter-clear]",
       "[data-activity-filter-count]",
@@ -3041,6 +3042,9 @@ const BLOCKS = [
       { kind: "count", selector: "[data-activity-filter-value]", equals: 3 },
       { kind: "count", selector: "[data-activity-filter-summary]", equals: 3 },
       { kind: "count", selector: "[data-activity-filter-text]", equals: 3 },
+      /* TP-0090 — Assignee and Task lead their menus with a search row; Event
+       * has no searchable domain. The query only narrows the menu. */
+      { kind: "count", selector: "[data-activity-filter-search]", equals: 2 },
       { kind: "count", selector: "[data-activity-filter-option][aria-current=\"true\"]", equals: 3 },
       { kind: "count", selector: "[data-filter-clear]", within: "[data-activity-filters]", equals: 1 },
       { kind: "count", selector: "[data-activity-filter-count]", equals: 1 },

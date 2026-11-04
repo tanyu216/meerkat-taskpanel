@@ -26,9 +26,11 @@ import { describe, it } from "node:test";
 
 import {
   assigneeMenuRows,
+  assigneeTriggerText,
   firstUnpinnedIndex,
   labelMenuRows,
   moveActive,
+  taskMenuRows,
 } from "../../web/src/lib/filter-menu.js";
 
 const STATIC = Object.freeze(["all", "me", "human", "agent"]);
@@ -190,6 +192,93 @@ describe("labelMenuRows", () => {
     const rows = labels("zzz");
     assert.deepEqual(values(rows), ["all"]);
     assert.equal(rows.some((row) => row.value === "__new" || row.new === true), false);
+  });
+});
+
+describe("assigneeTriggerText — the trigger reads from the value", () => {
+  it("states the static value's own sentence", () => {
+    assert.equal(assigneeTriggerText("all", STATIC, t), "Assignee: All");
+    assert.equal(assigneeTriggerText("me", STATIC, t), "Assignee: Me");
+    assert.equal(assigneeTriggerText("agent", STATIC, t), "Assignee: Agent");
+  });
+
+  it("reads an empty or missing value as `all`", () => {
+    assert.equal(assigneeTriggerText("", STATIC, t), "Assignee: All");
+    assert.equal(assigneeTriggerText(null, STATIC, t), "Assignee: All");
+    assert.equal(assigneeTriggerText(undefined, STATIC, t), "Assignee: All");
+  });
+
+  it("states a given name with the control's row sentence, case preserved", () => {
+    assert.equal(assigneeTriggerText("jobs", STATIC, t), "Assignee: jobs");
+    assert.equal(assigneeTriggerText("Jobs", STATIC, t), "Assignee: Jobs");
+  });
+});
+
+describe("taskMenuRows — the searchable task menu", () => {
+  const TASKS = Object.freeze([
+    { identifier: "TD-1", title: "Draft the onboarding copy", labels: ["design"] },
+    { identifier: "TD-6", title: "Profile the board scroll", labels: ["perf"] },
+    { identifier: "TD-13", title: "Confirm the release scope", labels: ["design"] },
+  ]);
+  const rows = (query = "", tasks = TASKS) => taskMenuRows({ tasks, query, allText: "All tasks" });
+
+  it("pins All first, with the caller's own sentence", () => {
+    const first = rows()[0];
+    assert.deepEqual(first, { value: "all", text: "All tasks", pinned: true });
+  });
+
+  it("never filters the pinned All row", () => {
+    assert.deepEqual(values(rows("zzz")), ["all"]);
+  });
+
+  it("shows every task while the query is empty", () => {
+    assert.deepEqual(values(rows()), ["all", "TD-1", "TD-6", "TD-13"]);
+    assert.deepEqual(
+      rows().slice(1).map((row) => row.pinned),
+      [false, false, false],
+    );
+    assert.deepEqual(
+      rows().slice(1).map((row) => row.text),
+      ["TD-1", "TD-6", "TD-13"],
+      "a task row's text is the identifier itself — data, not a catalogue key",
+    );
+  });
+
+  it("ranks an identifier prefix before a contains before a subsequence", () => {
+    assert.deepEqual(values(rows("TD-6")), ["all", "TD-6"]);
+    assert.deepEqual(values(rows("13")), ["all", "TD-13"]);
+    // TD-1's title starts with "d"; TD-6/TD-13 contain it later.
+    assert.deepEqual(values(rows("d")), ["all", "TD-1", "TD-6", "TD-13"]);
+  });
+
+  it("matches the title too — the plan's identifier + title keys", () => {
+    assert.deepEqual(values(rows("onboarding")), ["all", "TD-1"]);
+    assert.deepEqual(values(rows("scroll")), ["all", "TD-6"]);
+    assert.deepEqual(values(rows("release")), ["all", "TD-13"]);
+  });
+
+  it("does not match a label — labels are not one of the two keys", () => {
+    assert.deepEqual(values(rows("perf")), ["all"]);
+    assert.deepEqual(values(rows("design")), ["all"]);
+  });
+
+  it("deduplicates repeated identifiers and never duplicates the pinned value", () => {
+    const duplicated = [
+      ...TASKS,
+      { identifier: "TD-6", title: "Profile the board scroll again", labels: [] },
+      { identifier: "all", title: "A task that is not the pinned row", labels: [] },
+    ];
+    assert.deepEqual(values(rows("scroll", duplicated)), ["all", "TD-6"]);
+    assert.equal(values(rows("", duplicated)).filter((value) => value === "all").length, 1);
+  });
+
+  it("drops a blank identifier and an empty title key", () => {
+    const sparse = [
+      { identifier: "", title: "no id" },
+      { identifier: "TD-2" },
+      { identifier: "TD-3", title: "" },
+    ];
+    assert.deepEqual(values(rows("", sparse)), ["all", "TD-2", "TD-3"]);
   });
 });
 

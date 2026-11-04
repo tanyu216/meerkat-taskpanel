@@ -74,7 +74,13 @@
  */
 import { computed, nextTick, ref } from "vue";
 
-import { assigneeMenuRows, firstUnpinnedIndex, labelMenuRows, moveActive } from "../../lib/filter-menu.js";
+import {
+  assigneeMenuRows,
+  assigneeTriggerText,
+  firstUnpinnedIndex,
+  labelMenuRows,
+  moveActive,
+} from "../../lib/filter-menu.js";
 import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import {
   activeFilterCount,
@@ -156,9 +162,7 @@ const labelMenu = computed(() =>
  * sentence; a given name is `Assignee: <name>` (acceptance item 2).
  */
 const assigneeSummary = computed(() =>
-  ASSIGNEE_STATIC_VALUES.includes(assigneeValue.value)
-    ? t(`filters.assignee.${assigneeValue.value}`)
-    : t("filters.assigneeOption", assigneeValue.value),
+  assigneeTriggerText(assigneeValue.value, ASSIGNEE_STATIC_VALUES, t),
 );
 
 /** `all` plus the five priorities, in the board's own order. */
