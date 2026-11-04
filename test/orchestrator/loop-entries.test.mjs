@@ -997,7 +997,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.match(run.stdout + run.stderr, /no available kind|defer T-1/);
   });
 
-  it("reassigns a stale card to Worker under the orchestrator's identity, and comments why (ADR 0014)", () => {
+  it("reassigns a stale card to Worker under the orchestrator's identity, and comments why (ADR 0015)", () => {
     const dir = tempDir("tp-worker-fallback-");
     const record = join(dir, "calls.jsonl");
     const script = join(dir, "fallback-cli.mjs");

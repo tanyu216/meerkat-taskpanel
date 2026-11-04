@@ -1181,7 +1181,7 @@ describe("server/routes — candidates (the poll read)", () => {
       ],
       "the card's fields, its opaque meta, and `reason`",
     );
-    // ADR 0014: the poll routes by the card's assignee, so the read carries it.
+    // ADR 0015: the poll routes by the card's assignee, so the read carries it.
     assert.equal(candidates.candidates[0].assignee, "pollbot");
     assert.equal(candidates.candidates[0].assignee_kind, "agent");
     assert.equal(typeof candidates.candidates[0].assignee_id, "string");

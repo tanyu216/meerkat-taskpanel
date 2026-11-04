@@ -495,7 +495,7 @@ describe("task-order — the candidate projection is unchanged by the order", ()
       "title",
       "version",
     ]);
-    // The route is part of the projection the order refines (ADR 0014).
+    // The route is part of the projection the order refines (ADR 0015).
     assert.equal(candidates[0].assignee, "linus");
     assert.equal(candidates[0].assignee_kind, "agent");
     assert.equal(typeof candidates[0].assignee_id, "string");

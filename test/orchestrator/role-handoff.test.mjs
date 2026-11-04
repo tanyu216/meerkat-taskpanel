@@ -261,7 +261,7 @@ describe("wakeHandoff selects the card's role", () => {
     assert.deepEqual(result.roleWarnings, ["a role warning"]);
   });
 
-  it("refuses a dispatch whose role is not the card's assignee (ADR 0014)", () => {
+  it("refuses a dispatch whose role is not the card's assignee (ADR 0015)", () => {
     // The board's route says Jobs; the caller wants to run Reviewer. That is a
     // wrong-lane execution, so the dispatch reports it instead of spawning.
     const result = wakeHandoff(

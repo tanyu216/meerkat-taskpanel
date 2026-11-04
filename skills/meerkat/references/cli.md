@@ -51,7 +51,7 @@ error · `3` `export md --check` found stale cards.
 |---|---|
 | `issue create` | See [cli/issue.md](cli/issue.md). |
 | `issue list [--project] [--status <s>]… [--assignee <name>\|--assignee-id <id>] [--parent <ref>] [--kind <kind>] [--label <label>]… [--target <value>] [--meta <key>=<value>]… [--review-of <ref>] [--limit] [--include-archived] [--order-debug]` | See [cli/issue.md](cli/issue.md). |
-| `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order-debug]` | See [cli/issue.md](cli/issue.md). |
+| `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order-debug]` | See [cli/issue.md](cli/issue.md). Each row carries `assignee`/`assignee_id`/`assignee_kind`. |
 | `issue get <id\|identifier> [--include comments\|reports\|relations\|sessions]… [--limit <n>]` | See [cli/issue.md](cli/issue.md). |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]… [--drop-acceptance <text>]… [--acceptance-revision <n>] [--acceptance-mode off\|auto\|human [--reason "<why>"]]` | See [cli/issue.md](cli/issue.md). |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--question "<text>"] [--blocked-reason <word>]` | See [cli/issue.md](cli/issue.md). |

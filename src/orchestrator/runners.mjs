@@ -103,7 +103,7 @@ export async function runPollTick(deps) {
     // agent as the documented fallback.
     defaultAgent = null,
     // The role layer, for the same reason the supervisor already loads it: the
-    // card's **assignee** selects the executing role (ADR 0007/0014). Absent,
+    // card's **assignee** selects the executing role (ADR 0007/0015). Absent,
     // the assignee name is used as-is (an older caller or a pure test).
     roleSet = null,
     primaryKind = null,
@@ -1175,11 +1175,11 @@ export function resolveRoleTarget(opts, config, action, card) {
         order: opts.kindOrder,
         available: opts.kindAvailable ?? null,
       });
-  // Defence in depth (ADR 0014): a work card's route selects the role, so the
+  // Defence in depth (ADR 0015): a work card's route selects the role, so the
   // dispatch may only run as the role its assignee names. `card.reassign.to` is
   // the deliberate Worker fallback the poll planned and landed *before* the
   // claim; anything else is a mismatch the caller must report, not spawn.
-  // Unassigned, human and review cards keep their pre-0014 behaviour.
+  // Unassigned, human and review cards keep their pre-0015 behaviour.
   const mismatch = assignmentMismatch(card, review, role, roleSet);
   if (mismatch !== null) {
     return {

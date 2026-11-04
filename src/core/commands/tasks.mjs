@@ -1801,7 +1801,7 @@ const NO_OPEN_EDGES = Object.freeze({ blockersOpen: 0, unblocksOpen: 0 });
  *   * with `stale: true`, `in_progress` whose heartbeat is stale — the same
  *     holder after 30 minutes (`stale_same`), and past 6 hours a card anyone
  *     may *see* (`stale_any`) but only its assignee may re-claim without
- *     `--allow-steal --reason` (ADR 0014) — the recovery pool.
+ *     `--allow-steal --reason` (ADR 0015) — the recovery pool.
  *
  * An `epic` is withheld from every pool: it is a container, not a unit of work
  * (`domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`, and the claim gate refuses it
@@ -2025,7 +2025,7 @@ function candidateOf(task, reason, resolveRef = null, resolveAssigneeName = null
       : (resolveRef?.(identity.originalId) ?? identity.originalRef ?? identity.originalId);
   // The route is a board fact, so the poll gets it without a second `issue get`:
   // the supervisor must claim and dispatch by the card's assignee, never by
-  // whichever agent happened to scan it first (ADR 0014). The board still knows
+  // whichever agent happened to scan it first (ADR 0015). The board still knows
   // nothing about roles — it reports the assignment, not a lane.
   const assigneeId = task.assigneeId ?? null;
   const assignee = assigneeId === null ? null : (resolveAssigneeName?.(assigneeId) ?? assigneeId);

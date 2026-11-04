@@ -233,7 +233,7 @@ export function decideClaim(task, options) {
     // Older than six hours — or no heartbeat at all: the claim is not a claim,
     // but the **assignment** still is. The card's own assignee recovers it; any
     // other actor is overriding the route and needs the same audited
-    // `--allow-steal --reason` a first claim does (ADR 0014).
+    // `--allow-steal --reason` a first claim does (ADR 0015).
     const ownCard = isAssignee(task, actor, resolveAssignee);
     if (!ownCard && allowSteal !== true) {
       return {

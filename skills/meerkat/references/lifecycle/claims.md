@@ -25,7 +25,7 @@
 Another actor's fresh claim is `EXECUTION_ACTIVE`. Past six hours the lock has rotted but the
 **route has not**: the card's assignee re-claims it as an audited takeover, and anybody else
 needs the same explicit `--allow-steal --reason` a first claim does. Both write a `change`
-comment. Scanning order never selects the executor (ADR 0014).
+comment. Scanning order never selects the executor (ADR 0015).
 
 **The `depends_on` read rule.** `issue candidates` withholds a card whose `blocks` predecessor
 is not `done` — literally `status !== "done"`, so a `canceled` predecessor withholds too.

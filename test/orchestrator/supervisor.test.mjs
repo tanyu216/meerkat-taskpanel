@@ -145,7 +145,7 @@ describe("planTick (pure)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Pure: the claim identity (ADR 0014)
+// Pure: the claim identity (ADR 0015)
 // ---------------------------------------------------------------------------
 
 describe("planClaimIdentity (pure)", () => {
@@ -287,6 +287,30 @@ describe("planClaimIdentity (pure)", () => {
   it("uses the assignee name when no role layer is loaded", () => {
     const plan = planClaimIdentity(card(), { ...ctx, roleSet: null });
     assert.deepEqual(plan, { kind: "claim", agent: "Linus" });
+  });
+
+  it("defers an unassigned stale_same card when the pool's agent is not the holder", () => {
+    // An unassigned in_progress card is the public pool, but inside the
+    // 10min–6h window the board admits only its holder. The pool claims as
+    // `defaultAgent` (Worker); if the holder that scanned it is somebody else,
+    // that claim is refused with EXECUTION_ACTIVE on every tick. Defer until
+    // six hours pass and `stale_any` frees the card — don't make the scan order
+    // the executor by claiming as the holder.
+    const plan = planClaimIdentity(
+      card({ assignee: null, assignee_id: null, assignee_kind: null, reason: "stale_same" }),
+      { ...ctx, scanAgent: "Jobs" },
+    );
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /stale_same/);
+    assert.match(plan.why, /Jobs/);
+  });
+
+  it("claims an unassigned stale_same card when the scanning holder is the pool's agent", () => {
+    const plan = planClaimIdentity(
+      card({ assignee: null, assignee_id: null, assignee_kind: null, reason: "stale_same" }),
+      { ...ctx, defaultAgent: "Jobs", scanAgent: "Jobs" },
+    );
+    assert.deepEqual(plan, { kind: "claim", agent: "Jobs" });
   });
 });
 
@@ -1234,6 +1258,46 @@ describe("runPollTick (injected deps)", () => {
       log: (line) => logged.push(line),
     });
     assert.deepEqual(claims, [], "never claim a holder-only window as the assignee");
+    assert.equal(result.deferred, 1);
+    assert.equal(result.spawned, 0);
+    assert.match(logged.join("\n"), /defer T-1 .*stale_same/);
+  });
+
+  it("defers an unassigned stale_same claim when the pool's agent is not the holder", async () => {
+    // Inside the six-hour window the board admits only the holder, even for an
+    // unassigned card. The public pool claims as `defaultAgent`; when the holder
+    // that scanned it is someone else, every tick would get EXECUTION_ACTIVE, so
+    // the tick defers until `stale_any` frees the card.
+    const claims = [];
+    const logged = [];
+    const result = await runPollTick({
+      agents: ["Jobs"],
+      registry: EMPTY_REGISTRY(),
+      config: BASE_CONFIG,
+      roleSet: {
+        roles: [{ id: "worker", agent: "Worker", lanes: ["worker"], installedOn: ["claude"] }],
+      },
+      readCandidates: async () => [
+        {
+          identifier: "T-1",
+          reason: "stale_same",
+          project: "P1",
+          assignee: null,
+          assignee_id: null,
+          assignee_kind: null,
+          version: 1,
+        },
+      ],
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      defaultAgent: "Worker",
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: (line) => logged.push(line),
+    });
+    assert.deepEqual(claims, [], "never claim the holder-only window as Worker");
     assert.equal(result.deferred, 1);
     assert.equal(result.spawned, 0);
     assert.match(logged.join("\n"), /defer T-1 .*stale_same/);

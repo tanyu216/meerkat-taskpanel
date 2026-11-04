@@ -410,7 +410,10 @@ export const HEARTBEAT_FRESH_MS = 600_000;
  */
 /** A claim older than 30 minutes is stale for its own holder (re-claimable by the same assignee). */
 export const CLAIM_STALE_SAME_MS = 30 * 60 * 1000;
-/** Any claim older than 6 hours is stale for everyone (reclaimable by any assignee). */
+/**
+ * A claim older than 6 hours has rotted: its assignee re-claims it (audited),
+ * anyone else only with `--allow-steal --reason` (ADR 0015).
+ */
 export const CLAIM_STALE_ANY_MS = 6 * 60 * 60 * 1000;
 /** Terminal tasks become archivable after 7 days (I6). */
 export const ARCHIVE_AFTER_DAYS = 7;
