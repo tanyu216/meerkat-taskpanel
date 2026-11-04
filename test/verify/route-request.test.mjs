@@ -95,6 +95,7 @@ describe("route-request.mjs — the live surface", () => {
     assert.deepEqual(list.query, [
       "assignee",
       "assignee_id",
+      "assignee_kind",
       "board",
       "include_archived",
       "kind",
@@ -104,7 +105,9 @@ describe("route-request.mjs — the live surface", () => {
       "offset",
       "order_debug",
       "parent",
+      "priority",
       "project_id",
+      "q",
       "review_of",
       "status",
       "target",

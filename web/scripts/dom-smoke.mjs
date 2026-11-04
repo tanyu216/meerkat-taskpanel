@@ -161,10 +161,11 @@ function minimalPdf() {
 export function fixtureApi() {
   // `task_count` is the sidebar badge's wire field (`/projects` → `projectToWire`).
   // It is fixture data and deliberately **not** derived from the `tasks` array
-  // below — those all belong to p1, which is exactly the condition the old client
+  // below — p1's 17 cards print 12, which is exactly the condition the old client
   // bug needed: a row's count must come from the project, not from whichever task
-  // list the client happens to be holding. p2 and p3 own no fixture task at all
-  // and still print 4 and 2.
+  // list the client happens to be holding. p2 owns no fixture task at all and
+  // still prints 4. TP-0094 makes p3 the **pagination** fixture: 250 cards, so
+  // its list is two pages (200 + 50).
   const mk = (id, name, taskCount, prefix) => ({
     id,
     name,
@@ -190,7 +191,7 @@ export function fixtureApi() {
   const projects = [
     mk("p1", "MeerkatTaskPanel", 12, "TD"),
     mk("p2", "Orchestrator", 4, "ORC"),
-    mk("p3", "Site Refresh", 2, "SR"),
+    mk("p3", "Site Refresh", 250, "SR"),
   ];
   const orderDebug = [
     { id: "p1", name: "MeerkatTaskPanel", order: 1, total: 0.9, archived: false },
@@ -279,6 +280,25 @@ export function fixtureApi() {
     fixture("p1", "todo", { identifier: "TD-15", title: "Child: kind badge", priority: "medium", labels: [], assignee: AGENT.claude, parent_id: "td_TD_14" }),
     fixture("p1", "in_progress", { identifier: "TD-16", title: "Child: relations rows", priority: "medium", labels: ["ui"], assignee: AGENT.codex, parent_id: "td_TD_14" }),
     fixture("p1", "backlog", { identifier: "TD-17", title: "Grandchild: descendant walk", priority: "low", labels: [], assignee: AGENT.pi, parent_id: "td_TD_15" }),
+    // TP-0094 — p3's 250 cards: 220 backlog + 5 in each of the other six
+    // columns. The priorities and labels cycle so the server-side filters have a
+    // narrowing to find; the last card is the search needle, beyond the first
+    // page (index 249) in the unfiltered order.
+    ...Array.from({ length: 250 }, (_, index) => {
+      const status =
+        index < 220
+          ? "backlog"
+          : ["todo", "in_progress", "in_review", "blocked", "done", "canceled"][
+              Math.floor((index - 220) / 5)
+            ];
+      return fixture("p3", status, {
+        identifier: `SR-${String(index + 1).padStart(3, "0")}`,
+        title: index === 249 ? "SR-NEEDLE launch checklist" : `Site refresh item ${index + 1}`,
+        priority: ["low", "medium", "high", "urgent"][index % 4],
+        labels: [["design", "infra", "copy"][index % 3]],
+        assignee: [AGENT.claude, AGENT.human, AGENT.codex][index % 3],
+      });
+    }),
   ];
   // The actor dictionary (0019): one table, no `platform` column. `kind` is the
   // actor's kind — `agent`/`human` today, which name no platform, so the badges
@@ -690,10 +710,36 @@ export function startServer() {
     if (path === "/api/v1/tasks") {
       const projectId = url.searchParams.get("project_id");
       const statuses = url.searchParams.getAll("status").filter(Boolean);
+      // TP-0094 — the list's server-side filters. The mock must apply them
+      // **before** slicing, exactly as the route does, or the page would be the
+      // wrong page; `q` mirrors the route's `instr` over identifier/title/labels.
+      const priority = url.searchParams.get("priority");
+      const label = url.searchParams.get("label");
+      const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+      const assigneeKind = url.searchParams.get("assignee_kind");
+      const matchesQ = (task) =>
+        q === "" ||
+        [task.identifier, task.title, ...(task.labels ?? [])].some((value) =>
+          String(value).toLowerCase().includes(q),
+        );
+      const matchesAssigneeKind = (task) => {
+        if (assigneeKind === null) return true;
+        const assignee = task.assignee;
+        // An unassigned card belongs to neither side (the board's own rule).
+        if (!assignee?.display_name) return false;
+        const kind = assignee.kind;
+        return assigneeKind === "human"
+          ? kind === null || kind === undefined || kind === "" || kind === "human"
+          : kind !== null && kind !== undefined && kind !== "" && kind !== "human";
+      };
       const scoped = data.tasks.filter(
         (task) =>
           (!projectId || task.project_id === projectId) &&
-          (statuses.length === 0 || statuses.includes(task.status)),
+          (statuses.length === 0 || statuses.includes(task.status)) &&
+          (priority === null || task.priority === priority) &&
+          (label === null || (task.labels ?? []).includes(label)) &&
+          matchesQ(task) &&
+          matchesAssigneeKind(task),
       );
       const terminal = new Set(["done", "canceled"]);
       const activeTotal = scoped.filter((task) => !terminal.has(task.status)).length;
@@ -1476,6 +1522,131 @@ export async function run() {
         laterTopBorder: topBorders.at(1) ?? null,
       };
     });
+
+    /* TP-0094 — the list is a **server-paged** reading of its own.
+     *
+     * p3 owns 250 cards, so its first page (200) is not the whole set. The
+     * search needle is at index 249: a server-side `q` is the only way to surface
+     * it before "show more", which is the assertion that proves the list is not
+     * filtering the page it already holds. Priority and label are pushed down
+     * too, and the request carries them. The leg leaves the app on p1, in the
+     * list view, exactly where the suite found it.
+     */
+    const listPagingFailures = [];
+    const listPagingCheck = (condition, detail) => {
+      if (!condition) listPagingFailures.push(detail);
+    };
+    try {
+      const pickProject = async (name) => {
+        await page.click("[data-project-switcher] > summary");
+        await page.waitForTimeout(150);
+        await page.click(`[data-project-option="${name}"]`);
+      };
+      const listSnapshot = () =>
+        page.evaluate(() => ({
+          state: document.querySelector("[data-list]")?.getAttribute("data-list-state") ?? null,
+          rows: document.querySelectorAll("[data-list-rows] [data-list-row]").length,
+          morePresent: document.querySelector("[data-list-more]") !== null,
+          moreHidden: document.querySelector("[data-list-more]")?.hidden ?? null,
+          countText: document.querySelector("[data-filter-count]")?.textContent.trim() ?? "",
+        }));
+      // Wait for a row with the project's own identifier prefix, not merely for
+      // "some row": the previous project's rows are on screen until the reset
+      // lands, and a state-only wait could sample them.
+      const waitForList = (prefix) =>
+        page.waitForFunction(
+          (wanted) =>
+            document.querySelector("[data-list]")?.getAttribute("data-list-state") === "data" &&
+            document.querySelector(
+              `[data-list-rows] [data-list-row][data-identifier^="${wanted}"]`,
+            ) !== null,
+          prefix,
+          { timeout: 10_000 },
+        );
+
+      await pickProject("Site Refresh");
+      await waitForList("SR-");
+      await page.waitForTimeout(150);
+      const firstPage = await listSnapshot();
+      listPagingCheck(firstPage.rows === 200, `p3 first page holds ${firstPage.rows} rows, expected 200`);
+      listPagingCheck(
+        firstPage.morePresent && firstPage.moreHidden === false,
+        "p3 [data-list-more] is not visible after the first page",
+      );
+      listPagingCheck(
+        firstPage.countText.includes("200") && firstPage.countText.includes("250"),
+        `p3 count reads ${JSON.stringify(firstPage.countText)}, expected the loaded/total pair 200/250`,
+      );
+      const p3ListRead = taskListRequests
+        .map((raw) => new URL(raw))
+        .find(
+          (url) =>
+            url.searchParams.get("project_id") === "p3" &&
+            url.searchParams.get("limit") === "200",
+        );
+      listPagingCheck(p3ListRead !== undefined, "the list never requested p3 with limit=200");
+      listPagingCheck(
+        p3ListRead?.searchParams.get("board") === null,
+        "the list read carried board=1; it must be the list's own read",
+      );
+
+      // The needle (index 249) is beyond the first page. Search before "show
+      // more": only a server-side `q` can return it.
+      await page.fill("[data-search-input]", "SR-NEEDLE");
+      await page.waitForTimeout(500);
+      const searched = await listSnapshot();
+      listPagingCheck(searched.rows === 1, `server-side search returned ${searched.rows} rows, expected 1`);
+      await page.fill("[data-search-input]", "");
+      await page.waitForTimeout(500);
+
+      await page.click("[data-list-more]");
+      await page.waitForTimeout(400);
+      const wholePage = await listSnapshot();
+      listPagingCheck(wholePage.rows === 250, `after show more the list holds ${wholePage.rows} rows, expected 250`);
+      listPagingCheck(wholePage.moreHidden === true, "[data-list-more] is still visible at the end of the set");
+
+      // Priority + label are server-side: each reaches the request and narrows
+      // the set before the page is cut.
+      await page.click("[data-filter-priority] > summary");
+      await page.waitForTimeout(120);
+      await page.click('[data-filter-priority-option][data-priority-value="urgent"]');
+      await page.waitForTimeout(400);
+      await page.click("[data-filter-label] > summary");
+      await page.waitForTimeout(120);
+      await page.click('[data-filter-label-option][data-label-value="design"]');
+      await page.waitForTimeout(400);
+      const narrowed = await listSnapshot();
+      const narrowedRead = [...taskListRequests]
+        .reverse()
+        .map((raw) => new URL(raw))
+        .find((url) => url.searchParams.get("project_id") === "p3");
+      listPagingCheck(
+        narrowed.rows > 0 && narrowed.rows < 250,
+        `priority+label narrowed the list to ${narrowed.rows} rows, expected a non-empty subset`,
+      );
+      listPagingCheck(
+        narrowedRead?.searchParams.get("priority") === "urgent",
+        "the priority filter never reached the list read",
+      );
+      listPagingCheck(
+        narrowedRead?.searchParams.get("label") === "design",
+        "the label filter never reached the list read",
+      );
+
+      await page.click("[data-filter-clear]");
+      await page.waitForTimeout(500);
+      const cleared = await listSnapshot();
+      listPagingCheck(cleared.rows === 200, `clearing the filters left ${cleared.rows} rows, expected the first page (200)`);
+
+      // Back to the populated project, so every later section reads p1.
+      await pickProject("MeerkatTaskPanel");
+      await waitForList("TD-");
+      await page.waitForTimeout(150);
+      const backOnP1 = await listSnapshot();
+      listPagingCheck(backOnP1.rows === 17, `p1's list holds ${backOnP1.rows} rows, expected 17`);
+    } catch (err) {
+      listPagingFailures.push(`the paging leg could not run: ${err.message}`);
+    }
 
     const geometry = await page.evaluate(() => {
       const de = document.documentElement;
@@ -8219,6 +8390,7 @@ export async function run() {
         afterAnchor: r16AfterAnchor,
       },
       workingSet: { failures: boardSetFailures, ...boardWorkingSet },
+      listPaging: { failures: listPagingFailures },
       geometry,
       notMeasured,
       counts: { rules: results.length, failed: failures.length, notMeasured: notMeasured.length, ...geometry },
@@ -8440,6 +8612,15 @@ if (isEntryPoint) run().then(
             `and the banner stays down (${report.workingSet.bannerKind}) on a board smaller than one page`,
         );
       }
+      if (report.listPaging.failures.length > 0) {
+        console.log(`TP-0094 (list pagination) — ${report.listPaging.failures.length} failed:`);
+        for (const failure of report.listPaging.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          "TP-0094 (list pagination) — p3's 250-card list pages 200→250, the server-side search returns a card beyond the first page, " +
+            "priority+label reach the request, and clearing returns to the first page",
+        );
+      }
       if (report.acceptanceActs.failures.length > 0) {
         console.log(`M6 (acceptance acts) — ${report.acceptanceActs.failures.length} failed:`);
         for (const failure of report.acceptanceActs.failures) console.log(`  ✗ ${failure}`);
@@ -8488,6 +8669,7 @@ if (isEntryPoint) run().then(
       report.reopen.failures.length === 0 &&
       report.acceptanceActs.failures.length === 0 &&
       report.workingSet.failures.length === 0 &&
+      report.listPaging.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

@@ -109,6 +109,11 @@ resource model — and one CLI surface. It **consumes** nothing third-party at r
   and domain validation produces `VALIDATION_FAILED`. This is a recorded deviation from the
   "one schema validator at the boundary" default; changing it is a contract change, not a
   refactor.
+- The card list (`GET /api/v1/tasks`) is filterable server-side (`priority`, `q` over
+  identifier/title/labels, `assignee_kind`, plus the structural filters) and answers with
+  `total` / `active_total`; the web list pages it with `limit`/`offset`. The default order is
+  the assignee weight order; `board=1` selects the board's working-set order (active first,
+  then done/canceled by finish time) without changing the default.
 - The canonical artifacts are **code-first**: `test/fixtures/contract/api.snapshot.json` and
   `cli.snapshot.json`, regenerated with `--update` and checked by the pre-push hook and CI. There
   is no OpenAPI document, by decision.

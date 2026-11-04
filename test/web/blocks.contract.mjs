@@ -1424,10 +1424,14 @@ const BLOCKS = [
       "[data-list-priority-label]",
       "[data-list-revision]",
       "[data-list-row-template]",
+      // TP-0094 — the list's server pagination control is resident (hidden once
+      // the cursor reaches the total; the hidden toggle is a DOM-leg assertion).
+      "[data-list-more]",
     ],
     states: [],
     rules: [
       { kind: "count", selector: "[data-list]", equals: 1, when: "list view" },
+      { kind: "count", selector: "[data-list-more]", equals: 1, when: "list view" },
       { kind: "identical-hookset", selector: "[data-list-row]", within: "[data-list-rows]", when: "list view" },
       // R9 ③ — the list is in one of two states and says which, on its root. The
       // two halves are made mutually exclusive by a **rule on that attribute**

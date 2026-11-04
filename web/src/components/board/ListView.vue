@@ -27,7 +27,15 @@
 import { computed, watch } from "vue";
 
 import { identifierText } from "../../lib/identifier.js";
-import { board, kindLabel, loadTasks, openDetail, priorityOf, projectLoading, visibleTasks } from "../../stores/board.js";
+import { board, kindLabel, openDetail, priorityOf, projectLoading } from "../../stores/board.js";
+import {
+  list,
+  loadFirst,
+  loadMore,
+  more,
+  reset as resetList,
+  scheduleSearchLoad,
+} from "../../stores/list.js";
 import { listState, setListState, view } from "../../stores/ui.js";
 
 /**
@@ -38,41 +46,76 @@ import { listState, setListState, view } from "../../stores/ui.js";
  * each half — the rule also holds for the resting document, which a pair of
  * independent `v-if`s cannot promise (contract R6).
  *
- * The wait is the read's, not a fixed beat: whatever the transport takes is how
- * long the skeleton shows. A re-render from the filters does **not** re-enter
- * `loading` (only entering the view is a read), so filtering never flashes the
- * placeholder.
+ * TP-0094 — the read is the **list's own** server-paged read (`limit=200`), not
+ * `board.loadTasks`: the board's working set and the list's complete pagination
+ * are different readings now. The wait is the read's, not a fixed beat: whatever
+ * the transport takes is how long the skeleton shows.
  */
 watch(
   view,
   async (next) => {
     if (next !== "list") return;
     setListState("loading");
+    resetList();
     try {
-      await loadTasks();
+      await loadFirst();
     } finally {
-      // A failed read leaves the real error surface (B17) to speak; the list
-      // itself must not be stranded on the skeleton.
+      // A failed read leaves the list's own error surface to speak; the view
+      // must not be stranded on the skeleton.
       setListState("data");
     }
   },
 );
 
 /**
- * The one value the whole view reads. Two things enter the loading window: the
- * view's own entry read (`listState`, set by the watcher above) and a project
- * switch while the list is already open (`projectLoading` — `selectProject`
- * withdraws the reading and empties the list, and nothing touches `listState`).
+ * The list's filters are **server-side**: a change is a new first page. The
+ * search box debounces (250 ms, the timer lives in the store); every other
+ * control resets at once. Both only act while the list is the active view — the
+ * board keeps its own client-side filtering of the working set.
+ */
+watch(
+  () => [
+    board.currentProjectId,
+    board.filters.assignee,
+    board.filters.priority,
+    board.filters.status,
+    board.filters.label,
+  ],
+  () => {
+    if (view.value !== "list") return;
+    resetList();
+    loadFirst().catch(() => {
+      // The failure is on `list.error` and rendered by this view.
+    });
+  },
+);
+watch(() => board.filters.search, () => scheduleSearchLoad());
+
+/**
+ * The one value the whole view reads. Three things enter the loading window: the
+ * view's own entry read (`listState`, set by the watcher above), a project
+ * switch while the list is already open (`projectLoading`), and the list's own
+ * first-page read (`list.loading`). A "show more" read sets `loadingMore`, not
+ * `loading`, so the rows stay on screen while the next page arrives.
  *
  * All three bindings — the state attribute, the skeleton's `hidden`, and the
  * rows' `v-if` — must come off **this** value. Reading the raw `listState` in
  * any of them would put the attribute on `loading` while leaving the rows
  * mounted and the skeleton hidden: a blank list.
  */
-const listLoading = computed(() => projectLoading.value || listState.value === "loading");
+const listLoading = computed(
+  () => projectLoading.value || listState.value === "loading" || list.loading,
+);
+
+/** The "show more" press: the store owns the cursor and the failure note. */
+function loadMorePage() {
+  loadMore().catch(() => {
+    // `list.error` carries it; the view renders that.
+  });
+}
 
 const rows = computed(() =>
-  visibleTasks.value.map((task) => ({
+  list.tasks.map((task) => ({
     id: task.id,
     identifier: task.identifier,
     title: task.title,
@@ -234,11 +277,31 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
                object as every other one rather than a `<p>` with its own
                utility stack. The hook moves onto the title, where the
                prototype carries it. -->
-          <div v-if="!board.loading && rows.length === 0" class="td-empty">
+          <!-- TP-0094 — the empty state is the server's answer for the whole
+               filtered set (`total === 0`), not the length of the page in hand. -->
+          <div v-if="list.loaded && list.total === 0" class="td-empty">
             <span class="td-empty-title" data-i18n="list.emptyRow">{{ $t("list.emptyRow") }}</span>
+          </div>
+          <!-- A failed list read is this view's own surface: it must not black
+               out the page (the board's reading is still usable). -->
+          <div v-if="list.error" class="td-empty" data-list-error>
+            <span class="td-empty-title">{{ $t("error.generic") }}</span>
           </div>
         </template>
       </div>
     </div>
+
+    <!-- TP-0094 — the pagination control is resident (the B08 contract counts
+         one) and hidden once the cursor reaches the server's total. -->
+    <button
+      type="button"
+      class="btn btn-sm self-center"
+      data-list-more
+      :hidden="!more"
+      :disabled="list.loadingMore"
+      @click="loadMorePage"
+    >
+      {{ $t("list.more") }}
+    </button>
   </div>
 </template>

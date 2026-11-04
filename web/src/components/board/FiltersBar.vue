@@ -98,7 +98,8 @@ import {
   writePriorityFilter,
   writeStatusFilter,
 } from "../../stores/board.js";
-import { boardArea, filtersOpen, pushToast } from "../../stores/ui.js";
+import { list } from "../../stores/list.js";
+import { boardArea, filtersOpen, pushToast, view } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
 /**
@@ -109,6 +110,15 @@ import { t } from "../../i18n/index.js";
  * the loaded working set matched.
  */
 const countText = computed(() => {
+  // TP-0094 — the list is server-paged: its count is the loaded page against
+  // the server's filtered total, whether or not a filter is active. The board
+  // keeps its working-set reading (unfiltered: the project's real size;
+  // filtered: how much of the loaded working set matched).
+  if (view.value === "list") {
+    return list.loaded
+      ? t("filters.count.filtered", list.tasks.length, list.total)
+      : t("filters.count.initial");
+  }
   const loaded = board.tasks.length;
   const total = board.taskTotal > 0 ? board.taskTotal : loaded;
   if (activeFilterCount.value > 0) return t("filters.count.filtered", totalVisible.value, loaded);

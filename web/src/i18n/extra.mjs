@@ -42,6 +42,9 @@ export const EXTRA = {
     "board.truncated.title": "Board shows a working set, not every card",
     "board.truncated.hint": "All active cards plus the newest done/canceled; %s non-archived tasks in total.",
     "board.truncated.active": "The active cards could not all be read — waiting and acceptance may be incomplete.",
+    // TP-0094 — the list's server pagination. The prototype has no network, so
+    // it has no "show more" control to copy; the label is implementation only.
+    "list.more": "Show more",
     "toast.moveFailed": "Could not move %s — the transition is not allowed",
     // C-PREFIX-1 M7 — a refused create-project. The wire explains itself in
     // English and technical terms, so these four are the dialog's own words;
@@ -275,6 +278,7 @@ export const EXTRA = {
     "board.truncated.title": "看板只显示工作集，不是全部卡片",
     "board.truncated.hint": "显示全部活动卡 + 最新的 done/canceled；项目共 %s 个未归档任务。",
     "board.truncated.active": "活动卡未能完整读取 —— 等你回复与验收可能不完整。",
+    "list.more": "显示更多",
     "toast.moveFailed": "无法移动 %s —— 该状态迁移不被允许",
     "toast.projectCreateFailed": "无法创建项目",
     "toast.projectPrefixUnusable": "无法创建项目 —— 标识前缀不含任何字母或数字",

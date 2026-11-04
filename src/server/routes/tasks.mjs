@@ -13,7 +13,7 @@
  * answer with a task too.
  */
 
-import { TASK_KINDS, TASK_OPS } from "../../core/index.mjs";
+import { PRIORITIES, TASK_KINDS, TASK_OPS } from "../../core/index.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { attachmentToWire, reportToWire, taskToWire, workflowToWire } from "../../foundation/wire.mjs";
 import { arr, bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
@@ -36,9 +36,16 @@ const LIST_QUERY = shape({
   project_id: str(),
   status: REQUEST.statuses, // `?status=a&status=b` — a repeated query param
   assignee_id: str(),
-  // `assignee` is a free-text name resolved against the dictionary; it and
-  // `assignee_id` are two spellings of the same filter and are refused together.
+  // `assignee` is a free-text name resolved against the dictionary; it,
+  // `assignee_id` and `assignee_kind` are three spellings of one filter and are
+  // refused together.
   assignee: str(),
+  // The board's two-valued kind category (`human|agent`), not the raw column:
+  // a platform kind (`claude`, …) counts as an agent. See the handler.
+  assignee_kind: str(),
+  priority: REQUEST.priority,
+  // Free text over identifier / title / labels, case-insensitive substring.
+  q: str(),
   review_of: str(), // a task ref; resolved below to the structural id
   parent: str(), // a task ref; the child cards of that parent
   kind: str(),
@@ -54,6 +61,14 @@ const LIST_QUERY = shape({
   // second order for `/tasks`: omitting it keeps the weight order unchanged.
   board: str(),
 });
+
+/**
+ * The `assignee_kind` filter's closed vocabulary — the board's two-valued kind
+ * category (`human|agent`). The stored column is deliberately **not** closed: a
+ * kind is a platform name (`claude`, `codex`, …) or `human`, and the read side
+ * maps everything non-human to `agent` the way `web/src/lib/actor-kind.js` does.
+ */
+const LIST_ASSIGNEE_KINDS = Object.freeze(["human", "agent"]);
 
 /** A `--meta` key the JSON path can name as one top-level property. */
 const META_KEY = /^[A-Za-z0-9_.-]+$/;
@@ -183,16 +198,41 @@ export function registerTaskRoutes(router, surface) {
     const reviewOfRef = query.get("review_of");
     const parentRef = query.get("parent");
     const labels = query.getAll("label").filter((value) => value !== "");
-    // Two spellings of one filter. Accepting both would silently pick one; the
-    // caller has to say which scope it means.
+    // Three spellings of one filter. Accepting more than one would silently pick
+    // a scope; the caller has to say which it means.
     const assigneeName = query.get("assignee");
     const assigneeId = query.get("assignee_id");
-    if (assigneeName !== null && assigneeId !== null) {
+    const assigneeKind = query.get("assignee_kind");
+    const assigneeSpellings = [assigneeName, assigneeId, assigneeKind].filter(
+      (value) => value !== null,
+    );
+    if (assigneeSpellings.length > 1) {
       throw new DomainError("VALIDATION_FAILED", {
-        message: "assignee and assignee_id are two spellings of one filter; send one",
-        details: { fields: ["assignee", "assignee_id"] },
+        message:
+          "assignee, assignee_id and assignee_kind are spellings of one filter; send one",
+        details: { fields: ["assignee", "assignee_id", "assignee_kind"] },
       });
     }
+    // The two closed vocabularies are validated here, not by the declaration:
+    // a declared enum is not a validator (requests.mjs), so an unknown value is
+    // a caller mistake and gets the stable code rather than an empty page.
+    const priority = query.get("priority");
+    if (priority !== null && !PRIORITIES.includes(priority)) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: `unknown priority ${JSON.stringify(priority)}`,
+        details: { field: "priority", received: priority, allowed: [...PRIORITIES] },
+      });
+    }
+    if (assigneeKind !== null && !LIST_ASSIGNEE_KINDS.includes(assigneeKind)) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: `unknown assignee_kind ${JSON.stringify(assigneeKind)}`,
+        details: { field: "assignee_kind", received: assigneeKind, allowed: [...LIST_ASSIGNEE_KINDS] },
+      });
+    }
+    // An empty `q` is the resting value a cleared search sends; it narrows
+    // nothing (`instr(x, '')` is always true), so it is dropped rather than
+    // carried into SQL.
+    const q = query.get("q");
     // An unknown kind is a caller mistake, not an empty page — the declaration
     // states the vocabulary but does not enforce it. `review` is a read-side
     // alias for the review marker (`review_of_id IS NOT NULL`), not a third
@@ -214,6 +254,9 @@ export function registerTaskRoutes(router, surface) {
       // A name resolves to every dictionary entry it matches; no match is the
       // empty scope (`assigneeId: []` reads as `1 = 0`), never "no filter".
       ...(assigneeName === null ? {} : { assigneeId: commands.resolveAssigneeIds(assigneeName) }),
+      ...(assigneeKind === null ? {} : { assigneeKind }),
+      ...(priority === null ? {} : { priority }),
+      ...(q === null || q === "" ? {} : { q }),
       ...(kind === null ? {} : { kind }),
       ...(labels.length === 0 ? {} : { labels }),
       ...(query.get("target") === null ? {} : { target: query.get("target") }),

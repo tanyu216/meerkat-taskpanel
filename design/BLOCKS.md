@@ -554,8 +554,16 @@ stay as R8 fixed them. `[data-card-identifier]` must never carry `.td-id-full`.
 | Row parts | `[data-list-identifier]` · `[data-list-title]` · `[data-list-status]` → `[data-list-status-label]` · `[data-list-assignee]` (role handle) · `[data-list-priority]` → `[data-list-priority-label]` · `[data-list-revision]` |
 | Template | `template[data-list-row-template]` |
 
-Rows are projected from the cards that survive the active filters, so board and
-list can never disagree.
+**TP-0094 — the list is a server-paged reading of its own.** Rows are projected
+from the cards `GET /api/v1/tasks` returns for the current filters, paged with
+`limit=200&offset=N`; the board is a separate **working set** (TP-0092: every
+active card plus the newest done/canceled, capped at 500). The two surfaces
+therefore no longer share one order or one set: the board is active-first, the
+list is the complete weight-order pagination. They still share the filter
+vocabulary and the row parts, but a card older than the board's working set is
+reachable only in the list. `[data-list-more]` is resident and hidden once the
+cursor reaches the server's total; the list's empty state is `total === 0`, not
+the length of the page in hand.
 
 **R11 ② — this is where a roster name lands.** A press on `[data-agent-assignee]` (B03)
 switches to this view and writes `{"in_progress","in_review"}` into the status filter, so the
