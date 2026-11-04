@@ -52,7 +52,7 @@ a missing skill, an unsupported Node) — a service manager must not restart it.
 |---|---|
 | `issue create` | See [cli/issue.md](cli/issue.md). |
 | `issue list [--project] [--status <s>]… [--assignee <name>\|--assignee-id <id>] [--parent <ref>] [--kind <kind>] [--label <label>]… [--target <value>] [--meta <key>=<value>]… [--review-of <ref>] [--limit] [--include-archived] [--order-debug]` | See [cli/issue.md](cli/issue.md). |
-| `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order-debug]` | See [cli/issue.md](cli/issue.md). |
+| `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order-debug]` | See [cli/issue.md](cli/issue.md). Each row carries `assignee`/`assignee_id`/`assignee_kind`. |
 | `issue get <id\|identifier> [--include comments\|reports\|relations\|sessions]… [--limit <n>]` | See [cli/issue.md](cli/issue.md). |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]… [--drop-acceptance <text>]… [--acceptance-revision <n>] [--acceptance-mode off\|auto\|human [--reason "<why>"]]` | See [cli/issue.md](cli/issue.md). |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--question "<text>"] [--blocked-reason <word>]` | See [cli/issue.md](cli/issue.md). |
@@ -181,7 +181,7 @@ records who opened the loop; `--resident <auto|no>` says whether a resident pool
 `--session-turn-timeout` (1200..7199 s), `--session-poll-ms`, `--session-pool-max`,
 `--project-concurrency` and `--project-idle-ms` bound the pool. `--max-concurrency` caps the
 whole fleet; `--claim-unassigned <yes|no>` (or the shorthand `--assignee-only`) decides the
-claim pool; `--recover-stale <yes|no>` recovers stale in-progress claims, and
+claim pool; `--recover-stale <yes|no>` recovers stale in-progress claims (the board's assignee owns the recovery; a non-assignee needs the audited steal override), and
 `--recover-wedged <yes|no>` lets the ping clock stop a wedged pool one minute past its
 phase deadline (`turn + 3 min`, or the 5-minute start budget plus one); it SIGTERMs once per
 wedge, SIGKILLs on a later ping if the pool survives, and the service manager restarts it. `--workflow <yes|no>` applies the

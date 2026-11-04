@@ -1453,7 +1453,14 @@ describe("commands/tasks — claim and heartbeat", () => {
       // Rewind the heartbeat by hand — the clock is the only thing that ages it.
       db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run("2026-10-01T00:00:00.000Z", task.id);
 
-      const stolen = commands.claim({ id: task.id, actor: HUMAN });
+      // A non-assignee's >6h takeover is an override of the route, so it says
+      // why — the same audited escape hatch a first claim uses.
+      const stolen = commands.claim({
+        id: task.id,
+        actor: HUMAN,
+        allowSteal: true,
+        reason: "linus is gone for the day",
+      });
       assert.equal(stolen.stole, true);
       assert.equal(actorName(db, stolen.task.claimedBy), "Terry");
 
@@ -2206,6 +2213,9 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       assert.deepEqual(
         Object.keys(candidates[0]).sort(),
         [
+          "assignee",
+          "assignee_id",
+          "assignee_kind",
           "created_at",
           "delivery_round",
           "id",
@@ -2224,6 +2234,15 @@ describe("commands/tasks — listCandidates (poll read)", () => {
         ],
         "the poll read: the card's fields, its opaque meta, and `reason`",
       );
+      // The loop routes by the card's assignee, not by whoever scanned it
+      // (ADR 0015), so the read must carry the route as a board fact.
+      assert.equal(candidates[0].assignee, "linus", "the dictionary display name");
+      assert.equal(
+        candidates[0].assignee_id,
+        commands.getTask({ id: candidate.id }).assigneeId,
+        "the stable dictionary id",
+      );
+      assert.equal(candidates[0].assignee_kind, "agent");
       assert.equal(candidates[0].target, null, "no meta.target on this card");
       assert.deepEqual(candidates[0].meta, {}, "the card's meta is projected whole");
       assert.equal(typeof candidates[0].created_at, "string", "the poll can read age without a get");
@@ -2607,23 +2626,103 @@ describe("commands/tasks — claim requires the actor to be the assignee (T-2026
     });
   });
 
-  it("anybody may take a claim older than six hours, and it is audited", async () => {
-    await board(async ({ db, commands }) => {
-      const task = commands.createTask({ projectId: "proj", title: "Ship", actor: AGENT });
-      commands.claim({ id: task.id, actor: AGENT });
-      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run(
-        new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
-        task.id,
-      );
+  /** A card claimed by linus (so the claim recorded the route), aged past 6h. */
+  const rottenClaim = (db, commands) => {
+    const task = commands.createTask({ projectId: "proj", title: "Ship", actor: AGENT });
+    commands.claim({ id: task.id, actor: AGENT });
+    db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run(
+      new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+      task.id,
+    );
+    return task;
+  };
 
-      const stolen = commands.claim({ id: task.id, actor: HUMAN });
-      assert.equal(stolen.stole, true);
-      assert.equal(actorName(db, stolen.task.claimedBy), "Terry");
+  it("refuses a non-assignee stale takeover without --allow-steal", async () => {
+    await board(async ({ db, commands }) => {
+      const task = rottenClaim(db, commands);
+      assert.throws(
+        () => commands.claim({ id: task.id, actor: HUMAN }),
+        (err) => {
+          assert.equal(err.code, "not_assignee");
+          assert.match(err.hint.fix, /taskctl issue claim .*--allow-steal --reason/);
+          return true;
+        },
+      );
+      // Nothing was written: the lock is still linus's.
+      const current = commands.getTask({ id: task.id });
+      assert.equal(actorName(db, current.claimedBy), "linus");
+      assert.equal(commands.listComments({ taskId: task.id }).length, 0);
+    });
+  });
+
+  it("lets the assignee take its own rotten claim back, and it is audited", async () => {
+    await board(async ({ db, commands }) => {
+      const task = rottenClaim(db, commands);
+      const again = commands.claim({ id: task.id, actor: AGENT });
+      assert.equal(again.reused, false, "the stale lock is re-taken, not reused");
+      assert.equal(again.stole, true);
+      assert.equal(actorName(db, again.task.claimedBy), "linus");
 
       const comments = commands.listComments({ taskId: task.id });
-      assert.equal(comments.length, 1, "the >6h takeover leaves a change comment");
+      assert.equal(comments.length, 1, "the >6h re-claim leaves a change comment");
       assert.equal(comments[0].kind, "change");
       assert.match(comments[0].body, /linus/, "names the previous holder");
+      assert.doesNotMatch(comments[0].body, /--allow-steal/, "the assignee needed no override");
+    });
+  });
+
+  it("lets a non-assignee take over with --allow-steal, and the override is readable", async () => {
+    await board(async ({ db, commands }) => {
+      const task = rottenClaim(db, commands);
+      const stolen = commands.claim({
+        id: task.id,
+        actor: HUMAN,
+        allowSteal: true,
+        reason: "linus is on another card",
+      });
+      assert.equal(stolen.stole, true);
+      assert.equal(actorName(db, stolen.task.claimedBy), "Terry");
+      assert.equal(
+        actorName(db, commands.getTask({ id: task.id }).assigneeId),
+        "linus",
+        "an audited takeover changes the executor, not the route",
+      );
+
+      const comments = commands.listComments({ taskId: task.id });
+      assert.equal(comments.length, 1);
+      assert.equal(comments[0].kind, "change");
+      assert.match(comments[0].body, /linus/, "names the assignee whose route was overridden");
+      assert.match(comments[0].body, /--allow-steal/);
+      assert.match(comments[0].body, /linus is on another card/, "and carries the reason");
+    });
+  });
+
+  it("refuses a >6h override without a real reason", async () => {
+    await board(async ({ db, commands }) => {
+      const task = rottenClaim(db, commands);
+      assert.throws(
+        () => commands.claim({ id: task.id, actor: HUMAN, allowSteal: true, reason: "short" }),
+        (err) => err.code === "VALIDATION_FAILED" && err.details.field === "reason",
+      );
+      assert.equal(actorName(db, commands.getTask({ id: task.id }).claimedBy), "linus");
+    });
+  });
+
+  it("re-routes an in_progress card without moving its claim", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Reroute", actor: AGENT });
+      const claimed = commands.claim({ id: task.id, actor: AGENT });
+      const holder = claimed.task.claimedBy;
+
+      const reassigned = commands.updateTask({
+        id: task.id,
+        assignee: "Jobs",
+        forceCreate: true,
+        actor: AGENT,
+      });
+      assert.notEqual(reassigned.assigneeId, claimed.task.assigneeId, "the route changed");
+      assert.equal(reassigned.claimedBy, holder, "the execution lock is not a routing edit");
+      assert.equal(reassigned.status, "in_progress");
     });
   });
 });

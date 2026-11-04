@@ -150,8 +150,9 @@ _Avoid_: assign, take, lock
 
 **Stale recovery**:
 Re-claiming an `in_progress` card whose heartbeat has expired — by its own holder after 30
-minutes, or by anyone after six hours. It is a claim, not a transition, so it goes through
-`issue claim`; a takeover leaves an audit comment naming the previous holder.
+minutes, and past six hours by the card's **assignee**; anyone else needs an audited
+`--allow-steal --reason`. It is a claim, not a transition, so it goes through `issue claim`;
+a takeover leaves an audit comment naming the previous holder.
 _中文_: 过期恢复
 _Avoid_: takeover, steal, rebirth
 
@@ -197,8 +198,9 @@ _Avoid_: description, note, summary
 
 **Candidate**:
 A card the loop may claim, with the reason it qualified — `ready` (assigned and unblocked),
-`unassigned` (open pool), `stale_same` (held too long by its own holder) or `stale_any`
-(held so long that anyone may take it).
+`unassigned` (open pool), `stale_same` (held too long by its own holder, who alone may
+re-claim it) or `stale_any` (rotted past six hours: its assignee recovers it, anyone else
+only with an audited `--allow-steal --reason`).
 _中文_: 候选
 _Avoid_: proposal, suggestion
 

@@ -21,8 +21,10 @@
  *
  *   * `≤ 10min` (fresh): the holder reuses it; anyone else is blocked (409);
  *   * `10min … 6h`: only the **holder** may re-claim it;
- *   * `> 6h` (or no heartbeat at all): the claim has rotted — anybody may take
- *     it, and the takeover is audited (`steal: true`).
+ *   * `> 6h` (or no heartbeat at all): the claim has rotted, but the **route**
+ *     has not. The assignee takes its own card back (an audited `steal: true`);
+ *     anybody else is overriding the route and needs `--allow-steal --reason`
+ *     like any other takeover (`steal: true`, `override: true`).
  *
  * An `epic` is a grouping card and is never claimable — the gate refuses it
  * here, so no path may claim it, and the automatic candidate read also withholds
@@ -162,7 +164,7 @@ function heartbeatAgeMs(task, now) {
 /**
  * @param {object} task a Task DTO
  * @param {{actor: string, now: string, freshMs?: number, allowSteal?: boolean, resolveAssignee?: ((task: object) => object|null)|null, describeHolder?: ((id: string) => string|null|undefined)}} options
- * @returns {{action: string, code: string|null, reason?: string, reclaim?: boolean, steal?: boolean, stolenFrom?: string}}
+ * @returns {{action: string, code: string|null, reason?: string, reclaim?: boolean, steal?: boolean, stolenFrom?: string, override?: boolean, assignedTo?: string}}
  */
 export function decideClaim(task, options) {
   const {
@@ -228,7 +230,19 @@ export function decideClaim(task, options) {
         reason: `${holderName} still holds this task; only they may re-claim it within 6 hours`,
       };
     }
-    // Older than six hours — or no heartbeat at all: the claim is not a claim.
+    // Older than six hours — or no heartbeat at all: the claim is not a claim,
+    // but the **assignment** still is. The card's own assignee recovers it; any
+    // other actor is overriding the route and needs the same audited
+    // `--allow-steal --reason` a first claim does (ADR 0015).
+    const ownCard = isAssignee(task, actor, resolveAssignee);
+    if (!ownCard && allowSteal !== true) {
+      return {
+        action: CLAIM_ACTIONS.INVALID,
+        code: "not_assignee",
+        reason: "assigned to someone else; a stale takeover needs --allow-steal --reason",
+      };
+    }
+    const assigneeEntry = typeof resolveAssignee === "function" ? resolveAssignee(task) : null;
     return {
       action: CLAIM_ACTIONS.TAKE,
       code: null,
@@ -236,6 +250,12 @@ export function decideClaim(task, options) {
       reclaim: true,
       steal: true,
       stolenFrom: holder,
+      ...(ownCard
+        ? {}
+        : {
+            override: true,
+            assignedTo: assigneeEntry?.displayName ?? task.assigneeId,
+          }),
     };
   }
 
@@ -292,7 +312,7 @@ export function assertClaimable(task, options) {
     },
     // A repair command names the actual card, the way the report gate's does.
     ...(verdict.code === "not_assignee"
-      ? { hint: { fix: `taskctl issue move ${ref} in_progress --allow-steal --reason "<why>"` } }
+      ? { hint: { fix: `taskctl issue claim ${ref} --allow-steal --reason "<why>"` } }
       : {}),
   });
 }

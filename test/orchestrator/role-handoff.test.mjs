@@ -261,6 +261,126 @@ describe("wakeHandoff selects the card's role", () => {
     assert.deepEqual(result.roleWarnings, ["a role warning"]);
   });
 
+  it("refuses a dispatch whose role is not the card's assignee (ADR 0015)", () => {
+    // The board's route says Jobs; the caller wants to run Reviewer. That is a
+    // wrong-lane execution, so the dispatch reports it instead of spawning.
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "T-2", agent: "Reviewer" },
+      { identifier: "T-2", title: "x", project: "P1", assignee: "Jobs", assignee_kind: "agent" },
+    );
+    assert.equal(result.executorReady, false);
+    assert.equal(result.actorKind, null);
+    assert.match(result.assignmentMismatch, /assigned to Jobs/);
+  });
+
+  it("accepts the dispatch when the selected role is the assignee's role", () => {
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "T-3", agent: "Jobs" },
+      { identifier: "T-3", title: "x", project: "P1", assignee: "Jobs", assignee_kind: "agent" },
+    );
+    assert.equal(result.executorReady, true);
+    assert.equal(result.assignmentMismatch, null);
+    assert.equal(result.agentRole, "Jobs");
+  });
+
+  it("lets the planned Worker fallback through: card.reassign.to outranks the old assignee", () => {
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "T-4", agent: "Jobs" },
+      {
+        identifier: "T-4",
+        title: "x",
+        project: "P1",
+        assignee: "Linus",
+        assignee_kind: "agent",
+        reassign: { from: "Linus", to: "Jobs", reason: "stale reclaim: Linus is not installed" },
+      },
+    );
+    assert.equal(result.executorReady, true);
+    assert.equal(result.assignmentMismatch, null);
+    assert.equal(result.agentRole, "Jobs");
+  });
+
+  it("rejects a dispatch whose role is not the wire actor-ref assignee (ADR 0015)", () => {
+    // `issue list` — the patrol's read — carries the assignee as an actor-ref
+    // object, not the candidate projection's string. Before the round-4 fix the
+    // check silently skipped it and the patrol dispatched the holder's role.
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "T-7", agent: "Jobs" },
+      {
+        identifier: "T-7",
+        title: "x",
+        project: "P1",
+        assignee_id: "a-linus",
+        assignee_kind: "agent",
+        assignee: { id: "a-linus", display_name: "Linus", kind: "agent" },
+      },
+    );
+    assert.equal(result.executorReady, false);
+    assert.equal(result.actorKind, null);
+    assert.match(result.assignmentMismatch, /assigned to Linus/);
+  });
+
+  it("lets the planned Worker fallback through the wire actor-ref assignee", () => {
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "T-8", agent: "Jobs" },
+      {
+        identifier: "T-8",
+        title: "x",
+        project: "P1",
+        assignee_id: "a-linus",
+        assignee_kind: "agent",
+        assignee: { id: "a-linus", display_name: "Linus", kind: "agent" },
+        reassign: { from: "Linus", to: "Jobs", reason: "stale reclaim: Linus is not installed" },
+      },
+    );
+    assert.equal(result.executorReady, true);
+    assert.equal(result.assignmentMismatch, null);
+  });
+
+  it("exempts a human wire actor-ref assignee from the assignee-role check", () => {
+    const result = wakeHandoff(
+      opts,
+      {},
+      { identifier: "T-9", agent: "Jobs" },
+      {
+        identifier: "T-9",
+        title: "x",
+        project: "P1",
+        assignee_id: "a-terry",
+        assignee_kind: "human",
+        assignee: { id: "a-terry", display_name: "Terry", kind: "human" },
+      },
+    );
+    assert.equal(result.executorReady, true);
+    assert.equal(result.assignmentMismatch, null);
+  });
+
+  it("exempts an unassigned or human card from the assignee-role check", () => {
+    for (const card of [
+      { identifier: "T-5", title: "x", project: "P1" },
+      { identifier: "T-6", title: "x", project: "P1", assignee: "Terry", assignee_kind: "human" },
+    ]) {
+      const result = wakeHandoff(
+        opts,
+        {},
+        { identifier: card.identifier, agent: "Jobs" },
+        card,
+      );
+      assert.equal(result.executorReady, true, card.identifier);
+      assert.equal(result.assignmentMismatch, null, card.identifier);
+    }
+  });
+
   it("uses the reviewer role for a review card and carries its workflow", () => {
     const dir = mkdtempSync(join(tmpdir(), "tp-role-prompt-"));
     try {

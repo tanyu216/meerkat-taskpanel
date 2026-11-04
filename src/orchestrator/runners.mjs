@@ -15,6 +15,7 @@ import {
   buildResidentEnvelope,
   buildReviewEnvelope,
   buildReviewHandoff,
+  planClaimIdentity,
   planPatrol,
   planTick,
 } from "../foundation/scheduling.mjs";
@@ -61,7 +62,9 @@ const BOARD_LEVEL_ROWS = new Set(["leader_stalled", "inspector_liveness"]);
  *   registry: object,
  *   config: object,
  *   readCandidates: (agent: string, opts: {claimUnassigned: boolean}) => Promise<object[]>,
- *   claim: (identifier: string, agent: string) => Promise<{ok: boolean, error?: string}>,
+ *   claim: (identifier: string, agent: string, options?: {ifVersion?: number}) => Promise<{ok: boolean, error?: string}>,
+ *   reassign?: (identifier: string, agent: string, options: {reason: string, ifVersion?: number}) => Promise<{ok: boolean, version?: number, error?: string}>,
+ *   roleSet?: object|null, primaryKind?: string|null, kindOrder?: string|string[]|null, kindAvailable?: ((kind: string) => boolean)|null,
  *   spawnWorker: (action: object, card: object|undefined) => Promise<{ok: boolean, pid?: number, error?: string}>,
  *   dispatch?: (action: object, card: object|undefined) => Promise<{ok: boolean, pid?: number, error?: string}>,
  *   admit?: (action: object, card: object|undefined) => Promise<{ok: boolean, why?: string, code?: string, accounted?: boolean}>,
@@ -99,38 +102,67 @@ export async function runPollTick(deps) {
     // would make Jobs the default worker by accident. Explicit, or the scan
     // agent as the documented fallback.
     defaultAgent = null,
+    // The role layer, for the same reason the supervisor already loads it: the
+    // card's **assignee** selects the executing role (ADR 0007/0015). Absent,
+    // the assignee name is used as-is (an older caller or a pure test).
+    roleSet = null,
+    primaryKind = null,
+    kindOrder = null,
+    kindAvailable = null,
+    // The formal re-route a Worker fallback needs before its claim. Absent ⇒
+    // the fallback defers instead of claiming under the wrong identity.
+    reassign = null,
     now,
     log,
   } = deps;
-
-  const candidates = [];
-  for (const agent of agents) {
-    const found = await readCandidates(agent, { claimUnassigned: config.claimUnassigned === true });
-    for (const candidate of found ?? []) {
-      // The board scopes a candidate to the asking agent and puts no `agent`
-      // field on the row; `reason` is the bucket. Only the public pool is
-      // "unassigned", so a missing field must not turn an assigned card into a
-      // default-agent claim — the board refuses that as `not_assignee`. A scan
-      // agent that saw a `ready` or stale card is the identity to claim it with
-      // (the board already decided the recovery window).
-      const unassigned = candidate.reason === "unassigned";
-      const who =
-        unassigned && typeof defaultAgent === "string" && defaultAgent !== ""
-          ? defaultAgent
-          : candidate.agent || agent;
-      candidates.push({ ...candidate, agent: who, ...(unassigned ? { unassigned: true } : {}) });
-    }
-  }
-
-  const actions = planTick({ candidates, registry, config });
-  const cardById = new Map();
-  for (const candidate of candidates) cardById.set(String(candidate.identifier), candidate);
 
   let spawned = 0;
   let claimed = 0;
   let conflicts = 0;
   let failed = 0;
   let deferred = 0;
+
+  const candidates = [];
+  const deferredPlans = new Set();
+  for (const agent of agents) {
+    const found = await readCandidates(agent, { claimUnassigned: config.claimUnassigned === true });
+    for (const candidate of found ?? []) {
+      const plan = planClaimIdentity(candidate, {
+        roleSet,
+        primaryKind,
+        kindOrder,
+        kindAvailable,
+        defaultAgent,
+        scanAgent: agent,
+      });
+      if (plan.kind === "defer") {
+        // One line per card per tick: the stale pool lists the same card for
+        // every scanner, and one decision is not several.
+        const identifier = String(candidate.identifier ?? "");
+        if (!deferredPlans.has(identifier)) {
+          deferredPlans.add(identifier);
+          deferred += 1;
+          log(`defer ${identifier} (${plan.why})`);
+        }
+        continue;
+      }
+      // The board scopes a candidate to the asking agent and puts no `agent`
+      // field on the row; `reason` is the bucket. Only the public pool is
+      // "unassigned", so a missing field must not turn an assigned card into a
+      // default-agent claim — the board refuses that as `not_assignee`.
+      const unassigned = candidate.reason === "unassigned";
+      candidates.push({
+        ...candidate,
+        agent: plan.agent,
+        ...(plan.reassign === undefined ? {} : { reassign: plan.reassign }),
+        ...(unassigned ? { unassigned: true } : {}),
+      });
+    }
+  }
+
+  const actions = planTick({ candidates, registry, config });
+  const cardById = new Map();
+  for (const candidate of candidates) cardById.set(String(candidate.identifier), candidate);
 
   /**
    * Park a card whose streak reached the hold bound.
@@ -206,8 +238,36 @@ export async function runPollTick(deps) {
     // dispatch failure is a different, tracked gap.
     clearDeferral?.(action.identifier);
 
+    // A Worker fallback is a **formal reassignment first**: the board decides
+    // the claim from the route, so the route must name the executor before the
+    // claim. Both writes are version-guarded; a concurrent edit defers instead
+    // of silently reverting a human's change.
+    let claimVersion;
+    if (card?.reassign !== undefined) {
+      if (reassign === null) {
+        deferred += 1;
+        log(`defer ${action.identifier} (Worker fallback needs the reassign dependency)`);
+        if (release !== null) await release(action.identifier);
+        continue;
+      }
+      const moved = await reassign(action.identifier, card.reassign.to, {
+        reason: card.reassign.reason,
+        ifVersion: card.version,
+      });
+      if (moved?.ok !== true) {
+        deferred += 1;
+        log(
+          `defer ${action.identifier} (reassign to ${card.reassign.to} failed: ${moved?.error ?? "unknown error"})`,
+          { level: "warn" },
+        );
+        if (release !== null) await release(action.identifier);
+        continue;
+      }
+      claimVersion = moved.version;
+    }
+
     // Atomic claim first: the board (not the supervisor) decides the winner.
-    const verdict = await claim(action.identifier, action.agent);
+    const verdict = await claim(action.identifier, action.agent, { ifVersion: claimVersion });
     if (!verdict?.ok) {
       conflicts += 1;
       log(`claim refused ${action.identifier} (${verdict?.error ?? "conflict"}) — not dispatching`);
@@ -1115,6 +1175,26 @@ export function resolveRoleTarget(opts, config, action, card) {
         order: opts.kindOrder,
         available: opts.kindAvailable ?? null,
       });
+  // Defence in depth (ADR 0015): a work card's route selects the role, so the
+  // dispatch may only run as the role its assignee names. `card.reassign.to` is
+  // the deliberate Worker fallback the poll planned and landed *before* the
+  // claim; anything else is a mismatch the caller must report, not spawn.
+  // Unassigned, human and review cards keep their pre-0015 behaviour.
+  const mismatch = assignmentMismatch(card, review, role, roleSet);
+  if (mismatch !== null) {
+    return {
+      isReview: review,
+      executorReady: false,
+      roleSet,
+      role,
+      primaryKind,
+      actorKind: null,
+      platformFallback: null,
+      files: role === null ? null : roleVariant(role, platform.effective),
+      assignmentMismatch: mismatch,
+    };
+  }
+
   const actorKind = platform.effective;
   return {
     isReview: review,
@@ -1125,12 +1205,77 @@ export function resolveRoleTarget(opts, config, action, card) {
     actorKind,
     platformFallback: platform.fallback ?? null,
     files: role === null ? null : roleVariant(role, actorKind),
+    assignmentMismatch: null,
   };
+}
+
+/**
+ * The dispatch's role must be the one the card's assignee names, unless the poll
+ * deliberately re-routed it to Worker. `null` means "no mismatch to report".
+ *
+ * @param {object|undefined} card the candidate projection
+ * @param {boolean} review
+ * @param {object|null} role the selected role
+ * @param {object|null} roleSet
+ * @returns {string|null}
+ */
+function assignmentMismatch(card, review, role, roleSet) {
+  if (review) return null;
+  const override =
+    typeof card?.reassign?.to === "string" && card.reassign.to.trim() !== "" ? card.reassign.to : null;
+  // Two projections reach this check: the poll's candidate carries the assignee
+  // as a string (`assignee`, `assignee_kind`), while the patrol's `issue list`
+  // Task DTO carries an actor-ref object (`assignee.display_name`/`assignee.id`)
+  // beside the scalar `assignee_id`/`assignee_kind`. Reading only the string form
+  // silently skipped the patrol, which then dispatched as the holder — the very
+  // cross-role execution ADR 0015 removes.
+  const assignee = cardAssignee(card);
+  const assigned =
+    assignee.name !== null && String(assignee.kind ?? "").trim().toLowerCase() !== "human";
+  const expectedName = override ?? (assigned ? assignee.name : null);
+  if (expectedName === null) return null;
+  const expected = roleSet === null ? null : selectRole(roleSet, expectedName, "worker");
+  if (role !== null && expected !== null && role.agent.toLowerCase() === expected.agent.toLowerCase()) {
+    return null;
+  }
+  return (
+    `card ${card?.identifier ?? "?"} is assigned to ${expectedName}, ` +
+    `but the dispatch selected ${role?.agent ?? "no role"}`
+  );
+}
+
+/**
+ * The card's assignee, whichever projection shape it has.
+ *
+ * @param {object|undefined} card a candidate projection or a wire Task DTO
+ * @returns {{name: string|null, kind: string|null}}
+ */
+function cardAssignee(card) {
+  const ref = card?.assignee;
+  let name = null;
+  let kind = null;
+  if (typeof ref === "string") {
+    name = ref.trim() === "" ? null : ref;
+  } else if (ref !== null && typeof ref === "object") {
+    if (typeof ref.display_name === "string" && ref.display_name.trim() !== "") {
+      name = ref.display_name;
+    } else if (typeof ref.id === "string" && ref.id.trim() !== "") {
+      name = ref.id;
+    }
+    if (typeof ref.kind === "string" && ref.kind.trim() !== "") kind = ref.kind;
+  }
+  if (name === null) {
+    const id = card?.assignee_id;
+    if (typeof id === "string" && id.trim() !== "") name = id;
+  }
+  const scalarKind = card?.assignee_kind;
+  if (typeof scalarKind === "string" && scalarKind.trim() !== "") kind = scalarKind;
+  return { name, kind };
 }
 
 export function wakeHandoff(opts, config, action, card, resident = false) {
   const target = resolveRoleTarget(opts, config, action, card);
-  const { isReview, executorReady, roleSet, role, actorKind, files } = target;
+  const { isReview, executorReady, roleSet, role, actorKind, files, assignmentMismatch = null } = target;
   const decisionPolicyPath = roleSet?.decisionPolicy?.path ?? null;
   // The resident pool loads the role skill when the session opens — a
   // `/<skill>` message on a host that expands it, or inside the adapter
@@ -1198,6 +1343,7 @@ export function wakeHandoff(opts, config, action, card, resident = false) {
     // report and refuse the dispatch instead of spawning on a wrong platform.
     actorKind,
     platformFallback: target.platformFallback,
+    assignmentMismatch,
     roleWarnings: roleSet?.warnings ?? [],
     handoff,
   };

@@ -35,7 +35,9 @@ import {
   candidateArgs,
   parseEnvFile,
   parseHeartbeat,
+  planClaimIdentity,
   planPatrol,
+  planPatrolClaim,
   planStrandedTodoAlerts,
   planTick,
   pruneRegistry,
@@ -140,6 +142,272 @@ describe("planTick (pure)", () => {
     });
     assert.equal(actions.filter((a) => a.type === "wake").length, 0);
     assert.equal(actions[0].why, "cap");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pure: the claim identity (ADR 0015)
+// ---------------------------------------------------------------------------
+
+describe("planClaimIdentity (pure)", () => {
+  const role = (id, agent, lanes, installedOn = ["claude"]) => ({ id, agent, lanes, installedOn });
+  const LINUS = role("linus", "Linus", ["worker"]);
+  const JOBS = role("jobs", "Jobs", ["worker"]);
+  const WORKER = role("worker", "Worker", ["worker"]);
+  const REVIEWER = role("reviewer", "Reviewer", ["reviewer"]);
+  const roleSet = { roles: [LINUS, JOBS, WORKER, REVIEWER] };
+  const ctx = {
+    roleSet,
+    primaryKind: "claude",
+    kindOrder: ["claude", "codex", "pi"],
+    kindAvailable: () => true,
+    defaultAgent: "Worker",
+  };
+  const card = (overrides = {}) => ({
+    identifier: "T-1",
+    reason: "stale_any",
+    assignee: "Linus",
+    assignee_id: "a-linus",
+    assignee_kind: "agent",
+    ...overrides,
+  });
+
+  it("claims a stale card as its assignee, whoever scanned it", () => {
+    assert.deepEqual(planClaimIdentity(card(), { ...ctx, scanAgent: "Jobs" }), {
+      kind: "claim",
+      agent: "Linus",
+    });
+  });
+
+  it("keeps the old scan identity for a projection without the assignee field", () => {
+    const plan = planClaimIdentity(
+      { identifier: "T-1", reason: "ready", agent: "Jobs" },
+      { ...ctx, scanAgent: "Turing" },
+    );
+    assert.deepEqual(plan, { kind: "claim", agent: "Jobs" });
+  });
+
+  it("claims an unassigned card as the explicit default agent", () => {
+    const plan = planClaimIdentity(
+      card({ assignee: null, assignee_id: null, assignee_kind: null, reason: "unassigned" }),
+      { ...ctx, scanAgent: "Jobs" },
+    );
+    assert.deepEqual(plan, { kind: "claim", agent: "Worker" });
+  });
+
+  it("defers a card assigned to a human", () => {
+    const plan = planClaimIdentity(card({ assignee: "Terry", assignee_kind: "human" }), ctx);
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /human/);
+  });
+
+  it("defers an unassigned review card and a review card on a worker-lane role", () => {
+    const open = planClaimIdentity(card({ assignee: null, assignee_kind: null, review_of: "T-9" }), ctx);
+    assert.equal(open.kind, "defer");
+    const misrouted = planClaimIdentity(card({ review_of: "T-9" }), ctx);
+    assert.equal(misrouted.kind, "defer");
+    assert.match(misrouted.why, /reviewer/);
+  });
+
+  it("claims a review card with its reviewer-lane assignee", () => {
+    const plan = planClaimIdentity(
+      card({ assignee: "Reviewer", assignee_id: "a-rev", review_of: "T-9" }),
+      ctx,
+    );
+    assert.deepEqual(plan, { kind: "claim", agent: "Reviewer" });
+  });
+
+  it("falls back to Worker only for a rotted stale work card with no installed assignee role", () => {
+    const plan = planClaimIdentity(card({ assignee: "Ghost", assignee_id: "a-ghost" }), ctx);
+    assert.equal(plan.kind, "claim");
+    assert.equal(plan.agent, "Worker");
+    assert.equal(plan.reassign.from, "Ghost");
+    assert.equal(plan.reassign.to, "Worker");
+    assert.match(plan.reassign.reason, /not installed/);
+    assert.match(plan.reassign.reason, /reassigned to Worker/);
+  });
+
+  it("falls back when the assignee role is installed on no available kind", () => {
+    const onlyCodex = { ...LINUS, installedOn: ["codex"] };
+    const plan = planClaimIdentity(card(), {
+      ...ctx,
+      roleSet: { roles: [onlyCodex, WORKER, REVIEWER] },
+      kindAvailable: (kind) => kind === "claude",
+    });
+    assert.equal(plan.kind, "claim");
+    assert.equal(plan.agent, "Worker");
+    assert.match(plan.reassign.reason, /installed on no available kind/);
+  });
+
+  it("never falls back for ready or stale_same cards, and never for a review card", () => {
+    for (const reason of ["ready", "stale_same"]) {
+      const plan = planClaimIdentity(card({ assignee: "Ghost", reason }), ctx);
+      assert.equal(plan.kind, "defer", reason);
+    }
+    const review = planClaimIdentity(
+      card({ assignee: "Ghost", review_of: "T-9" }),
+      ctx,
+    );
+    assert.equal(review.kind, "defer");
+  });
+
+  it("re-claims a stale_same card when the scanning holder is its assignee", () => {
+    // The candidate read offers `stale_same` only to the holder's own scan, so
+    // this is the normal case: the holder re-claims its own route.
+    const plan = planClaimIdentity(card({ reason: "stale_same" }), { ...ctx, scanAgent: "Linus" });
+    assert.deepEqual(plan, { kind: "claim", agent: "Linus" });
+  });
+
+  it("defers a stale_same card whose route moved off the holder", () => {
+    // The board lets only the holder re-claim inside the six-hour window. After
+    // an audited override (or an `issue assign` of an in_progress card) the
+    // holder and the assignee differ, so claiming as the assignee is refused
+    // with EXECUTION_ACTIVE on every tick. The planner defers explicitly and
+    // the six-hour bound hands the card to its route instead.
+    const plan = planClaimIdentity(card({ reason: "stale_same" }), { ...ctx, scanAgent: "Jobs" });
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /stale_same/);
+    assert.match(plan.why, /Jobs/);
+  });
+
+  it("applies the holder-only stale_same rule without a role layer too", () => {
+    const moved = planClaimIdentity(card({ reason: "stale_same" }), {
+      ...ctx,
+      roleSet: null,
+      scanAgent: "Jobs",
+    });
+    assert.equal(moved.kind, "defer");
+    const own = planClaimIdentity(card({ reason: "stale_same" }), {
+      ...ctx,
+      roleSet: null,
+      scanAgent: "Linus",
+    });
+    assert.deepEqual(own, { kind: "claim", agent: "Linus" });
+  });
+
+  it("uses the assignee name when no role layer is loaded", () => {
+    const plan = planClaimIdentity(card(), { ...ctx, roleSet: null });
+    assert.deepEqual(plan, { kind: "claim", agent: "Linus" });
+  });
+
+  it("defers an unassigned stale_same card when the pool's agent is not the holder", () => {
+    // An unassigned in_progress card is the public pool, but inside the
+    // 10min–6h window the board admits only its holder. The pool claims as
+    // `defaultAgent` (Worker); if the holder that scanned it is somebody else,
+    // that claim is refused with EXECUTION_ACTIVE on every tick. Defer until
+    // six hours pass and `stale_any` frees the card — don't make the scan order
+    // the executor by claiming as the holder.
+    const plan = planClaimIdentity(
+      card({ assignee: null, assignee_id: null, assignee_kind: null, reason: "stale_same" }),
+      { ...ctx, scanAgent: "Jobs" },
+    );
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /stale_same/);
+    assert.match(plan.why, /Jobs/);
+  });
+
+  it("claims an unassigned stale_same card when the scanning holder is the pool's agent", () => {
+    const plan = planClaimIdentity(
+      card({ assignee: null, assignee_id: null, assignee_kind: null, reason: "stale_same" }),
+      { ...ctx, defaultAgent: "Jobs", scanAgent: "Jobs" },
+    );
+    assert.deepEqual(plan, { kind: "claim", agent: "Jobs" });
+  });
+});
+
+describe("planPatrolClaim (wire task → ADR 0015 identity)", () => {
+  // The patrol reads `issue list`, whose Task DTO carries the assignee as an
+  // actor-ref **object**, not the candidate projection's string. The patrol used
+  // to claim as the holder (`alert.agent`) and dispatch with that identity; these
+  // cases pin the decision to the same `planClaimIdentity` the poll uses.
+  const role = (id, agent, lanes, installedOn = ["claude"]) => ({ id, agent, lanes, installedOn });
+  const LINUS = role("linus", "Linus", ["worker"]);
+  const JOBS = role("jobs", "Jobs", ["worker"]);
+  const WORKER = role("worker", "Worker", ["worker"]);
+  const REVIEWER = role("reviewer", "Reviewer", ["reviewer"]);
+  const roleSet = { roles: [LINUS, JOBS, WORKER, REVIEWER] };
+  const ctx = {
+    roleSet,
+    primaryKind: "claude",
+    kindOrder: ["claude", "codex", "pi"],
+    kindAvailable: () => true,
+    defaultAgent: "Worker",
+    scanAgent: "Jobs",
+  };
+  const MIN = 60_000;
+  const ROTTED = 6 * 60 * MIN + MIN;
+  const task = (overrides = {}) => ({
+    identifier: "TP-1",
+    project_id: "P",
+    kind: "task",
+    status: "in_progress",
+    claimed_by: "a-jobs",
+    claimed_by_actor: { id: "a-jobs", display_name: "Jobs", kind: "claude" },
+    assignee_id: "a-linus",
+    assignee_kind: "agent",
+    assignee: { id: "a-linus", display_name: "Linus", kind: "agent" },
+    ...overrides,
+  });
+
+  it("defers an in-window stale_same card whose route moved off the holder", () => {
+    const plan = planPatrolClaim(task(), { ...ctx, ageMs: 45 * MIN });
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /stale_same/);
+    assert.match(plan.why, /Jobs/);
+  });
+
+  it("claims a rotted stale card as its assignee, not the holder", () => {
+    assert.deepEqual(planPatrolClaim(task(), { ...ctx, ageMs: ROTTED }), {
+      kind: "claim",
+      agent: "Linus",
+    });
+  });
+
+  it("keeps the holder's own in-window claim", () => {
+    const own = task({
+      assignee_id: "a-jobs",
+      assignee: { id: "a-jobs", display_name: "Jobs", kind: "agent" },
+    });
+    assert.deepEqual(planPatrolClaim(own, { ...ctx, ageMs: 45 * MIN }), {
+      kind: "claim",
+      agent: "Jobs",
+    });
+  });
+
+  it("reads the actor-ref kind: a human assignee is deferred", () => {
+    const human = task({
+      assignee_id: "a-terry",
+      assignee_kind: "human",
+      assignee: { id: "a-terry", display_name: "Terry", kind: "human" },
+    });
+    const plan = planPatrolClaim(human, { ...ctx, ageMs: ROTTED });
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /human/);
+  });
+
+  it("plans the formal Worker reassignment for a rotted card with no assignee role", () => {
+    const ghost = task({
+      assignee_id: "a-ghost",
+      assignee: { id: "a-ghost", display_name: "Ghost", kind: "agent" },
+    });
+    const plan = planPatrolClaim(ghost, { ...ctx, ageMs: ROTTED });
+    assert.equal(plan.kind, "claim");
+    assert.equal(plan.agent, "Worker");
+    assert.equal(plan.reassign.from, "Ghost");
+    assert.equal(plan.reassign.to, "Worker");
+    assert.match(plan.reassign.reason, /not installed/);
+  });
+
+  it("defers an unassigned in-window card held by someone other than the pool agent", () => {
+    const open = task({ assignee_id: null, assignee_kind: null, assignee: null });
+    const plan = planPatrolClaim(open, { ...ctx, ageMs: 45 * MIN });
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /stale_same/);
+  });
+
+  it("defers rather than guesses when the heartbeat age is unreadable", () => {
+    const plan = planPatrolClaim(task(), { ...ctx, ageMs: Number.NaN });
+    assert.equal(plan.kind, "defer");
   });
 });
 
@@ -1000,6 +1268,279 @@ describe("runPollTick (injected deps)", () => {
     assert.deepEqual(claims, [["T-1", "Linus"]], "the scan agent that saw the card is its assignee");
     assert.equal(result.spawned, 1);
     assert.equal(registry.running["T-1"].agent, "Linus");
+  });
+
+  it("claims and dispatches as the card's assignee even when another agent scans it first", async () => {
+    // The regression this pins (TP-0077): a stale card assigned to Linus was
+    // taken by Jobs, the first scanner, and run as /jobs. The route decides.
+    const claims = [];
+    const roleSet = {
+      roles: [
+        { id: "jobs", agent: "Jobs", lanes: ["worker"], installedOn: ["claude"] },
+        { id: "linus", agent: "Linus", lanes: ["worker"], installedOn: ["claude"] },
+        { id: "worker", agent: "Worker", lanes: ["worker"], installedOn: ["claude"] },
+      ],
+    };
+    const registry = EMPTY_REGISTRY();
+    const result = await runPollTick({
+      agents: ["Jobs", "Linus"],
+      registry,
+      config: { ...BASE_CONFIG, claimUnassigned: true },
+      roleSet,
+      // The stale-recovery pool is not scoped to the asker: Jobs sees it first
+      // and Linus never does.
+      readCandidates: async (agent) =>
+        agent === "Jobs"
+          ? [
+              {
+                identifier: "T-1",
+                reason: "stale_any",
+                project: "P1",
+                assignee: "Linus",
+                assignee_id: "a-linus",
+                assignee_kind: "agent",
+                version: 1,
+              },
+            ]
+          : [],
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      defaultAgent: "Worker",
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.deepEqual(claims, [["T-1", "Linus"]], "the assignee claims its own card");
+    assert.equal(result.spawned, 1);
+    assert.equal(registry.running["T-1"].agent, "Linus", "and the session runs as the assignee");
+  });
+
+  it("defers a stale_same claim whose route moved, instead of claiming the assignee", async () => {
+    // The holder (Jobs) still holds the live claim, but the card is routed to
+    // Linus. The board allows only the holder to re-claim inside the six-hour
+    // window; claiming as Linus would be refused as EXECUTION_ACTIVE on every
+    // tick, so the tick defers and leaves the card to its route.
+    const claims = [];
+    const logged = [];
+    const roleSet = {
+      roles: [
+        { id: "jobs", agent: "Jobs", lanes: ["worker"], installedOn: ["claude"] },
+        { id: "linus", agent: "Linus", lanes: ["worker"], installedOn: ["claude"] },
+      ],
+    };
+    const result = await runPollTick({
+      agents: ["Jobs"],
+      registry: EMPTY_REGISTRY(),
+      config: BASE_CONFIG,
+      roleSet,
+      readCandidates: async () => [
+        {
+          identifier: "T-1",
+          reason: "stale_same",
+          project: "P1",
+          assignee: "Linus",
+          assignee_id: "a-linus",
+          assignee_kind: "agent",
+          version: 1,
+        },
+      ],
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: (line) => logged.push(line),
+    });
+    assert.deepEqual(claims, [], "never claim a holder-only window as the assignee");
+    assert.equal(result.deferred, 1);
+    assert.equal(result.spawned, 0);
+    assert.match(logged.join("\n"), /defer T-1 .*stale_same/);
+  });
+
+  it("defers an unassigned stale_same claim when the pool's agent is not the holder", async () => {
+    // Inside the six-hour window the board admits only the holder, even for an
+    // unassigned card. The public pool claims as `defaultAgent`; when the holder
+    // that scanned it is someone else, every tick would get EXECUTION_ACTIVE, so
+    // the tick defers until `stale_any` frees the card.
+    const claims = [];
+    const logged = [];
+    const result = await runPollTick({
+      agents: ["Jobs"],
+      registry: EMPTY_REGISTRY(),
+      config: BASE_CONFIG,
+      roleSet: {
+        roles: [{ id: "worker", agent: "Worker", lanes: ["worker"], installedOn: ["claude"] }],
+      },
+      readCandidates: async () => [
+        {
+          identifier: "T-1",
+          reason: "stale_same",
+          project: "P1",
+          assignee: null,
+          assignee_id: null,
+          assignee_kind: null,
+          version: 1,
+        },
+      ],
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      defaultAgent: "Worker",
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: (line) => logged.push(line),
+    });
+    assert.deepEqual(claims, [], "never claim the holder-only window as Worker");
+    assert.equal(result.deferred, 1);
+    assert.equal(result.spawned, 0);
+    assert.match(logged.join("\n"), /defer T-1 .*stale_same/);
+  });
+
+  it("reassigns to Worker before claiming a stale card whose assignee role is not installed", async () => {
+    const order = [];
+    const roleSet = {
+      roles: [{ id: "worker", agent: "Worker", lanes: ["worker"], installedOn: ["claude"] }],
+    };
+    await runPollTick({
+      agents: ["Jobs"],
+      registry: EMPTY_REGISTRY(),
+      config: BASE_CONFIG,
+      roleSet,
+      readCandidates: async () => [
+        {
+          identifier: "T-1",
+          reason: "stale_any",
+          project: "P1",
+          assignee: "Ghost",
+          assignee_id: "a-ghost",
+          assignee_kind: "agent",
+          version: 9,
+        },
+      ],
+      reassign: async (identifier, agent, options) => {
+        order.push(`reassign:${identifier}:${agent}:${options.ifVersion}`);
+        assert.match(options.reason, /not installed/);
+        return { ok: true, version: 10 };
+      },
+      claim: async (identifier, agent, options) => {
+        order.push(`claim:${identifier}:${agent}:${options.ifVersion}`);
+        return { ok: true };
+      },
+      spawnWorker: async () => {
+        order.push("dispatch");
+        return { ok: true, pid: 1 };
+      },
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.deepEqual(order, [
+      "reassign:T-1:Worker:9",
+      "claim:T-1:Worker:10",
+      "dispatch",
+    ], "the route changes before the claim, and the claim uses the new version");
+  });
+
+  it("defers instead of claiming when the Worker fallback cannot be written", async () => {
+    const claims = [];
+    const released = [];
+    const roleSet = {
+      roles: [{ id: "worker", agent: "Worker", lanes: ["worker"], installedOn: ["claude"] }],
+    };
+    const result = await runPollTick({
+      agents: ["Jobs"],
+      registry: EMPTY_REGISTRY(),
+      config: BASE_CONFIG,
+      roleSet,
+      readCandidates: async () => [
+        {
+          identifier: "T-1",
+          reason: "stale_any",
+          project: "P1",
+          assignee: "Ghost",
+          assignee_kind: "agent",
+          version: 9,
+        },
+      ],
+      reassign: async () => ({ ok: false, error: "VERSION_CONFLICT" }),
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      release: async (identifier) => {
+        released.push(identifier);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.deepEqual(claims, [], "nothing is claimed under the wrong route");
+    assert.deepEqual(released, ["T-1"], "the admission reservation is given back");
+    assert.equal(result.deferred, 1);
+  });
+
+  it("defers the Worker fallback when the reassign dependency is absent", async () => {
+    const claims = [];
+    const roleSet = {
+      roles: [{ id: "worker", agent: "Worker", lanes: ["worker"], installedOn: ["claude"] }],
+    };
+    const result = await runPollTick({
+      agents: ["Jobs"],
+      registry: EMPTY_REGISTRY(),
+      config: BASE_CONFIG,
+      roleSet,
+      readCandidates: async () => [
+        {
+          identifier: "T-1",
+          reason: "stale_any",
+          project: "P1",
+          assignee: "Ghost",
+          assignee_kind: "agent",
+          version: 9,
+        },
+      ],
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.deepEqual(claims, []);
+    assert.equal(result.deferred, 1);
+  });
+
+  it("never claims a human-owned card", async () => {
+    const claims = [];
+    const result = await runPollTick({
+      agents: ["Jobs"],
+      registry: EMPTY_REGISTRY(),
+      config: BASE_CONFIG,
+      readCandidates: async () => [
+        {
+          identifier: "T-1",
+          reason: "stale_any",
+          project: "P1",
+          assignee: "Terry",
+          assignee_kind: "human",
+          version: 1,
+        },
+      ],
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: () => {},
+    });
+    assert.deepEqual(claims, []);
+    assert.equal(result.deferred, 1);
   });
 
   it("falls back to the scan agent when no Worker role is installed", async () => {

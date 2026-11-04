@@ -58,7 +58,7 @@ Meerkat TaskPanel 是为 AI Agent 团队而生的任务看板。它关注的是 
 5. **依赖与 epic 是一等公民。** `depends_on` 链接构成 DAG：无依赖的并行，有依赖的等待。父子链接把子树进展汇总（rollup）到所属 epic。epic 就凭这份 rollup 被验收：一份逐子卡列明的报告，缺失或过期都会被拒绝。
 6. **可续接的会话。** 每个 Agent 会话都有由 `task + owner + segment` 推导出的确定性 id。重连即复用同一会话，不必为重建上下文白烧 token。
 7. **append-only 审计轨迹。** 评论、报告与活动不可编辑、不可删除。看板不只是工作的视图，它就是工作本身的记录。
-8. **为长期运行的 Agent 集群而建。** 心跳为认领设定 10 分钟的新鲜期。认领对本人 30 分钟后失效，对所有人 6 小时后失效，因此崩溃的 Agent 不会把卡卡死。
+8. **为长期运行的 Agent 集群而建。** 心跳为认领设定 10 分钟的新鲜期。认领对本人 30 分钟后失效；超过 6 小时认领即已腐坏，由卡的 assignee 收回——其他人必须显式、留痕地接管（`--allow-steal --reason`）。崩溃的 Agent 不会把卡卡死，恢复过程也不会悄悄换掉负责的角色。
 9. **local-first、运行时零依赖。** 唯一持久化是一个 SQLite 文件（Node 内置 `node:sqlite`）。引擎不依赖其它库，完全可离线运行。
 10. **同一块看板，多个入口 —— 且设计上 provider-agnostic。** 可以用 `taskctl` CLI 驱动，也可以走本地 `taskd` HTTP API。Claude Code、Codex、OpenClaw、pi 都有对应的 skill/插件安装。看板的认领与候选判定是一份稳定契约，所以更换看板底座（Jira、Plane、Linear……）不需要改 Agent。访问由 token 与可选的 CIDR 白名单把关。
 11. **一份完整的工作史，怎么读由你决定。** 这份只增不改的记录，就是团队在 AI 工作环境中所做工作的完整历史，无需再单独记账。看板本身不提供报表或统计功能。`taskctl issue list --json --include-archived` 会返回每张卡的 `status`、`status_changed_at`、`created_at` 与 `updated_at`，日报、周报、月报，以及按项目、类别、标签、负责人或时间窗分组的统计，都可以在客户端自行聚合。报表怎么呈现，由你决定。
