@@ -96,9 +96,9 @@ export async function fakeBoard() {
       if (patch.markdown !== undefined) card.markdown = patch.markdown;
       if (patch.status !== undefined) card.status = patch.status;
     },
-    emit(taskId, event = "comment_added") {
+    emit(taskId, event = "comment_added", changes = { fields: ["body"] }) {
       state.revision += 1;
-      const frame = `id: ${state.revision}\ndata: ${JSON.stringify({ event, task_id: taskId, changes: { fields: ["body"] } })}\n\n`;
+      const frame = `id: ${state.revision}\ndata: ${JSON.stringify({ event, task_id: taskId, changes })}\n\n`;
       for (const res of streams) {
         try {
           res.write(frame);

@@ -93,6 +93,30 @@ describe("event and watch command branches", () => {
     }
   });
 
+  it("declares --hold and a repeatable --event, and rejects bad values before a hub", async () => {
+    const follow = command(eventCommands, "follow");
+    assert.ok(
+      follow.flags.some((flag) => flag.flag === "hold"),
+      "events follow must declare --hold, or the dispatcher refuses it",
+    );
+    assert.ok(
+      follow.flags.some((flag) => flag.flag === "event" && flag.repeat === true),
+      "events follow must declare a repeatable --event",
+    );
+
+    await assert.rejects(
+      () => follow.run(ctxFor({ flags: { hold: -1 } })),
+      (err) => err.code === "CLI_USAGE",
+    );
+    for (const spec of ["", ":changes.to=awaiting", "task_moved:changes.to", "task_moved:=x"]) {
+      await assert.rejects(
+        () => follow.run(ctxFor({ flags: { events: [spec] } })),
+        (err) => err.code === "CLI_USAGE",
+        `expected a usage error for ${JSON.stringify(spec)}`,
+      );
+    }
+  });
+
   it("refuses conflicting watch modes before touching a board", async () => {
     const watch = command(exportCommands, "watch");
     const conflicts = [

@@ -202,13 +202,13 @@ describe("chat skill: watch mode on the waiting queue", () => {
   const text = readFileSync(join(CHAT_SKILL, "SKILL.md"), "utf8");
   const watchText = () => readFileSync(join(CHAT_SKILL, "references", "watch.md"), "utf8");
 
-  it("enters on request with an event clock and a 60-second safety read", () => {
+  it("enters on request with a ten-minute hold and a console safety read", () => {
     assert.match(text, /watch mode/i);
     assert.match(text, /keep checking|notify me when a card needs me/i);
     assert.match(watchText(), /taskctl events follow/);
     assert.match(watchText(), /--after <rev>/);
-    assert.match(watchText(), /--idle 10000/);
-    assert.match(watchText(), /60[- ]?(s|sec|seconds?)/i);
+    assert.match(watchText(), /--hold 600000/);
+    assert.match(watchText(), /ten minutes/i);
     assert.match(watchText(), /taskctl loop console --json/);
   });
 
@@ -251,13 +251,15 @@ describe("chat skill: watch mode on the waiting queue", () => {
     assert.match(watch, /show-then-write/i);
   });
 
-  it("caps a busy stream at about 30 seconds while keeping the 60-second safety read", () => {
+  it("holds on one filtered one-shot wait instead of polling", () => {
     const watch = watchText();
-    // `events follow` has no timeout flag; the cap is the runtime's, not a wrapper.
-    assert.match(watch, /wall-clock cap of about 30 seconds/i);
-    assert.match(watch, /no timeout flag|runtime's command timeout/i);
-    assert.match(watch, /60[- ]?(s|sec|seconds?)/i);
-    assert.match(text, /30 seconds/i);
+    assert.match(watch, /one-shot wait/i);
+    assert.match(watch, /--event task_moved:changes\.to=awaiting/);
+    assert.match(watch, /--event comment_added:changes\.kind=question/);
+    assert.match(watch, /--event task_delivered/);
+    assert.match(watch, /15-second heartbeat/i);
+    assert.match(watch, /never part of the\s+hold/i);
+    assert.match(text, /ten minutes/i);
   });
 
   it("owns one session, answers first, and never delegates or keeps state", () => {
@@ -271,6 +273,8 @@ describe("chat skill: watch mode on the waiting queue", () => {
     assert.match(watch, /loop patrol/);
     assert.match(watch, /loop subscribe/);
     assert.match(watch, /never start one of those/i);
+    assert.match(watch, /never run two holds at once/i);
+    assert.match(watch, /Stopping the watch stops the running hold/i);
     assert.match(watch, /lost its place/i);
     assert.match(watch, /announce the current queue once/i);
     assert.match(watch, /never add a state file/i);
