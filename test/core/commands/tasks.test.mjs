@@ -2132,7 +2132,7 @@ describe("commands/tasks — listCandidates (poll read)", () => {
         "the poll read: the card's fields, its opaque meta, and `reason`",
       );
       // The loop routes by the card's assignee, not by whoever scanned it
-      // (ADR 0014), so the read must carry the route as a board fact.
+      // (ADR 0015), so the read must carry the route as a board fact.
       assert.equal(candidates[0].assignee, "linus", "the dictionary display name");
       assert.equal(
         candidates[0].assignee_id,

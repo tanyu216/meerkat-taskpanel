@@ -1,4 +1,4 @@
-# 0014 — Stale-claim recovery keeps the assignee; Worker is the explicit fallback
+# 0015 — Stale-claim recovery keeps the assignee; Worker is the explicit fallback
 
 ## Status
 
@@ -70,4 +70,7 @@ loop's recovery honest without teaching the board the role catalog.
 assign` of an `in_progress` card — therefore cannot be recovered by the loop as the assignee:
 claiming as the new assignee is refused with `EXECUTION_ACTIVE` on every tick. The supervisor
 defers that candidate (`planClaimIdentity`, rule 5a) instead of planning a claim the board
-refuses, and the six-hour bound then hands the card to its route.
+refuses, and the six-hour bound then hands the card to its route. The same holder-only window
+binds an **unassigned** `stale_same` card (rule 2a): the public pool would claim it as
+`defaultAgent`, which the board refuses unless that agent is the holder, so the planner defers
+there too rather than letting the scan order select the executor.

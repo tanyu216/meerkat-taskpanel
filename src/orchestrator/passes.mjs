@@ -536,7 +536,7 @@ export function createQueueDispatch(input) {
 }
 
 /**
- * The explicit Worker fallback's two board writes (ADR 0014): re-route the card,
+ * The explicit Worker fallback's two board writes (ADR 0015): re-route the card,
  * then leave the `change` comment that says why. Both are the **orchestrator's**
  * writes — the loop decided the re-route, not the first scanner — and the
  * assignment carries the version the scan saw, so a concurrent edit refuses it
@@ -898,7 +898,7 @@ export async function runPollOnce(opts, env = process.env) {
       const claimed = runCli(opts, agent, args, { actorKind: opts.actorKind });
       return claimed.ok ? { ok: true } : { ok: false, error: claimed.error };
     },
-    // The explicit, audited Worker fallback (ADR 0014).
+    // The explicit, audited Worker fallback (ADR 0015).
     reassign: (identifier, agent, options = {}) => reassignCard(opts, log, identifier, agent, options),
     dispatch,
     // A card whose role has no available carrying kind must not be claimed: the

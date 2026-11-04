@@ -66,6 +66,6 @@ might run on a platform where `setup-meerkat` is not installed.
 - The old `meerkat-loop` skill and `meerkat-loop/roles/` trees are reported as legacy and are
   never deleted by the installer.
 
-**2026-11-05 —** ADR [0014](0014-stale-claim-recovery-keeps-the-assignee.md) makes the
+**2026-11-05 —** ADR [0015](0015-stale-claim-recovery-keeps-the-assignee.md) makes the
 consequence explicit on the stale-recovery path: a rotted claim is recovered by the card's
 assignee, and the scan order never selects the executing role.

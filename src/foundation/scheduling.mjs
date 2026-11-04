@@ -330,7 +330,7 @@ function roleCanStart(role, input) {
   if (role === null || role === undefined) return false;
   // Older fixtures (and a caller that injected a hand-made role record) carry no
   // installation facts; the role is then assumed startable, exactly as the
-  // pre-0014 scan treated it. A discovered role always states `installedOn`.
+  // pre-0015 scan treated it. A discovered role always states `installedOn`.
   if (!Array.isArray(role.installedOn) || role.installedOn.length === 0) return true;
   const platform = resolveRolePlatform(role, {
     primaryKind: input.primaryKind ?? null,
@@ -357,9 +357,12 @@ function defer(why) {
  * The decisions, in order:
  *
  *   1. no `assignee` field (an older projection / a hand-made test row): keep
- *      the pre-0014 scan identity;
+ *      the pre-0015 scan identity;
  *   2. `assignee: null` — the public pool — is Worker (`defaultAgent`), else the
  *      scanner; an unassigned review card is deferred;
+ *   2a. a `stale_same` card is holder-only on the board whether or not it has
+ *      an assignee: when the pool's agent is not the scanning holder, the claim
+ *      would be refused on every tick, so it is deferred like 5a;
  *   3. a `human` assignee is deferred: the loop never claims or reassigns it;
  *   4. a role that names the *other* lane is a misroute, deferred — never swapped;
  *   5. the assignee's role in this card's lane, when it can start, is the claim
@@ -403,7 +406,21 @@ export function planClaimIdentity(candidate, input = {}) {
   if (assignee === null) {
     if (review) return defer("an unassigned review card has no reviewer to run it");
     const agent = defaultAgent ?? scanAgent;
-    return agent === null ? defer("no claim identity") : { kind: "claim", agent };
+    if (agent === null) return defer("no claim identity");
+    // 2a. The holder-only window applies to the public pool too: inside
+    //     10min–6h the board admits only the holder of an `in_progress` card,
+    //     while the pool's designed executor is `defaultAgent` (Worker). When
+    //     the holder that scanned it is somebody else, the claim is refused
+    //     with EXECUTION_ACTIVE on every tick, so defer — claiming as the
+    //     holder would make the scan order the executor, which is the very
+    //     defect this decision removes. Past the bound `stale_any` frees it.
+    if (candidate.reason === "stale_same" && scanAgent !== null && !sameName(agent, scanAgent)) {
+      return defer(
+        `stale_same: ${scanAgent} holds the live claim on this unassigned card, but the ` +
+          `public pool claims as ${agent} (only the holder may re-claim it within 6 hours)`,
+      );
+    }
+    return { kind: "claim", agent };
   }
 
   // 3. A person owns the card: the loop never claims or re-routes it.
