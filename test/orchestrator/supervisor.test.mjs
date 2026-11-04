@@ -250,6 +250,40 @@ describe("planClaimIdentity (pure)", () => {
     assert.equal(review.kind, "defer");
   });
 
+  it("re-claims a stale_same card when the scanning holder is its assignee", () => {
+    // The candidate read offers `stale_same` only to the holder's own scan, so
+    // this is the normal case: the holder re-claims its own route.
+    const plan = planClaimIdentity(card({ reason: "stale_same" }), { ...ctx, scanAgent: "Linus" });
+    assert.deepEqual(plan, { kind: "claim", agent: "Linus" });
+  });
+
+  it("defers a stale_same card whose route moved off the holder", () => {
+    // The board lets only the holder re-claim inside the six-hour window. After
+    // an audited override (or an `issue assign` of an in_progress card) the
+    // holder and the assignee differ, so claiming as the assignee is refused
+    // with EXECUTION_ACTIVE on every tick. The planner defers explicitly and
+    // the six-hour bound hands the card to its route instead.
+    const plan = planClaimIdentity(card({ reason: "stale_same" }), { ...ctx, scanAgent: "Jobs" });
+    assert.equal(plan.kind, "defer");
+    assert.match(plan.why, /stale_same/);
+    assert.match(plan.why, /Jobs/);
+  });
+
+  it("applies the holder-only stale_same rule without a role layer too", () => {
+    const moved = planClaimIdentity(card({ reason: "stale_same" }), {
+      ...ctx,
+      roleSet: null,
+      scanAgent: "Jobs",
+    });
+    assert.equal(moved.kind, "defer");
+    const own = planClaimIdentity(card({ reason: "stale_same" }), {
+      ...ctx,
+      roleSet: null,
+      scanAgent: "Linus",
+    });
+    assert.deepEqual(own, { kind: "claim", agent: "Linus" });
+  });
+
   it("uses the assignee name when no role layer is loaded", () => {
     const plan = planClaimIdentity(card(), { ...ctx, roleSet: null });
     assert.deepEqual(plan, { kind: "claim", agent: "Linus" });
@@ -1160,6 +1194,49 @@ describe("runPollTick (injected deps)", () => {
     assert.deepEqual(claims, [["T-1", "Linus"]], "the assignee claims its own card");
     assert.equal(result.spawned, 1);
     assert.equal(registry.running["T-1"].agent, "Linus", "and the session runs as the assignee");
+  });
+
+  it("defers a stale_same claim whose route moved, instead of claiming the assignee", async () => {
+    // The holder (Jobs) still holds the live claim, but the card is routed to
+    // Linus. The board allows only the holder to re-claim inside the six-hour
+    // window; claiming as Linus would be refused as EXECUTION_ACTIVE on every
+    // tick, so the tick defers and leaves the card to its route.
+    const claims = [];
+    const logged = [];
+    const roleSet = {
+      roles: [
+        { id: "jobs", agent: "Jobs", lanes: ["worker"], installedOn: ["claude"] },
+        { id: "linus", agent: "Linus", lanes: ["worker"], installedOn: ["claude"] },
+      ],
+    };
+    const result = await runPollTick({
+      agents: ["Jobs"],
+      registry: EMPTY_REGISTRY(),
+      config: BASE_CONFIG,
+      roleSet,
+      readCandidates: async () => [
+        {
+          identifier: "T-1",
+          reason: "stale_same",
+          project: "P1",
+          assignee: "Linus",
+          assignee_id: "a-linus",
+          assignee_kind: "agent",
+          version: 1,
+        },
+      ],
+      claim: async (identifier, agent) => {
+        claims.push([identifier, agent]);
+        return { ok: true };
+      },
+      spawnWorker: async () => ({ ok: true, pid: 1 }),
+      now: () => "2026-10-10T00:00:00.000Z",
+      log: (line) => logged.push(line),
+    });
+    assert.deepEqual(claims, [], "never claim a holder-only window as the assignee");
+    assert.equal(result.deferred, 1);
+    assert.equal(result.spawned, 0);
+    assert.match(logged.join("\n"), /defer T-1 .*stale_same/);
   });
 
   it("reassigns to Worker before claiming a stale card whose assignee role is not installed", async () => {
