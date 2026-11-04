@@ -30,11 +30,13 @@ import { identifierText } from "../../lib/identifier.js";
 import { board, kindLabel, openDetail, priorityOf, projectLoading } from "../../stores/board.js";
 import {
   list,
+  listTotal,
   loadFirst,
   loadMore,
   more,
   reset as resetList,
   scheduleSearchLoad,
+  visibleListTasks,
 } from "../../stores/list.js";
 import { listState, setListState, view } from "../../stores/ui.js";
 
@@ -115,7 +117,7 @@ function loadMorePage() {
 }
 
 const rows = computed(() =>
-  list.tasks.map((task) => ({
+  visibleListTasks.value.map((task) => ({
     id: task.id,
     identifier: task.identifier,
     title: task.title,
@@ -279,7 +281,7 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
                prototype carries it. -->
           <!-- TP-0094 — the empty state is the server's answer for the whole
                filtered set (`total === 0`), not the length of the page in hand. -->
-          <div v-if="list.loaded && list.total === 0" class="td-empty">
+          <div v-if="list.loaded && listTotal === 0" class="td-empty">
             <span class="td-empty-title" data-i18n="list.emptyRow">{{ $t("list.emptyRow") }}</span>
           </div>
           <!-- A failed list read is this view's own surface: it must not black

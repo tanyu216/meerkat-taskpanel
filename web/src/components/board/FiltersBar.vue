@@ -99,7 +99,7 @@ import {
   writePriorityFilter,
   writeStatusFilter,
 } from "../../stores/board.js";
-import { list } from "../../stores/list.js";
+import { list, listTotal, visibleListTasks } from "../../stores/list.js";
 import { boardArea, filtersOpen, pushToast, view } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
@@ -119,7 +119,7 @@ const countText = computed(() => {
   // must not make the unfiltered count say "8 tasks" over seven rendered ones.
   if (view.value === "list") {
     return list.loaded
-      ? t("filters.count.filtered", list.tasks.length, list.total)
+      ? t("filters.count.filtered", visibleListTasks.value.length, listTotal.value)
       : t("filters.count.initial");
   }
   const total = boardTaskTotal.value;
