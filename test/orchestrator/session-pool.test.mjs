@@ -1770,7 +1770,7 @@ describe("session pool", () => {
       { ...optsFor(f), home, actorKind: "claude" },
       { log: (line) => lines.push(line) },
     );
-    assert.equal(code, 2);
+    assert.equal(code, 78, "a missing skill can never succeed — EX_CONFIG, no restart");
     assert.match(lines.join("\n"), /missing skill/);
     assert.match(lines.join("\n"), /meerkat/);
   });

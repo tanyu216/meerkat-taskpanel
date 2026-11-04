@@ -335,6 +335,7 @@ See [`scheduling.md` §What the loop's units run with](../scheduling.md#what-the
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
 | state (runtime) | `<agent-dir>/meerkat-taskpanel/subscribe.state.json` | the event daemon's pid, last connection/event and pending reconnect — what `--supervisor=status` reports |
+| state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.health.json` | the long-lived entries' boot ledger (`startedAt`, `pid`, `version`, `lastCrash`, `starts`, `bootFailures`) — the input to the 5/15/60/300 s restart ladder |
 
 `<agent-dir>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these, and no
 `meerkat-director`, `meerkat-chat` or role skills** — it installs the board skill only and uses the

@@ -37,6 +37,27 @@ export const CRASH_FATAL_TIMEOUT_MS = 1500;
 /** Installations already live, so a second call cannot double-report. */
 const installed = new WeakSet();
 
+/**
+ * Entry-specific cleanup hooks, run inside the crash timebox.
+ *
+ * A long-lived entry is not always the process entry: `taskctl loop session`
+ * starts through the CLI's dispatcher, so the CLI installs the one crash
+ * boundary. The entry still needs its own last words (the boot ledger's failure
+ * record and its restart delay), so it registers here instead of installing a
+ * second boundary.
+ */
+const fatalHooks = new Set();
+
+/**
+ * @param {() => unknown} hook synchronous when it must delay the exit
+ * @returns {() => void} the unregister
+ */
+export function registerFatalHook(hook) {
+  if (typeof hook !== "function") return () => {};
+  fatalHooks.add(hook);
+  return () => fatalHooks.delete(hook);
+}
+
 /** The pipe-closed code: the reader asked for no more, so there is no failure. */
 const EPIPE = "EPIPE";
 
@@ -168,5 +189,22 @@ export function installEntryCrashGuard(name) {
   // is an explicit `error` anyway. A crash is the case where the stack is not
   // optional (the same rule `taskd`'s `startup_failed` follows).
   const log = createLogger({ component: name, level: "debug" });
-  return installCrashGuard({ name, log, onFatal: () => log.close() });
+  return installCrashGuard({
+    name,
+    log,
+    onFatal: () => {
+      try {
+        for (const hook of [...fatalHooks]) {
+          // One broken cleanup must not rob the others of their last words.
+          try {
+            hook();
+          } catch {
+            /* the crash is already the fact being reported */
+          }
+        }
+      } finally {
+        log.close();
+      }
+    },
+  });
 }

@@ -43,6 +43,11 @@ export const STATE_FILES = Object.freeze({
   // Ping-owned: the last wedge it acted on (`wedgedKillAt`). Kept out of
   // `sessions.state.json` because the pool's heartbeat rewrites that file.
   poolWedge: "pool-wedge.json",
+  // The long-lived entries' boot ledger: the last start, the last crash, the
+  // recent starts and the consecutive boot-failure streak (`orchestrator/
+  // boot-health.mjs`). One record per state directory, because one supervisor
+  // runs per machine.
+  health: "supervisor.health.json",
 });
 
 /** Statuses a legacy ledger row may carry while it still claims a concurrency slot. */
@@ -419,7 +424,7 @@ export function wedgeKillAction(input = {}) {
  * The state siblings that live beside `continue.state.json`.
  *
  * @param {string} stateDir
- * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string, poolWedge: string}}
+ * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string, poolWedge: string, health: string}}
  */
 export function statePathsForDir(stateDir) {
   const dir = String(stateDir);
@@ -430,5 +435,6 @@ export function statePathsForDir(stateDir) {
     slaLastOk: join(dir, STATE_FILES.slaLastOk),
     deferrals: join(dir, STATE_FILES.deferrals),
     poolWedge: join(dir, STATE_FILES.poolWedge),
+    health: join(dir, STATE_FILES.health),
   };
 }

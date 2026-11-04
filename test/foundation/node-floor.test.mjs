@@ -1,8 +1,10 @@
 /**
  * The CLI entry point refuses a too-old runtime, before anything else runs.
  *
- * `src/cli/index.mjs` runs `isSupportedNode` as step 0 and `process.exit(2)` with
- * one stderr line when the runtime is below Node 22. The trick is that the
+ * `src/cli/index.mjs` runs `isSupportedNode` as step 0 and `process.exit(78)` with
+ * one stderr line when the runtime is below Node 22. 78 is `EX_CONFIG` — the
+ * fault can never succeed, so a service manager must not restart it (systemd's
+ * `RestartPreventExitStatus=78`). The trick is that the
  * running process *is* the runtime, so the only honest way to simulate an old
  * Node is to spawn a real child and lie about `process.versions.node` through a
  * preload — mocking the process boundary, not an internal function.
@@ -63,9 +65,9 @@ function runLowNode(entry, args = []) {
 }
 
 describe("CLI entry — the runtime floor", () => {
-  it("refuses a too-old Node on --version: exit 2, one stderr line, empty stdout", () => {
+  it("refuses a too-old Node on --version: exit 78, one stderr line, empty stdout", () => {
     const run = runLowNode(CLI_ENTRY, ["--version"]);
-    assert.equal(run.status, 2, run.stderr);
+    assert.equal(run.status, 78, run.stderr);
     assert.match(run.stderr, /taskctl: Node 22 or newer/);
     assert.equal(run.stdout, "", "the floor message must never reach stdout");
   });

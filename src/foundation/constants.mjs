@@ -373,15 +373,23 @@ export const DB_BUSY_MAX_ATTEMPTS = 3;
 export const DB_BUSY_BACKOFF_MS = 25;
 
 // ---------------------------------------------------------------------------
-// CLI exits (§F-C2: 0 ok | 1 runtime | 2 usage | 3 export --md --check differs)
+// CLI exits (§F-C2: 0 ok | 1 runtime | 2 usage | 3 export --md --check differs
+// | 78 permanent startup fault)
 // ---------------------------------------------------------------------------
 
-/** Process exit codes. `3` is `export md --check` finding stale cards. */
+/**
+ * Process exit codes. `3` is `export md --check` finding stale cards.
+ *
+ * `CONFIG` is the sysexits `EX_CONFIG` code (78): "this can never succeed as
+ * configured" — a missing skill, an unsupported Node. A service manager must
+ * not restart it, and systemd is told so with `RestartPreventExitStatus=78`.
+ */
 export const CLI_EXIT = Object.freeze({
   OK: 0,
   ERROR: 1,
   USAGE: 2,
   DIFFERENCES: 3,
+  CONFIG: 78,
 });
 
 // ---------------------------------------------------------------------------

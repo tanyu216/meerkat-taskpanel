@@ -24,14 +24,18 @@
 # the guard and the CLI resolve the same board. `install.sh` renders them.
 [Unit]
 Description=Meerkat TaskPanel taskd (board server) guard
-StartLimitIntervalSec=60
-StartLimitBurst=5
+# No start limit: a guard that gives up is a board that stays down. `0` disables
+# the rate limit, so even a crash loop keeps being restarted.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ExecStart={{NODE}} {{SERVER_ENTRY}}
 Restart=always
-RestartSec=5
+RestartSec=2
+# EX_CONFIG (78) is a permanent fault — an unsupported Node, a configuration
+# that can never be read. Restarting it would only spin.
+RestartPreventExitStatus=78
 # No StandardOutput/StandardError redirect: taskd writes and rotates
 # {{LOG}} itself. A redirect into the same file would duplicate every line;
 # the journal keeps anything written before the logger starts (a config file

@@ -1636,14 +1636,18 @@ nothing.
 # the guard and the CLI resolve the same board. `install.sh` renders them.
 [Unit]
 Description=Meerkat TaskPanel taskd (board server) guard
-StartLimitIntervalSec=60
-StartLimitBurst=5
+# No start limit: a guard that gives up is a board that stays down. `0` disables
+# the rate limit, so even a crash loop keeps being restarted.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ExecStart={{NODE}} {{SERVER_ENTRY}}
 Restart=always
-RestartSec=5
+RestartSec=2
+# EX_CONFIG (78) is a permanent fault — an unsupported Node, a configuration
+# that can never be read. Restarting it would only spin.
+RestartPreventExitStatus=78
 # No StandardOutput/StandardError redirect: taskd writes and rotates
 # {{LOG}} itself. A redirect into the same file would duplicate every line;
 # the journal keeps anything written before the logger starts (a config file
@@ -1667,11 +1671,16 @@ WantedBy=default.target
 - **`Restart=always`** — restart the server after it exits, whatever the reason. Only an
   explicit `systemctl --user stop meerkat-taskpanel-taskd.service` stops it for good; a
   bare `kill` is undone.
-- **`RestartSec=5`** — wait 5 seconds between restarts (systemd's own back-off).
-- **`StartLimitIntervalSec=60` / `StartLimitBurst=5`** — at most 5 starts per 60 seconds.
-  Past that the unit enters `failed` and systemd stops trying; clear it with
-  `systemctl --user reset-failed meerkat-taskpanel-taskd.service` and start it again
-  (see [Robustness](#robustness)). These live in `[Unit]`, not `[Service]`.
+- **`RestartSec=2`** — wait 2 seconds between restarts, inside the epic's "a crash costs at
+  most one restart interval" bound.
+- **`StartLimitIntervalSec=0`** — disable the start-rate limit. The unit never gives up: a
+  crash loop is restarted indefinitely, so the defect this card fixes (5 starts in 60 seconds
+  then `failed` **permanently**) cannot recur. There is no `StartLimitBurst`; with the
+  interval at `0` it has no meaning. The key lives in `[Unit]`, not `[Service]`.
+- **`RestartPreventExitStatus=78`** — an `EX_CONFIG` fault (an unsupported runtime, a
+  configuration that can never be read) is not restarted. This is the one deliberate stop:
+  a fault that restarting cannot repair would otherwise spin forever. launchd has no
+  equivalent; see [Robustness](#robustness).
 - **No `.timer`** — this is a long-running service, not a tick.
 
 #### Enabling: written and loaded at install
@@ -1835,20 +1844,46 @@ one write lock, so they never fight over the slot:
   belongs outside the unit; see the two bullets above and
   [One guard per machine](#one-guard-per-machine).
 - **If something else already owns the slot**, the guard's `taskd` exits non-zero with
-  `BOARD_ALREADY_RUNNING`, the supervisor restarts it, and the back-off below ends the
-  retries. Stop the hand-started board first, or accept the unit going `failed`.
+  `BOARD_ALREADY_RUNNING` and the supervisor restarts it. Stop the hand-started board first;
+  the unit keeps retrying while the collision lasts (see [Robustness](#robustness)).
 
 #### Robustness
 
-- **Back-off and crash-loop protection are the supervisor's own** — launchd
-  `ThrottleInterval=10`; systemd `RestartSec=5` with `StartLimitIntervalSec=60` /
-  `StartLimitBurst=5`. The contract adds **no retry script of its own**. To recover a
-  unit that systemd has put in `failed`:
+**A managed unit never gives up.** `Restart=always` / `KeepAlive` stay: the goal is "always
+up", and the supported way to stop a managed unit is `systemctl --user stop` /
+`launchctl bootout` (the service manager cancels the restart). `taskctl loop status --stop`
+only stops a pool started by `--take-over` and is not a reason to change restart policy.
 
-  ```bash
-  systemctl --user reset-failed meerkat-taskpanel-taskd.service
-  systemctl --user start meerkat-taskpanel-taskd.service
-  ```
+- **launchd** — `KeepAlive=true` and `ThrottleInterval=10`. launchd never enters a terminal
+  failed state; 10 seconds is its floor, not a policy this project chose.
+- **systemd** — `Restart=always`, `RestartSec=2`, `StartLimitIntervalSec=0`. The taskd guard
+  used to carry `StartLimitIntervalSec=60` / `StartLimitBurst=5`: five starts in a minute put
+  the unit in `failed` **permanently**, which is the one place the system really did give up.
+  The loop services had no explicit limit (the default rate never trips at `RestartSec=2`),
+  and now state the zero interval outright so the intent is written down. No unit carries
+  `StartLimitBurst`; with a zero interval it has no meaning.
+- **A permanent fault stops instead of spinning.** A missing skill and an unsupported Node
+  cannot be repaired by a restart, so those paths exit **78** (`EX_CONFIG`). systemd is told
+  `RestartPreventExitStatus=78` and leaves the unit inactive; the operator sees the one error
+  line and the fix. **launchd has no equivalent filter** — the asymmetry is documented here
+  and not faked with a second mechanism: on macOS the fault is throttled to one start every
+  10 seconds, indefinitely, until the operator fixes the skill or boots the job out. Exit 78
+  is deliberately **not** counted by the boot ladder (below): a permanent fault should stop
+  at once, not sleep first, and a real process manager is the only thing that can refuse the
+  restart.
+- **The boot ladder delays only a boot that never worked.** The long-lived loop entries
+  (`loop session`, `loop subscribe`, the daemon clocks) keep
+  `supervisor.health.json` — `{startedAt, pid, version, lastCrash, starts, bootFailures}`.
+  A completed first tick (the pool's first dispatch tick, the subscriber's first connection,
+  the daemon's first ping) clears `bootFailures`; a non-zero exit or a crash **before** that
+  tick counts one more. After more than three consecutive failed boots the entry logs
+  `crash_loop` at `error` and sleeps `5 s → 15 s → 60 s → 300 s` (cap) **before exiting**, so
+  the service manager's restart is what is delayed. A crash after a successful run is recorded
+  but never delayed. There is **no retry script** of its own: the units own restarting, the
+  ladder only decides how soon.
+- **No `failed` state to clear.** With `StartLimitIntervalSec=0` there is no `reset-failed`
+  step in the recovery path: stopping a unit is `systemctl --user stop`, and starting it again
+  is `systemctl --user start`.
 - **Log rotation belongs to the application.** `taskd` appends to
   `<dataDir>/logs/taskd.log` itself and rotates it by size (`TASKD_LOG_MAX_BYTES`,
   default 10 MiB, keeping `TASKD_LOG_KEEP`, default 5). Neither the unit nor the lazy
@@ -1911,6 +1946,8 @@ directory**:
 ├── workspaces.json               runtime (per-card worktree/branch records)
 ├── deferrals.json                runtime (consecutive admission failures per card)
 ├── pool-wedge.json               runtime (ping-owned: the wedge it signalled, `wedgedKillAt`/`wedgedSigkillAt`)
+├── supervisor.health.json        runtime (the long-lived entries' boot ledger: `startedAt`, `pid`, `version`,
+│                                 `lastCrash`, `starts`, `bootFailures` — the restart ladder's input)
 ├── subagents.state.json          runtime (ledger: worker/reviewer/director id → project, actor kind, role, card, status)
 └── worker-transcripts/           runtime (bounded worker turn transcript per (kind, worker:<card>:r<round>),
                                   used only to replay a session the native CLI can no longer resume)
