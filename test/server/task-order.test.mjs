@@ -495,3 +495,127 @@ describe("task-order — the candidate projection is unchanged by the order", ()
     assert.equal(currentRevision(db()), before, "the ordered poll read is still read-only");
   });
 });
+
+/**
+ * TP-0094 — the server-side list filters.
+ *
+ * The list view pages the **filtered** set, so the filter has to reach SQL before
+ * `limit`/`offset` does; a page filtered in JS would be the wrong page. `q` is the
+ * free-text search the top bar writes, and `assignee_kind` reads the board's own
+ * two-valued domain (`kindLabel`: every non-human kind is an agent), not the
+ * literal column value.
+ */
+describe("task-order — server-side list filters (TP-0094)", () => {
+  /** Identifier per fixture key, so an assertion names a card, not a string. */
+  const ids = {};
+
+  before(() => {
+    createProject("flt", "Filtered list");
+    const make = (key, input) => {
+      ids[key] = createTask({ projectId: "flt", ...input }).identifier;
+    };
+    // One card per interesting axis. `delta` is unassigned on purpose: the board's
+    // rule is that an unassigned card belongs to neither the human nor the agent
+    // side, and the server filter must say the same.
+    make("alpha", {
+      title: "Alpha release",
+      priority: "urgent",
+      labels: ["alpha"],
+      assignee: "alice",
+      assigneeKind: "human",
+    });
+    make("beta", {
+      title: "beta patch",
+      priority: "high",
+      labels: ["beta"],
+      assignee: "bob",
+      assigneeKind: "agent",
+    });
+    // A platform kind — the column is an open string, and `kindLabel` reads
+    // everything that is not `human` as an agent.
+    make("gamma", {
+      title: "Gamma gadget",
+      priority: "medium",
+      labels: ["gamma"],
+      assignee: "claude-bot",
+      assigneeKind: "claude",
+    });
+    make("delta", { title: "delta notes", priority: "low", labels: ["alpha", "ops"] });
+    make("parked", {
+      title: "parked agent task",
+      priority: "high",
+      labels: [],
+      assignee: "dave",
+      assigneeKind: "agent",
+      status: "backlog",
+    });
+  });
+
+  /** The identifiers a filtered read returns, sorted so order is not double-tested. */
+  const identifiersOf = async (query) => (await listedOrder(`?project_id=flt${query}`)).sort();
+
+  it("filters by priority", async () => {
+    assert.deepEqual(await identifiersOf("&priority=urgent"), [ids.alpha]);
+    assert.deepEqual(await identifiersOf("&priority=high"), [ids.beta, ids.parked].sort());
+  });
+
+  it("refuses an unknown priority instead of returning an empty page", async () => {
+    const bad = await call("GET", "/api/v1/tasks?project_id=flt&priority=critical");
+    assert.equal(bad.status, 400, JSON.stringify(bad.body));
+    assert.equal(bad.body.error.code, "VALIDATION_FAILED");
+  });
+
+  it("searches identifier, title and labels, case-insensitively", async () => {
+    assert.deepEqual(await identifiersOf("&q=ALPHA"), [ids.alpha, ids.delta].sort());
+    assert.deepEqual(await identifiersOf("&q=gamma%20gadget"), [ids.gamma]);
+    assert.deepEqual(await identifiersOf(`&q=${ids.parked.toLowerCase()}`), [ids.parked]);
+    assert.deepEqual(await identifiersOf("&q=ops"), [ids.delta], "a label substring");
+    assert.deepEqual(await identifiersOf("&q=nothing-matches-this"), []);
+  });
+
+  it("filters by assignee kind with the board's 'not human' meaning", async () => {
+    assert.deepEqual(await identifiersOf("&assignee_kind=human"), [ids.alpha]);
+    // bob (agent), claude-bot (platform `claude`) and dave (agent) all count as
+    // agents; delta is unassigned and belongs to neither side.
+    assert.deepEqual(
+      await identifiersOf("&assignee_kind=agent"),
+      [ids.beta, ids.gamma, ids.parked].sort(),
+    );
+  });
+
+  it("refuses an unknown assignee_kind", async () => {
+    const bad = await call("GET", "/api/v1/tasks?project_id=flt&assignee_kind=robot");
+    assert.equal(bad.status, 400, JSON.stringify(bad.body));
+    assert.equal(bad.body.error.code, "VALIDATION_FAILED");
+  });
+
+  it("refuses two spellings of the assignee filter", async () => {
+    for (const query of [
+      "assignee=alice&assignee_id=nope",
+      "assignee=alice&assignee_kind=human",
+      "assignee_id=nope&assignee_kind=agent",
+    ]) {
+      const bad = await call("GET", `/api/v1/tasks?project_id=flt&${query}`);
+      assert.equal(bad.status, 400, query);
+      assert.equal(bad.body.error.code, "VALIDATION_FAILED", query);
+    }
+  });
+
+  it("filters before slicing, and `total` is the filtered set", async () => {
+    const full = await identifiersOf("&assignee_kind=agent");
+    const pages = [];
+    for (let offset = 0; offset < full.length; offset += 1) {
+      const data = dataOf(
+        await call("GET", `/api/v1/tasks?project_id=flt&assignee_kind=agent&limit=1&offset=${offset}`),
+      );
+      assert.equal(data.total, full.length, "the total does not depend on the page");
+      assert.equal(data.tasks.length, 1);
+      pages.push(data.tasks[0].identifier);
+    }
+    assert.deepEqual([...pages].sort(), full, "the pages walk the filtered set exactly once");
+  });
+
+  it("composes with status", async () => {
+    assert.deepEqual(await identifiersOf("&assignee_kind=agent&status=backlog"), [ids.parked]);
+  });
+});

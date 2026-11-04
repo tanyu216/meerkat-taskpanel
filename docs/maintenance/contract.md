@@ -33,6 +33,13 @@ The question protocol (0034) adds `question` to the `comments.kind` enum, `quest
 MOVE request body, and `QUESTION_REQUIRED` to `errors`. Both snapshots change exactly when
 `node scripts/verify/contract.mjs --update` says they do.
 
+The list read (TP-0094) adds three server-side filters to `GET /api/v1/tasks` — `priority`
+(the domain's four values), `q` (free text over identifier / title / labels) and
+`assignee_kind` (`human|agent`, the board's two-valued category) — and its response carries
+`total` / `active_total` beside `tasks`. The snapshot freezes the declared request shape; the
+handler is what validates the two closed vocabularies (`VALIDATION_FAILED` for an unknown
+value), because a declaration is not a validator.
+
 Nothing is a second copy of a list. The routes are *enumerated* by registering
 them against a stub router (registration only records `{method, pattern, handler,
 request}` — no handler runs), the error codes are read from `ERROR_CODES`, the

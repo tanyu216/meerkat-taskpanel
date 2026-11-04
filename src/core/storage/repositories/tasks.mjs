@@ -234,7 +234,14 @@ export function createTasksRepository(db) {
      * that a hand-edited row left malformed, so the read degrades to no match
      * rather than raising.
      *
-     * @param {{projectId?: string, kind?: string, hasReviewMarker?: boolean, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, reviewOfId?: string, parentId?: string, labels?: string[], target?: string, metaEquals?: {key: string, value: string}[], includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
+     * `priority`, `q` and `assigneeKind` are the web list's server-side filters
+     * (TP-0094). `q` is an exact case-insensitive substring over identifier,
+     * title and labels — `instr`, not `LIKE`, so a `%` the caller typed is a
+     * literal. `assigneeKind` is the board's two-valued category, not the stored
+     * column: an unassigned card is neither side, `human` is the reserved value,
+     * and every other kind (a platform such as `claude`) is an agent.
+     *
+     * @param {{projectId?: string, kind?: string, hasReviewMarker?: boolean, status?: string|string[], assigneeId?: string|string[], assigneeKind?: "human"|"agent", unassignedOnly?: boolean, priority?: string, q?: string, reviewOfId?: string, parentId?: string, labels?: string[], target?: string, metaEquals?: {key: string, value: string}[], includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
      */
     list(filter = {}) {
       const clauses = [];
@@ -258,6 +265,34 @@ export function createTasksRepository(db) {
         const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
         clauses.push(`status IN (${statuses.map(() => "?").join(", ")})`);
         values.push(...statuses);
+      }
+      if (filter.priority !== undefined) {
+        clauses.push("priority = ?");
+        values.push(filter.priority);
+      }
+      // Exact, case-insensitive substring over the three searchable fields. The
+      // client used to join identifier + title + labels and search the join; the
+      // only difference here is that a phrase spanning two fields no longer
+      // matches (recorded in the card's plan).
+      if (filter.q !== undefined) {
+        clauses.push(
+          `(instr(lower(identifier), lower(?)) > 0
+            OR instr(lower(title), lower(?)) > 0
+            OR EXISTS (SELECT 1 FROM json_each(tasks.labels)
+                        WHERE instr(lower(json_each.value), lower(?)) > 0))`,
+        );
+        values.push(filter.q, filter.q, filter.q);
+      }
+      if (filter.assigneeKind !== undefined) {
+        // The board's `kindLabel` category (`web/src/lib/actor-kind.js`): an
+        // unassigned card belongs to neither side; `human` is the one reserved
+        // value; a platform kind is an agent.
+        clauses.push("(assignee_id IS NOT NULL AND assignee_id <> '')");
+        if (filter.assigneeKind === "human") {
+          clauses.push("(assignee_kind IS NULL OR assignee_kind = '' OR assignee_kind = 'human')");
+        } else {
+          clauses.push("assignee_kind IS NOT NULL AND assignee_kind <> '' AND assignee_kind <> 'human'");
+        }
       }
       if (filter.assigneeId !== undefined) {
         const ids = Array.isArray(filter.assigneeId) ? filter.assigneeId : [filter.assigneeId];

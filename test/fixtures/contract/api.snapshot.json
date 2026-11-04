@@ -777,6 +777,9 @@
             "assignee_id": {
               "type": "string"
             },
+            "assignee_kind": {
+              "type": "string"
+            },
             "board": {
               "type": "string"
             },
@@ -810,7 +813,19 @@
             "parent": {
               "type": "string"
             },
+            "priority": {
+              "enum": [
+                "high",
+                "low",
+                "medium",
+                "urgent"
+              ],
+              "type": "string"
+            },
             "project_id": {
+              "type": "string"
+            },
+            "q": {
               "type": "string"
             },
             "review_of": {
