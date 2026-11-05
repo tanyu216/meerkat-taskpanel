@@ -169,6 +169,34 @@ describe("codex session params", () => {
       "no skill means no field",
     );
   });
+
+  it("appends the card system prompt after the role skill, and alone when there is no skill", (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-codex-skill-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const skill = join(dir, "SKILL.md");
+    writeFileSync(skill, "---\nname: jobs\n---\n\nYou are Jobs.\n", "utf8");
+    const instructions = skillDeveloperInstructions(skill, "CARD CONTEXT");
+    assert.match(instructions, /You are Jobs[\s\S]*CARD CONTEXT/);
+    assert.equal(
+      skillDeveloperInstructions(null, "CARD CONTEXT"),
+      "CARD CONTEXT",
+      "a role-less card session still carries the runtime context",
+    );
+    assert.equal(skillDeveloperInstructions(null, null), null);
+  });
+
+  it("passes the system prompt in the thread/start developer instructions", async (t) => {
+    const f = fixture(t);
+    const pool = createCodexPool({ opts: {}, bin: f.bin, log: f.log });
+    t.after(() => pool.close());
+    const session = pool.openSession({ cwd: f.app, role: "worker", systemPrompt: "CARD CONTEXT" });
+    const outcome = await session.send("hello", { timeoutMs: 5000 });
+    assert.equal(outcome.ok, true, outcome.error);
+    const [thread] = readLines(f.threads);
+    assert.equal(thread.method, "thread/start");
+    assert.match(thread.params.developerInstructions, /CARD CONTEXT/);
+    await session.close();
+  });
 });
 
 describe("codex resident session", () => {

@@ -4,7 +4,7 @@ This is the project's **system initialization** design flow, not a feature or mo
 it decides the system whole — its style, boundaries, contracts, configuration, tree and gates.
 A feature, module or behaviour change inside the recorded architecture belongs to
 `implementation-workflow.md`. The architecture direction is **E5**: the director reviews
-it and the human decides it. Do not implement product behaviour here.
+it and the human decides it. Product behaviour belongs to the implementation branch.
 
 Board operations are the `meerkat` board skill's contract; decisions follow the loop's
 `decision-policy.md`. **Linus recommends, the director decides; E1–E5 belongs to the
@@ -35,7 +35,7 @@ Name the mode before Step 1; it decides what the run may write and what E5 cover
 
 A **no-card run** covers reconstruction and conformance audit: it writes artifacts only, not
 `plan.md` and no board state, records an open decision as `not recorded — review question`, and
-delivers `E5 pending`; the commit and delivery rules do not apply without a card.
+delivers `E5 pending`; the commit and delivery rules apply only with a card.
 
 ## Design stance
 
@@ -68,8 +68,8 @@ An existing project inherits its recorded foundation; a change is a delta, not a
 re-scaffold. A fact is recorded with one of four dispositions: `inherited — <path>` when the
 record exists and binds; `reconstructed — <evidence>` when the record is absent or partial and
 the fact is derived from the tree; `not recorded — review question` when no evidence settles
-it; `n/a — <reason>` when the capability is absent. A reconstruction never re-chooses a recorded
-decision; a proposed change is a new card or ADR, with status
+it; `n/a — <reason>` when the capability is absent. A reconstruction keeps a recorded
+decision in place; a proposed change is a new card or ADR, with status
 `Accepted (reconstructed) — E5 pending`.
 
 A card that mixes foundation and feature runs this flow first and proposes the implementation
@@ -92,7 +92,7 @@ the input; a card is optional and `file:line` replaces it.
 constraints (time, team, compliance, hosting), the quality attributes that matter, and the
 decision drivers.
 
-**Watch for.** Do not invent the positioning: take it from the card, the `## Handoff` or the
+**Watch for.** Take the positioning from the card, the `## Handoff` or the
 existing README; if a card run has none, ask and hold. A reconstruction reads the README, the
 manifest, the CLI help and the tests, and records `not recorded — review question` for what no
 evidence settles. Name whether the project is a community open-source project or private; when
@@ -113,17 +113,17 @@ live.
 default); an option without rejected alternatives is not a decision. DDD pays when the domain
 rules and invariants are the hard part, experts and contested terms exist, several subdomains
 need different models, and the model is long-lived; a simpler style pays on thin or CRUD-shaped
-domains, or when the team cannot carry the layers. If DDD is chosen, name its bounded contexts,
-aggregates and context map; if not, name the simpler style (layered, hexagonal-lite,
-transaction-script, functional core / imperative shell) and record why DDD was rejected and the
-cost accepted. The style is never `n/a`; record a revisit trigger.
+domains, or when the team lacks the capacity for the layers. If DDD is chosen, name its
+bounded contexts, aggregates and context map; if not, name the simpler style (layered,
+hexagonal-lite, transaction-script, functional core / imperative shell) and record why DDD was
+rejected and the cost accepted. The style is always named; record a revisit trigger.
 
 **Essentials.** One decision round settles the style and the stack together, style first. Each
 durable decision gets an ADR at `docs/adr/NNNN-<slug>.md` with context, decision and why. A
 `## Tech stack` table in `docs/tech-spec.md` (or `.meerkat/<id>/tech-spec.md` for a card-local
 delta) records one concrete choice per row: frontend, backend, persistence, container/build and
-contracts. Versions are pinned; `n/a — <reason>` stands in for an absent layer; no row says
-`TBD`; do not mix two frameworks or two component libraries; check compatibility across the
+contracts. Versions are pinned; `n/a — <reason>` stands in for an absent layer; each row names
+a concrete choice; one framework and one component library; check compatibility across the
 rows.
 
 **The stack rule.** An existing project inherits its recorded stack (`inherited — <path>`) and
@@ -164,8 +164,8 @@ Default to RESTful HTTP unless the card names another style, and inherit a recor
 rather than rewriting it. One envelope carries the result: `"code"`, `"message"`, `"data"` and
 `"errors"`; `code` is stable and independent of the HTTP status. Validate at the boundary with
 one schema validator, record the unknown-field policy, define pagination explicitly, version
-the surface, and name the canonical artifact (schema-first or code-first; generated sides are
-never hand-edited, CI checks drift).
+the surface, and name the canonical artifact (schema-first or code-first; the generated side
+is produced, and CI checks drift).
 
 #### Configuration
 
@@ -185,8 +185,8 @@ renaming one is breaking, and an outside value is rejected or mapped to a docume
 
 One logging module and one factory; no direct console calls; level and format from
 configuration. Key flows log `info`; a caught exception logs once at the boundary that decides
-its fate, with its code and correlation id, and exceptions log `error`. Never log a secret or
-personal data.
+its fate, with its code and correlation id, and exceptions log `error`. Secrets and personal
+data stay out of the log.
 
 #### Observability
 
@@ -221,8 +221,8 @@ two. Changing a rule is a recorded decision (ADR + human E5), never a silent edi
 
 **Watch for.** A substitution is a recorded decision. On an existing project this step is
 observation: a row is done when the artifact is found and its definition resolves, or the gap is
-`missing — <reason>` with its follow-up; never re-scaffold an existing tree or create a second
-standard. "Not applicable" is a written `n/a — <reason>`, never a missing file.
+`missing — <reason>` with its follow-up; improve an existing tree in place and keep one
+standard. "Not applicable" is a written `n/a — <reason>`, not a missing file.
 
 **Essentials.** Every row below has its artifact.
 
@@ -249,14 +249,14 @@ terms are not recorded) without copying product terms; `CONTRIBUTING.md` carries
 work is isolated, the protected line, the ref from which a card starts and the ref acceptance
 lands into, the confirmation gate, the commit rule, the cleanup order and the local gate
 commands; `CHANGELOG.md` has one empty `## [Unreleased]` between releases and one
-`## [X.Y.Z] - YYYY-MM-DD` section per released version, written at the release merge and never
-on a feature branch. On a community open-source project, also create `LICENSE`, `SECURITY.md`,
+`## [X.Y.Z] - YYYY-MM-DD` section per released version, written at the release merge; a
+feature branch leaves it unchanged. On a community open-source project, also create `LICENSE`, `SECURITY.md`,
 `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS` and the issue/PR templates; otherwise record
 `n/a — not a community open-source project` in the standard.
 
 An existing project inherits its document set: read what it has and record the delta; adding a
-missing document is a change, not a rewrite. Never commit a secret, add a dependency or licence
-without a decision, or create a second source of truth.
+missing document is a change, not a rewrite. Keep secrets, dependencies and licences out of
+the commit unless a decision records them, and keep one source of truth.
 
 ### 5. Initialize the agent instructions
 
@@ -270,30 +270,31 @@ because a fabricated path or undefined command is the failure this review exists
 the **ownership test** (another document owns the fact → a one-line pointer, delete the
 restatement) and the **deletion test** (without it, would a fresh session make a mistake?) to
 every line. On an existing project, bind the standard its own documents or recorded path already
-name; improve the baseline in place, regenerate only when the card asks, and never drop an
+name; improve the baseline in place, regenerate only when the card asks, and preserve an
 existing agreement. Keep one source of truth: the file the host reads is the baseline, the other
-a pointer, never a competing copy. The task entry (`/meerkat`, card scope) belongs to the install
+a pointer rather than a competing copy. The task entry (`/meerkat`, card scope) belongs to the install
 skill; leave an existing one untouched.
 
 **Essentials.** The standard is `docs/tech-spec.md`; point at it, and carry only what a fresh
-session cannot cheaply discover:
+session has no cheap way to discover:
 
 1. **Purpose and boundary** — one paragraph; `README.md` owns the rest.
 2. **Commands and layout** — the entry commands and only the non-obvious variant a fresh session
-   cannot guess (single-file test, required glob); entry points and top-level directories, one
-   line each; `docs/architecture.md` owns the tree.
+   has no way to guess (single-file test, required glob); entry points and top-level directories,
+   one line each; `docs/architecture.md` owns the tree.
 3. **Conventions and gates** — `docs/tech-spec.md` owns the rules; carry the logging contract
-   (key flows log `info`; a caught exception logs one `error` with its code, never a secret), the
+   (key flows log `info`; a caught exception logs one `error` with its code, and secrets stay
+   out of logs), the
    gate path, the coverage floor and the security arms (`n/a — <reason>` when absent).
 4. **Design principles** — all six, one line each, with their conflict ordering; every agent is
-   bound by them, and a violation is a recorded decision, never a silent drift.
+   bound by them, and a violation is a recorded decision, not silent drift.
 5. **Working agreement** — decompose before executing; test-first; verify where the project
    designates; confirm with the human before landing, closing or deleting.
 6. **Change and integration policy** — isolation, the protected release line, the ref a card
    starts from and the ref acceptance lands into, what must be confirmed before it lands, the
    commit rule and the cleanup order; `CONTRIBUTING.md` owns the detail.
 7. **Operational invariants** — one writer per surface, the identity and configuration roots,
-   and generated artifacts never hand-edited; point at the standard.
+   and generated artifacts stay generated; point at the standard.
 8. **Pointers** — the standard first, then `docs/architecture.md`, `GLOSSARY.md`,
    `CONTRIBUTING.md`, `docs/adr/`, the contract artifact and the configuration surface.
 
@@ -310,7 +311,7 @@ as separate paths.
 runs and the change that makes it fail (a failure probe). A smoke test against a placeholder or
 a service that answers only liveness is `not a gate — <reason>`; a post-deploy check proves the
 product surface with one real read and one real flow, not liveness alone. Record an unexecuted
-gate as `unverified — <reason>`, never a claimed pass. The coverage floor names every runtime
+gate as `unverified — <reason>`, only by an observed exit code. The coverage floor names every runtime
 subsystem it excludes; a parity or drift check enumerates every enforcement site it covers; an
 invariant guarded only by prose is review-only.
 
@@ -332,7 +333,7 @@ high/critical finding, or it records `n/a — <reason>`.
 | Dependency audit | `osv-scanner` (or `trivy`, or `npm audit --audit-level=high` for a JS lockfile) | one scan of every lockfile and the tree, as JSON | an advisory at or above the recorded threshold, with no unexpired waiver |
 | Secret scan | `gitleaks` | a tree and history scan, as JSON | a credential is committed, in the tree or the history |
 | SAST | CodeQL on a public GitHub repository; `semgrep` elsewhere or offline | the invocation, rule set and languages not covered | a high/critical rule finding is unaddressed |
-| SBOM (inventory) | `syft` | SPDX or CycloneDX output | never blocks; it is the inventory the other answers are checked against |
+| SBOM (inventory) | `syft` | SPDX or CycloneDX output | non-gating; it is the inventory the other answers are checked against |
 
 Record the decision policy with the tools: the **recorded threshold** that blocks, the
 **waiver window** and its caps, the strict switch and what each **exit code** means. A project
@@ -352,7 +353,7 @@ its contract. Run `--check` first; install only what is missing (`--install <too
 write the CI arm (`--ci-plan`, `--ci-write`) and record its command in the standard. Print
 every install command and ask before changing the host; when no package manager is available,
 print the command and record the arm `n/a — <reason>`. An offline host records
-`n/a — offline`. The same pass never writes on `--check`.
+`n/a — offline`. The same pass writes nothing on `--check`.
 
 #### Release and deploy
 
@@ -384,8 +385,8 @@ artifact table in `plan.md`, and the baseline carries the working agreement.
 **Purpose.** The human decides the architecture direction; Linus presents the case.
 
 **Watch for.** E5 belongs to the human, and a public API contract is E5; a configuration key
-that touches a secret is E4. A subagent does not record E5: stop and ask through the board; the
-director decides what it can and escalates E1–E5. Do not start implementation before the
+that touches a secret is E4. A subagent leaves E5 to the human: stop and ask through the board;
+the director decides what it can and escalates E1–E5. Start implementation after the
 decision is recorded. A no-card audit records the open decision as `E5 pending`, not on a card.
 
 **Essentials.** Present the architecture package: the design-stance evidence, the options, the
@@ -400,9 +401,9 @@ the decision on the card before implementation starts.
 **Purpose.** Make the card reviewable and the next card possible.
 
 **Watch for.** A report that cites a path must carry the `commit` anchor; the board's delivery
-gate (`DELIVERY_NEEDS_COMMIT`) refuses one that does not. Do not merge, rebase or push from this
-card; the supervisor's acceptance pass lands it and cleans up. Do not create the implementation
-card; the director's triage creates it.
+gate (`DELIVERY_NEEDS_COMMIT`) refuses one that does not. Deliver the committed tree; the
+supervisor's acceptance pass merges, rebases, pushes and cleans up. The director's triage
+creates the implementation card.
 
 **Essentials.** Commit the delivered tree on the card's branch. Call the `meerkat` board skill
 to deliver at `in_review`. In the delivery report's `conclusion`, write the architecture

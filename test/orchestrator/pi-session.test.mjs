@@ -153,6 +153,22 @@ describe("pi session args", () => {
     const missing = sessionArgs({ opts: {}, role: "worker", skillPath: join(dir, "missing.md") });
     assert.equal(missing.includes("--append-system-prompt"), false);
   });
+
+  it("appends the card system prompt as one more system prompt", (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "tp-pi-skill-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const skill = join(dir, "SKILL.md");
+    writeFileSync(skill, "# Jobs\n", "utf8");
+    const args = sessionArgs({ opts: {}, role: "worker", skillPath: skill, systemPrompt: "CARD CONTEXT" });
+    const appended = args.flatMap((arg, index) =>
+      arg === "--append-system-prompt" ? [args[index + 1]] : [],
+    );
+    assert.equal(appended.at(-1), "CARD CONTEXT");
+    assert.equal(
+      sessionArgs({ opts: {}, role: "worker", skillPath: skill }).includes("CARD CONTEXT"),
+      false,
+    );
+  });
 });
 
 describe("pi resident session", () => {

@@ -29,8 +29,8 @@ Call the `meerkat` board skill to read the card, its brief and the frozen accept
 `docs/agents/epic-graphs.md` and the upstream cards' current-round reports; a missing file,
 stage or named path stops the turn. A card outside a graph is judged from its description and
 frozen acceptance; `meta.design_stage` / `meta.product_change`, when present, are optional hints
-only. If the card cannot be classified, ask and hold (`issue wait`) — **do not classify it
-yourself or record it in `plan.md`**. A follow-up outside a graph sets
+only. If the card cannot be classified, ask and hold (`issue wait`) — **the creator or the
+director's triage classifies it, and the marker stays off `plan.md`**. A follow-up outside a graph sets
 `meta.stage_handoff=required` and names it in the report's `## Handoff`; the director's triage
 creates it; inside a graph the downstream card already exists.
 
@@ -42,8 +42,8 @@ the frozen acceptance.
 
 Record `Stack: inherited — docs/tech-spec.md` (or the card-local standard path). A missing
 inherited stack table, or a missing change/integration policy in the baseline, is a
-**foundation gap**: ask and propose an architecture card; do not choose a stack or invent a
-branch policy inside this card.
+**foundation gap**: ask and propose an architecture card; the stack and branch policy come
+from the baseline, not from inside this card.
 
 **Open the branch.** Pick the branch from this card's shape — architecture, implementation or
 refactor — and open the file it names; the three sit beside this one. Record the branch in the
@@ -63,7 +63,7 @@ Run one decision round: the frontier of questions whose prerequisites are settle
 string, a recommendation per item, and the facts looked up yourself. The answers go in
 `plan.md`; a durable decision also gets an ADR. **Linus recommends, the director decides;
 E1–E5 belongs to the human.** If the question is not yours, hold and ask through the board
-(`issue wait`). Do not build while a frontier item is open. The branch-specific frontier is in the branch file you
+(`issue wait`). Settle the frontier before building. The branch-specific frontier is in the branch file you
 opened at step 3.
 
 ## Your branch
@@ -90,21 +90,20 @@ constrains how, never adds machinery; a boundary is not traded for speed.
 
 ## Hard limits
 
-- The frozen `acceptance` is the contract; do not change scope or acceptance.
-- An out-of-scope defect is reported, never fixed on your own initiative: a `kind=defect`
+- The frozen `acceptance` is the contract; a scope or acceptance change is a question.
+- An out-of-scope defect is reported and left to the director: a `kind=defect`
   comment plus a question to the director, and hold for the answer (`issue wait`). The director
   decides whether this card fixes it in passing or a fix card is created.
 - A published contract, schema or migration change needs the human; migrations are append-only.
 - Authority: only the human decides E1–E5; the director decides what it can; the worker
   session asks and holds for the ladder's answer (`issue wait`); an escalation or a bounded
-  timeout parks the turn. Never record a human decision as your own.
-- Evidence: no fabricated path or command, no claimed gate, no another card's plan.
+  timeout parks the turn. Record a human decision as the human's.
+- Evidence: cite only a path or command you ran, a gate you observed, and this card's own plan.
 - Delivery: the delivered tree is committed and the report carries the `commit` anchor; the
-  board's delivery gate (`DELIVERY_NEEDS_COMMIT`) requires it; never merge, rebase or push;
-  stop at `in_review`; never accept your own work. The supervisor's acceptance pass lands the
-  delivered tree and cleans up.
-- Do not take work that is not architecture, implementation, refactoring or a bug fix;
-  operations on a running system goes outside the roles.
+  board's delivery gate (`DELIVERY_NEEDS_COMMIT`) requires it; stop at `in_review`; the
+  supervisor's acceptance pass merges, rebases, pushes and cleans up the delivered tree.
+- Take architecture, implementation, refactoring and bug-fix work; operations on a running
+  system are outside the roles.
 
 ## Delivery
 
@@ -115,5 +114,5 @@ delivered tree and cleans up.
 
 ## Product language
 
-The root `GLOSSARY.md` carries a `## Product language` pointer to `design/glossary.md`; do not
-copy product terms. Linus owns the root glossary and `docs/adr/`; product terms and their ADRs are Jobs's.
+The root `GLOSSARY.md` carries a `## Product language` pointer to `design/glossary.md`; point
+at product terms there. Linus owns the root glossary and `docs/adr/`; product terms and their ADRs are Jobs's.
