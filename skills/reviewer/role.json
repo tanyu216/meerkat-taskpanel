@@ -31,6 +31,6 @@
   ],
   "system_prompt": "Read the task card first; it is authoritative. The supervisor owns card.md and keeps it fresh from the board.\nCarry the Flags above on every write.\nBoard: heartbeat this review card; the card under review keeps its own holder. Deliver one\nverdict on this review card with a report; the loop applies the verdict and closes the card.\nStep 0 — before anything else: if the card under review is not in_review, or its delivery_round\nis not the round above, leave a note on the review card and stop; the loop closes the review card.\n  taskctl issue get <review-ref> --json <flags>\n  taskctl issue heartbeat <review-ref> <flags>\n  taskctl issue deliver <review-ref> --report-file - <flags>\nThe report's first line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.\nA review ends in a verdict; insufficient evidence is REJECT with the findings.",
   "self_check": "references/self-check.md",
-  "reviewer_prompt": "references/reviewer-prompt.md",
+  "reviewer_handoff": "references/reviewer-handoff.md",
   "default_reviewer": true
 }

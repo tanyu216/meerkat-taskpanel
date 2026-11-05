@@ -288,6 +288,79 @@ describe("loadRoles — fail-soft validation", () => {
   });
 });
 
+describe("loadRoles — reviewer handoff", () => {
+  const HANDOFF = "references/reviewer-handoff.md";
+  /** The reviewer's handoff excerpt, written inside its skill directory. */
+  const writeHandoff = (dir) => writeFileSync(join(dir, HANDOFF), "# Reviewer protocol\n", "utf8");
+  const warning = (result) => result.warnings.find((line) => /reviewer_handoff|reviewer_prompt/.test(line));
+
+  it("resolves reviewer_handoff to the file it names", () => {
+    const f = fixture();
+    try {
+      const dir = writeRole(f, "claude", "reviewer", { lanes: ["reviewer"], reviewer_handoff: HANDOFF });
+      writeHandoff(dir);
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.roles.length, 1);
+      assert.match(result.roles[0].reviewerHandoff, /\/references\/reviewer-handoff\.md$/);
+      assert.equal(warning(result), undefined);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("does not read the retired reviewer_prompt key and warns to rename it", () => {
+    const f = fixture();
+    try {
+      const dir = writeRole(f, "claude", "reviewer", { lanes: ["reviewer"], reviewer_prompt: HANDOFF });
+      writeHandoff(dir);
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.roles.length, 1);
+      assert.equal(result.roles[0].reviewerHandoff, null);
+      assert.match(
+        warning(result) ?? "",
+        /reviewer_prompt is not read; rename it to reviewer_handoff/,
+      );
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("uses reviewer_handoff when both keys are present, still warning about the old one", () => {
+    const f = fixture();
+    try {
+      const dir = writeRole(f, "claude", "reviewer", {
+        lanes: ["reviewer"],
+        reviewer_handoff: HANDOFF,
+        reviewer_prompt: HANDOFF,
+      });
+      writeHandoff(dir);
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.match(result.roles[0].reviewerHandoff, /\/references\/reviewer-handoff\.md$/);
+      assert.match(
+        warning(result) ?? "",
+        /reviewer_prompt is not read; rename it to reviewer_handoff/,
+      );
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("warns when reviewer_handoff is missing or escapes the skill directory", () => {
+    const f = fixture();
+    try {
+      writeRole(f, "claude", "reviewer", {
+        lanes: ["reviewer"],
+        reviewer_handoff: "references/missing.md",
+      });
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.roles[0].reviewerHandoff, null);
+      assert.match(warning(result) ?? "", /reviewer_handoff is missing or escapes the skill directory/);
+    } finally {
+      f.cleanup();
+    }
+  });
+});
+
 describe("roles — selection and routing", () => {
   it("selects by agent or id, respecting the lane", () => {
     const f = fixture();

@@ -46,7 +46,7 @@ const JOBS = {
   installedOn: ["claude"],
   workflow: "/roles/jobs/SKILL.md",
   selfCheck: "/roles/jobs/references/self-check.md",
-  reviewerPrompt: null,
+  reviewerHandoff: null,
 };
 
 const REVIEWER = {
@@ -64,7 +64,7 @@ const REVIEWER = {
   installedOn: ["claude"],
   workflow: "/roles/reviewer/SKILL.md",
   selfCheck: "/roles/reviewer/references/self-check.md",
-  reviewerPrompt: "# Reviewer protocol\nVERDICT first.\n",
+  reviewerHandoff: "# Reviewer protocol\nVERDICT first.\n",
 };
 
 const WORKER_INPUT = {
@@ -310,8 +310,8 @@ describe("reviewer handoff with a role", () => {
     ...REVIEW_INPUT,
     role: REVIEWER,
     roleWorkflowPath: REVIEWER.workflow,
-    reviewerPrompt: REVIEWER.reviewerPrompt,
-    reviewerPromptPath: "/roles/reviewer/reviewer-prompt.md",
+    reviewerHandoff: REVIEWER.reviewerHandoff,
+    reviewerHandoffPath: "/roles/reviewer/reviewer-handoff.md",
     decisionPolicyPath: "/roles/decision-policy.md",
   });
 
@@ -320,7 +320,7 @@ describe("reviewer handoff with a role", () => {
     assert.match(text, /VERDICT first/);
     assert.ok(
       text.indexOf("## Reviewer protocol") < text.indexOf("Step 0"),
-      "the reviewer prompt must be read before the validity check",
+      "the reviewer handoff must be read before the validity check",
     );
   });
 
@@ -505,9 +505,9 @@ describe("wakeHandoff selects the card's role", () => {
   it("uses the reviewer role for a review card and carries its workflow", () => {
     const dir = mkdtempSync(join(tmpdir(), "tp-role-prompt-"));
     try {
-      const promptPath = join(dir, "reviewer-prompt.md");
+      const promptPath = join(dir, "reviewer-handoff.md");
       writeFileSync(promptPath, "# Reviewer protocol\nVERDICT first.\n", "utf8");
-      const reviewer = { ...REVIEWER, reviewerPrompt: promptPath };
+      const reviewer = { ...REVIEWER, reviewerHandoff: promptPath };
       const result = wakeHandoff(
         { ...opts, roles: { ...roleSet, roles: [JOBS, reviewer], defaultReviewer: reviewer } },
         { reviewer: "Reviewer", reviewers: ["Reviewer"], reviewerWorkers: [] },
@@ -601,9 +601,9 @@ describe("wakeHandoff selects the card's role", () => {
   it("gives a resident review session the lean envelope, not the role layer", () => {
     const dir = mkdtempSync(join(tmpdir(), "tp-role-resident-"));
     try {
-      const promptPath = join(dir, "reviewer-prompt.md");
+      const promptPath = join(dir, "reviewer-handoff.md");
       writeFileSync(promptPath, "# Reviewer protocol\nVERDICT first.\n", "utf8");
-      const reviewer = { ...REVIEWER, reviewerPrompt: promptPath };
+      const reviewer = { ...REVIEWER, reviewerHandoff: promptPath };
       const result = wakeHandoff(
         {
           ...opts,

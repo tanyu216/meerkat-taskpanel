@@ -35,7 +35,7 @@ const role = (overrides = {}) => ({
   skillDir: "/home/tester/.claude/skills/jobs",
   workflow: "/home/tester/.claude/skills/jobs/SKILL.md",
   selfCheck: null,
-  reviewerPrompt: null,
+  reviewerHandoff: null,
   variants: { claude: { skillDir: "/home/tester/.claude/skills/jobs" } },
   ...overrides,
 });

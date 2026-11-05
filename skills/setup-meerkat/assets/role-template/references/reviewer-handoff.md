@@ -1,4 +1,4 @@
-# Reviewer prompt
+# Reviewer handoff
 
 You are **Example**. Review any delivered card dispatched for review, whatever its target
 type: walk the universal floor, then the shape refinements that match. A type no shape names

@@ -151,7 +151,7 @@ function installRole(dir, { id, agent, lanes, kind = "claude", systemPrompt = nu
       boundaries: [],
       ...(systemPrompt === null ? {} : { system_prompt: systemPrompt }),
       self_check: "references/self-check.md",
-      reviewer_prompt: null,
+      reviewer_handoff: null,
     }),
     "utf8",
   );

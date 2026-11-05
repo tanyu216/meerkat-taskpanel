@@ -1024,8 +1024,8 @@ export function buildReviewHandoff(input) {
     "Stay in the review turn — a review ends in a verdict; if the evidence is insufficient,",
     "REJECT and write the findings. Carry the attribution flags above on every write.",
   ];
-  if (input.reviewerPrompt || input.reviewerPromptPath) {
-    const block = renderReviewerProtocol(input.reviewerPrompt ?? null, input.reviewerPromptPath ?? null);
+  if (input.reviewerHandoff || input.reviewerHandoffPath) {
+    const block = renderReviewerProtocol(input.reviewerHandoff ?? null, input.reviewerHandoffPath ?? null);
     if (block.length > 0) {
       const at = lines.findIndex((line) => line.startsWith("Step 0 —"));
       lines.splice(at === -1 ? lines.length : at, 0, ...block, "");
