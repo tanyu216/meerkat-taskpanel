@@ -26,15 +26,15 @@ ledger is a question, not a new Must.
 
 ## 3. Verify the delivered build
 
-Judge the delivered commit named by the implementation card, never the live working tree. For
-each Must, record the evidence: a command and exit code, a path and the check that resolves it,
-a test name, or a visible behaviour with the environment. A claim you cannot reproduce is
-`unmet`, not a note.
+Judge the delivered commit named by the implementation card; treat the live working tree as
+unwritten work. For each Must, record the evidence: a command and exit code, a path and the
+check that resolves it, a test name, or a visible behaviour with the environment. A claim
+reproduces with a command and exit code; an unreproducible claim is `unmet`, not a note.
 
 ## 4. Deliver the evidence
 
 The report's `conclusion` carries the ledger: every Must marked **met** or **unmet**, with its
 evidence, and every unmet item naming the gap, its owner and the follow-up card (or `none` with
-the reason). State explicitly that no code was changed. Do not accept your own work; the
-independent reviewer audits the evidence, and the card's acceptance mode names who closes it.
-Stop at `in_review`: do not merge, rebase or push.
+the reason). State explicitly that no code was changed. Stop at `in_review`: the independent
+reviewer audits the evidence, and the card's acceptance mode names who closes it. Deliver the
+committed tree; the supervisor's acceptance pass merges, rebases, pushes and cleans up.

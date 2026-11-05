@@ -70,7 +70,7 @@ scoped diff.
 
 ### 4. Review your change
 
-**Purpose.** Catch what the tests do not before the gates.
+**Purpose.** Catch the gaps the tests leave before the gates.
 
 **Watch for.** Correctness, public contracts, migrations, error paths, dead code, logging and
 tests. A new key flow emits its `info` line and a new failure path one `error` line with its

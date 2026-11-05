@@ -1622,4 +1622,62 @@ describe("role prompts: positive language", () => {
       assert.doesNotMatch(section, NEGATIVE, `${role}: the limits section reads as positive actions`);
     }
   });
+
+  /**
+   * Uses of a negative word that carry no instruction: the plan's `Role skill` rewrite
+   * keeps a rhetorical principle ("X, never Y"), a capability limit and a stated failure
+   * mode out of the rewrite. Every entry names one of those reasons; anything else in a
+   * reference must read as a positive action, so a new `Do not …` cannot hide behind
+   * prose the role loads before it acts.
+   */
+  const REFERENCE_ALLOW = new Map([
+    [
+      "linus/references/architecture-workflow.md",
+      [
+        /never adds machinery/i, // rhetorical principle (CLAUDE.md conflict ordering)
+        /never a silent edit/i, // rhetorical: a rule changes by recorded decision
+      ],
+    ],
+    [
+      "linus/references/implementation-workflow.md",
+      [
+        /never adds machinery/i, // rhetorical principle (CLAUDE.md conflict ordering)
+        /never silent drift/i, // rhetorical: a departure is a recorded decision
+      ],
+    ],
+    [
+      "linus/references/refactor-workflow.md",
+      [
+        /never in what it does/i, // rhetorical: refactoring preserves behaviour
+        /cannot fail/i, // definitional: a pinning test proves it can fail
+      ],
+    ],
+    [
+      "reviewer/references/audit-playbook.md",
+      [/cannot reproduce/i], // capability limit: an environment the worktree lacks
+    ],
+  ]);
+
+  it("keeps every role reference positive, with the plan's rhetorical exceptions named", () => {
+    for (const role of ROLES) {
+      const references = join(roleDir(role), "references");
+      const files = readdirSync(references)
+        .filter((name) => name.endsWith(".md"))
+        .sort();
+      assert.ok(files.length > 0, `${role}: references/ has prose to scan`);
+      for (const name of files) {
+        const rel = `references/${name}`;
+        const allowed = REFERENCE_ALLOW.get(`${role}/${rel}`) ?? [];
+        const lines = read(role, rel).split("\n");
+        lines.forEach((line, index) => {
+          if (!NEGATIVE.test(line)) return;
+          assert.ok(
+            allowed.some((pattern) => pattern.test(line)),
+            `${role}/${rel}:${index + 1}: state the positive action, or name the rhetorical ` +
+              `exception in REFERENCE_ALLOW: ${line.trim()}`,
+          );
+        });
+      }
+    }
+  });
 });

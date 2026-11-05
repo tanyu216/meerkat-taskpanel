@@ -86,7 +86,7 @@ toolchain adds no reviewable evidence.
 Record the rejected candidates and the reason. Design the target interface only after the choice,
 and only for the chosen module: what sits behind the seam, which adapters are real (one is a
 hypothetical seam, two are real), what the interface makes testable, and what explicitly does not
-move. The interface is the test surface; if a test cannot be written through it, the design is
+move. The interface is the test surface; if a test has no seam through it, the design is
 not finished.
 
 **Essentials.** The chosen candidate, the rejected list and the interface design in `plan.md`.
@@ -121,7 +121,7 @@ migrations unchanged; the updated glossary/ADR.
 **Purpose.** Audit the evidence before delivery.
 
 **Watch for.** `self-check.md` (Refactor branch) is the authoritative checklist: every
-acceptance item maps to a pinning test or evidence, the behaviour that must not change is named,
+acceptance item maps to a pinning test or evidence, the behaviour held fixed is named,
 and the gates are green.
 
 **Essentials.** The acceptance → pinning test/evidence table in `plan.md`.

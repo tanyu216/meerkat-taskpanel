@@ -35,7 +35,7 @@ Name the mode before Step 1; it decides what the run may write and what E5 cover
 
 A **no-card run** covers reconstruction and conformance audit: it writes artifacts only, not
 `plan.md` and no board state, records an open decision as `not recorded — review question`, and
-delivers `E5 pending`; the commit and delivery rules do not apply without a card.
+delivers `E5 pending`; the commit and delivery rules apply only with a card.
 
 ## Design stance
 
@@ -113,10 +113,10 @@ live.
 default); an option without rejected alternatives is not a decision. DDD pays when the domain
 rules and invariants are the hard part, experts and contested terms exist, several subdomains
 need different models, and the model is long-lived; a simpler style pays on thin or CRUD-shaped
-domains, or when the team cannot carry the layers. If DDD is chosen, name its bounded contexts,
-aggregates and context map; if not, name the simpler style (layered, hexagonal-lite,
-transaction-script, functional core / imperative shell) and record why DDD was rejected and the
-cost accepted. The style is always named; record a revisit trigger.
+domains, or when the team lacks the capacity for the layers. If DDD is chosen, name its
+bounded contexts, aggregates and context map; if not, name the simpler style (layered,
+hexagonal-lite, transaction-script, functional core / imperative shell) and record why DDD was
+rejected and the cost accepted. The style is always named; record a revisit trigger.
 
 **Essentials.** One decision round settles the style and the stack together, style first. Each
 durable decision gets an ADR at `docs/adr/NNNN-<slug>.md` with context, decision and why. A
@@ -276,12 +276,12 @@ a pointer rather than a competing copy. The task entry (`/meerkat`, card scope) 
 skill; leave an existing one untouched.
 
 **Essentials.** The standard is `docs/tech-spec.md`; point at it, and carry only what a fresh
-session cannot cheaply discover:
+session has no cheap way to discover:
 
 1. **Purpose and boundary** — one paragraph; `README.md` owns the rest.
 2. **Commands and layout** — the entry commands and only the non-obvious variant a fresh session
-   cannot guess (single-file test, required glob); entry points and top-level directories, one
-   line each; `docs/architecture.md` owns the tree.
+   has no way to guess (single-file test, required glob); entry points and top-level directories,
+   one line each; `docs/architecture.md` owns the tree.
 3. **Conventions and gates** — `docs/tech-spec.md` owns the rules; carry the logging contract
    (key flows log `info`; a caught exception logs one `error` with its code, and secrets stay
    out of logs), the

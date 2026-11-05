@@ -18,7 +18,7 @@ stop.
 4. Answer every snapshot item — the frozen list plus this card's `generic items` — with
    a status, `not_met` if unproven, one line of how checked, and an `evidence[n]`. `met`
    needs `falsifiable` proof (a `command exit 0` that fails when the item is broken; a path
-   plus the check that resolves it); what you cannot reproduce is `not_met`. Answer every
+   plus the check that resolves it); an unreproducible claim is `not_met`. Answer every
    earlier round: resolved with evidence, or explicitly deferred. A silent drop is REJECT.
 5. Gate and security. Run the declared gate and record command and exit code; none declared =
    `n/a — none declared` plus targeted checks. Run the documented scan (audit,

@@ -37,8 +37,8 @@ the history, then record what happened. A waiver ledger covers CVEs, not leaked 
 
 ## CI coverage
 
-A machine with every scanner installed still has no security gate if the project's CI never
-runs one. The same `--check` pass therefore reads the project's CI configuration and reports,
+A machine with every scanner installed still has no security gate when the project's CI skips
+the arm. The same `--check` pass therefore reads the project's CI configuration and reports,
 per arm, `covered` / `missing` / `unknown` / `absent`.
 
 Recognised, in priority order: `.github/workflows/*.ya?ml` (GitHub Actions), `.gitlab-ci.yml`,
@@ -131,7 +131,7 @@ node <skill-dir>/scripts/security-tools.mjs --ci-write --ci-arm sast --project <
 
 Exit codes: `0` the check ran (or the requested actions succeeded), `1` a required tool is
 missing, behind, or its version could not be read — or a CI write was refused (a conflict, a
-provider this skill cannot write, no CI at all), `2` usage, `3` an action was requested
+provider this skill has no writer for, no CI at all), `2` usage, `3` an action was requested
 and this host has no supported package manager. The host (`github` or `other`) comes from
 `<dir>/.git/config`; `--host` overrides it. A CI gap alone leaves `--check`'s exit
 code unchanged: `ok` is the local-tool verdict, `ci.ok` the CI one.
