@@ -160,6 +160,10 @@ A fresh clone has none: `git config core.hooksPath .githooks` (do not run `npm i
 - **The supervisor speaks only `taskctl`.** `src/orchestrator/**` never calls the HTTP API; the
   live stream is `taskctl events follow`, and the supervisor carries no board discovery or token
   code.
+- **A claim-cycle exit is a new attempt.** Leaving `in_progress`/`awaiting`/`in_review`/`blocked`
+  interrupts the running turn (`stateDir/interrupts/`, the adapter's `interrupt()`), records the
+  queue row `interrupted` without spending a counter, and deletes the session record and
+  transcript. Only a re-dispatch inside the claim resumes; ADR 0017.
 
 ## Pointers
 

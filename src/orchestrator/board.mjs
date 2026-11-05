@@ -22,6 +22,7 @@ import {
   pruneSlaLedger,
 } from "../foundation/sla-patrol.mjs";
 
+import { requestInterrupt } from "./interrupts.mjs";
 import { newestQuestion, questionOpen } from "./questions.mjs";
 import { findWorkspace, mergeWorkspace, runGit } from "./workspace.mjs";
 import { notifySlaAlerts, runWorkflowTick, notifyReal } from "./runners.mjs";
@@ -650,6 +651,13 @@ export async function runWorkflowPass(opts, config, log) {
         conflicts: merged.conflicts ?? [],
       };
     },
+    // TP-0125 — cancelling a review card orphans the reviewer's turn. The marker
+    // travels through the state directory to the pool that owns it; a dry run
+    // writes nothing.
+    requestInterrupt:
+      opts.dryRun || typeof opts.state !== "string" || opts.state === ""
+        ? null
+        : (request) => requestInterrupt(dirname(String(opts.state)), request),
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),
     log,
   });

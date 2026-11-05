@@ -44,10 +44,13 @@ describe("loop-state — the loop's state vocabulary", () => {
       deferrals: join("/state", "deferrals.json"),
       poolWedge: join("/state", "pool-wedge.json"),
       health: join("/state", "supervisor.health.json"),
+      // TP-0125 — the cross-process interrupt channel is a directory.
+      interrupts: join("/state", "interrupts"),
     });
     assert.equal(STATE_FILES.deferrals, "deferrals.json");
     assert.equal(STATE_FILES.poolWedge, "pool-wedge.json");
     assert.equal(STATE_FILES.health, "supervisor.health.json");
+    assert.equal(STATE_FILES.interrupts, "interrupts");
   });
 
   it("pins the queue, liveness and session constants", () => {

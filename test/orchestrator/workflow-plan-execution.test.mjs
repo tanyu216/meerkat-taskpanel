@@ -109,6 +109,12 @@ async function throughBothHalves(input, overrides = {}) {
       order.push(`appendAcceptance:${ref}:${items.length}`);
       return { ok: true };
     },
+    // TP-0125 — the cancel_review path writes the interrupt marker after the
+    // card's move; the sequence is part of the executor's order.
+    requestInterrupt: (request) => {
+      order.push(`interrupt:${request.card}:${request.to}`);
+      return { ok: true };
+    },
     notify: () => {},
     now: () => NOW,
     log: () => {},
@@ -330,7 +336,13 @@ const SCENARIOS = [
       return [original, review];
     })(),
     expectedAction: "cancel_review",
-    expectedOrder: ["comment:PROJ-0002:note", "move:PROJ-0002:in_progress", "move:PROJ-0002:canceled"],
+    // TP-0125 — one hop, then the marker the pool consumes. The old
+    // `→ in_progress → canceled` re-entered the work cycle.
+    expectedOrder: [
+      "comment:PROJ-0002:note",
+      "move:PROJ-0002:canceled",
+      "interrupt:PROJ-0002:canceled",
+    ],
   },
   {
     name: "reopen_review (verdict unreadable)",
