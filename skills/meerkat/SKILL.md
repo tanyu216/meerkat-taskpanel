@@ -127,34 +127,36 @@ classify one asks and holds.
 
 ## The language of a card
 
-Write in the language the work is actually being done in. English is not the default: the
-board stores text verbatim, so the first writer sets the language of the title, description,
-acceptance items, comment, question and report.
+A card's own body sets its language: read the title and description before writing on it. Its
+comment, question, report (`conclusion`, `leftovers`), acceptance item and `note` follow the
+language the card is already written in, not the session's — a Chinese card takes a Chinese
+report, an English card an English comment. English is not the default; the conversation is not
+the authority for card text.
 
-Decide it from evidence, in this order:
+Decide it in this order:
 
-1. **The human in this conversation.** Their own messages are the signal — a Chinese question
-   carrying an English stack trace is a Chinese request. An explicit instruction outranks this.
-2. **The card, then its project.** With no human message — a loop tick, a handoff, a worker session —
-   inherit what is already there: this card's own text, or the project's recent cards.
-3. **The repository.** Use `README.md`, `CLAUDE.md`/`AGENTS.md` or `GLOSSARY.md` when the
-   project has no cards yet. English only with no signal at all.
+1. **The card you are writing on.** Title and description first; a mixed body takes its
+   dominant language.
+2. **A card you are creating.** No body yet; its first writer sets it: the human in this
+   conversation (their own messages are the signal), then the project's recent cards, then
+   `README.md`/`CLAUDE.md`/`GLOSSARY.md`. English only with no signal.
+3. **A reply to a human is not card text.** It mirrors the human's language
+   ([`meerkat-chat`](../meerkat-chat/SKILL.md)).
 
 **What never translates:** identifiers, command lines, flags, error codes and status literals
 (`in_progress`, `E2`), field names, paths, code and log excerpts, and a quoted sentence. A
 review card's first line stays exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.
 
-**A frozen acceptance item is a matching key, not prose.** Write it in the card's language at
-creation; afterwards each entry's `text` in the report repeats the item character for
-character, because the gate matches by normalised text. Translate the `note`, `conclusion` and
-`leftovers` around it, never the item. Anything another author wrote or the board froze stays
-as it is. Baseline and reviewer contract:
+**A frozen acceptance item is a matching key, not prose.** It is the card's own text, written
+once at creation in the card's language (rule 2); each report entry's `text` repeats it
+character for character, because the gate matches by normalised text. Write the `note`,
+`conclusion` and `leftovers` in the card's language, never the item. Another author's or frozen
+text stays as it is. Baseline and reviewer contract:
 [`references/lifecycle/delivery.md#4a-the-acceptance-baseline`](references/lifecycle/delivery.md#4a-the-acceptance-baseline),
 [`references/review-protocol.md#3-the-reviewers-protocol`](references/review-protocol.md#3-the-reviewers-protocol).
 
 **Prose fields are Markdown.** A comment's `body`, a report's `conclusion`/`leftovers` and an
-acceptance item's `note` render as Markdown. The item's `text` stays plain (the frozen matching
-key); a review report's first line stays exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.
+acceptance item's `note` render as Markdown; the item's `text` stays plain.
 `card.md` is transport: the export escapes a comment's newlines and writes a note inline.
 
 ## Claim one card, deliver it, stop
