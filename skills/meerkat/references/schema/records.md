@@ -112,6 +112,9 @@ checkbox form (`- [ ] <text>` / `- [x] <text>`); when both exist, the frozen lis
 legacy list is not merged. A checked box records what the importer's author intended, not what a
 delivery achieved.
 
+The item's `text` is plain text (the matching key); its `note` is Markdown. The export writes a
+note inline, so a multi-line note does not round-trip through `card.md`.
+
 ```
 ## Comments
 - <ts> · <kind> · <author> — <body>
@@ -120,7 +123,8 @@ delivery achieved.
 `<kind>` is a closed enum: `discuss` · `decision` · `confirm` · `confirm_request` · `change` · `note` · `defect` · `question`.
 <!-- comment-kinds:end -->
 `question` is a worker's question to a human — the payload of an `awaiting` card; there is no
-separate questions table. Newlines in `<body>` are escaped as `\n`.
+separate questions table. The body is Markdown with real newlines; the export escapes them as
+`\n` to keep one record per line.
 
 ```
 ## Sessions
@@ -165,6 +169,8 @@ wrote it — the board **does** record the author (`author_kind` / `author_id`),
 not filter on it. For an **epic** the report must be its rollup: the renderer writes
 `rollup: yes`, each acceptance item carries `· ref: <child identifier>`, and a plain report — or
 a waiver — is refused (`ROLLUP_REQUIRED` / `ROLLUP_STALE`).
+
+The conclusion and leftovers are Markdown; the export round-trips both.
 
 ## The process directory
 

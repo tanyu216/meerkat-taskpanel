@@ -192,7 +192,7 @@ report whose round is the card's current `delivery_round`, or an audited waiver
 waiver is stamped on the row, recorded as `report_waived`, and shown under `report_waivers[]`;
 it excuses the delivery gate, not acceptance.
 
-Three shape rules ride along:
+Four shape rules ride along:
 
 - **A path anchor must name its commit.** A report with a `path` anchor and no `commit` anchor
   is `DELIVERY_NEEDS_COMMIT`, because a path is a claim about the working tree and the tree can
@@ -204,6 +204,10 @@ Three shape rules ride along:
 - **A report is part of the move, not a separate step.** `issue deliver` writes the report and
   moves the card in one transaction. `--to done` is the `off` mode's direct acceptance and
   still consults the gate for a non-empty baseline.
+- **Prose is Markdown.** A report's `conclusion` and `leftovers`, a comment's `body` and an
+  acceptance item's `note` are Markdown and render as such in the drawer. An acceptance item's
+  `text` stays plain text because it is the frozen matching key, and a review report's first
+  line stays exactly `VERDICT: APPROVE` or `VERDICT: REJECT` — never bolded or headed.
 
 The gate is implemented twice: `assertDeliveryGate` in the domain and `tr_deliver_gate` in the
 schema. The trigger covers the UPDATE path; the domain adds the waiver's shape and the

@@ -46,14 +46,14 @@ export const COMMANDS = [
 
   {
     name: "add",
-    summary: "Append a comment.",
+    summary: "Append a Markdown comment.",
     usage:
       "comment add <id|identifier> (--body <text> | --file <path|->) [--kind <kind>] [--ref <kind:id>]…",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: [
-      { flag: "body", key: "body", as: "string", value: "<text>", summary: "The comment text; or use --file." },
+      { flag: "body", key: "body", as: "string", value: "<text>", summary: "The comment text, as Markdown; or use --file." },
       { flag: "kind", key: "kind", as: "string", value: "<kind>", summary: `${KINDS.join("|")} (default: note)` },
-      { flag: "file", key: "file", as: "string", value: "<path|->", summary: "Read the body from a file or stdin." },
+      { flag: "file", key: "file", as: "string", value: "<path|->", summary: "Read the Markdown body from a file or stdin." },
       {
         flag: "ref",
         key: "refs",

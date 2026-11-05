@@ -375,7 +375,7 @@ svg[data-token-icon][hidden] { display: none; }
 .td-dv-mark[data-acceptance-status="partial"] { color: var(--color-warning); border-color: var(--color-warning); }
 .td-dv-mark[data-acceptance-status="not_met"] { color: var(--brand-st-blocked); border-color: var(--brand-st-blocked); }
 .td-dv-tick { width: 9px; height: 9px; }
-.td-dv-text { font-size: 13px; line-height: 1.5; color: var(--brand-text-2); }
+.td-dv-text { min-width: 0; font-size: 13px; line-height: 1.5; color: var(--brand-text-2); }
 /* The verdict's own note (implementation-only: the prototype shows no note). */
 .td-dv-note { display: block; margin-top: 2px; font-size: 12px; line-height: 1.45; color: var(--brand-text-3); }
 .td-dv-empty { font-size: 12px; line-height: 1.5; color: var(--brand-text-3); font-style: italic; }
@@ -2050,8 +2050,11 @@ button.td-prop-value:hover {
 .td-comment-body {
   font-size: var(--text-13);
   color: var(--brand-text-2);
-  white-space: pre-line;
 }
+/* TP-0123 — the body is a Markdown block, not plain text: standard Markdown
+   line semantics replace `white-space: pre-line`, and the flex child may shrink
+   so a wide `pre` scrolls inside the drawer instead of widening it. */
+.td-comment > div { min-width: 0; }
 /* A decision comment is quoted rather than merely listed: the accent rule on
    the inline start is the only colour it adds. */
 .td-comment-decision {
@@ -2840,6 +2843,14 @@ button.td-prop-value:hover {
   color: var(--color-success);
   border-color: var(--color-success);
 }
+/* TP-0123 — `.td-gfm` is declared after the drawer's own text faces, so a body
+   block keeps the note's smaller face here; the first block of every prose sink
+   starts flush with its container. */
+.td-gfm.td-dv-note { font-size: 12px; line-height: 1.45; color: var(--brand-text-3); }
+.td-gfm.td-comment-body > :first-child,
+.td-gfm.td-dv-conclusion > :first-child,
+.td-gfm.td-dv-note > :first-child,
+.td-gfm.td-dv-text > :first-child { margin-top: 0; }
 
 /* R10 ③ — the description fills the column it sits in.
    The chain runs one way only: the two-column grid stretches its tracks, each
