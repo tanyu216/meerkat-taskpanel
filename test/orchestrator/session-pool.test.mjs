@@ -189,6 +189,26 @@ function setAttempts(dir, ref, attempts) {
   writeFileSync(file, JSON.stringify(value), "utf8");
 }
 
+/** Force a queue row's independent timeout counter. */
+function setTimeouts(dir, ref, timeouts) {
+  const file = join(dir, "cards.queue.json");
+  const value = JSON.parse(readFileSync(file, "utf8"));
+  const row = value.cards.find((entry) => entry.card === ref);
+  row.timeouts = timeouts;
+  writeFileSync(file, JSON.stringify(value), "utf8");
+}
+
+const waitMs = (ms) =>
+  new Promise((resolveWait) => {
+    const timer = setTimeout(resolveWait, ms);
+    timer.unref?.();
+  });
+
+const heartbeatCalls = (calls) =>
+  calls.filter(
+    (argv) => argv.includes("issue") && argv.includes("heartbeat"),
+  );
+
 /**
  * Put one enqueued row in `processing`, as another pool's in-flight turn would.
  * A card session holds its concurrency slot through its queue row.
@@ -1619,14 +1639,14 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("treats a timed-out opener as the failed turn and never sends the card to a closed handle", async (t) => {
+  it("reopens a fresh session and skips the opener when the opener times out", async (t) => {
     const f = fixture(t);
     installRole(f.dir, { id: "jobs", agent: "Jobs", lanes: ["worker"] });
     const fake = fakePool({
       behavior: ({ handle, prompt }) => {
         if (prompt.startsWith("/jobs")) {
           handle.closed = true;
-          return { ok: false, error: "turn timed out after 1800000ms" };
+          return { ok: false, error: "turn timed out after 600000ms" };
         }
         return {};
       },
@@ -1638,18 +1658,22 @@ describe("session pool", () => {
     await pool.tick();
 
     const [row] = readCards(f.dir).value.cards;
-    assert.equal(row.status, "pending");
-    assert.equal(row.attempts, 1);
-    assert.match(row.lastError, /timed out/);
-    const worker = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
-    assert.equal(worker.prompts.length, 1, "the card prompt is not sent into the dead handle");
-    assert.match(worker.prompts[0], /^\/jobs/);
-    // The regression this card exists for: the opener died, but the card, plan,
-    // flags and board rules were already in the system prompt at open time.
-    assert.match(worker.systemPrompt, /Task card: .*T-1\/card\.md/);
-    assert.match(worker.systemPrompt, /Task plan: .*T-1\/plan\.md/);
-    assert.match(worker.systemPrompt, /Flags: --agent Jobs --actor-kind=claude/);
-    assert.match(worker.systemPrompt, /heartbeat this card at least every 10 minutes/);
+    assert.equal(row.status, "done", "the card was delivered by the reopened session");
+    assert.equal(row.attempts, 0, "a timed-out opener never spends the card's attempt");
+    const workers = fake.opened.filter(
+      (handle) => handle.role === "worker" && handle.cwd === f.app,
+    );
+    assert.equal(workers.length, 2, "a fresh conversation replaces the one the opener closed");
+    assert.equal(workers[0].prompts.length, 1, "only the opener reaches the dead handle");
+    assert.match(workers[0].prompts[0], /^\/jobs/);
+    assert.equal(workers[1].prompts.length, 1, "the new session is not given a second opener");
+    assert.match(workers[1].prompts[0], /^Role skill: .*\/jobs\/SKILL\.md/);
+    assert.match(workers[1].prompts[0], /work T-1/);
+    // The card, plan, flags and board rules ride the system prompt at open time.
+    assert.match(workers[1].systemPrompt, /Task card: .*T-1\/card\.md/);
+    assert.match(workers[1].systemPrompt, /Task plan: .*T-1\/plan\.md/);
+    assert.match(workers[1].systemPrompt, /Flags: --agent Jobs --actor-kind=claude/);
+    assert.match(workers[1].systemPrompt, /heartbeat this card at least every 10 minutes/);
     await pool.stop();
   });
 
@@ -3186,5 +3210,329 @@ describe("pool shutdown — the in-flight tick is drained, never abandoned", () 
       logs.some((entry) => entry.meta?.event === "stop_drain_timeout" && entry.meta.level === "warn"),
       `the abandoned pass leaves one warn record: ${JSON.stringify(logs)}`,
     );
+  });
+});
+
+describe("turn timeouts are transient", () => {
+  const timeoutError = "turn timed out after 30000ms";
+
+  it("reports a timed-out resume as transient instead of parking the card", async (t) => {
+    const f = fixture(t);
+    let calls = 0;
+    const fake = fakePool({
+      behavior: () => {
+        calls += 1;
+        if (calls === 1) return {};
+        if (calls === 2) {
+          return { ok: false, resumeFailed: true, error: timeoutError };
+        }
+        return { ok: false, error: timeoutError };
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    enqueueCard(join(f.dir), {
+      id: "T-1-worker-resume",
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+
+    const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
+    const record = state.projects[workerKey("T-1", 1)];
+    assert.notEqual(record?.blocked, true, "a timed-out resume is not a park");
+    const row = readCards(f.dir).value.cards.find((entry) => entry.id === "T-1-worker-resume");
+    assert.equal(row.status, "pending", "the row waits out the timeout backoff");
+    assert.equal(row.timeouts, 1);
+    assert.equal(row.attempts, 0);
+  });
+
+  it("releases the card to todo after the third timeout, with the note after the move", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    const fake = fakePool({ behavior: () => ({ ok: false, error: timeoutError }) });
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: () => ({ ok: true, status: "in_progress", error: null }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    setTimeouts(f.dir, "T-1", 2);
+    await pool.tick();
+
+    const [row] = readCards(f.dir).value.cards;
+    assert.equal(row.status, "failed");
+    assert.equal(row.timeouts, 3);
+    assert.equal(row.attempts, 0, "three timeouts still spend no delivery attempt");
+    const recorded = calls();
+    const moveAt = recorded.findIndex(
+      (argv) => argv.includes("move") && argv.includes("T-1") && argv.includes("todo"),
+    );
+    const noteAt = recorded.findIndex(
+      (argv) =>
+        argv.includes("comment") &&
+        argv.includes("add") &&
+        argv.includes("T-1") &&
+        argv.includes("note"),
+    );
+    assert.ok(moveAt >= 0, `the card returns to todo: ${JSON.stringify(recorded)}`);
+    assert.ok(noteAt > moveAt, "the note is written after the move, so it is not routed as a question");
+    assert.equal(
+      recorded.some((argv) => argv.includes("move") && argv.includes("blocked")),
+      false,
+      "a timeout never parks the card",
+    );
+  });
+
+  it("does not move a card that is awaiting, in_review or unreadable after the third timeout", async (t) => {
+    for (const live of [
+      { ok: true, status: "awaiting", error: null },
+      { ok: true, status: "in_review", error: null },
+      { ok: false, status: null, error: "board down" },
+    ]) {
+      const f = fixture(t);
+      const calls = recordCli(f);
+      const fake = fakePool({ behavior: () => ({ ok: false, error: timeoutError }) });
+      // The pre-dispatch re-check passes (the card is still workable); the
+      // post-timeout re-check is where the card has moved or the board is down.
+      let checks = 0;
+      const pool = createSessionPool({
+        opts: optsFor(f),
+        kindPool: fake,
+        revalidateCard: () => {
+          checks += 1;
+          return checks === 1 ? { ok: true, status: "in_progress", error: null } : live;
+        },
+      });
+      t.after(() => pool.stop());
+      await pool.start();
+      enqueueCard(join(f.dir), card(f, "T-1", f.app));
+      setTimeouts(f.dir, "T-1", 2);
+      await pool.tick();
+
+      const [row] = readCards(f.dir).value.cards;
+      const recorded = calls();
+      assert.equal(
+        recorded.some((argv) => argv.includes("move")),
+        false,
+        `${live.status ?? "an unreadable board"}: the card is never moved`,
+      );
+      if (live.ok === true) {
+        assert.equal(row.status, "done", "the row is closed without re-dispatching");
+      } else {
+        assert.equal(row.status, "failed", "an unreadable board is fail-soft on the row only");
+      }
+      await pool.stop();
+    }
+  });
+
+  it("releases a timed-out review card to todo and re-dispatches it to the reviewer lane", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    let turns = 0;
+    const fake = fakePool({
+      behavior: () => {
+        turns += 1;
+        return turns === 1 ? { ok: false, error: timeoutError } : {};
+      },
+    });
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: () => ({ ok: true, status: "in_progress", error: null }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "R-1", f.app, "reviewer"),
+      review_of: "T-0",
+      review_round: 1,
+    });
+    // Two timeouts already spent: this turn is the third and exhausts the bound.
+    setTimeouts(f.dir, "R-1", 2);
+    await pool.tick();
+
+    assert.ok(
+      calls().some(
+        (argv) => argv.includes("move") && argv.includes("R-1") && argv.includes("todo"),
+      ),
+      "the review card itself returns to the queue",
+    );
+    assert.equal(
+      calls().some((argv) => argv.includes("T-0")),
+      false,
+      "the original card under review is never touched",
+    );
+
+    enqueueCard(join(f.dir), { ...card(f, "R-1", f.app, "reviewer"), id: "R-1-reviewer-2" });
+    await pool.tick();
+    const reviewers = fake.opened.filter(
+      (handle) => handle.role === "reviewer" && handle.cwd === f.app,
+    );
+    assert.ok(reviewers.length >= 2, "the reviewer lane claims the released review card again");
+  });
+
+  it("does not dispatch a handoff before its timeout backoff is due", async (t) => {
+    const f = fixture(t);
+    let clock = Date.parse("2026-01-01T00:00:00.000Z");
+    const fake = fakePool({ behavior: () => ({ ok: false, error: timeoutError }) });
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      now: () => clock,
+      revalidateCard: () => ({ ok: true, status: "in_progress", error: null }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    let [row] = readCards(f.dir).value.cards;
+    assert.equal(row.timeouts, 1);
+    assert.ok(Date.parse(row.retry_at) > clock, "the retry is in the future");
+    assert.equal(fake.opened.length, 1, "the first turn opened one session");
+
+    await pool.tick();
+    assert.equal(fake.opened.length, 1, "a handoff is not dispatched before retry_at");
+
+    clock += 3 * 60_000;
+    await pool.tick();
+    [row] = readCards(f.dir).value.cards;
+    assert.equal(row.timeouts, 2, "once due, the turn runs and counts a second timeout");
+    assert.equal(fake.opened.length, 2);
+  });
+
+  it("lets an unsettled question row keep blocking its card even before its own retry", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "question:T-1:q-1",
+      card: "T-1",
+      queue_kind: "question",
+      role: "question",
+      question_id: "q-1",
+      target_dir: f.app,
+      retry_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+    });
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+    assert.equal(
+      fake.opened.filter((handle) => handle.role === "worker").length,
+      0,
+      "the card handoff waits for the question to settle",
+    );
+  });
+});
+
+describe("the loop's card pulse", () => {
+  it("sends issue heartbeat as the holder while the turn runs, then stops", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    const fake = fakePool({
+      behavior: async () => {
+        await waitMs(300);
+        return {};
+      },
+    });
+    const pool = createSessionPool({
+      opts: optsFor(f, { cardHeartbeatMs: 20 }),
+      kindPool: fake,
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    const heartbeats = heartbeatCalls(calls());
+    assert.ok(heartbeats.length >= 1, `the loop pulsed the claim: ${JSON.stringify(calls())}`);
+    const argv = heartbeats[0];
+    assert.ok(argv.includes("T-1"));
+    assert.ok(argv.includes("--agent") && argv[argv.indexOf("--agent") + 1] === "alice");
+    assert.ok(argv.includes("--actor-kind") && argv[argv.indexOf("--actor-kind") + 1] === "claude");
+
+    // Let any in-flight pulse finish before sampling; the timer is already
+    // cleared, so the count must then be stable.
+    await waitMs(200);
+    const before = heartbeatCalls(calls()).length;
+    await waitMs(100);
+    assert.equal(
+      heartbeatCalls(calls()).length,
+      before,
+      "the pulse stops when the turn settles",
+    );
+    await pool.stop();
+  });
+
+  it("does not pulse in a dry run or for a card with no agent", async (t) => {
+    for (const [label, override, row] of [
+      ["dry run", { dryRun: true }, card],
+      ["empty agent", {}, (f, ref, dir) => ({ ...card(f, ref, dir), agent: "" })],
+    ]) {
+      const f = fixture(t);
+      const calls = recordCli(f);
+      const fake = fakePool({
+        behavior: async () => {
+          await waitMs(80);
+          return {};
+        },
+      });
+      const pool = createSessionPool({
+        opts: optsFor(f, { cardHeartbeatMs: 20, ...override }),
+        kindPool: fake,
+      });
+      t.after(() => pool.stop());
+      await pool.start();
+      enqueueCard(join(f.dir), row(f, "T-1", f.app));
+      await pool.tick();
+      assert.deepEqual(heartbeatCalls(calls()), [], `${label}: no heartbeat is sent`);
+      await pool.stop();
+    }
+  });
+
+  it("stops the pulse when the board refuses it", async (t) => {
+    const f = fixture(t);
+    const calls = join(f.dir, "refuse-calls.jsonl");
+    writeFileSync(
+      join(f.dir, "cli.mjs"),
+      [
+        'import { appendFileSync } from "node:fs";',
+        `appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");`,
+        'process.stdout.write(JSON.stringify({ ok: false, error: { code: "EXECUTION_ACTIVE", message: "not the holder" } }));',
+      ].join("\n"),
+    );
+    const fake = fakePool({
+      behavior: async () => {
+        await waitMs(200);
+        return {};
+      },
+    });
+    const pool = createSessionPool({
+      opts: optsFor(f, { cardHeartbeatMs: 20 }),
+      kindPool: fake,
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+    await waitMs(150);
+
+    const recorded = existsSync(calls)
+      ? readFileSync(calls, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line))
+      : [];
+    assert.equal(recorded.length, 1, "one refusal stops the pulse; it is not retried on a timer");
+    await pool.stop();
   });
 });

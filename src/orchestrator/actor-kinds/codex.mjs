@@ -20,7 +20,7 @@ import { dirname } from "node:path";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
-export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
+export const DEFAULT_TURN_TIMEOUT_MS = 60 * 60 * 1000;
 
 const CLIENT_INFO = Object.freeze({ name: "meerkat-taskpanel-loop", version: "1.0.0" });
 

@@ -186,6 +186,35 @@ export function cliInvocation(opts, agent, args, { actorKind = null } = {}) {
   return { argv, env };
 }
 
+/**
+ * Parse one `taskctl --json` envelope. Shared by the blocking and async callers
+ * so their shapes cannot drift: `{ok, data}` on success, `{ok:false, error}`
+ * plus the board's `code`/`details`/`hint` on a refusal.
+ *
+ * @param {string|null|undefined} stdout
+ * @param {string|null|undefined} stderr
+ * @param {number|null} status
+ * @returns {{ok: boolean, data?: object, error?: string, code?: string, details?: *, hint?: *}}
+ */
+function parseCliResult(stdout, stderr, status) {
+  try {
+    const parsed = JSON.parse(stdout ?? "");
+    if (parsed?.ok === true) return { ok: true, data: parsed.data ?? {} };
+    // The board's code is what lets the loop classify a refusal (a re-plan next
+    // tick vs. a state no tick can fix). `error` stays the readable message.
+    const error = parsed?.error ?? null;
+    return {
+      ok: false,
+      error: error?.message ?? `exit ${status}`,
+      ...(typeof error?.code === "string" ? { code: error.code } : {}),
+      ...(error?.details === undefined ? {} : { details: error.details }),
+      ...(error?.hint === undefined ? {} : { hint: error.hint }),
+    };
+  } catch {
+    return { ok: false, error: (stderr ?? "").trim() || `exit ${status}` };
+  }
+}
+
 export function runCli(opts, agent, args, { input = null, actorKind = null } = {}) {
   const { argv, env } = cliInvocation(opts, agent, args, { actorKind });
   // A bound on the child, not on the board call it makes: a `taskctl` that
@@ -204,22 +233,68 @@ export function runCli(opts, agent, args, { input = null, actorKind = null } = {
     }
     return { ok: false, error: run.error.message };
   }
-  try {
-    const parsed = JSON.parse(run.stdout ?? "");
-    if (parsed?.ok === true) return { ok: true, data: parsed.data ?? {} };
-    // The board's code is what lets the loop classify a refusal (a re-plan next
-    // tick vs. a state no tick can fix). `error` stays the readable message.
-    const error = parsed?.error ?? null;
-    return {
-      ok: false,
-      error: error?.message ?? `exit ${run.status}`,
-      ...(typeof error?.code === "string" ? { code: error.code } : {}),
-      ...(error?.details === undefined ? {} : { details: error.details }),
-      ...(error?.hint === undefined ? {} : { hint: error.hint }),
+  return parseCliResult(run.stdout, run.stderr, run.status);
+}
+
+/**
+ * The same `taskctl` call without blocking the event loop.
+ *
+ * `spawnSync` holds the pool for up to a minute; the card heartbeat pulses
+ * *during* a turn, so it must not stop the turn's own timers or the pool's
+ * heartbeat while it runs. Same argv, same environment, same result shape as
+ * `runCli`; the bound SIGKILLs the child and returns the timeout as a failure.
+ *
+ * @param {object} opts
+ * @param {string} agent
+ * @param {string[]} args
+ * @param {{actorKind?: string|null, timeoutMs?: number|null}} [options]
+ * @returns {Promise<ReturnType<typeof parseCliResult>>}
+ */
+export function runCliAsync(opts, agent, args, { actorKind = null, timeoutMs = null } = {}) {
+  const { argv, env } = cliInvocation(opts, agent, args, { actorKind });
+  const bound = Number(timeoutMs ?? opts.cliTimeoutMs ?? CLI_TIMEOUT_MS);
+  return new Promise((resolveRun) => {
+    let settled = false;
+    let timer = null;
+    let stdout = "";
+    let stderr = "";
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) clearTimeout(timer);
+      resolveRun(result);
     };
-  } catch {
-    return { ok: false, error: (run.stderr ?? "").trim() || `exit ${run.status}` };
-  }
+    let child;
+    try {
+      child = spawn(process.execPath, argv, { stdio: ["ignore", "pipe", "pipe"], env });
+    } catch (err) {
+      finish({ ok: false, error: err.message });
+      return;
+    }
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (err) => {
+      finish({ ok: false, error: err.message });
+    });
+    child.on("close", (code) => {
+      finish(parseCliResult(stdout, stderr, code));
+    });
+    timer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Already gone; the close handler still settles the promise.
+      }
+      finish({ ok: false, error: `taskctl timed out after ${bound}ms` });
+    }, Math.max(1, bound));
+    timer.unref?.();
+  });
 }
 
 /**

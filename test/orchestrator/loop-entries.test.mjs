@@ -52,6 +52,7 @@ import {
   killWedgedPool,
   releaseContinueLock,
   runCli,
+  runCliAsync,
   runPingTick,
 } from "../../src/orchestrator/runtime.mjs";
 import {
@@ -335,6 +336,66 @@ describe("the taskctl boundary", () => {
     assert.equal(result.ok, false);
     assert.match(result.error, /timed out/);
     assert.ok(Date.now() - started < 5_000, "the bound is the child's, not the test's");
+  });
+
+  it("reads a successful async taskctl call without blocking the event loop", async () => {
+    const dir = tempDir("tp-cli-async-");
+    const cli = join(dir, "async-cli.mjs");
+    writeFileSync(
+      cli,
+      'process.stdout.write(JSON.stringify({ ok: true, data: { task: { status: "todo" } } }) + "\\n");\n',
+    );
+    const result = await runCliAsync({ cli }, "alice", ["issue", "get", "T-1"], {
+      actorKind: "claude",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.data.task.status, "todo");
+  });
+
+  it("carries a refusal's code, details and hint on the async path", async () => {
+    const dir = tempDir("tp-cli-async-refuse-");
+    const cli = join(dir, "refuse-cli.mjs");
+    writeFileSync(
+      cli,
+      [
+        "process.stdout.write(JSON.stringify({",
+        '  ok: false,',
+        '  error: { code: "EXECUTION_ACTIVE", message: "not the holder",',
+        '    details: { claimed_by: "someone-else" }, hint: { command: "issue get T-1" } },',
+        '}) + "\\n");',
+      ].join("\n"),
+    );
+    const result = await runCliAsync({ cli }, "alice", ["issue", "heartbeat", "T-1"], {
+      actorKind: "claude",
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "EXECUTION_ACTIVE");
+    assert.equal(result.error, "not the holder");
+    assert.deepEqual(result.details, { claimed_by: "someone-else" });
+    assert.deepEqual(result.hint, { command: "issue get T-1" });
+  });
+
+  it("kills an async taskctl at its own bound", async () => {
+    const dir = tempDir("tp-cli-async-timeout-");
+    const cli = join(dir, "hang-async-cli.mjs");
+    writeFileSync(cli, "setInterval(() => {}, 1000);\n");
+    const started = Date.now();
+    const result = await runCliAsync({ cli }, "alice", ["issue", "list"], {
+      actorKind: "claude",
+      timeoutMs: 100,
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /timed out/);
+    assert.ok(Date.now() - started < 5_000, "the child's bound releases the caller");
+  });
+
+  it("reports non-JSON output as a failure, not a crash", async () => {
+    const dir = tempDir("tp-cli-async-garbage-");
+    const cli = join(dir, "garbage-cli.mjs");
+    writeFileSync(cli, 'process.stdout.write("not json\\n"); process.stderr.write("board down\\n");\n');
+    const result = await runCliAsync({ cli }, "alice", ["issue", "list"], { actorKind: "claude" });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /board down/);
   });
 });
 

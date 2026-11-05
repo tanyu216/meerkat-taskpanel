@@ -326,6 +326,7 @@ describe("loop doctor — the report", () => {
           queue_kind: "handoff",
           status: "failed",
           attempts: 3,
+          timeouts: 2,
           retry_at: null,
           lastError: "session is closed",
         },
@@ -343,6 +344,7 @@ describe("loop doctor — the report", () => {
     assert.deepEqual(terminal.queue_row, {
       status: "failed",
       attempts: 3,
+      timeouts: 2,
       retry_at: null,
       last_error: "session is closed",
     });
@@ -353,6 +355,55 @@ describe("loop doctor — the report", () => {
     );
     assert.equal(report.stuck_cards.total, 2, "the stuck judgement itself is unchanged");
     assert.ok(report.attention_reasons.includes("undispatched_claims: 2"));
+  });
+
+  it("shows both the attempt and timeout counters on an undispatched row", async () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-1",
+          title: "Timed out",
+          status: "in_progress",
+          heartbeat_at: at(600 * MIN),
+        },
+      ],
+    });
+    seedState(dir, {
+      cards: [
+        {
+          card: "T-1",
+          queue_kind: "handoff",
+          status: "failed",
+          attempts: 0,
+          timeouts: 3,
+          retry_at: null,
+          lastError: "turn timed out after 3600000ms",
+        },
+      ],
+    });
+
+    let out = "";
+    const exit = await main(
+      [
+        "--state", join(dir, "state.json"),
+        "--log", join(dir, "supervisor.log"),
+        "--config", join(dir, "config.env"),
+        "--cli", script,
+        "--agent", "alice",
+        "--actor-kind", "claude",
+        "--home", dir,
+      ],
+      { HOME: dir },
+      deps(),
+      { out: (text) => (out += text) },
+    );
+    assert.equal(exit, 0);
+    assert.match(
+      out,
+      /queue failed after 0 attempt\(s\), 3 timeout\(s\)/,
+      "an operator can tell a timeout retry from a delivery retry",
+    );
   });
 
   it("does not report a stale claim that still has a dispatchable handoff row", () => {
@@ -1696,7 +1747,7 @@ describe("loop doctor — the human queue and the loop's dead ends", () => {
     const staleWorker = report.looping.orphaned.find((row) => row.ref === "T-402");
     assert.ok(staleWorker);
     assert.equal(staleWorker.pid, process.pid);
-    assert.equal(staleWorker.bound_ms, 2 * 30 * MIN);
+    assert.equal(staleWorker.bound_ms, 2 * 60 * MIN);
     assert.ok(
       report.looping.orphaned.some((row) => row.ref === "R-403"),
       "a stale review handoff is the same finding as a stale worker one",

@@ -300,6 +300,28 @@ baseline("4. a stuck tick on a live pid is reported as wedged, not as a healthy 
   assert.equal(status.verdict, "wedged", "a tick past its deadline is wedged, however fresh the heartbeat");
 });
 
+baseline("4b. a 70-minute tick under the 60-minute turn default is busy, not wedged", async () => {
+  const dir = tempDir();
+  const sleeper = await startSleeper();
+  const now = Date.now();
+  writeState(dir, {
+    version: 2,
+    poolPid: sleeper.pid,
+    phase: "running",
+    heartbeatAt: new Date(now).toISOString(),
+    // Turn 60m + opener 10m + margin 2m = 72m: a legal long tick is still busy,
+    // not a wedge the ping would kill.
+    tickStartedAt: new Date(now - 70 * 60 * 1000).toISOString(),
+    turnTimeoutMs: 60 * 60 * 1000,
+    projects: {},
+  });
+
+  const status = poolStatus({
+    opts: { ...poolOpts(dir), sessionTurnTimeoutMs: 60 * 60 * 1000 },
+  });
+  assert.equal(status.verdict, "busy", "the opener budget is part of the deadline");
+});
+
 // ---------------------------------------------------------------------------
 // 5. A stale heartbeat on a live pid is "unresponsive", not "gone"
 // ---------------------------------------------------------------------------

@@ -392,6 +392,14 @@ describe("planReviewDispatch", () => {
     });
     assert.deepEqual(active.actions, []);
 
+    // A timed-out review card is released to `todo`; it still covers the round,
+    // so the poll re-claims the same card instead of creating a second one.
+    const queued = planReviewDispatch({
+      tasks: [card(), reviewCard({ status: "todo" })],
+      config: CONFIG,
+    });
+    assert.deepEqual(queued.actions, [], "a queued review card still covers its round");
+
     const canceled = planReviewDispatch({
       tasks: [card(), reviewCard({ status: "canceled" })],
       config: CONFIG,

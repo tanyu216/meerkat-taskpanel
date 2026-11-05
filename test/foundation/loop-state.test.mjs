@@ -10,6 +10,7 @@ import test, { describe, it } from "node:test";
 import { processStartToken } from "../../src/foundation/daemon-state.mjs";
 import {
   LIVE_STATUSES,
+  OPENER_TIMEOUT_MS,
   POOL_HEARTBEAT_MS,
   POOL_KILL_GRACE_MS,
   POOL_STALE_MS,
@@ -66,6 +67,7 @@ describe("loop-state — the loop's state vocabulary", () => {
     assert.equal(POOL_STALE_MS, 90_000);
     assert.equal(POOL_START_BUDGET_MS, 5 * 60_000);
     assert.equal(POOL_WEDGE_MARGIN_MS, 2 * 60_000);
+    assert.equal(OPENER_TIMEOUT_MS, 10 * 60_000);
     assert.equal(POOL_KILL_GRACE_MS, 60_000);
     assert.deepEqual(POOL_VERDICTS, [
       "running",
@@ -81,7 +83,7 @@ describe("loop-state — the loop's state vocabulary", () => {
       poolMax: 8,
       projectIdleMs: 30 * 60 * 1000,
       sessionMaxAgeMs: 24 * 60 * 60 * 1000,
-      turnTimeoutMs: 30 * 60 * 1000,
+      turnTimeoutMs: 60 * 60 * 1000,
       pollMs: 1000,
     });
   });
@@ -174,26 +176,34 @@ describe("loop-state — one liveness verdict", () => {
     assert.equal(fresh.live, true);
   });
 
-  it("derives the tick deadline from the effective turn timeout, not a constant", () => {
+  it("derives the tick deadline from the turn plus the opener budget, not a constant", () => {
     for (const turn of [1_200_000, 1_800_000, 7_199_000]) {
-      // One millisecond inside the margin is still a busy tick for every turn.
+      const deadline = turn + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS;
+      // One millisecond inside the deadline is still a busy tick for every turn.
       const busy = poolVerdict({
         ...LIVE,
         phase: "running",
-        tickStartedAt: ago(turn + POOL_WEDGE_MARGIN_MS - 1),
+        tickStartedAt: ago(deadline - 1),
         turnTimeoutMs: turn,
       });
-      assert.equal(busy.verdict, "busy", `${turn}ms turn: the margin is part of the deadline`);
+      assert.equal(
+        busy.verdict,
+        "busy",
+        `${turn}ms turn: the opener budget and margin are part of the deadline`,
+      );
       const wedged = poolVerdict({
         ...LIVE,
         phase: "running",
-        tickStartedAt: ago(turn + POOL_WEDGE_MARGIN_MS + 1),
+        tickStartedAt: ago(deadline + 1),
         turnTimeoutMs: turn,
       });
       assert.equal(wedged.verdict, "wedged", `${turn}ms turn: past the deadline is wedged`);
     }
     assert.equal(effectiveTurnTimeoutMs(undefined), SESSION_DEFAULTS.turnTimeoutMs);
-    assert.equal(sendDeadlineMs(undefined), SESSION_DEFAULTS.turnTimeoutMs + POOL_WEDGE_MARGIN_MS);
+    assert.equal(
+      sendDeadlineMs(undefined),
+      SESSION_DEFAULTS.turnTimeoutMs + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS,
+    );
     assert.equal(killDeadlineMs(1_200_000), sendDeadlineMs(1_200_000) + 60_000);
   });
 

@@ -30,6 +30,13 @@ import { LIVE_STATUSES, QUEUE_FILES } from "../foundation/loop-state.mjs";
 /** A card handoff's terminal failure threshold. */
 const DEFAULT_CARD_MAX_ATTEMPTS = 3;
 /**
+ * A turn timeout is a transient failure with its own counter. It never touches
+ * `attempts`; after this many the caller releases the card instead of holding
+ * it. The backoff grows so a repeatedly timing-out turn is not a hot loop.
+ */
+export const TIMEOUT_MAX_ATTEMPTS = 3;
+export const TIMEOUT_BACKOFF_MS = Object.freeze([2, 4, 8].map((minutes) => minutes * 60_000));
+/**
  * How many crash recoveries one worker row survives before it is stopped.
  *
  * A crash is not a delivery attempt, so it has its own counter; three in a row
@@ -206,6 +213,9 @@ function normaliseRow(row, id = undefined) {
     // Crash recoveries are not delivery attempts: a crash is not a failure, but
     // a card that crashes three times in a row is a loop and is stopped.
     recoveries: Number(row.recoveries ?? 0),
+    // A turn timeout is transient and counted apart from both. It is never a
+    // reason to hold the card.
+    timeouts: Number(row.timeouts ?? 0),
     // The attempt bound's key. A question row keys on its question id, a route
     // row on the row id; `question_id` is kept as the legacy spelling.
     dispatch_key: row.dispatch_key ?? row.question_id ?? null,
@@ -620,6 +630,97 @@ function requeueCardsUnlocked(stateDir, ids, options = {}) {
     failed,
     failedIds: written.ok ? failedIds : [],
     attempts: written.ok ? attemptsById : {},
+    error: written.error,
+  };
+}
+
+/**
+ * Return timed-out handoffs to pending without spending the delivery attempt.
+ *
+ * A timeout is transient: the row gets its own counter and a 2/4/8-minute
+ * backoff. On the third one the row is left `pending` for the caller to release
+ * — the queue does not move the card, so the caller can re-check the board
+ * before it does. `attempts` and `recoveries` are never touched.
+ *
+ * @param {string} stateDir
+ * @param {string[]} ids
+ * @param {{error?: string|null, now?: number, maxTimeouts?: number}} [options]
+ * @returns {{ok: boolean, requeued: number, exhausted: number, exhaustedIds: string[],
+ *   timeouts: Record<string, number>, retryAt: string|null, error: string|null}}
+ */
+export function timeoutCards(stateDir, ids, options = {}) {
+  return locked(
+    stateDir,
+    { ok: false, requeued: 0, exhausted: 0, exhaustedIds: [], timeouts: {}, retryAt: null, error: null },
+    () => timeoutCardsUnlocked(stateDir, ids, options),
+  );
+}
+
+function timeoutCardsUnlocked(stateDir, ids, options = {}) {
+  const wanted = new Set((ids ?? []).map(String));
+  const maxTimeouts = Number(options.maxTimeouts ?? TIMEOUT_MAX_ATTEMPTS);
+  const nowMs = Number.isFinite(options.now) ? Number(options.now) : Date.now();
+  const read = readCards(stateDir);
+  if (read.error !== null) {
+    return {
+      ok: false,
+      requeued: 0,
+      exhausted: 0,
+      exhaustedIds: [],
+      timeouts: {},
+      retryAt: null,
+      error: read.error,
+    };
+  }
+  const value = read.value;
+  let requeued = 0;
+  let exhausted = 0;
+  const exhaustedIds = [];
+  const timeoutsById = {};
+  let retryAt = null;
+  for (const entry of value.cards) {
+    if (!wanted.has(String(entry.id))) continue;
+    // Only a claimed, in-flight turn can time out.
+    if (entry.status !== "processing") continue;
+    const timeouts = Number(entry.timeouts ?? 0) + 1;
+    entry.timeouts = timeouts;
+    timeoutsById[String(entry.id)] = timeouts;
+    entry.claimedAt = null;
+    entry.claimedBy = null;
+    entry.claimedByPid = null;
+    entry.lastError = options.error ?? null;
+    if (timeouts >= maxTimeouts) {
+      entry.status = "pending";
+      entry.retry_at = null;
+      exhausted += 1;
+      exhaustedIds.push(String(entry.id));
+      continue;
+    }
+    entry.status = "pending";
+    const delay = TIMEOUT_BACKOFF_MS[Math.min(timeouts, TIMEOUT_BACKOFF_MS.length) - 1];
+    entry.retry_at = new Date(nowMs + delay).toISOString();
+    retryAt = entry.retry_at;
+    requeued += 1;
+  }
+  if (requeued === 0 && exhausted === 0) {
+    return {
+      ok: true,
+      requeued: 0,
+      exhausted: 0,
+      exhaustedIds: [],
+      timeouts: {},
+      retryAt: null,
+      error: null,
+    };
+  }
+  const written = writeCards(stateDir, value);
+  return {
+    ok: written.ok,
+    requeued: written.ok ? requeued : 0,
+    exhausted: written.ok ? exhausted : 0,
+    exhaustedIds: written.ok ? exhaustedIds : [],
+    timeouts: written.ok ? timeoutsById : {},
+    retryAt: written.ok ? retryAt : null,
     error: written.error,
   };
 }
