@@ -25,7 +25,7 @@ describe("team roles: the cross-file seams", () => {
       read("skills/meerkat/references/review-protocol.md"),
       /the loop already claimed it/i,
     );
-    assert.match(read("skills/reviewer/SKILL.md"), /do not re-claim/i);
+    assert.match(read("skills/reviewer/SKILL.md"), /heartbeat it; you claim only one you pick up/i);
     assert.match(read("skills/reviewer/SKILL.md"), /interactively from `issue candidates`/i);
   });
 
@@ -95,7 +95,7 @@ describe("team roles: the cross-file seams", () => {
 
     assert.match(
       read("skills/reviewer/references/audit-playbook.md"),
-      /do not suppress it/i,
+      /surface a real problem even outside the list/i,
       "the read-only reviewer surfaces, never suppresses, an out-of-scope defect",
     );
   });

@@ -29,7 +29,8 @@ export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
  * sandbox of its own, so the process always carries the user's OS permissions.
  * The role allowlist is applied through `--tools` when full access is off.
  *
- * @param {{opts?: object, role?: string, sessionId?: string|null, skillPath?: string|null}} input
+ * @param {{opts?: object, role?: string, sessionId?: string|null, skillPath?: string|null,
+ *   systemPrompt?: string|null}} input
  * @returns {string[]}
  */
 export function sessionArgs(input = {}) {
@@ -48,6 +49,11 @@ export function sessionArgs(input = {}) {
       "--append-system-prompt",
       input.skillPath,
     );
+  }
+  // The card's context is a system prompt from the first turn, so a lost opener
+  // turn cannot leave the agent without the card, plan, flags or board rules.
+  if (typeof input.systemPrompt === "string" && input.systemPrompt !== "") {
+    args.push("--append-system-prompt", input.systemPrompt);
   }
   if (input.opts?.allowAllTools === true) {
     args.push("--approve");
@@ -92,7 +98,8 @@ function assistantText(message) {
 class PiSession {
   /**
    * @param {{opts: object, cwd: string, sessionId?: string|null, role?: string,
-   *   bin?: string, log: (line: string) => void, onEvent?: (event: object) => void}} input
+   *   skillPath?: string|null, systemPrompt?: string|null, bin?: string,
+   *   log: (line: string) => void, onEvent?: (event: object) => void}} input
    */
   constructor(input) {
     this.opts = input.opts;
@@ -305,6 +312,7 @@ export function createPiPool(input) {
         sessionId: options.sessionId ?? null,
         role: options.role ?? "worker",
         skillPath: options.skillPath ?? null,
+        systemPrompt: options.systemPrompt ?? null,
         bin: input.bin,
         env: input.env,
         log: input.log,

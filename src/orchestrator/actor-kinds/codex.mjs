@@ -50,21 +50,31 @@ export function threadPolicy(input = {}) {
  * what makes the role permanent for the session; the directory note keeps the
  * skill's relative `references/...` paths resolvable from the card's cwd.
  *
+ * The card's own system prompt is appended after the skill body, exactly as a
+ * second system message; a role-less card still carries that prompt alone.
+ *
  * @param {string|null|undefined} skillPath
+ * @param {string|null|undefined} [systemPrompt]
  * @returns {string|null}
  */
-export function skillDeveloperInstructions(skillPath) {
-  if (typeof skillPath !== "string" || skillPath === "") return null;
-  try {
-    const body = readFileSync(skillPath, "utf8");
-    return (
-      `Skill directory: ${dirname(skillPath)}.\n` +
-      "Relative paths in this skill resolve against that directory.\n\n" +
-      body
-    );
-  } catch {
-    return null;
+export function skillDeveloperInstructions(skillPath, systemPrompt) {
+  const parts = [];
+  if (typeof skillPath === "string" && skillPath !== "") {
+    try {
+      const body = readFileSync(skillPath, "utf8");
+      parts.push(
+        `Skill directory: ${dirname(skillPath)}.\n` +
+        "Relative paths in this skill resolve against that directory.\n\n" +
+        body,
+      );
+    } catch {
+      // A missing skill file contributes nothing; the system prompt still does.
+    }
   }
+  if (typeof systemPrompt === "string" && systemPrompt !== "") {
+    parts.push(systemPrompt);
+  }
+  return parts.length === 0 ? null : parts.join("\n\n");
 }
 
 /**
@@ -120,7 +130,7 @@ function serverReply(method, params) {
 class CodexSession {
   /**
    * @param {{pool: object, opts: object, cwd: string, sessionId?: string|null,
-   *   role?: string, skillPath?: string|null}} input
+   *   role?: string, skillPath?: string|null, systemPrompt?: string|null}} input
    */
   constructor(input) {
     this.pool = input.pool;
@@ -135,7 +145,10 @@ class CodexSession {
     this.closed = false;
     this.current = null;
     this.text = "";
-    this.developerInstructions = skillDeveloperInstructions(input.skillPath ?? null);
+    this.developerInstructions = skillDeveloperInstructions(
+      input.skillPath ?? null,
+      input.systemPrompt ?? null,
+    );
     this.ready = this.open(input.sessionId ?? null);
   }
 
@@ -366,6 +379,7 @@ export function createCodexPool(input) {
         sessionId: options.sessionId ?? null,
         role: options.role,
         skillPath: options.skillPath ?? null,
+        systemPrompt: options.systemPrompt ?? null,
       });
       sessions.add(session);
       return session;

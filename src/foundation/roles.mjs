@@ -127,6 +127,9 @@ export const ROLES_LIMITS = Object.freeze({
   responsibilities: 16,
   boundaries: 16,
   shapes: 16,
+  // The static card-session system prompt is pasted into every session's argv
+  // on claude/pi; 8 KiB keeps a careless role file from crowding the context.
+  systemPromptBytes: 8 * 1024,
 });
 
 export const ROLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -140,6 +143,22 @@ const isObject = (value) => value !== null && typeof value === "object" && !Arra
 
 /** @param {unknown} value */
 const nonEmptyString = (value) => typeof value === "string" && value.trim() !== "";
+
+/**
+ * A trimmed string bounded by **bytes**, since the value reaches a process argv.
+ *
+ * @param {unknown} value
+ * @param {number} maxBytes
+ * @returns {string}
+ */
+function boundedString(value, maxBytes) {
+  if (!nonEmptyString(value)) return "";
+  const text = value.trim();
+  if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
+  let cut = text;
+  while (Buffer.byteLength(cut, "utf8") > maxBytes) cut = cut.slice(0, -1);
+  return cut.trimEnd();
+}
 
 /** Read at most `limit` bytes; returns `{ text, truncated }`. */
 function readBounded(path, limit) {
@@ -309,6 +328,10 @@ function normalizeRole(raw, skillDir, kind, warnings) {
     responsibilities: stringList(raw.responsibilities, ROLES_LIMITS.responsibilities),
     boundaries: stringList(raw.boundaries, ROLES_LIMITS.boundaries),
     shapes: stringList(raw.shapes, ROLES_LIMITS.shapes),
+    // The static half of the card-session system prompt; the supervisor formats
+    // the runtime half at open time. A role-level field: the first kind hit wins
+    // (the same rule as `title`/`boundaries`), so it never enters `variantOf`.
+    systemPrompt: boundedString(raw.system_prompt, ROLES_LIMITS.systemPromptBytes),
     skillDir,
     platform: kind,
     installedOn: [kind],

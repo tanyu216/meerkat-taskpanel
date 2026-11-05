@@ -27,7 +27,23 @@ import { isEntryPoint } from "./lib/entry-guard.mjs";
 const ROLE_SCHEMA = "meerkat-role";
 const ROLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const ROLE_LANES = ["worker", "reviewer"];
-const LIMITS = Object.freeze({ responsibilities: 16, boundaries: 16, shapes: 16, roleJsonBytes: 32 * 1024, workflowBytes: 64 * 1024 });
+const LIMITS = Object.freeze({ responsibilities: 16, boundaries: 16, shapes: 16, roleJsonBytes: 32 * 1024, workflowBytes: 64 * 1024, systemPromptBytes: 8 * 1024 });
+
+// The static half of a card session's system prompt; the supervisor formats the
+// runtime half (agent, card, plan, flags) at open time. Mirrors the worker-lane
+// body in the five role skills.
+const DEFAULT_SYSTEM_PROMPT = [
+  "Read the task card first; it is authoritative for this card. Write and maintain the plan in the process directory.",
+  "The supervisor owns card.md and refreshes it from the board.",
+  "Carry the Flags above on every write.",
+  "Board: heartbeat this card at least every 10 minutes and deliver at in_review with a report;",
+  "the loop holds the claim and closes the card at done.",
+  "  taskctl issue heartbeat <ref> <flags>",
+  "  taskctl issue deliver <ref> --report-file - <flags>",
+  "For a question, route it to the director: leave a `question` comment and hold the card with `issue wait`.",
+  '  taskctl comment add <ref> --kind question --body "..." <flags>',
+  "  taskctl issue wait <ref> --question <id> <flags>",
+].join("\n");
 
 const USAGE = `scaffold-role — render one role skill from a spec
 
@@ -82,6 +98,10 @@ function validateSpec(raw) {
   else if (raw.responsibilities.length > LIMITS.responsibilities) errors.push(`at most ${LIMITS.responsibilities} responsibilities`);
   if (!isStringList(raw.boundaries)) errors.push("boundaries must be an array of strings");
   else if (raw.boundaries.length > LIMITS.boundaries) errors.push(`at most ${LIMITS.boundaries} boundaries`);
+  if (raw.system_prompt !== undefined && !isString(raw.system_prompt)) errors.push("system_prompt must be a non-empty string when set");
+  else if (isString(raw.system_prompt) && Buffer.byteLength(raw.system_prompt.trim(), "utf8") > LIMITS.systemPromptBytes) {
+    errors.push(`system_prompt must stay under ${LIMITS.systemPromptBytes} bytes`);
+  }
   if (!Array.isArray(raw.workflow) || raw.workflow.length === 0) errors.push("workflow must be a non-empty array");
   else {
     for (const [index, step] of raw.workflow.entries()) {
@@ -106,6 +126,7 @@ function validateSpec(raw) {
     shapes: raw.shapes.map(line),
     responsibilities: raw.responsibilities.map(line),
     boundaries: raw.boundaries.map(line),
+    system_prompt: isString(raw.system_prompt) ? raw.system_prompt.trim() : DEFAULT_SYSTEM_PROMPT,
     workflow: raw.workflow.map((step) => ({ title: line(step.title), body: String(step.body).trim() })),
     self_check: raw.self_check.map(line),
     default_reviewer: raw.default_reviewer === true,
@@ -157,12 +178,12 @@ function renderSkill(role) {
     `## Hard limits`,
     ``,
     bullet(role.boundaries),
-    `- Do not accept your own work or move a card to \`done\`.`,
-    `- Do not merge, rebase or push from this card.`,
+    `- Stop at \`in_review\`; the card's \`acceptance_mode\` names the closer.`,
+    `- Deliver the committed tree; the supervisor's acceptance pass lands it.`,
     ...(reviewer
       ? [
-          `- Review cards only: never route or claim an ordinary card.`,
-          `- Never enter \`awaiting\`; insufficient evidence is a \`VERDICT: REJECT\`.`,
+          `- Review cards only: ordinary cards belong to the worker roles.`,
+          `- Stay in the review turn; insufficient evidence is a \`VERDICT: REJECT\`.`,
           ``,
           `Your review prompt is \`references/reviewer-prompt.md\`.`,
         ]
@@ -184,6 +205,7 @@ function renderRoleJson(role) {
     shapes: role.shapes,
     responsibilities: role.responsibilities,
     boundaries: role.boundaries,
+    system_prompt: role.system_prompt,
     self_check: "references/self-check.md",
     reviewer_prompt: role.reviewer_prompt,
   };
