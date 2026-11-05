@@ -13,6 +13,7 @@
 
 import { spawn } from "node:child_process";
 
+import { claudeAllowedTools } from "../../foundation/role-tools.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
@@ -26,17 +27,9 @@ export const DEFAULT_TURN_TIMEOUT_MS = 60 * 60 * 1000;
  */
 export function allowedToolsFor(role) {
   // A card session owns its whole card: nothing spawns a subagent, so no role
-  // carries `Agent`/`Task`. The reviewer runs the project's gate itself, hence
-  // the command entries; it never edits.
-  switch (role) {
-    case "director":
-      return "Read,Grep,Glob,Bash(taskctl *),Bash(node *)";
-    case "reviewer":
-      return "Read,Grep,Glob,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)";
-    case "worker":
-    default:
-      return "Read,Edit,Write,Grep,Glob,Bash(taskctl *),Bash(node *),Bash(git *)";
-  }
+  // carries `Agent`/`Task`. The table lives once in foundation so the installer
+  // renders the same surface (`src/foundation/role-tools.mjs`).
+  return claudeAllowedTools(String(role ?? "worker"));
 }
 
 /**
