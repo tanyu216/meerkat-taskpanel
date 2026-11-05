@@ -2425,6 +2425,9 @@ export function createSessionPool(input = {}) {
    * @returns {Promise<{terminal: boolean}>}
    */
   async function settleFailedHandoff(row, review, error) {
+    // A timeout has its own counter and its own interrupt re-check; dispatch
+    // first so the timeout arm is guarded by `settleTimedOutHandoff` alone.
+    if (isTurnTimeoutError(error)) return settleTimedOutHandoff(row, review, error);
     // TP-0125 — a marker can arrive during the settle's own awaits (a board
     // re-read, a comment write). It outranks the failure: the card left the
     // claim cycle, so this turn must not spend an attempt.
@@ -2432,7 +2435,6 @@ export function createSessionPool(input = {}) {
       settleInterrupted(row, sessions.get(row.worker_key));
       return { terminal: true };
     }
-    if (isTurnTimeoutError(error)) return settleTimedOutHandoff(row, review, error);
     const label = review ? "review " : "worker ";
     const result = requeueCards(stateDir, [row.id], { error });
     if (result.ok !== true) {
