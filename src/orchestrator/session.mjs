@@ -130,6 +130,14 @@ const QUESTION_BATCH_MAX = 8;
 const QUESTION_RETRY_BACKOFF_MS = 30_000;
 
 /**
+ * The director lane's own dispatch bound: a question or route row gets two
+ * turns, then the card is parked for a human. Named and exported because it is
+ * a different bound from the worker handoff's three, and
+ * `test/contract/recovery-inventory.test.mjs` pins it.
+ */
+export const DIRECTOR_MAX_ATTEMPTS = 2;
+
+/**
  * How often the loop pulses a claimed card while its turn is in flight. Below
  * the board's 10-minute fresh window (and the 30-minute stale window), so a long
  * turn is never mistaken for a stale claim. `opts.cardHeartbeatMs` is a test
@@ -1167,7 +1175,7 @@ export function createSessionPool(input = {}) {
           // the answer and only missed the release, and the worker is holding for
           // one bounded wait. The attempt budget is two turns per question.
           const retried = requeueCards(stateDir, unsettled.map((card) => card.id), {
-            maxAttempts: 2,
+            maxAttempts: DIRECTOR_MAX_ATTEMPTS,
             error: "director turn did not settle the question",
             retryAt: new Date(now() + QUESTION_RETRY_BACKOFF_MS).toISOString(),
           });
@@ -1206,7 +1214,7 @@ export function createSessionPool(input = {}) {
       // runs every second, so the row waits out the same backoff as an unsettled
       // turn, with the same two-turn budget.
       requeueCards(stateDir, claimed.cards.map((card) => card.id), {
-        maxAttempts: 2,
+        maxAttempts: DIRECTOR_MAX_ATTEMPTS,
         error: outcome?.error ?? "question turn failed",
         retryAt: new Date(now() + QUESTION_RETRY_BACKOFF_MS).toISOString(),
       });

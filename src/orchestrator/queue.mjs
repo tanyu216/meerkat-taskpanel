@@ -28,7 +28,7 @@ export { QUEUE_FILES } from "../foundation/loop-state.mjs";
 import { LIVE_STATUSES, QUEUE_FILES } from "../foundation/loop-state.mjs";
 
 /** A card handoff's terminal failure threshold. */
-const DEFAULT_CARD_MAX_ATTEMPTS = 3;
+export const DEFAULT_CARD_MAX_ATTEMPTS = 3;
 /**
  * A turn timeout is a transient failure with its own counter. It never touches
  * `attempts`; after this many the caller releases the card instead of holding
@@ -42,7 +42,7 @@ export const TIMEOUT_BACKOFF_MS = Object.freeze([2, 4, 8].map((minutes) => minut
  * A crash is not a delivery attempt, so it has its own counter; three in a row
  * means the same session cannot be restored and replaying it is the loop.
  */
-const DEFAULT_RECOVERY_MAX = 3;
+export const DEFAULT_RECOVERY_MAX = 3;
 
 /**
  * Rows that are history, not work. A row's id is deterministic (`<card>-<role>`),
