@@ -503,12 +503,21 @@ narrows every human-facing status surface to:
 |---|---|
 | `backlog` | `todo`, `canceled` |
 | `todo` | `backlog`, `canceled` |
-| `in_review` | `done`, `in_progress` (Accept / Send back) |
-| `in_progress`, `awaiting`, `blocked`, `done`, `canceled` | none |
+| `in_progress` | `canceled`, `todo`, `backlog` (TP-0125 — leaving the work) |
+| `in_review` | `done`, `in_progress` (Accept / Send back), `canceled` |
+| `awaiting`, `blocked`, `done`, `canceled` | none |
 
-`canceled → backlog` is deliberately absent: `canceled` is terminal and only the audited
-`reopen → todo` edge exists. That edge is not in the table either — it needs a reason, so it
-belongs to the drawer's dedicated Reopen control (B09), never the generic menu or a drop.
+`in_progress → in_review|done` is deliberately absent: delivery is the agent's `taskctl` act,
+and the board has no deliver write. `canceled → backlog` is deliberately absent: `canceled` is
+terminal and only the audited `reopen → todo` edge exists. That edge is not in the table either —
+it needs a reason, so it belongs to the drawer's dedicated Reopen control (B09), never the
+generic menu or a drop.
+
+A `canceled` target — from the card menu, a drop, or the drawer combo — opens the shared
+confirmation (`web/src/stores/confirm.js`, `ConfirmDialog.vue`, hooks `[data-confirm-dialog]` /
+`-panel` / `-body` / `-accept` / `-dismiss`); dismissing writes nothing. The dialog is the
+topmost layer: Escape keeps the card. A confirmed cancel also interrupts the loop's running
+turn (ADR 0017).
 
 The surfaces: `[data-card-menu]` stays on every card but is **disabled** when the table row is
 empty (the part set is invariant; disabling keeps the card's geometry), and the shared

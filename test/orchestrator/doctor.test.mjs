@@ -204,6 +204,17 @@ describe("loop doctor — the report", () => {
     assert.deepEqual(report.handoff_unconsumed, []);
   });
 
+  it("counts an interrupted row as its own terminal state (TP-0125)", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir);
+    seedState(dir, {
+      cards: [{ status: "pending" }, { status: "processing" }, { status: "interrupted" }],
+    });
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+    assert.equal(report.queue.interrupted, 1);
+    assert.equal(report.queue.depth, 2, "an interrupted row is history, not queue depth");
+  });
+
   it("covers every surface in one pass", () => {
     const dir = tempDir();
     const { script } = sentinel(dir);

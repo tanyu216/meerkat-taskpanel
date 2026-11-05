@@ -49,8 +49,12 @@ const DEFAULT_RECOVERY_MAX = 3;
  * so once an old row is terminal a new handoff for the same card carries the
  * *same* id (`enqueueCard`). Every mutator must therefore skip terminal rows, or
  * one requeue inflates — and can resurrect — the retained history.
+ *
+ * `interrupted` (TP-0125) is terminal on purpose: a turn whose card left the
+ * claim cycle has no work left, and it must never spend an attempt, a timeout or
+ * a recovery. The row stays for inspection until the ordinary retention prune.
  */
-const TERMINAL_CARD_STATUSES = new Set(["done", "failed"]);
+const TERMINAL_CARD_STATUSES = new Set(["done", "failed", "interrupted"]);
 const isTerminalCard = (entry) => TERMINAL_CARD_STATUSES.has(String(entry?.status ?? ""));
 
 /**
@@ -503,7 +507,7 @@ function retireLegacyDispatchedUnlocked(stateDir) {
  *
  * @param {string} stateDir
  * @param {string[]} ids
- * @param {{status?: "done"|"failed", error?: string|null}} [options]
+ * @param {{status?: "done"|"failed"|"interrupted", error?: string|null, now?: string}} [options]
  */
 export function completeCards(stateDir, ids, options = {}) {
   return locked(stateDir, { ok: false, error: null }, () =>

@@ -14,6 +14,7 @@ import { computed, onMounted, onUnmounted } from "vue";
 import { installAnchoredMenus } from "./lib/anchored-menu.js";
 import { closeFloatingControls, installLightDismiss } from "./lib/light-dismiss.js";
 import { initBoard, reloadConflict, board, closeDetail } from "./stores/board.js";
+import { confirm, dismissConfirm } from "./stores/confirm.js";
 import { applyLocation } from "./stores/route.js";
 import { accessOpen, closeMoveMenu, createProjectOpen, createTaskOpen, moveMenu, view } from "./stores/ui.js";
 
@@ -26,6 +27,7 @@ import Sidebar from "./components/shell/Sidebar.vue";
 import TopBar from "./components/shell/TopBar.vue";
 import ToastRegion from "./components/shell/ToastRegion.vue";
 import DetailDrawer from "./components/detail/DetailDrawer.vue";
+import ConfirmDialog from "./components/common/ConfirmDialog.vue";
 import CreateTaskModal from "./components/create/CreateTaskModal.vue";
 import CreateProjectModal from "./components/create/CreateProjectModal.vue";
 import AccessPanel from "./components/review/AccessPanel.vue";
@@ -41,6 +43,9 @@ import AccessPanel from "./components/review/AccessPanel.vue";
  */
 function onKeydown(event) {
   if (event.key !== "Escape") return;
+  // TP-0125 — the confirmation is the topmost layer: Escape keeps the card
+  // (the safe choice) before it dismisses anything underneath.
+  if (confirm.open) return dismissConfirm();
   closeFloatingControls(document);
   if (moveMenu.value) return closeMoveMenu();
   if (createTaskOpen.value) return (createTaskOpen.value = false);
@@ -202,6 +207,7 @@ onUnmounted(() => {
     </main>
 
     <DetailDrawer />
+    <ConfirmDialog />
     <CreateTaskModal />
     <CreateProjectModal />
     <AccessPanel />

@@ -80,9 +80,9 @@ The whitelist is the whole state machine:
 ```text
 backlog     → todo, canceled
 todo        → backlog, in_progress, blocked, canceled        (an epic also → in_review)
-in_progress → in_review, blocked, todo, canceled, awaiting
+in_progress → in_review, blocked, todo, backlog, canceled, awaiting
 awaiting    → in_progress, todo, canceled
-in_review   → done, in_progress, blocked
+in_review   → done, in_progress, blocked, canceled
 blocked     → todo, in_progress, in_review, canceled
 done        → todo
 canceled    → todo
@@ -93,9 +93,13 @@ Three rules outside the table are load-bearing:
 - **`x → x` is not a transition.** A stale `in_progress` is recovered with `issue claim`, not a
   self-move.
 - **An unknown status is `VALIDATION_FAILED`**, not `INVALID_TRANSITION`.
-- **`in_review → canceled` does not exist.** Abandoning a review takes two moves through
-  `in_progress`, and both exits from `in_review` start a new round — there is no quiet cancel
-  that leaves the round untouched.
+- **`in_review → canceled` is one move** (TP-0125). It is terminal and does **not** start a new
+  round; only the rework exits from `in_review` (`→ in_progress`, `→ blocked`) do.
+- **Leaving the claim cycle interrupts the turn** (TP-0125). Any move out of
+  `in_progress`/`awaiting`/`in_review`/`blocked` stops the loop's running turn, records the queue
+  row `interrupted` (no attempt, timeout or recovery), and discards the worker session and
+  transcript — the next claim is a **fresh** conversation (ADR 0017). `in_progress → backlog` is
+  a direct edge for the same reason: the `todo` hop would re-enter dispatch on the way out.
 
 The two overlays are additive, never replacements: the **epic overlay** adds one pair, and the
 **`off`-mode overlay** adds `in_progress → done`. Both are keyed on an explicitly supplied
@@ -144,8 +148,10 @@ executor's card. Releasing on entry would silently hand the lock to whoever perf
 bounce, and the original executor's next heartbeat would be refused with `EXECUTION_ACTIVE`.
 
 The release on leaving the cycle is not cosmetic: the schema refuses a claim on a `backlog`
-card, while `in_progress → todo` and `todo → backlog` are both legal. A leaked `claimed_by`
-across those two legs used to surface as a raw `CHECK constraint failed` in the UI.
+card, while `in_progress → todo`, `todo → backlog` and (TP-0125) the direct
+`in_progress → backlog` are legal. A leaked `claimed_by` across the two-leg path used to surface
+as a raw `CHECK constraint failed` in the UI. A release also **interrupts the running turn** and
+discards the session (ADR 0017): the claim and the conversation end together.
 
 Heartbeats refresh `heartbeat_at` and nothing else, only in `in_progress`, only from the
 holder. The thresholds are one clock with three readings: the holder may re-claim after ten
@@ -167,17 +173,19 @@ read can claim blocked work.
 - **`awaiting`** is the attention overlay. Only `in_progress → awaiting` enters it, with an
   enumeration (`E1`…`E5`) and, for an agent, a `question` comment written in the same
   transaction. **Any human comment answers it**, whatever its kind, and re-queues the card to
-  `todo` in that transaction — dispatch reopens the card's worker session (same round, same
-  workspace) and sends it the answer. The board does not read the prose; the resumed worker
-  judges whether the answer is complete. A `decision`/`confirm`/`change` comment remains the
-  explicit record, not the resume gate.
+  `todo` in that transaction — the move leaves the claim cycle, so it **interrupts the parked
+  turn** and the next claim is a **fresh worker** (same round, same workspace) that re-reads the
+  answer from the comments (ADR 0017). The board does not read the prose; the new worker judges
+  whether the answer is complete. A `decision`/`confirm`/`change` comment remains the explicit
+  record, not the resume gate.
 
 An agent question the **director** can decide is not `awaiting`: the card stays
-`in_progress`, the worker holds the turn with `taskctl issue wait` (bounded), and the
-director's **release** (`in_progress → todo`) resumes it — a `note` alone is not a settle.
-The same session continues in-turn on `answered` (re-claiming the card if the release left
-it `todo`); `escalated`, `moved`, `timeout` and `error` end the turn, and the session is
-resumed by id when the answer lands.
+`in_progress`, the worker holds the turn with `taskctl issue wait` (bounded). The director's
+**release** (`in_progress → todo`) **interrupts that turn** — a `note` alone is not a settle —
+and the card is claimed again by a fresh session, which reads the answer from the comments. The
+same session continues in-turn on `answered` while the claim survives; `escalated`, `moved`,
+`timeout` and `error` end the turn, and the session is resumed by id when the answer lands inside
+the same claim.
 
 `awaiting → in_progress` is a **resume of the same attempt**, not a rework: the round does not
 move and the round's report, once written, still counts. The forbidden exits are the point:
@@ -249,6 +257,7 @@ A round is the unit of evidence. It is bumped by exactly two families of move:
 | `in_review → in_progress` | **+1** |
 | `in_review → blocked` | **+1** |
 | `in_review → done` | unchanged |
+| `in_review → canceled` | unchanged — terminal, not a rework (TP-0125) |
 | `awaiting → in_progress` | unchanged |
 | `awaiting → todo` | unchanged |
 | `done`/`canceled → todo` | **+1** |
@@ -318,8 +327,8 @@ dispatch                 todo
 
 `done` is reachable only from `in_review`, so a verdict is a delivery like any other and the
 report gate applies to it. The card can also be canceled (its original was canceled), sent back
-to `todo` for another review attempt, or moved out by the two-hop cancel; it can never be
-reopened, and it is never reviewed again.
+to `todo` for another review attempt, or canceled in one move (which also interrupts a running
+reviewer turn); it can never be reopened, and it is never reviewed again.
 
 ### 4.2 Dispatch
 
@@ -551,10 +560,13 @@ The same rules are enforced wherever a writer can enter:
 | **storage** (`0001_init.sql` triggers + repositories) | rows, not actors or prose | the whitelist, the round bump, the evidence row, the marker, the baseline |
 
 The **web UI** is a narrower writer, not a fourth enforcement layer: it offers only the
-human-facing subset — release (`backlog ↔ todo`), abandon (`backlog`/`todo → canceled`), the
-audited reopen (`done`/`canceled → todo`) and acceptance/send-back (`in_review → done` /
-`in_progress`) — and disables every other status row. It never widens what the three layers
-above permit; `src/core/domain/status.mjs` remains the whitelist.
+human-facing subset — release (`backlog ↔ todo`), abandon (`backlog`/`todo`/`in_progress`/
+`in_review` → `canceled`, confirmed first), release from a claimed card
+(`in_progress → todo|backlog`), the audited reopen (`done`/`canceled → todo`) and
+acceptance/send-back (`in_review → done` / `in_progress`) — and disables every other status
+row. `in_progress → in_review|done` is deliberately absent: delivery is the agent's `taskctl`
+act. It never widens what the three layers above permit; `src/core/domain/status.mjs` remains
+the whitelist.
 
 The triggers that carry the lifecycle:
 
@@ -618,8 +630,9 @@ watcher.
   identity, crash recovery.
 - **D3 — a review is a card.** *Why:* it is claimable and retryable, it records the verdict on
   the artefact the reviewer owns, and a crash between the verdict and the close is
-  recoverable. *Cost:* a second claimable row per delivery, a two-hop cancel, and the
-  no-parent/no-reopen/no-review-of-review constraints that keep its shape from drifting.
+  recoverable. *Cost:* a second claimable row per delivery, a cancel that must also interrupt a
+  running reviewer turn (ADR 0017), and the no-parent/no-reopen/no-review-of-review constraints
+  that keep its shape from drifting.
 - **D4 — the board plans, the loop writes.** *Why:* one decision implementation cannot disagree
   with itself, and the write path stays where the host-local ledger and supervisor live.
   *Cost:* the loop must be running; without it `in_review` is a parking state.
@@ -630,7 +643,8 @@ watcher.
   a review card left open is. *Cost:* alerts and a liveness watch for the reviewer.
 - **D7 — cancellation is not acceptance.** *Why:* `canceled` is legal from most stages, has no
   child guard and needs no evidence; allowing it to close a container would silently orphan
-  work. *Cost:* abandoning a review takes two moves.
+  work. *Cost:* abandoning a review is one move, but it must interrupt the reviewer's turn and
+  discard its session (ADR 0017).
 - **D8 — the mode selects the closer, not the review.** *Why:* a person choosing to close their
   own card must not lose the second pair of eyes. *Cost:* a `human` card legitimately waits in
   `in_review` with a finished review, and silence is the implemented behaviour.

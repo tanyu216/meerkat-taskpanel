@@ -207,8 +207,10 @@ taskctl issue move <ref> awaiting --awaiting-reason E2 --question "what you need
 
 The move and the `question` comment are one transaction; the loop never writes a decision
 kind. The card's `awaiting_reason` stays the category (`E1`–`E5`); the question is the payload
-(`waitingPayload`, the newest `question`). Entry, exits and the resume rule:
-[`lifecycle/transitions.md` §1](lifecycle/transitions.md#1-the-vocabulary).
+(`waitingPayload`, the newest `question`). Entry, exits and the release rule:
+[`lifecycle/transitions.md` §1](lifecycle/transitions.md#1-the-vocabulary). A claim-cycle exit
+(e.g. `awaiting → todo`) **interrupts the turn**; the next claim is a fresh worker that
+re-reads the comments (ADR 0017).
 
 Who answers what no role may decide: `--opened-by human` means the interactive session that
 opened the work may ask its own operator in that conversation; the default (`supervisor`, for

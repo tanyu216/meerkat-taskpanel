@@ -422,9 +422,11 @@ describe("web/board — the human-facing move table", () => {
   const EXPECTED = {
     backlog: ["todo", "canceled"],
     todo: ["backlog", "canceled"],
-    in_progress: [],
+    // TP-0125 — a person releases a claimed card, and a delivered one can be
+    // canceled in one move. Delivery itself stays a `taskctl` act.
+    in_progress: ["canceled", "todo", "backlog"],
     awaiting: [],
-    in_review: ["done", "in_progress"],
+    in_review: ["done", "in_progress", "canceled"],
     blocked: [],
     done: [],
     canceled: [],
@@ -451,6 +453,14 @@ describe("web/board — the human-facing move table", () => {
         assert.ok(canTransition(from, to, null, null), `${from} → ${to} must be domain-legal`);
       }
     }
+  });
+
+  it("never offers delivery from in_progress — that is taskctl-only (TP-0125)", async () => {
+    const { allowedTargets } = await freshBoard();
+    assert.equal(allowedTargets("in_progress").includes("in_review"), false);
+    assert.equal(allowedTargets("in_progress").includes("done"), false);
+    // The domain has the `off` direct-done edge; the board must not surface it.
+    assert.equal(canTransition("in_progress", "done", null, "off"), true, "the domain keeps the edge");
   });
 });
 
@@ -1875,5 +1885,81 @@ describe("board store — the waiting queue is not narrowed by board filters", (
 
     mod.writeAssigneeFilter("jobs");
     assert.equal(mod.waitingCount.value, 0, "the assignee condition does change the queue");
+  });
+});
+
+/* --------------------------------- the shared confirmation (TP-0125) */
+
+describe("web/confirm — one destructive gate", () => {
+  let seq = 0;
+  const freshConfirm = () => import(`../../web/src/stores/confirm.js?fresh=${++seq}`);
+
+  it("opens with the requested keys and runs the write once on accept", async () => {
+    const { askConfirm, acceptConfirm, confirm } = await freshConfirm();
+    let runs = 0;
+    askConfirm({
+      titleKey: "t",
+      bodyKey: "b",
+      actionKey: "a",
+      run: async () => {
+        runs += 1;
+      },
+    });
+    assert.equal(confirm.open, true);
+    assert.equal(confirm.titleKey, "t");
+    assert.equal(await acceptConfirm(), true);
+    assert.equal(runs, 1);
+    assert.equal(confirm.open, false, "a completed write closes the dialog");
+    assert.equal(confirm.run, null, "and forgets the write");
+  });
+
+  it("dismisses without running, and ignores a dismissal while busy", async () => {
+    const { askConfirm, dismissConfirm, confirm } = await freshConfirm();
+    let runs = 0;
+    askConfirm({ titleKey: "t", bodyKey: "b", actionKey: "a", run: () => { runs += 1; } });
+    confirm.busy = true;
+    assert.equal(dismissConfirm(), false, "busy ignores dismiss");
+    assert.equal(confirm.open, true);
+    confirm.busy = false;
+    assert.equal(dismissConfirm(), true);
+    assert.equal(confirm.open, false);
+    assert.equal(runs, 0);
+  });
+
+  it("rethrows the write's failure after closing, so its owner can surface it", async () => {
+    const { askConfirm, acceptConfirm, confirm } = await freshConfirm();
+    askConfirm({
+      titleKey: "t",
+      bodyKey: "b",
+      actionKey: "a",
+      run: async () => {
+        throw new Error("refused");
+      },
+    });
+    await assert.rejects(() => acceptConfirm(), /refused/);
+    assert.equal(confirm.open, false, "the dialog closes on a refusal too");
+    assert.equal(confirm.busy, false);
+  });
+
+  it("a second press while busy does not run the write twice", async () => {
+    const { askConfirm, acceptConfirm, confirm } = await freshConfirm();
+    let runs = 0;
+    let release;
+    askConfirm({
+      titleKey: "t",
+      bodyKey: "b",
+      actionKey: "a",
+      run: () =>
+        new Promise((resolve) => {
+          runs += 1;
+          release = resolve;
+        }),
+    });
+    const first = acceptConfirm();
+    assert.equal(await acceptConfirm(), false, "the busy dialog refuses a second accept");
+    assert.equal(confirm.busy, true);
+    release();
+    assert.equal(await first, true);
+    assert.equal(runs, 1);
   });
 });
