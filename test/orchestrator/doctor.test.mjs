@@ -171,6 +171,14 @@ describe("loop doctor — the report", () => {
         delivery_round: 1,
         meta: { stage_handoff: "required", handoff_consumed_round: "1" },
       },
+      {
+        identifier: "T-403",
+        title: "Consumed, refs recorded in the value",
+        status: "done",
+        status_changed_at: at(30 * MIN),
+        delivery_round: 1,
+        meta: { stage_handoff: "required", handoff_consumed_round: "1 (T-999)" },
+      },
     ];
     const { script } = sentinel(dir, { tasks });
     seedState(dir, { cards: [] });

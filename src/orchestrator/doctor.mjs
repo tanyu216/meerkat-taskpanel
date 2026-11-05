@@ -32,6 +32,7 @@ import { dirname, join } from "node:path";
 
 import { ROUTE_UNASSIGNED_MS } from "../foundation/constants.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
+import { markerMatches } from "../foundation/handoff-round.mjs";
 import { QUEUE_FILES, SESSION_DEFAULTS } from "../foundation/loop-state.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
@@ -849,8 +850,8 @@ export function doctorReport(opts, env = process.env, deps = {}) {
             if (String(meta.stage_handoff ?? "") !== "required") return false;
             const round = Number(task?.delivery_round);
             if (!Number.isFinite(round)) return false;
-            if (Number(meta.handoff_consumed_round) === round) return false;
-            if (Number(meta.handoff_declined_round) === round) return false;
+            if (markerMatches(meta.handoff_consumed_round, round)) return false;
+            if (markerMatches(meta.handoff_declined_round, round)) return false;
             const ref = String(task?.identifier ?? "");
             if (ref === "" || openTriage.has(ref)) return false;
             const at = Date.parse(String(task?.status_changed_at ?? ""));

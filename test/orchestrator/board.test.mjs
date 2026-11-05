@@ -236,6 +236,7 @@ describe("director lanes — read the wire projection the board actually sends",
       doneCard("T-2", { stage_handoff: "required", handoff_consumed_round: "2" }),
       doneCard("T-3", { stage_handoff: "required", handoff_declined_round: 2 }),
       doneCard("T-4", { stage_handoff: "required", handoff_consumed_round: "1" }),
+      doneCard("T-6", { stage_handoff: "required", handoff_consumed_round: "2 (T-1)" }),
       taskToWire({
         id: "T-5", identifier: "T-5", projectId: "P", title: "old", status: "done",
         kind: "task", priority: "P2", assigneeId: "alice", assigneeKind: "agent",

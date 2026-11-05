@@ -69,9 +69,10 @@ One owner per module, one reason to change:
   and the review-identity reader every layer shares.
 - **`src/core/commands/`** — one command per board operation; the CLI and the server are thin
   adapters over these.
-- **`src/foundation/`** — everything both front doors agree on. Two helpers are load-bearing
-  singletons: `review-identity.mjs` (the only reader of a review card's identity) and
-  `constants.mjs` (the only home for a shared literal).
+- **`src/foundation/`** — everything both front doors agree on. Three helpers are load-bearing
+  singletons: `review-identity.mjs` (the only reader of a review card's identity),
+  `handoff-round.mjs` (the only reader of a handoff round marker) and `constants.mjs` (the only
+  home for a shared literal).
 - **`src/orchestrator/`** — the loop. It carries no board discovery or token code; that belongs
   to the CLI it spawns.
 
