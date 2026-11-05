@@ -2243,14 +2243,14 @@ describe("worktree admission", () => {
     const calls = [];
     const admission = admissionFor(f, gitRunner(calls));
     const action = { identifier: "T-1", agent: "alice" };
-    const card = { id: "u1", identifier: "T-1", project: "P", delivery_round: 1 };
+    const card = { id: "u1", identifier: "T-1", project: "P", delivery_round: 1, title: "Fix the rail" };
     assert.equal((await admission.admit(action, card)).ok, true);
 
-    const wt = join(f.app, ".worktrees", "T-1");
+    const wt = join(f.app, ".worktrees", "T-1-fix-the-rail");
     assert.equal(admission.dirFor("T-1"), wt);
     const record = findWorkspace(f.dir, { identifier: "T-1", round: 1 });
     assert.equal(record.path, wt);
-    assert.equal(record.branch, "lane/T-1");
+    assert.equal(record.branch, "lane/T-1-fix-the-rail");
     assert.equal(record.project_dir, f.app);
     assert.ok(calls.some((argv) => argv.includes("worktree") && argv.includes("add")));
 
@@ -2264,7 +2264,7 @@ describe("worktree admission", () => {
     const [entry] = readCards(f.dir).value.cards;
     assert.equal(entry.target_dir, wt, "the worker runs in the worktree");
     assert.equal(entry.project_dir, f.app, "the project checkout stays the role root");
-    assert.equal(entry.workspace.branch, "lane/T-1");
+    assert.equal(entry.workspace.branch, "lane/T-1-fix-the-rail");
     assert.equal(entry.round, 1);
   });
 

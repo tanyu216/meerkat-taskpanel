@@ -1072,8 +1072,14 @@ export function doctorReport(opts, env = process.env, deps = {}) {
         } else if (records.length === 0) {
           // Never registered — the only honest guess is the delivery round's
           // exact branch name, never a `<ref>-*` prefix that names an old round.
-          const candidate = laneBranch(ref, round);
-          if (open.has(candidate)) branch = candidate;
+          // A lane created before the title-slug rule has no slug, so both exact
+          // names are checked; a card whose title changed since creation is the
+          // one case this cannot see, and the registry covers every registered
+          // lane before this fallback runs.
+          const candidate = [laneBranch(ref, round, task.title), laneBranch(ref, round)].find(
+            (name) => open.has(name),
+          );
+          if (candidate !== undefined) branch = candidate;
         }
         // No record for a card the registry knows means the delivery round's
         // record was removed after its successful merge — landed.

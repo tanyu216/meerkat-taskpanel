@@ -136,7 +136,7 @@ Waiting on you:
 
 Worth a look:
 - PROJ-0038 heartbeat stopped 41 minutes ago (assignee=linus); the loop's stale recovery owns it, I did not touch it.
-- PROJ-0035 is done, but lane/PROJ-0035 is not merged into dev.
+- PROJ-0035 is done, but lane/PROJ-0035-fix-rail is not merged into dev.
 ```
 
 The order is the human's attention order: questions, acceptance, then health. Each line names

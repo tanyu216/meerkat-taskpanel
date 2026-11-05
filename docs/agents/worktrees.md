@@ -1,9 +1,11 @@
 # Worktrees and branches in this project
 
 1. Parallel work never happens in the primary checkout; it happens under `.worktrees/`.
-2. Ownership partition: `lane/<ref>[-r<round>]` belongs to the loop. A session never creates,
-   reuses, commits to or deletes a lane worktree. Human work uses `<type>/<slug>`; never name a
-   session worktree after a card id.
+2. Ownership partition: `lane/<ref>[-r<round>][-<slug>]` belongs to the loop. The slug is the
+   card title as lower-case ASCII words (at most 40 characters); a title with no ASCII word
+   leaves the identifier-only name. A session never creates, reuses, commits to or deletes a
+   lane worktree. Human work uses `<type>/<slug>`; never name a session worktree after a card
+   id.
 3. Cards branch from the project's declared `base_ref` and land on `merge_ref`; read both with
    `taskctl project map show <id> --json`. Keep the primary checkout on `merge_ref`; the loop
    refuses to land anywhere else.
