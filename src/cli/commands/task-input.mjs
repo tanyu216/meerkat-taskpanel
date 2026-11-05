@@ -155,7 +155,12 @@ export const SPELLING = Object.freeze({
   [TASK_OPS.deliver]: Object.freeze({
     // The flag carries a path; the body carries the parsed object. Reading and
     // parsing is the command's job, so only the spelling changes here.
-    report: { flag: "report-file", key: "reportFile", value: "<file|->", summary: "Report JSON, or `-` for stdin." },
+    report: {
+      flag: "report-file",
+      key: "reportFile",
+      value: "<file|->",
+      summary: "Report JSON, or `-` for stdin; conclusion, leftovers and acceptance notes are Markdown.",
+    },
     no_report: { summary: "Waive the report for this round (needs --reason)." },
     reason: { value: "<why>" },
     seg: { value: "<seg>" },

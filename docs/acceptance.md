@@ -86,6 +86,9 @@ In agent terms:
   reviewer's numbered must-fix items to the frozen acceptance.
 - **`off` is the one mode with no review.** The loop auto-accepts it; a `human` card never
   reaches auto-accept.
+- **The verdict line is not prose.** A review report's first line stays exactly `VERDICT:
+  APPROVE` or `VERDICT: REJECT`; the surrounding conclusion renders as Markdown, but a bolded
+  or headed verdict is not a verdict.
 
 ## Standing states
 

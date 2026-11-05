@@ -152,6 +152,11 @@ as it is. Baseline and reviewer contract:
 [`references/lifecycle/delivery.md#4a-the-acceptance-baseline`](references/lifecycle/delivery.md#4a-the-acceptance-baseline),
 [`references/review-protocol.md#3-the-reviewers-protocol`](references/review-protocol.md#3-the-reviewers-protocol).
 
+**Prose fields are Markdown.** A comment's `body`, a report's `conclusion`/`leftovers` and an
+acceptance item's `note` render as Markdown. The item's `text` stays plain (the frozen matching
+key); a review report's first line stays exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.
+`card.md` is transport: the export escapes a comment's newlines and writes a note inline.
+
 ## Claim one card, deliver it, stop
 
 Read the claimable set for *you*, take exactly one, then work it:
