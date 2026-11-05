@@ -328,6 +328,26 @@ policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
 | Wedged pool | `sessions.state.json` `tickStartedAt` / `startStartedAt` | verdict at `turn + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS` / start budget; ping acts 60 s later | one `pool_killed` + SIGTERM, recorded in `pool-wedge.json`; SIGKILL on a later ping if it survives; the unit restarts it |
 | Hung `taskctl` | `runCli` | 60 s (`CLI_TIMEOUT_MS`) | the child is killed with SIGKILL; the pass fails and releases the tick lock |
 
+### Settled levels
+
+The table above says where each cycle stops. `src/foundation/cycle-status.mjs` names what a
+card's cycle **is** right now, in one pure verdict — `cycleVerdict` reads the board status, the
+newest queue row and its counters and returns a level and a reason. It writes nothing and is not
+yet a dispatch decision.
+
+| Level | Meaning | Representative |
+|---|---|---|
+| `terminal` | the card left the work altogether | board status `done` or `canceled` |
+| `settled` | this round finished normally | newest row `done` |
+| `needs_human` | a bound was spent or the state is unknown | row `failed`; attempts, timeouts or crash recoveries at their bound; a live card with no row |
+| `in_flight` | the loop still owns the next step | row `pending`/`processing`/`dispatched`, or a `retry_at` in the future |
+
+Precedence is fixed and pinned by `test/contract/cycle-verdict.test.mjs`: `terminal` outranks
+every row fact, `settled` outranks spent counters, and a spent counter outranks a queued row. The
+level is observe-only for now; `taskctl loop doctor` reports the counts per level. A dispatch path
+that consumes the verdict must pass its own bound (the director lane's question and route rows
+stop at two attempts, not three).
+
 **The hold is an epoch, not a latch.** `meta.loop_hold_round` records the round the card was
 held at; the next hold is due only after another full bound. A human who moves the card back
 therefore gets a fresh bounded run — never an unbounded one — and a `held: true` re-emission
