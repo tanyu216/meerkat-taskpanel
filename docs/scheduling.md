@@ -595,8 +595,10 @@ worktree and is logged for a human rather than merged on a guess.
 Landing covers the lanes **admission created and registered** in `workspaces.json`. A worktree
 a session makes for itself (`using-git-worktrees`, any `.worktrees/<slug>`) is never in that
 registry, so accepting its card merges nothing: the pass logs `has no lane record`, and `done`
-means *accepted*, not *merged*. `loop doctor` reports those cards as `unlanded` (branch still
-outside the project's current branch), which is the only place they surface.
+means *accepted*, not *merged*. `loop doctor` judges only each card's **delivery round**: a
+`meta.landed_sha` in the current branch, else that round's own registry record, else the exact
+`lane/<ref>[-r<N>]` branch a loop lane would use. A session worktree outside that lane naming is
+not surfaced by the `unlanded` check.
 
 ### Session worktrees: the human half
 
