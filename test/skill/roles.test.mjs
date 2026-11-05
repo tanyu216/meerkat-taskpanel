@@ -890,7 +890,8 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(jobs, /epic/i);
     assert.match(jobs, /children/i);
     assert.match(jobs, /stage_handoff/);
-    assert.match(jobs, /product_change=none/);
+    assert.match(jobs, /Downstream cards:/, "the handoff names an existing graph stage");
+    assert.match(jobs, /epic graph/i);
     assert.match(jobs, /director/i);
     assert.match(jobs, /card and plan lifecycle/i, "the director owns the triage lifecycle");
     assert.match(jobs, /do not create .*downstream card/i);
@@ -913,12 +914,12 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       assert.match(text, /## Handoff/, `${name} reads the handoff block`);
       assert.doesNotMatch(text, /inherit or extend/i, `${name} does not inherit another card's plan`);
     }
-    assert.match(linus, /product_change=none/i);
-    assert.match(linus, /design_stage/);
-    // The marker's writer is the creator or the director's triage. TP-0033 burned a
-    // round because the executor classified the card in `plan.md` and proceeded.
-    assert.match(linus, /do not classify the card\s+yourself/i, "a worker never writes its own marker");
-    assert.match(linus, /hold the card/i, "an unclassified card holds instead of proceeding");
+    assert.match(linus, /epic_graph/);
+    assert.match(linus, /epic-graphs\.md/);
+    // Classification is the graph's or the creator's, never the executor's. TP-0033
+    // burned a round because the executor classified the card in `plan.md` and proceeded.
+    assert.match(linus, /do not classify it\s+yourself/i, "a worker never writes its own classification");
+    assert.match(linus, /ask and hold/i, "a card it cannot classify holds instead of proceeding");
     assert.match(impl, /## Handoff/);
     assert.match(impl, /does not\s+need the design artifacts/i);
     assert.match(testDesign, /## Handoff/);
@@ -936,8 +937,11 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     // sha, the anchor behind each claim and the earlier findings.
     for (const [name, text] of [["workflow", reviewer], ["prompt", prompt]]) {
       assert.match(text, /## Handoff/, `${name} reads the handoff`);
-      assert.match(text, /design_stage|stage_handoff/, `${name} triages the stage`);
-      assert.match(text, /product_change/, `${name} reads the triage marker`);
+      assert.match(
+        text,
+        /epic_graph|epic-graphs\.md|stage_handoff/,
+        `${name} classifies from the graph or the handoff`,
+      );
       assert.match(text, /ledger/i, `${name} builds the requirement ledger`);
       assert.match(text, /commit|sha/i, `${name} verifies the delivered commit`);
       assert.match(text, /earlier round|prior finding|earlier finding/i, `${name} re-checks earlier findings`);

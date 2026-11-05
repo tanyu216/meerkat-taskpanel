@@ -17,6 +17,14 @@ decision-authority source.
 Board operations are the `meerkat` board skill's contract: this file records the product
 flow's decisions; a prototype or UI card follows `references/ui-workflow.md`, entered at step 4.
 
+## Two card shapes
+
+**Design** (the default): produce the evidence, one direction, the validation and the PRD, and
+hand off with the `## Handoff` block. **Product acceptance**: read the accepted PRD and the
+upstream reports, build a Must → evidence ledger against the delivered build, and deliver the
+evidence — do not change code and do not accept your own work;
+`references/product-acceptance-workflow.md` is the branch.
+
 ## Steps at a glance
 
 1. Frame the problem.
@@ -146,14 +154,16 @@ commit before you report. A report citing a path carries the `commit` anchor; th
 delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses one that does not. Set
 `meta.stage_handoff=required`; open `conclusion` with `Outcome:`, then `## Handoff`. In split
 mode the block names the prototype card, path and `commit`; the reviewer reads that anchor, or
-you fold the verdict into the spec/PRD appendix and commit it here. The director's triage
-decision creates downstream cards; propose the delivery shape and next scopes, per
-the `meerkat` board skill's card and plan lifecycle. Stop at `in_review`; acceptance is not yours.
+you fold the verdict into the spec/PRD appendix and commit it here. When the card is a stage in
+a project epic graph, the downstream cards already exist: name them in the `## Handoff`
+(`Downstream cards:`) and do not set `stage_handoff=required` for them. Otherwise the director's
+triage decision creates downstream cards; propose the delivery shape and next scopes, per the
+`meerkat` board skill's card and plan lifecycle. Stop at `in_review`; acceptance is not yours.
 Do not merge, rebase or push; the supervisor's acceptance pass lands the delivered tree.
 
 **Essentials.** Archived paths, the findings table, the complete handoff, and a delivery shape
-whose children can land alone (`not one card per layer`). A small change or bug uses
-`meta.product_change=none`, the card, the acceptance and (for a bug) the reproduction.
+whose children can land alone (`not one card per layer`). A card outside a graph that needs no
+design archive input says so in its description and report.
 
 ## The Handoff block
 
@@ -173,18 +183,20 @@ Outcome: <one-line result>
 - Glossary / Product ADRs: design/glossary.md; design/adr/NNNN-<slug>.md (or none)
 - Acceptance source: <PRD Must item ids + path | the frozen acceptance of <id>>
 - Delivery shape: one task | epic with children: <scope>; <scope>; ...
+- Downstream cards: <refs | none — director triages>
 - Proposed implementation / verification: <one card | the epic's child scopes>
 - Open questions / leftovers: <none | item, owner, deadline>
 ```
 
 Every path is project-relative; a missing PRD is `none` with its reason. `Acceptance source`
 seeds the next card's frozen acceptance once; `Delivery shape` is a proposal the project
-session confirms against the archive. A small change or bug uses `meta.product_change=none`.
-An epic is `kind=epic` and not claimable; children are `kind=task`, linked with `parent`; a
-child is a deliverable that can land on the base branch alone — one change's core, CLI, web,
-docs and fixtures are one child, not one card per layer. The director takes the current
-round's latest report; **do not create the downstream card** — it triages, creates, seeds and
-links it, per the `meerkat` board skill's card and plan lifecycle.
+session confirms against the archive. An epic is `kind=epic` and not claimable; children are
+`kind=task`, linked with `parent`; a child is a deliverable that can land on the base branch alone
+— one change's core, CLI, web, docs and fixtures are one child, not one card per layer.
+When the card is a stage in a project epic graph the downstream cards already exist and
+`Downstream cards:` names them; otherwise the director takes the current round's latest report
+and **you do not create the downstream card** — triage creates, seeds and links it, per the
+`meerkat` board skill's card and plan lifecycle.
 
 ## Review ownership
 
@@ -206,6 +218,7 @@ links it, per the `meerkat` board skill's card and plan lifecycle.
   the task id. A prototype is not a delivery and never production code.
 - The root `GLOSSARY.md` and `docs/adr/` belong to Linus; product terms and ADRs live under
   `design/`.
-- The director's triage decision creates downstream cards; propose the shape in the handoff.
+- Outside a project epic graph the director's triage creates downstream cards; inside one they
+  already exist, and the handoff names them.
 - Do not accept your own work; do not merge, rebase or push from this card — the supervisor's
   acceptance pass lands it.

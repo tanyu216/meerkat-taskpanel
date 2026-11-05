@@ -16,10 +16,10 @@ to the implementation card. Board operations are the `meerkat` board skill's con
 `SKILL.md` (Delivery and Hard boundaries) applies.
 
 Inputs: `.meerkat/<id>/card.md`, the live card, the frozen acceptance, this card's `plan.md`
-and `test-plan.md`; for a feature or behaviour change, the `## Handoff` block names the
-`archived spec`/PRD, the acceptance source and the named report — read that report.
-`meta.product_change=none` means no design artifacts; add `docs/tech-spec.md`, the
-architecture document and ADRs when they exist.
+and `test-plan.md`; for a feature or behaviour change, the `## Handoff` block (or a project
+epic graph's stage row in `docs/agents/epic-graphs.md` when `meta.epic_graph` is set) names the
+archived spec/PRD, the acceptance source and the **named report** — read that report. Add
+`docs/tech-spec.md`, the architecture document and ADRs when they exist.
 
 ### 1. Plan (adopt and audit)
 

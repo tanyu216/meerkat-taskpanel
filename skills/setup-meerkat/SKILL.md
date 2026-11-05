@@ -175,25 +175,27 @@ primary checkout once `docs/agents/worktrees.md` exists.
 1. Write `create-card.md` and the tracker files (`issue-tracker.md`, `triage-labels.md`,
    `domain.md`) through the Matt Pocock process. Read the installed `meerkat` skill's
    `references/scenarios/create.md` first so you know the default answer, then ask which card shapes
-   take `human` or `off` (there is **no project default**; omitted falls back to `auto`), the
-   project's epic-splitting boundary, and the card scope (the default is the work a role owns;
-   a question, a lookup or a one-off command has no owner and is not a card). Write only the
-   user's answers into `create-card.md` — not a copy of that manual — and skip any item the
-   user declines.
-2. Declare the project's rules in the map:
+   take `human` or `off` (there is **no project default**; omitted falls back to `auto`) and
+   the card scope (the default is the work a role owns; a question, a lookup or a one-off
+   command has no owner and is not a card). Write only the user's answers into
+   `create-card.md` — not a copy of that manual — and skip any item the user declines.
+2. Offer `docs/agents/epic-graphs.md`: show the bundled `assets/epic-graphs.md` default
+   template (`dev-verify` and `requirement`) and ask which graphs to keep or change. Write
+   **only on an explicit yes**; the file is absent by default, and a re-run reports
+   `written` / `unchanged` / `conflict`.
+3. Declare the project's rules in the map:
    `taskctl project map set <id> --base-ref <ref> --merge-ref <ref>` (recommended:
    `base_ref = merge_ref =` the integration branch). The refs are probed at write time; a bad
    value is `PROJECT_REF_UNRESOLVED`. The page points at the map, never copies the values.
-3. Call the `init` skill for the project's agent-instruction entry, and require it to point
+4. Call the `init` skill for the project's agent-instruction entry, and require it to point
    card work at the `/meerkat` skill and board rules at `docs/agents/` (`create-card.md`,
-   `worktrees.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, and
-   `decision-policy.md` when present), and to state this step's card scope. The entry and the
-   rules are project content shared by every platform: call `init` once, write the rules once
-   under `docs/agents/`, never copy them per platform, never write an entry yourself, and
-   report `skip` when the host has no `init` skill.
-4. Write `worktrees.md` (see `references/worktree-guard.md`), after every other
+   `worktrees.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, `epic-graphs.md`
+   when present, and `decision-policy.md` when present), and to state this step's card scope.
+   The entry and the rules are project content shared by every platform: call `init` once,
+   write the rules once under `docs/agents/`, never copy them per platform, and never write an entry yourself; report `skip` when the host has no `init` skill.
+5. Write `worktrees.md` (see `references/worktree-guard.md`), after every other
    primary-checkout write. The page points at the map, never copies the ref values.
-5. Only then, if the user accepts, install the worktree guard through
+6. Only then, if the user accepts, install the worktree guard through
    `scripts/worktree-init.mjs` (show its `--dry-run` report first). This is the only
    initialization point — never add the wiring to an installer. Codex hooks must be reviewed
    and trusted in `/hooks`; report that step as still open until the user confirms it. The
@@ -306,6 +308,7 @@ skills/setup-meerkat/
 ├── SKILL.md
 ├── references/{detection,install-upgrade,config,director-project,board-project,
 │               worktree-guard,roles-platforms,new-role,matt-pocock,evals}.md
+├── assets/epic-graphs.md
 ├── assets/role-template/{SKILL.md,role.json,references/{workflow,self-check,reviewer-prompt}.md}
 ├── evals/evals.json
 ├── scripts/{detect,configure-env,audit-config,route-role,scaffold-role,worktree-init}.mjs

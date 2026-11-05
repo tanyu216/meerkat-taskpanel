@@ -25,14 +25,14 @@ source.
 
 Call the `meerkat` board skill to read the card, its brief and the frozen acceptance.
 
-**Triage.** `meta.design_stage` means a feature or behaviour change: read the `## Handoff` block
-in the description; a missing block or a named path that does not exist stops the turn.
-`meta.product_change=none` means **no design archive input** — valid for a foundation,
-reconstruction or audit card too. Neither marker is unclassified: **do not classify the card
-yourself or record it in `plan.md`** — the creator or the director's triage writes it. Ask and
-hold the card (`issue wait`) with the marker you propose. A follow-up sets
+**Triage.** `meta.epic_graph` means a card inside a project epic graph: read its stage row in
+`docs/agents/epic-graphs.md` and the upstream cards' current-round reports; a missing file,
+stage or named path stops the turn. A card outside a graph is judged from its description and
+frozen acceptance; `meta.design_stage` / `meta.product_change`, when present, are optional hints
+only. If the card cannot be classified, ask and hold (`issue wait`) — **do not classify it
+yourself or record it in `plan.md`**. A follow-up outside a graph sets
 `meta.stage_handoff=required` and names it in the report's `## Handoff`; the director's triage
-creates it.
+creates it; inside a graph the downstream card already exists.
 
 **Take the plan.** A `.meerkat/<id>/plan.md` that already exists is **this card's plan**; a
 rework extends it, folding in an attached plan rather than replacing it. Otherwise

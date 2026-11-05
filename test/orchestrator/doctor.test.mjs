@@ -408,56 +408,35 @@ describe("loop doctor — the report", () => {
     assert.equal(report.stuck_cards.total, 0, "a stray marker is not a stale claim");
   });
 
-  it("names an open task card with no stage marker, and exempts epics, reviews and closed cards", () => {
+  it("does not classify open task cards: the generic layer carries no unclassified probe", () => {
     const dir = tempDir();
     const { script } = sentinel(dir, {
       tasks: [
-        { identifier: "T-500", title: "Unclassified", status: "todo", meta: { acceptance: ["a"] } },
-        { identifier: "T-501", title: "No product change", status: "todo", meta: { product_change: "none" } },
+        { identifier: "T-500", title: "No marker", status: "todo", meta: { acceptance: ["a"] } },
+        { identifier: "T-501", title: "Old hint", status: "todo", meta: { product_change: "none" } },
         {
           identifier: "T-502",
-          title: "Design stage",
+          title: "In progress",
           status: "in_progress",
-          heartbeat_at: at(5 * MIN),
-          meta: { design_stage: "yes" },
-        },
-        {
-          identifier: "T-503",
-          title: "An epic",
-          status: "in_progress",
-          kind: "epic",
           heartbeat_at: at(5 * MIN),
           meta: {},
         },
-        {
-          identifier: "T-504",
-          title: "A review card",
-          status: "in_progress",
-          review_of_id: "orig",
-          heartbeat_at: at(5 * MIN),
-          meta: {},
-        },
-        { identifier: "T-505", title: "Already closed", status: "done", meta: {} },
-        { identifier: "T-506", title: "Blank marker", status: "todo", meta: { product_change: "  " } },
-        { identifier: "T-507", title: "Not queued yet", status: "backlog", meta: {} },
       ],
     });
     seedState(dir);
 
     const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
 
-    assert.deepEqual(
-      report.unclassified.cards.map((card) => [card.ref, card.status]),
-      [
-        ["T-500", "todo"],
-        ["T-506", "todo"],
-      ],
-      "an epic and a review card carry no stage marker, a backlog card is not queued," +
-        " and a blank value is not a classification",
+    assert.equal(
+      report.unclassified,
+      undefined,
+      "a card with no classification meta is no longer a doctor finding",
     );
-    assert.equal(report.unclassified.total, 2);
-    assert.ok(report.attention_reasons.includes("unclassified: 2"));
-    assert.equal(report.stuck_cards.total, 0, "an unclassified card is not a stale claim");
+    assert.equal(
+      report.attention_reasons.some((reason) => reason.startsWith("unclassified")),
+      false,
+    );
+    assert.equal(report.stuck_cards.total, 0);
   });
 
   it("names a done card whose lane never landed, and only when git says it did not", () => {

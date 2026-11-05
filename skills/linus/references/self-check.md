@@ -29,8 +29,8 @@ IDs: `S` shared, `A` architecture, `R` reconstruction/audit, `I` implementation,
   handoff path, or a published contract, schema or migration change.
 - **S5.** Re-run the gates you claim; a red gate is a blocker, not a leftover. The decision
   round is closed: every item answered or explicitly deferred, no frontier open.
-- **S6.** If the card has a `## Handoff` block or `meta.design_stage`, every named path exists
-  and was used, and the handoff's acceptance source is in the frozen acceptance.
+- **S6.** If the card has a `## Handoff` block or a project epic graph's stage row, every named
+  path exists and was used, and the handoff's acceptance source is in the frozen acceptance.
 
 ## Mandatory gates
 

@@ -15,7 +15,7 @@ Read this before the verdict. The nine steps in `SKILL.md` own the order; this f
 Each step has **Must do** and **Beyond**. Beyond means any read-only method, not a closed list.
 
 ### Step 1 — Validity
-**Must do.** The original is `in_review`; its `delivery_round` is this card's `review_round`; the round's `commit` resolves; `targetDir` is the target card's worktree/branch. A declared design stage or handoff path that is missing or unclassified is a REJECT. A missing `plan.md` falls back to the description and acceptance; absence alone is not a REJECT. If the review is invalid, note it and stop; state a moved tree.
+**Must do.** The original is `in_review`; its `delivery_round` is this card's `review_round`; the round's `commit` resolves; `targetDir` is the target card's worktree/branch. A declared design stage or handoff path that is missing is a REJECT; a card inside a graph is classified by its stage row in `docs/agents/epic-graphs.md`, one outside a graph by the frozen acceptance and the report. A missing `plan.md` falls back to the description and acceptance; absence alone is not a REJECT. If the review is invalid, note it and stop; state a moved tree.
 **Beyond.** Any read-only way to confirm the review is still meaningful (history, CI, related cards).
 
 ### Step 2 — Sources
@@ -59,7 +59,7 @@ Each shape has **Floor** and **Beyond**. Beyond is not exhaustive.
 **Beyond.** Any read-only method; follow any credible risk signal and record it.
 
 ### Product planning / brief / PRD (Jobs)
-**Floor.** Problem, evidence, users, goals/non-goals/metrics, scope. Every PRD Must maps to a testable acceptance item. The card sets `stage_handoff=required`; the current report's `## Handoff` is complete and its archived paths resolve; the handoff's acceptance source matches the frozen acceptance; any follow-up named in `leftovers` is in the handoff; glossary/ADR terms. Audit conformance and evidence, not design taste.
+**Floor.** Problem, evidence, users, goals/non-goals/metrics, scope. Every PRD Must maps to a testable acceptance item. A `product-acceptance` card's ledger is the evidence for a product delivery: it traces every Must and marks met/unmet. The card sets `stage_handoff=required`; the current report's `## Handoff` is complete and its archived paths resolve; the handoff's acceptance source matches the frozen acceptance; any follow-up named in `leftovers` is in the handoff; glossary/ADR terms. Audit conformance and evidence, not design taste.
 **Beyond.** Comparable options, rollout/measurement plan, open-question disposition.
 
 ### Prototype / UI / UX (Jobs)

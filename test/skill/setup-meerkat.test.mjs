@@ -201,6 +201,18 @@ describe("skill frontmatter and the six-step shape", () => {
     assert.match(skill, /docs\/agents\//);
     assert.match(skill, /create-card\.md/);
     assert.doesNotMatch(skill, /acceptance-mode\.md|epic-cards\.md/);
+    assert.match(reference, /epic-graphs\.md/, "the optional graph document is offered");
+    assert.doesNotMatch(reference, /epic-splitting boundary/i, "the old epic boundary is gone");
+    assert.doesNotMatch(skill, /epic-splitting boundary/i, "the setup skill no longer asks for it");
+    assert.match(skill, /assets\/epic-graphs\.md/, "the bundled default template is named");
+    const asset = readFileSync(join(SKILL, "assets/epic-graphs.md"), "utf8");
+    for (const graph of ["dev-verify", "requirement"]) {
+      assert.match(asset, new RegExp(`^## ${graph}$`, "m"), `the default template carries ${graph}`);
+    }
+    for (const stage of ["design", "test-design", "test-exec", "product-acceptance"]) {
+      assert.match(asset, new RegExp(`### stage ${stage}`), `requirement carries the ${stage} stage`);
+    }
+    assert.match(asset, /^Epic mode: auto$/m, "the default template carries the epic mode");
   });
 
   it("keeps the director policy a pointer, never a copy", () => {
