@@ -253,6 +253,50 @@ describe("orchestrator/deferrals — the shared count", () => {
   });
 });
 
+describe("orchestrator/deferrals — a refused claim", () => {
+  it("counts refusals on their own field and never touches the streak", () => {
+    // Losing a claim CAS is competition, not a failure of the loop: if it fed
+    // the shared `count` it could push an ordinary race toward a hold. The
+    // count/`code`/`retry_at` triple must be exactly what it was before.
+    const dir = stateDir();
+    const at = "2026-01-01T00:00:00.000Z";
+    const first = d.recordClaimRefusal(dir, {
+      identifier: "T-1",
+      reason: "VERSION_CONFLICT",
+      round: 2,
+      version: 7,
+      now: at,
+    });
+    assert.equal(first.ok, true);
+    assert.equal(first.entry.claim_refusals, 1);
+    assert.equal(first.entry.count, 0, "a claim-only entry has no streak");
+    assert.equal(first.entry.code, null);
+    assert.equal(first.entry.retry_at, null);
+    assert.equal(d.shouldHoldDeferral(first.entry), false, "competition never holds");
+
+    d.recordClaimRefusal(dir, { identifier: "T-1", reason: "VERSION_CONFLICT", now: at });
+    d.recordCardDeferral(dir, { identifier: "T-1", code: "ADMISSION_FAILED", reason: "a", now: at });
+    const second = d.recordCardDeferral(dir, {
+      identifier: "T-1",
+      code: "ADMISSION_FAILED",
+      reason: "b",
+      now: at,
+    });
+    assert.equal(second.entry.count, 2, "two admission failures, not four entries");
+    assert.equal(second.entry.claim_refusals, 2, "the refusal count survives the streak");
+    assert.equal(d.shouldHoldDeferral(second.entry), false, "refusals did not shorten the bound");
+  });
+
+  it("drops the whole entry when the claim finally succeeds", () => {
+    const dir = stateDir();
+    const at = "2026-01-01T00:00:00.000Z";
+    d.recordClaimRefusal(dir, { identifier: "T-1", reason: "VERSION_CONFLICT", now: at });
+    assert.equal(d.clearCardDeferral(dir, "T-1").ok, true);
+    const entry = d.readDeferralLedger(dir).value.cards["T-1"];
+    assert.equal(entry, undefined, "a successful claim starts the streak over");
+  });
+});
+
 describe("orchestrator/deferrals — a human edit gives one try", () => {
   it("resets the streak when the board version changed", () => {
     const dir = stateDir();
