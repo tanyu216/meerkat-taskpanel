@@ -1324,7 +1324,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       assert.match(block, /\*\*Watch for\.\*\*/, "the step names what to watch");
       assert.match(block, /\*\*Essentials\.\*\*/, "the step names what is indispensable");
     }
-    assert.ok(workflow.split("\n").length <= 130, "the reviewer workflow stays concise");
+    assert.ok(workflow.split("\n").length <= 270, "the reviewer skill carries the universal floor");
     assert.ok(check.split("\n").length <= 35, "the pre-verdict audit stays concise");
     assert.match(
       workflow,
@@ -1335,46 +1335,67 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
   });
 
   it("ships the shape audit floor every reviewer walks", () => {
-    const playbook = read("reviewer", "references/audit-playbook.md");
+    const universal = read("reviewer");
+    const product = read("reviewer", "references/audit-product.md");
+    const development = read("reviewer", "references/audit-development.md");
+    const testFloor = read("reviewer", "references/audit-test.md");
+    const scenarios = [product, development, testFloor];
+    const all = [universal, ...scenarios].join("\n");
 
     for (const [name, text] of [
-      ["SKILL.md", read("reviewer")],
       ["references/reviewer-prompt.md", read("reviewer", "references/reviewer-prompt.md")],
       ["references/self-check.md", read("reviewer", "references/self-check.md")],
       ["role.json", read("reviewer", "role.json")],
-    ]) assert.match(text, /audit-playbook\.md/, `${name} points at the audit playbook`);
+    ]) assert.match(text, /SKILL\.md/, `${name} points at the universal floor`);
 
-    assert.match(playbook, /floor, not a ceiling/i);
-    assert.match(playbook, /not limited to these/i);
-    assert.match(playbook, /not exempt/i);
-    assert.match(playbook, /n\/a — <reason>/i);
-    assert.match(playbook, /any read-only method|any method/i);
-    assert.match(playbook, /beyond the floor|outside the list/i);
-    assert.match(playbook, /record[^.]*extra check/i);
-    assert.match(playbook, /extra finding[^.]*block/i);
-    assert.match(playbook, /surface a real problem even outside the list/i);
+    assert.match(universal, /floor, not a ceiling/i);
+    assert.match(universal, /not limited to these/i);
+    assert.match(universal, /not exempt/i);
+    assert.match(universal, /n\/a — <reason>/i);
+    assert.match(universal, /any read-only method|any method/i);
+    assert.match(universal, /beyond the floor|outside the list/i);
+    assert.match(universal, /record[^.]*extra check/i);
+    assert.match(universal, /extra finding[^.]*block/i);
+    assert.match(universal, /surface a real problem even outside the list/i);
 
     for (const [shape, pattern] of [
       ["product planning", /product planning/i],
       ["prototype / UI", /prototype\s*\/\s*UI/i],
+    ]) assert.match(product, pattern, `the product floor names ${shape}`);
+    for (const [shape, pattern] of [
       ["architecture", /architecture/i],
       ["development / implementation", /development\s*\/\s*implementation|implementation\s*\/\s*development/i],
       ["refactor", /refactor/i],
-      ["test design", /test design/i],
       ["docs / operations / release", /docs\s*\/\s*operations\s*\/\s*release/i],
-      ["epic / rollup", /epic\s*\/\s*rollup/i],
-    ]) assert.match(playbook, pattern, `the playbook floors ${shape}`);
+    ]) assert.match(development, pattern, `the development floor names ${shape}`);
+    for (const [shape, pattern] of [
+      ["test design", /test design/i],
+      ["regression", /regression/i],
+      ["performance", /performance/i],
+    ]) assert.match(testFloor, pattern, `the test floor names ${shape}`);
+    assert.match(universal, /epic\s*\/\s*rollup/i, "the universal floor keeps epic/rollup");
+
+    for (const text of scenarios) assert.match(text, /SKILL\.md/, "a scenario points back at the universal floor");
+    for (const name of ["audit-product.md", "audit-development.md", "audit-test.md"]) {
+      assert.ok(universal.includes(name), `SKILL.md routes to ${name}`);
+    }
+
+    // The plan-quality refinement is defined once; the scenarios only apply it.
+    assert.match(universal, /Plan-quality refinement/);
+    assert.match(universal, /blocking/);
+    for (const text of scenarios) assert.match(text, /plan-quality refinement/i);
+    assert.doesNotMatch(scenarios.join("\n"), /goal → acceptance → step → proof/i, "the three axes live once");
 
     // The named shapes refine the universal floor; they are never the set of
     // reviewable cards, and a type none names is a normal path.
-    assert.match(playbook, /Default — a target type no floor names/);
-    assert.match(playbook, /refinement index, not a scope/i);
-    assert.match(playbook, /all nine steps/i);
-    assert.match(playbook, /Step 8 adding the classification/i);
-    assert.match(playbook, /record the classification/i);
-    assert.match(playbook, /project's own standards/i);
-    assert.match(playbook, /or by itself a REJECT/i);
-    assert.match(playbook, /the loop routes review cards only/i);
+    assert.match(universal, /Default — a target type no floor names/);
+    assert.match(universal, /refinement index, not a scope/i);
+    assert.match(universal, /all nine steps/i);
+    assert.match(universal, /Step 8 adding the classification/i);
+    assert.match(universal, /record the classification/i);
+    assert.match(universal, /project's own standards/i);
+    assert.match(universal, /or by itself a REJECT/i);
+    assert.match(universal, /the loop routes review cards only/i);
 
     for (const [subject, pattern] of [
       ["unit tests", /unit test/i],
@@ -1384,57 +1405,60 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       ["technical standards", /technical standard/i],
       ["code review", /code review/i],
       ["the security scan", /security scan/i],
-    ]) assert.match(playbook, pattern, `the development floor names ${subject}`);
+    ]) assert.match(development, pattern, `the development floor names ${subject}`);
 
     for (const command of [
       "scripts/verify/contract.mjs",
       "route-request.mjs",
       "cli-contract.mjs",
       "scan-gate.mjs",
-    ]) assert.ok(playbook.includes(command), `the playbook names the repo check ${command}`);
+    ]) assert.ok(universal.includes(command), `the universal floor names the repo check ${command}`);
 
-    assert.match(playbook, /git -C/);
-    assert.match(playbook, /git diff <sha>\^ <sha>|git show <sha> --/);
-    assert.match(playbook, /target[^.]*worktree|original[^.]*worktree/i);
-    assert.match(playbook, /parallel|concurren/i);
-    assert.match(playbook, /primary checkout/i);
-    assert.match(playbook, /shared tree/i);
-    assert.doesNotMatch(playbook, /\.worktrees\//);
+    assert.match(universal, /git -C/);
+    assert.match(universal, /git diff <sha>\^ <sha>|git show <sha> --/);
+    assert.match(universal, /target[^.]*worktree|original[^.]*worktree/i);
+    assert.match(universal, /parallel|concurren/i);
+    assert.match(universal, /primary checkout/i);
+    assert.match(universal, /shared tree/i);
+    assert.doesNotMatch(all, /\.worktrees\//);
     assert.doesNotMatch(read("reviewer"), /\.worktrees\//);
     assert.doesNotMatch(read("reviewer", "references/reviewer-prompt.md"), /\.worktrees\//);
     assert.match(read("reviewer"), /git -C/);
     assert.match(read("reviewer", "references/reviewer-prompt.md"), /git -C/);
 
-    assert.match(playbook, /verdict rule/i);
-    assert.match(playbook, /APPROVE only when/i);
-    assert.match(playbook, /otherwise REJECT/i);
-    assert.match(playbook, /precedence/i);
-    assert.match(playbook, /blocking/i);
-    assert.match(playbook, /observation/i);
-    assert.match(playbook, /leftover/i);
-    assert.match(playbook, /an open check blocks APPROVE/i);
-    assert.match(playbook, /missing acceptance item is a REJECT/i);
-    assert.match(playbook, /subjective preference is not a must-fix/i);
-    assert.match(playbook, /risk acceptance belongs to the human/i);
-    assert.match(playbook, /one pass/i);
-    assert.match(playbook, /falsify/i);
+    assert.match(universal, /verdict rule/i);
+    assert.match(universal, /APPROVE only when/i);
+    assert.match(universal, /otherwise REJECT/i);
+    assert.match(universal, /precedence/i);
+    assert.match(universal, /blocking/i);
+    assert.match(universal, /observation/i);
+    assert.match(universal, /leftover/i);
+    assert.match(universal, /an open check blocks APPROVE/i);
+    assert.match(universal, /missing acceptance item is a REJECT/i);
+    assert.match(universal, /subjective preference is not a must-fix/i);
+    assert.match(universal, /risk acceptance belongs to the human/i);
+    assert.match(universal, /one pass/i);
+    assert.match(universal, /falsify/i);
 
     for (const status of ["met", "partial", "not_met", "not_applicable"]) {
-      assert.match(playbook, new RegExp(`\\b${status}\\b`), `the playbook names ${status}`);
+      assert.match(universal, new RegExp(`\\b${status}\\b`), `the universal floor names ${status}`);
     }
     for (let step = 1; step <= 9; step += 1) {
-      assert.match(playbook, new RegExp(`Step ${step}\\b`, "i"), `the playbook covers Step ${step}`);
+      assert.match(universal, new RegExp(`^### ${step}\\. `, "m"), `the universal floor covers Step ${step}`);
     }
 
-    assert.match(playbook, /security-checklist\.md/);
-    assert.match(playbook, /floor/i);
-    assert.match(playbook, /surface (security )?check/i);
+    assert.match(universal, /security-checklist\.md/);
+    assert.match(universal, /floor/i);
+    assert.match(universal, /surface (security )?check/i);
     assert.match(read("reviewer"), /floor, not a ceiling/i);
     assert.match(read("reviewer"), /surface (security )?check/i);
     assert.match(read("reviewer", "references/reviewer-prompt.md"), /a floor/i);
     assert.match(read("reviewer", "references/reviewer-prompt.md"), /surface (security )?check/i);
     assert.match(read("reviewer", "role.json"), /floor/i);
-    assert.ok(playbook.split("\n").length <= 180, "the audit playbook stays compact");
+    assert.ok(universal.split("\n").length <= 270, "the reviewer skill carries the universal floor");
+    assert.ok(product.split("\n").length <= 30, "the product floor stays compact");
+    assert.ok(development.split("\n").length <= 45, "the development floor stays compact");
+    assert.ok(testFloor.split("\n").length <= 25, "the test floor stays compact");
   });
 
   it("keeps project mechanics out of the specialist role files", () => {
@@ -1453,7 +1477,9 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
         "references/performance-workflow.md",
         "references/reviewer-prompt.md",
         "references/security-checklist.md",
-        "references/audit-playbook.md",
+        "references/audit-product.md",
+        "references/audit-development.md",
+        "references/audit-test.md",
       ]
         .filter((rel) => existsSync(join(roleDir(role), rel)))
         .map((rel) => [role, rel]),
@@ -1484,7 +1510,9 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
         "references/regression-workflow.md",
         "references/performance-workflow.md",
         "references/reviewer-prompt.md",
-        "references/audit-playbook.md",
+        "references/audit-product.md",
+        "references/audit-development.md",
+        "references/audit-test.md",
       ]
         .filter((rel) => existsSync(join(roleDir(role), rel)))
         .map((rel) => [role, rel]),
@@ -1503,7 +1531,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
   it("keeps every command the reviewer is told to run inside its lane allowlist", () => {
     // A rule the lane cannot execute is a rule the reviewer learns to skip.
     const allow = allowedToolsFor("reviewer");
-    for (const rel of ["SKILL.md", "references/reviewer-prompt.md", "references/audit-playbook.md"]) {
+    for (const rel of ["SKILL.md", "references/reviewer-prompt.md", "references/audit-product.md", "references/audit-development.md", "references/audit-test.md"]) {
       const text = read("reviewer", rel);
       for (const [kind, pattern] of [
         ["Bash(npm run *)", /\bnpm run\b/],
@@ -1725,10 +1753,6 @@ describe("role prompts: positive language", () => {
         /never in what it does/i, // rhetorical: refactoring preserves behaviour
         /cannot fail/i, // definitional: a pinning test proves it can fail
       ],
-    ],
-    [
-      "reviewer/references/audit-playbook.md",
-      [/cannot reproduce/i], // capability limit: an environment the worktree lacks
     ],
   ]);
 

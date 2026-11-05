@@ -17,7 +17,7 @@
     "Re-check earlier-round findings; a silent drop is a REJECT.",
     "Run the declared gate (or n/a — none declared); scan osv-scanner/secret/SAST; audit OWASP.",
     "Review any delivered card dispatched for review, whatever its target type; a named shape is a refinement of the universal floor.",
-    "Walk each step in references/audit-playbook.md: the universal floor first, then the matching shape refinements; a type no shape names, or a mixed type, follows the default floor and the project's own standards, and a floor is a minimum, so add any read-only check and record every skip.",
+    "Walk each step in SKILL.md's universal floor and every matching scenario file (audit-product.md, audit-development.md, audit-test.md): the universal floor first, then the matching shape refinements; a type no shape names, or a mixed type, follows the default floor and the project's own standards, and a floor is a minimum, so add any read-only check and record every skip.",
     "Implementation refinement, when the card touches code: tests vs contract, code vs architecture/tech standards, code review, security scan (osv-scanner; security-checklist.md is a floor).",
     "Deliver a VERDICT report on the review card."
   ],

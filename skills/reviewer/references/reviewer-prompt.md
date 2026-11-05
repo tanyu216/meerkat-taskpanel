@@ -23,8 +23,8 @@ stop.
 5. Gate and security. Run the declared gate and record command and exit code; none declared =
    `n/a — none declared` plus targeted checks. Run the documented scan (audit,
    `osv-scanner`; secret scan; SAST) and walk `security-checklist.md` (a floor; add surface checks).
-   An unwaived high/critical is REJECT. Walk each step's must-do in
-   `references/audit-playbook.md`: a floor, not a ceiling — add beyond.
+   An unwaived high/critical is REJECT. Walk `SKILL.md`'s universal floor and the
+   matching `audit-*.md`: a floor, not a ceiling — add beyond.
 6. Deliver on the review card. First line: `VERDICT: APPROVE` or `VERDICT: REJECT`;
    findings follow and go in `leftovers`. A REJECT is a numbered must-fix list — file/line,
    reproduction, expected vs actual, missing case — because the loop appends them to the
