@@ -42,6 +42,38 @@ export const DEFERRAL_HOLD = 5;
 export const DEFERRAL_HOLD_DISPATCH = 3;
 
 /**
+ * The hold bound a ledger entry is judged against.
+ *
+ * `count` is shared by every failure code (one entry per card); the code of the
+ * latest failure names the cause and so decides the bound. A dispatch failure
+ * is parked tighter than an admission failure, so a mixed streak is closed by
+ * whichever bound the current code carries.
+ *
+ * @param {{code?: string}|null|undefined} entry
+ * @returns {number}
+ */
+export function deferralHoldBound(entry) {
+  return entry?.code === "DISPATCH_FAILED" ? DEFERRAL_HOLD_DISPATCH : DEFERRAL_HOLD;
+}
+
+/**
+ * Has this card's streak reached the bound its failure code carries?
+ *
+ * The poll and patrol admission sites both ask this one question; keeping it
+ * here is what stops the two lanes from deciding the same streak differently.
+ *
+ * @param {{code?: string, count?: number}|null|undefined} entry
+ * @returns {boolean}
+ */
+export function shouldHoldDeferral(entry) {
+  return (
+    entry !== null &&
+    entry !== undefined &&
+    Number(entry.count ?? 0) >= deferralHoldBound(entry)
+  );
+}
+
+/**
  * The wait after the streak becomes a pattern: 30 s, 1 min, 2 min, … capped at
  * one hour. A card that cannot be admitted is re-offered by every poll, so the
  * backoff is what keeps a persistent failure from spinning the scan.
