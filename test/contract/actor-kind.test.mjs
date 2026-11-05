@@ -15,9 +15,14 @@
  * trusts a kind any more, because acceptance is decided by the review evidence
  * (an independent current-round APPROVE, never by the actor who wrote it).
  *
+ * A kind is not an identity. Since ADR 0017 the board's one automation identity
+ * is the actor id `Board`; `system` is only the kind those writes carry, and the
+ * loop no longer signs `Orchestrator`. The second scan here is the grep guard for
+ * that rule: a write path may not name either retired id.
+ *
  * Historical rows may still carry `taskd`/`system`/`agent`; they are facts about
- * the past and are never rewritten. The scan therefore covers source only, not
- * migrations or test fixtures.
+ * the past and are never rewritten by a code path. The scan therefore covers
+ * source only, not migrations or test fixtures.
  */
 
 import assert from "node:assert/strict";
@@ -29,9 +34,9 @@ import test, { describe, it } from "node:test";
 import { BOARD_ACTOR } from "../../src/core/commands/context.mjs";
 import { acceptanceAllows } from "../../src/core/domain/acceptance-mode.mjs";
 import {
+  BOARD_ACTOR_ID,
   DIRECTOR_ACTOR_ID,
   HUMAN_KIND,
-  ORCHESTRATOR_ACTOR_ID,
   SLA_MECHANISM,
   SYSTEM_KIND,
 } from "../../src/foundation/constants.mjs";
@@ -56,6 +61,27 @@ const BANNED = [
   { name: "`--actor-kind agent`", pattern: /--actor-kind\s+agent\b/ },
 ];
 
+/**
+ * The identity rule (ADR 0017): `system` is a kind, never an actor id, and the
+ * loop no longer signs `Orchestrator`. Each pattern is an identity position a
+ * writer actually uses — a CLI argv, a JS actor object, or the retired constant —
+ * so prose and the one-off repair script may still name the old rows.
+ */
+const IDENTITY_BANNED = [
+  { name: "`--agent system`", pattern: /--agent\s+["']?system\b/ },
+  { name: "`--agent Orchestrator`", pattern: /--agent\s+["']?Orchestrator\b/ },
+  {
+    name: "an actor id literal `system`",
+    pattern: /\b(?:actorId|actor_id|authorId|author_id|id)\s*:\s*["']system["']/,
+  },
+  {
+    name: "an actor id literal `Orchestrator`",
+    pattern: /\b(?:actorId|actor_id|authorId|author_id|id)\s*:\s*["']Orchestrator["']/,
+  },
+  { name: "an actor id built from the `system` kind", pattern: /\b(?:actorId|id)\s*:\s*SYSTEM_KIND\b/ },
+  { name: "the retired `ORCHESTRATOR_ACTOR_ID`", pattern: /\bORCHESTRATOR_ACTOR_ID\b/ },
+];
+
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {
     if (SKIP_DIRS.has(entry)) continue;
@@ -71,11 +97,35 @@ function* walk(dir) {
   }
 }
 
+/** Every source offender for a rule set, as `path:line — rule`. */
+function scanSources(rules) {
+  const offenders = [];
+  for (const root of SCAN_ROOTS) {
+    const dir = join(ROOT, root);
+    let entries;
+    try {
+      entries = walk(dir);
+    } catch {
+      continue; // an optional root that does not exist in this checkout
+    }
+    for (const file of entries) {
+      const text = readFileSync(file, "utf8");
+      for (const rule of rules) {
+        const match = rule.pattern.exec(text);
+        if (match === null) continue;
+        const line = text.slice(0, match.index).split("\n").length;
+        offenders.push(`${relative(ROOT, file)}:${line} — ${rule.name}`);
+      }
+    }
+  }
+  return offenders;
+}
+
 describe("contract/actor-kind — concrete writers, not vague roles", () => {
   it("names the board's own kind `system`, and keeps the SLA label apart", () => {
     assert.equal(HUMAN_KIND, "human");
     assert.equal(SYSTEM_KIND, "system");
-    assert.deepEqual({ ...BOARD_ACTOR }, { kind: "system", id: "system" });
+    assert.deepEqual({ ...BOARD_ACTOR }, { kind: "system", id: "Board" });
     // The SLA mechanism is a *label*, not a kind: renaming the kind must not
     // silently re-key every outstanding alert.
     assert.equal(SLA_MECHANISM, "taskd");
@@ -87,26 +137,15 @@ describe("contract/actor-kind — concrete writers, not vague roles", () => {
   });
 
   it("leaves no `taskd` or `agent` kind in a production write", () => {
-    const offenders = [];
-    for (const root of SCAN_ROOTS) {
-      const dir = join(ROOT, root);
-      let entries;
-      try {
-        entries = walk(dir);
-      } catch {
-        continue; // an optional root that does not exist in this checkout
-      }
-      for (const file of entries) {
-        const text = readFileSync(file, "utf8");
-        for (const rule of BANNED) {
-          const match = rule.pattern.exec(text);
-          if (match === null) continue;
-          const line = text.slice(0, match.index).split("\n").length;
-          offenders.push(`${relative(ROOT, file)}:${line} — ${rule.name}`);
-        }
-      }
-    }
+    const offenders = scanSources(BANNED);
     assert.deepEqual(offenders, [], `vague actor kinds remain:\n${offenders.join("\n")}`);
+  });
+
+  it("writes the one automation identity `Board`, never actor id `system` or `Orchestrator`", () => {
+    assert.equal(BOARD_ACTOR_ID, "Board");
+    assert.notEqual(BOARD_ACTOR_ID, SYSTEM_KIND, "the identity is not the kind");
+    const offenders = scanSources(IDENTITY_BANNED);
+    assert.deepEqual(offenders, [], `retired automation identities remain:\n${offenders.join("\n")}`);
   });
 
   it("no longer exports the retired names", async () => {
@@ -122,7 +161,9 @@ describe("contract/actor-kind — concrete writers, not vague roles", () => {
     // The retired name is gone rather than aliased: two spellings of one kind is
     // exactly the drift this rule exists to prevent.
     assert.equal("TASKD_KIND" in constants, false);
-    assert.equal(ORCHESTRATOR_ACTOR_ID, "Orchestrator");
+    // The identity is one name: the loop's old id is gone, not aliased.
+    assert.equal("ORCHESTRATOR_ACTOR_ID" in constants, false);
+    assert.equal(BOARD_ACTOR_ID, "Board");
     assert.equal(DIRECTOR_ACTOR_ID, "Director");
   });
 });

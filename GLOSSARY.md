@@ -69,7 +69,7 @@ _Avoid_: tag, category, keyword
 
 **Actor**:
 Anyone or anything that can be recorded as having done something — a human, an agent or
-the system. Actors are created by use and are never renamed or deleted.
+the board. Actors are created by use and are never renamed or deleted.
 _Avoid_: user, owner, person
 
 **Actor kind**:
@@ -77,7 +77,8 @@ Which application wrote: a platform slug (`claude`, `codex`, `pi`, `openclaw`), 
 own `system`, or `human` — the one reserved value a caller may not
 declare. It is recorded on every write and read back as `author_kind` / `owner_kind`;
 the CLI flag is `--actor-kind`. It is **not** the identity: that is the actor id
-(`--agent jobs|linus|…`).
+(`--agent jobs|linus|…`). Every automated write carries the kind `system` under the one
+automation identity `Board`; `system` itself is never an actor id (ADR 0017).
 _中文_: actor kind（平台）
 _Avoid_: host (that is the machine), platform (the web layer's display badge), kind alone
 (card kind is a different word)
@@ -560,7 +561,7 @@ The board's workflow decisions (`issue reconcile --workflow`: reconcile containe
 outcomes, auto-accept and review dispatch) and the loop's execution of that plan. The board
 decides; the loop creates the review card, applies the verdict, auto-accepts a no-review
 delivery and closes the review card — as the board's own kind, `system`, under the automation
-id `Orchestrator`. It is not scheduled; the continue turn runs
+id `Board`. It is not scheduled; the continue turn runs
 it after patrol.
 _中文_: 工作流通道
 _Avoid_: workflow engine, pipeline; SLA alerts are not part of it

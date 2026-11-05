@@ -48,8 +48,8 @@ const metaOf = (flags) => flags.meta;
  * bypasses this by design; every supported surface (the `meerkat` skill, the
  * worker, the director, a human) goes through `taskctl`.
  *
- * The guard looks at the **assignee**, never the writer: `system`/`Orchestrator`
- * are writer identities for task closure and cannot become assignees through
+ * The guard looks at the **assignee**, never the writer: `Board` is the writer
+ * identity for task closure and cannot become an assignee through
  * this path. A review card is an ordinary create with one extra rule: its
  * assignee must name a reviewer-lane role, it defaults to the catalog's
  * reviewer, and the structural escapes cannot bypass that rule. The rework

@@ -75,7 +75,7 @@ The **local role catalog** — a host-local projection of the roles the supervis
 
 A card's assignee is checked against this catalog when it is non-empty (`ASSIGNEE_NOT_IN_CATALOG`,
 exit 1). The check is a **CLI guard**, not a board invariant: a direct HTTP write bypasses it.
-The writer identity (`system`/`Orchestrator`) is never exempt — the guard looks at the
+The writer identity (`Board`) is never exempt — the guard looks at the
 assignee. A review card is stricter still: its assignee must name a **reviewer-lane** role
 (`ASSIGNEE_NOT_REVIEWER`), so the loop creates it with the catalog's `default_reviewer` and
 never needs `--force-create`.

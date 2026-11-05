@@ -919,7 +919,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
         JSON.stringify([{ text: "child done", status: "met", ref: "PROJ-0098" }]),
         JSON.stringify([{ kind: "path", path: "x" }]),
         "system",
-        ensureActor(db, "system", "system"),
+        ensureActor(db, "Board", "system"),
         TS,
       );
 
@@ -2152,7 +2152,7 @@ describe("commands/tasks — acceptance authority (the card's mode)", () => {
 
       const bySystem = delivered(commands, "off");
       assert.equal(
-        commands.moveStatus({ id: bySystem.id, to: "done", actor: { kind: "system", id: "system" } }).status,
+        commands.moveStatus({ id: bySystem.id, to: "done", actor: { kind: "system", id: "Board" } }).status,
         "done",
       );
     });
@@ -2945,7 +2945,7 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
 });
 
 describe("commands/tasks — the acceptance mode and the two terminality gates", () => {
-  const SYSTEM = { kind: "system", id: "system" };
+  const SYSTEM = { kind: "system", id: "Board" };
 
   /** Put a card in `in_review` the legal way (claim, then deliver). */
   const deliverCard = (commands, task, actor = AGENT) => {
@@ -3769,7 +3769,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
 // ---------------------------------------------------------------------------
 
 describe("commands/tasks — review decision (0031)", () => {
-  const SYSTEM = { kind: "system", id: "board" };
+  const SYSTEM = { kind: "system", id: "Board" };
 
   /** Create, claim and deliver a card; returns the delivered in_review row. */
   function deliverOne(commands, projectId, title, actor = AGENT) {
@@ -4542,7 +4542,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
 });
 
 describe("commands/tasks — a claim must point at its evidence", () => {
-  const SYSTEM = { kind: "system", id: "system" };
+  const SYSTEM = { kind: "system", id: "Board" };
   const AGENT_ACTOR = { kind: "agent", id: "linus" };
   const REVIEWER = { kind: "agent", id: "jobs" };
 
