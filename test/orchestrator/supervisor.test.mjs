@@ -1092,17 +1092,16 @@ describe("buildReviewHandoff (pure)", () => {
     assert.ok(text.length < 3600, "the handoff must be bounded");
   });
 
-  it("points the reviewer at both briefs and the never-edit rule", () => {
+  it("points the reviewer at both briefs", () => {
     assert.match(text, /Review brief: \.meerkat\/T-2\/card\.md/);
     assert.match(text, /Original brief: \.meerkat\/T-1\/card\.md/);
-    assert.match(text, /Read a card\.md as the loop's export/);
-    assert.match(text, /This lane is read-only/);
     assert.doesNotMatch(text, /Put your process files|attachment download/);
     assert.match(text, /On resume, re-read \.meerkat\/T-2\/card\.md/);
   });
 
-  it("is the reviewer for the project, with the claim already taken", () => {
-    assert.match(text, /^You are the reviewer for the <project id> project/);
+  it("names the review card first, with the claim already taken", () => {
+    assert.match(text, /^Review card: T-2/);
+    assert.doesNotMatch(text, /You are the reviewer /, "the system prompt owns the identity line");
     assert.match(text, /already claimed this review card for you: keep the claim with a heartbeat/);
     assert.match(text, /heartbeat only this review card/);
   });
@@ -1116,8 +1115,9 @@ describe("buildReviewHandoff (pure)", () => {
 
   it("audits a worker-derived acceptance list for coverage", () => {
     assert.match(text, /acceptance_derived/);
-    assert.match(text, /covers every requirement/);
-    assert.match(text, /narrows/);
+    assert.match(text, /re-derive/);
+    assert.match(text, /narrowed acceptance list/);
+    assert.match(text, /missing a requirement/);
     assert.match(text, /VERDICT: REJECT/);
   });
 

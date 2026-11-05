@@ -1300,7 +1300,6 @@ export function wakeHandoff(opts, config, action, card, resident = false) {
     ? isReview
       ? buildReviewEnvelope({
           card: card ?? { identifier: action.identifier },
-          flags,
         })
       : buildResidentEnvelope({
           card: card ?? { identifier: action.identifier },
