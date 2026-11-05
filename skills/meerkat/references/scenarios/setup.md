@@ -36,12 +36,10 @@ means the skill's built-in default.
 Stamp every write with `--actor-kind <kind> --session-id <id>`. Derive the id with
 `taskctl session id <ref> --seg <seg> --owner <name>`; offline,
 [`../../scripts/session-id.mjs`](../../scripts/session-id.mjs) computes the same value from
-the resolved task UUID.
-
-A card you claimed yourself **registers** that identity as its session row with `--seg manual`
-and closes it at delivery; the id derives from `(task, owner, seg)`, so the row survives across
-rounds, and a dispatched card's row belongs to the loop
-([`execute.md`](execute.md#the-cards-session-row-manual-claim)).
+the resolved task UUID. A card you claimed yourself registers that id as its row with
+`--seg manual` and closes it at delivery
+([`execute.md`](execute.md#the-cards-session-row-manual-claim)); a dispatched card's row is
+the loop's.
 
 ## Working outside a card
 
