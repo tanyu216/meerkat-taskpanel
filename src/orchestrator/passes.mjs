@@ -1062,6 +1062,8 @@ export async function runPollOnce(opts, env = process.env) {
     admit: admission.admit,
     release: admission.release,
     recordDefer: (identifier, failure) => deferrals.record(identifier, failure),
+    recordClaimRefusal: (identifier, failure) =>
+      deferrals.recordClaimRefusal(identifier, failure),
     clearDeferral: (identifier) => deferrals.clear(identifier),
     // A claim that cannot be dispatched goes back to the queue instead of
     // sitting `in_progress` until the board's stale recovery finds it.
@@ -1077,9 +1079,10 @@ export async function runPollOnce(opts, env = process.env) {
     },
     // The execution-fault hold: a card the loop cannot advance is parked as a
     // human-owned decision, never auto-cancelled and never retried forever.
-    holdCard: (identifier, { code, reason }) => {
-      const blockedReason = code === "DISPATCH_FAILED" ? "resource" : "external";
-      return holdOnBoard(opts, log, identifier, { code, reason, blockedReason });
+    holdCard: (identifier, { code, reason, blockedReason }) => {
+      const bucket =
+        blockedReason ?? (code === "DISPATCH_FAILED" ? "resource" : "external");
+      return holdOnBoard(opts, log, identifier, { code, reason, blockedReason: bucket });
     },
     limit: budget,
     verb: "enqueued",

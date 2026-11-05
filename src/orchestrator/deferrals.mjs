@@ -233,6 +233,49 @@ export function recordCardDeferral(stateDir, { identifier, code, reason, round, 
 }
 
 /**
+ * Record a refused claim without touching the handoff streak.
+ *
+ * A claim is refused when another owner won the board's CAS — ordinary
+ * competition, not a card the loop cannot advance. The shared `count`/`code`
+ * would let that competition advance (and re-code) a real failure streak toward
+ * its hold, so this writes its own fields and leaves `count`, `code` and
+ * `retry_at` exactly as they were. A successful claim clears the whole entry.
+ *
+ * @param {string} stateDir
+ * @param {{identifier: string, reason?: string, round?: number, version?: number|null, now?: string}} input
+ */
+export function recordClaimRefusal(stateDir, { identifier, reason, round, version, now }) {
+  const id = String(identifier ?? "").trim();
+  if (id === "") return { ok: false, entry: null, error: "no card identifier" };
+  const at = typeof now === "string" && now !== "" ? now : new Date().toISOString();
+  const text = String(reason ?? "").slice(0, DEFERRAL_REASON_MAX);
+  const { value, error } = readDeferralLedger(stateDir);
+  const previous = value.cards[id];
+  const entry =
+    previous !== null && typeof previous === "object" && !Array.isArray(previous)
+      ? { ...previous }
+      : {
+          identifier: id,
+          round: Number(round ?? 1),
+          count: 0,
+          code: null,
+          first_at: at,
+          last_at: at,
+          retry_at: null,
+          alerted_code: null,
+          alerted_at: null,
+        };
+  entry.claim_refusals = Number(entry.claim_refusals ?? 0) + 1;
+  entry.claim_last_at = at;
+  entry.claim_last_reason = text;
+  entry.last_at = at;
+  if (Number.isInteger(version)) entry.version = version;
+  value.cards[id] = entry;
+  const written = writeDeferralLedger(stateDir, value);
+  return { ok: written.ok, entry, error: written.error ?? error ?? null };
+}
+
+/**
  * Forget a card's streak. A successful admission means the card is no longer
  * deferred; nothing is written when there was no entry.
  *
@@ -404,7 +447,11 @@ export function createDeferralRecorder({
   dryRun = false,
 }) {
   if (dryRun === true) {
-    return { record: () => null, clear: () => ({ ok: true, cleared: false }) };
+    return {
+      record: () => null,
+      recordClaimRefusal: () => null,
+      clear: () => ({ ok: true, cleared: false }),
+    };
   }
   return {
     record(identifier, { code, reason, round, version = null }) {
@@ -427,6 +474,22 @@ export function createDeferralRecorder({
         notify,
         log,
       });
+      return written.entry;
+    },
+    recordClaimRefusal(identifier, { reason, round, version = null }) {
+      const written = recordClaimRefusal(stateDir, {
+        identifier,
+        reason,
+        round,
+        version,
+        now: now(),
+      });
+      if (written.ok !== true) {
+        log(`deferral: could not record claim refusal for ${identifier}: ${written.error}`, {
+          level: "warn",
+        });
+        return null;
+      }
       return written.entry;
     },
     clear(identifier) {

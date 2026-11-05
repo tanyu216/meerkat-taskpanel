@@ -92,6 +92,7 @@ export async function runPollTick(deps) {
     admit = null,
     release = null,
     recordDefer = null,
+    recordClaimRefusal = null,
     clearDeferral = null,
     moveBack = null,
     holdCard = null,
@@ -186,6 +187,16 @@ export async function runPollTick(deps) {
         { level: "warn" },
       );
     } else {
+      // The hold write is part of the failure's terminal state: a refused move
+      // must stay visible to the doctor instead of being a single log line.
+      // The original code is kept on purpose — changing it to a hold code would
+      // move the bound (DISPATCH_FAILED is 3) and delay the next retry.
+      recordDefer?.(identifier, {
+        code: entry.code ?? "DISPATCH_FAILED",
+        reason: `hold failed: ${held?.error ?? "unknown error"}`,
+        round: Number(entry.round ?? 1),
+        version: entry.version ?? null,
+      });
       log(`hold ${identifier}: could not park the card (${held?.error ?? "unknown error"})`, {
         level: "error",
       });
@@ -255,10 +266,15 @@ export async function runPollTick(deps) {
       });
       if (moved?.ok !== true) {
         deferred += 1;
-        log(
-          `defer ${action.identifier} (reassign to ${card.reassign.to} failed: ${moved?.error ?? "unknown error"})`,
-          { level: "warn" },
-        );
+        const reason = `reassign to ${card.reassign.to} failed: ${moved?.error ?? "unknown error"}`;
+        const entry = recordDefer?.(action.identifier, {
+          code: "REASSIGN_FAILED",
+          reason,
+          round: Number(card?.delivery_round ?? 1),
+          version: card?.version ?? null,
+        });
+        await holdIfExhausted(action.identifier, entry);
+        log(`defer ${action.identifier} (${reason})`, { level: "warn" });
         if (release !== null) await release(action.identifier);
         continue;
       }
@@ -269,6 +285,13 @@ export async function runPollTick(deps) {
     const verdict = await claim(action.identifier, action.agent, { ifVersion: claimVersion });
     if (!verdict?.ok) {
       conflicts += 1;
+      // A lost CAS is competition, not a card the loop cannot advance: it gets
+      // its own counter so it can never push the handoff streak toward a hold.
+      recordClaimRefusal?.(action.identifier, {
+        reason: verdict?.error ?? "conflict",
+        round: Number(card?.delivery_round ?? 1),
+        version: card?.version ?? null,
+      });
       log(`claim refused ${action.identifier} (${verdict?.error ?? "conflict"}) — not dispatching`);
       // The registration must not outlive the claim it was made for: nothing
       // would ever move that card through this loop, so the watch would wait
@@ -291,10 +314,25 @@ export async function runPollTick(deps) {
       if (moveBack !== null) {
         const moved = await moveBack(action.identifier, action.agent);
         if (moved?.ok !== true) {
-          log(
-            `release claim failed for ${action.identifier}: ${moved?.error ?? "unknown error"}`,
-            { level: "warn" },
-          );
+          const reason = moved?.error ?? "move back failed";
+          // The claim is still on the board with no worker behind it: record it
+          // and park the card instead of waiting for the stale recovery.
+          recordDefer?.(action.identifier, {
+            code: "CLAIM_RELEASE_FAILED",
+            reason,
+            round: Number(card?.delivery_round ?? 1),
+            // Post-claim: the claim itself bumped the board version, so keying
+            // the streak on it would reset every pass.
+            version: null,
+          });
+          const held = await holdCard?.(action.identifier, {
+            code: "CLAIM_RELEASE_FAILED",
+            reason,
+            blockedReason: "resource",
+          });
+          if (held?.ok !== true) {
+            log(`release claim failed for ${action.identifier}: ${reason}`, { level: "error" });
+          }
         }
       }
       const entry = recordDefer?.(action.identifier, {

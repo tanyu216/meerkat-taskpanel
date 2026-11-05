@@ -2489,6 +2489,135 @@ describe("poll deferral accounting", () => {
     assert.equal(held.length, 2, "admission holds at five");
   });
 
+  // TP-0146 P0.5: a refused Worker fallback reassignment used to be retried
+  // forever with no counter behind it.
+  it("counts a refused Worker reassignment and parks at five", async () => {
+    const recorded = [];
+    const held = [];
+    const refused = (count) =>
+      runPollTick(
+        base({
+          readCandidates: () => [
+            {
+              identifier: "T-1",
+              project: "P",
+              delivery_round: 2,
+              agent: "alice",
+              reason: "ready",
+              reassign: { to: "bob", reason: "Worker fallback" },
+            },
+          ],
+          admit: async () => ({ ok: true }),
+          reassign: async () => ({ ok: false, error: "VERSION_CONFLICT" }),
+          release: async () => {},
+          recordDefer: (id, failure) => {
+            recorded.push({ id, failure });
+            return { count, code: failure.code, reason: failure.reason };
+          },
+          holdCard: async (id, payload) => {
+            held.push({ id, code: payload.code });
+            return { ok: true };
+          },
+          clearDeferral: () => {},
+        }),
+      );
+    await refused(4);
+    assert.deepEqual(held, [], "four refusals keep retrying");
+    assert.equal(recorded[0].failure.code, "REASSIGN_FAILED");
+    await refused(5);
+    assert.deepEqual(held, [{ id: "T-1", code: "REASSIGN_FAILED" }]);
+  });
+
+  // TP-0146 P0.6: a claim whose hand-back fails is still `in_progress`; the
+  // loop must park it rather than leave an ownerless claim behind.
+  it("holds the card when the claim cannot be handed back", async () => {
+    const held = [];
+    const recorded = [];
+    await runPollTick(
+      base({
+        admit: async () => ({ ok: true }),
+        dispatch: async () => ({ ok: false, error: "spawn failed" }),
+        release: async () => {},
+        moveBack: async () => ({ ok: false, error: "board unavailable" }),
+        recordDefer: (id, failure) => {
+          recorded.push({ id, failure });
+          return { count: 1, code: failure.code, reason: failure.reason };
+        },
+        holdCard: async (id, payload) => {
+          held.push({ id, code: payload.code });
+          return { ok: true };
+        },
+      }),
+    );
+    assert.deepEqual(held, [{ id: "T-1", code: "CLAIM_RELEASE_FAILED" }]);
+    assert.deepEqual(recorded[0].failure, {
+      code: "CLAIM_RELEASE_FAILED",
+      reason: "board unavailable",
+      round: 2,
+      version: null,
+    });
+  });
+
+  // TP-0146 P0.7: a hold write that fails must stay visible in the deferral
+  // ledger without changing the bound that produced it.
+  it("records a hold-write failure and alerts instead of dropping it", async () => {
+    const recorded = [];
+    const lines = [];
+    const first = { count: 3, code: "DISPATCH_FAILED", reason: "spawn failed", round: 2, version: null };
+    await runPollTick(
+      base({
+        admit: async () => ({ ok: true }),
+        dispatch: async () => ({ ok: false, error: "spawn failed" }),
+        release: async () => {},
+        moveBack: async () => ({ ok: true }),
+        recordDefer: (id, failure) => {
+          recorded.push({ id, failure });
+          return recorded.length === 1 ? first : { count: 4, code: failure.code, reason: failure.reason };
+        },
+        holdCard: async () => ({ ok: false, error: "move refused" }),
+        log: (line) => lines.push(line),
+      }),
+    );
+    assert.equal(recorded.length, 2, "the failed hold is recorded, not dropped");
+    assert.deepEqual(recorded[1].failure, {
+      code: "DISPATCH_FAILED",
+      reason: "hold failed: move refused",
+      round: 2,
+      version: null,
+    });
+    assert.ok(lines.some((line) => /could not park the card/.test(line)));
+  });
+
+  // TP-0146 P0.8: losing a claim CAS is ordinary competition. It is counted on
+  // its own field so it cannot advance the shared failure streak toward a hold.
+  it("counts claim refusals without touching the handoff streak", async () => {
+    const refusals = [];
+    const recorded = [];
+    const held = [];
+    const result = await runPollTick(
+      base({
+        admit: async () => ({ ok: true }),
+        claim: async () => ({ ok: false, error: "VERSION_CONFLICT" }),
+        release: async () => {},
+        recordDefer: (id, failure) => {
+          recorded.push({ id, failure });
+          return { count: 1, code: failure.code };
+        },
+        recordClaimRefusal: (id, failure) => refusals.push({ id, failure }),
+        holdCard: async () => {
+          held.push(1);
+          return { ok: true };
+        },
+      }),
+    );
+    assert.equal(result.conflicts, 1);
+    assert.deepEqual(recorded, [], "a refusal is not a handoff failure");
+    assert.deepEqual(refusals, [
+      { id: "T-1", failure: { reason: "VERSION_CONFLICT", round: 2, version: null } },
+    ]);
+    assert.deepEqual(held, [], "competition never holds a card");
+  });
+
   it("releases the reservation when dispatch fails", async () => {
     const released = [];
     const result = await runPollTick(
