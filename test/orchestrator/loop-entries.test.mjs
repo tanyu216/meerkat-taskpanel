@@ -894,6 +894,10 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       capabilities: ["question-lane"],
       projects: { "worker:T-1:r1": { status: "running", sessionId: "sid-1" } },
     });
+    // Same isolation as the closed-record case: the scan set is the discovered
+    // Worker role, never whatever the host happens to have installed.
+    const home = join(dir, "home");
+    seedRole(home, "claude", "worker", "Worker");
     const record = join(dir, "calls.jsonl");
     const script = join(dir, "running-cli.mjs");
     writeFileSync(
@@ -913,8 +917,10 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       "passes.mjs",
       [
         "--actor-kind", "claude", "--agent", "alice",
+        "--home", home,
         "--cli", script, "--repo", dir,
         "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+        "--config", join(dir, ".env.claude"),
       ],
       { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
       "poll",
@@ -946,6 +952,11 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
         },
       },
     });
+    // The scan set is the discovered Worker role: seed a temp home so a
+    // developer's installed skills cannot answer for the test, and the
+    // container's empty home cannot make the poll scan nothing.
+    const home = join(dir, "home");
+    seedRole(home, "claude", "worker", "Worker");
     const record = join(dir, "calls.jsonl");
     const script = join(dir, "closed-cli.mjs");
     writeFileSync(
@@ -965,8 +976,11 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       "passes.mjs",
       [
         "--actor-kind", "claude", "--agent", "alice",
+        "--home", home,
         "--cli", script, "--repo", dir, "--workspace", "shared",
         "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+        // Keep a developer's installed per-kind config out of the scan set.
+        "--config", join(dir, ".env.claude"),
       ],
       { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
       "poll",

@@ -207,11 +207,10 @@ function setTimeouts(dir, ref, timeouts) {
   writeFileSync(file, JSON.stringify(value), "utf8");
 }
 
-const waitMs = (ms) =>
-  new Promise((resolveWait) => {
-    const timer = setTimeout(resolveWait, ms);
-    timer.unref?.();
-  });
+// The card-pulse interval is unref'd by design (a best-effort pulse must not
+// hold the pool open), so this wait is what keeps the test process alive while
+// the turn and its pulse run.
+const waitMs = (ms) => new Promise((resolveWait) => setTimeout(resolveWait, ms));
 
 const heartbeatCalls = (calls) =>
   calls.filter(

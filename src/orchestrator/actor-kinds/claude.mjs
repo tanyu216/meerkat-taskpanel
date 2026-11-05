@@ -119,6 +119,13 @@ class ClaudeSession {
     this.child.stderr.setEncoding("utf8");
     this.child.stdout.on("data", lineSplitter((line) => this.handleLine(line)));
     this.child.stderr.on("data", lineSplitter((line) => this.log(`claude[${this.cwd}] ${line}`)));
+    // A child that exits between the turn starting and the prompt write makes
+    // the stdin socket emit EPIPE. Without a listener that is an uncaught
+    // exception that takes the pool down; it is this turn's failure instead.
+    this.child.stdin.on("error", (err) => {
+      this.log(`claude[${this.cwd}] stdin error: ${err.message}`);
+      this.finish({ ok: false, error: `session stdin closed: ${err.message}` });
+    });
     this.child.on("error", (err) => {
       this.log(`claude[${this.cwd}] spawn error: ${err.message}`);
       this.finish({
@@ -225,11 +232,15 @@ class ClaudeSession {
         this.interrupt().catch(() => {});
       }, Math.max(1, timeoutMs));
       this.current = { resolve, timer };
-      writeJsonLine(this.child.stdin, {
-        type: "user",
-        message: { role: "user", content: String(prompt) },
-        parent_tool_use_id: null,
-      });
+      try {
+        writeJsonLine(this.child.stdin, {
+          type: "user",
+          message: { role: "user", content: String(prompt) },
+          parent_tool_use_id: null,
+        });
+      } catch (err) {
+        this.finish({ ok: false, error: `session stdin closed: ${err?.message ?? String(err)}` });
+      }
     });
   }
 
