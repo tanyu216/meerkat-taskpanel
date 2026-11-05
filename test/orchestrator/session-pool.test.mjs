@@ -702,6 +702,11 @@ describe("session pool", () => {
       "/meerkat-director\nFlags: --agent Director --actor-kind=claude",
       "a fresh director session opens by loading its skill with the lane's own attribution",
     );
+    assert.equal(
+      director.systemPrompt,
+      null,
+      "the director lane has no card, so it carries no card system prompt",
+    );
     assert.match(director.prompts[1], /You are the Director/);
     assert.match(director.prompts[1], /--agent Director --actor-kind claude/);
     assert.doesNotMatch(director.prompts[1], /--agent alice/);
