@@ -717,6 +717,9 @@ export function doctorReport(opts, env = process.env, deps = {}) {
               : {
                   status: row?.status ?? null,
                   attempts: row?.attempts ?? null,
+                  // A transient timeout is a third counter: an operator must be
+                  // able to tell a timeout retry from a delivery retry.
+                  timeouts: row?.timeouts ?? null,
                   retry_at: row?.retry_at ?? null,
                   last_error: row?.lastError ?? null,
                 },
@@ -1305,7 +1308,8 @@ function humanReport(report) {
       const queueText =
         row === null
           ? "no queue row"
-          : `queue ${row.status ?? "?"} after ${row.attempts ?? "?"} attempt(s), retry_at ${row.retry_at ?? "null"}`;
+          : `queue ${row.status ?? "?"} after ${row.attempts ?? "?"} attempt(s), ` +
+            `${row.timeouts ?? "?"} timeout(s), retry_at ${row.retry_at ?? "null"}`;
       lines.push(`  ${card.ref}  ${queueText}  ${card.title ?? ""}`.trimEnd());
     }
   }

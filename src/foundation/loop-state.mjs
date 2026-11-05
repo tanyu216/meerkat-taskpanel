@@ -60,7 +60,7 @@ export const SESSION_DEFAULTS = Object.freeze({
   poolMax: 8,
   projectIdleMs: 30 * 60 * 1000,
   sessionMaxAgeMs: 24 * 60 * 60 * 1000,
-  turnTimeoutMs: 30 * 60 * 1000,
+  turnTimeoutMs: 60 * 60 * 1000,
   pollMs: 1000,
 });
 
@@ -83,7 +83,14 @@ export const POOL_STALE_MS = 6 * POOL_HEARTBEAT_MS;
 /** How long the startup phase may last before it is wedged, not starting. */
 export const POOL_START_BUDGET_MS = 5 * 60_000;
 
-/** A tick may outlast its turn by this much before it is wedged. */
+/**
+ * The skill opener's own turn bound. It only loads a role skill, so ten minutes
+ * is ample; the opener is optional and a timeout reopens the session instead of
+ * spending the card's turn. A tick's in-flight window includes it.
+ */
+export const OPENER_TIMEOUT_MS = 10 * 60_000;
+
+/** A tick may outlast its turn and its opener by this much before it is wedged. */
 export const POOL_WEDGE_MARGIN_MS = 2 * 60_000;
 
 /** The most the background reattach pass may spend, even on a long turn. */
@@ -129,11 +136,15 @@ export function effectiveTurnTimeoutMs(turnTimeoutMs) {
 /**
  * When a tick in flight stops being a long turn and becomes a wedge.
  *
+ * A card job is the opener (bounded by `OPENER_TIMEOUT_MS`) followed by the
+ * card prompt (bounded by the turn), so the deadline has to cover both or a
+ * legal 60-minute tick would be killed by ping.
+ *
  * @param {unknown} turnTimeoutMs
  * @returns {number}
  */
 export function sendDeadlineMs(turnTimeoutMs) {
-  return effectiveTurnTimeoutMs(turnTimeoutMs) + POOL_WEDGE_MARGIN_MS;
+  return effectiveTurnTimeoutMs(turnTimeoutMs) + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS;
 }
 
 /**

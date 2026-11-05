@@ -16,7 +16,7 @@ import { spawn } from "node:child_process";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
-export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
+export const DEFAULT_TURN_TIMEOUT_MS = 60 * 60 * 1000;
 
 /**
  * The tool surface a role gets when full access is not enabled. The operator

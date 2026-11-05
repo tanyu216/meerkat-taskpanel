@@ -3023,7 +3023,7 @@ describe("the resident session pool surface", () => {
     const opts = parseArgs(["--actor-kind", "claude", "--session"], ENV);
     assert.equal(opts.resident, "auto");
     assert.equal(opts.sessionMaxAgeMs, 24 * 60 * 60 * 1000);
-    assert.equal(opts.sessionTurnTimeoutMs, 30 * 60 * 1000);
+    assert.equal(opts.sessionTurnTimeoutMs, 60 * 60 * 1000);
     assert.equal(opts.sessionPollMs, 1_000);
     assert.equal(opts.sessionPoolMax, 8);
     assert.equal(opts.projectIdleMs, 30 * 60 * 1000);

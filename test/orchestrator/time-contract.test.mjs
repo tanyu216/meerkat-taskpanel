@@ -30,6 +30,7 @@ import {
   planPatrol,
 } from "../../src/foundation/scheduling.mjs";
 import {
+  OPENER_TIMEOUT_MS,
   POOL_KILL_GRACE_MS,
   POOL_START_BUDGET_MS,
   POOL_VERDICTS,
@@ -38,10 +39,11 @@ import {
   startKillDeadlineMs,
 } from "../../src/foundation/loop-state.mjs";
 import { REQUEST_TIMEOUT_MS } from "../../src/foundation/transport/http.mjs";
-import { POOL_HEARTBEAT_MS, POOL_STALE_MS } from "../../src/orchestrator/session.mjs";
+import { TIMEOUT_BACKOFF_MS } from "../../src/orchestrator/queue.mjs";
+import { CARD_HEARTBEAT_MS, POOL_HEARTBEAT_MS, POOL_STALE_MS } from "../../src/orchestrator/session.mjs";
 
 /** The documented turn default and the bounds `src/orchestrator/options.mjs` enforces. */
-const TURN_DEFAULT_MS = 30 * 60 * 1000;
+const TURN_DEFAULT_MS = 60 * 60 * 1000;
 const TURN_MIN_MS = 1200 * 1000;
 const TURN_MAX_EXCLUSIVE_MS = 7200 * 1000;
 
@@ -61,6 +63,18 @@ describe("scheduling/time-contract — the clocks relate", () => {
     assert.ok(DEFAULT_CONTINUE_SECONDS * 1000 < TURN_DEFAULT_MS);
   });
 
+  it("the loop's pulse fits inside the heartbeat window, and timeout backoff grows", () => {
+    assert.equal(CARD_HEARTBEAT_MS, 5 * 60_000);
+    assert.ok(CARD_HEARTBEAT_MS < HEARTBEAT_FRESH_MS, "a turn pulse keeps the claim fresh");
+    assert.deepEqual(TIMEOUT_BACKOFF_MS, [2, 4, 8].map((minutes) => minutes * 60_000));
+    for (let index = 1; index < TIMEOUT_BACKOFF_MS.length; index += 1) {
+      assert.ok(
+        TIMEOUT_BACKOFF_MS[index] > TIMEOUT_BACKOFF_MS[index - 1],
+        "each timeout waits longer than the last",
+      );
+    }
+  });
+
   it("patrol's staleness is the same-holder recovery window", () => {
     assert.equal(PATROL_STALE_MS, CLAIM_STALE_SAME_MS);
   });
@@ -77,6 +91,10 @@ describe("scheduling/time-contract — the clocks relate", () => {
       const send = sendDeadlineMs(turn);
       const kill = killDeadlineMs(turn);
       assert.ok(send > turn, `turn=${turn}ms: a legitimate turn is never the deadline`);
+      assert.ok(
+        send >= turn + OPENER_TIMEOUT_MS,
+        `turn=${turn}ms: the opener budget is part of the deadline`,
+      );
       assert.ok(kill > send, `turn=${turn}ms: the kill deadline has its own grace`);
       assert.ok(POOL_STALE_MS <= send, `turn=${turn}ms: staleness is inside the send window`);
     }

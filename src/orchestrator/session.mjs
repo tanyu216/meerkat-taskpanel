@@ -35,10 +35,11 @@ import {
   REVIEWER_SYSTEM_PROMPT_FALLBACK,
   WORKER_SYSTEM_PROMPT_FALLBACK,
 } from "../foundation/scheduling.mjs";
-import { holdCard } from "./holds.mjs";
+import { holdCard, releaseCard } from "./holds.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
-import { drainInFlight, readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, readTriageOutcome, runCli } from "./runtime.mjs";
+import { drainInFlight, readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, readTriageOutcome, runCli, runCliAsync } from "./runtime.mjs";
+import { isTurnTimeoutError } from "./turn-errors.mjs";
 import {
   appendWorkerTurn,
   buildWorkerDispatchPrompt,
@@ -68,6 +69,8 @@ import {
   requeueCards,
   resumeCards,
   retireLegacyDispatched,
+  timeoutCards,
+  TIMEOUT_MAX_ATTEMPTS,
   writeJsonFile,
 } from "./queue.mjs";
 import {
@@ -94,6 +97,7 @@ export {
   sendDeadlineMs,
 } from "../foundation/loop-state.mjs";
 import {
+  OPENER_TIMEOUT_MS,
   POOL_HEARTBEAT_MS,
   POOL_REATTACH_MAX_MS,
   POOL_STALE_MS,
@@ -124,6 +128,14 @@ const QUESTION_BATCH_MAX = 8;
  * (ten minutes, past the worker's hold). 30s fits inside the default 110s wait.
  */
 const QUESTION_RETRY_BACKOFF_MS = 30_000;
+
+/**
+ * How often the loop pulses a claimed card while its turn is in flight. Below
+ * the board's 10-minute fresh window (and the 30-minute stale window), so a long
+ * turn is never mistaken for a stale claim. `opts.cardHeartbeatMs` is a test
+ * seam, never a configuration key.
+ */
+export const CARD_HEARTBEAT_MS = 5 * 60_000;
 
 /** A queue row on the question lane (everything else is a card handoff). */
 const isQuestionRow = (row) => String(row?.queue_kind ?? "handoff") === "question";
@@ -369,7 +381,7 @@ export function createSessionPool(input = {}) {
   let started = false;
   // The liveness verdict's inputs. `phase` is the pool's own lifecycle;
   // `tickStartedAt` is set only while a dispatch tick is in flight, so a turn
-  // that legitimately runs for half an hour is not read as a wedged tick.
+  // that legitimately runs for an hour (plus its opener) is not read as wedged.
   // `startStartedAt`, `poolPidStart` and `previousPoolPid` are published before
   // `start()` so the startup window is visible to every reader.
   let phase = "starting";
@@ -667,7 +679,11 @@ export function createSessionPool(input = {}) {
       (typeof opener.fingerprint === "string" && entry.openerFingerprint !== opener.fingerprint);
     if (!needed) return { ok: true, sent: false };
     const text = `${opener.command}\nFlags: ${opener.flags}`;
-    const outcome = await entry.handle.send(text, { timeoutMs: turnTimeoutMs });
+    // Loading a skill is not a card turn: bound it separately, and never above
+    // the turn itself.
+    const outcome = await entry.handle.send(text, {
+      timeoutMs: Math.min(turnTimeoutMs, OPENER_TIMEOUT_MS),
+    });
     if (outcome?.ok !== true) {
       const error = String(outcome?.error ?? "unknown error");
       log(`session: ${entry.key} skill opener failed (${error}) — falling back to paths`);
@@ -1268,8 +1284,14 @@ export function createSessionPool(input = {}) {
     // they only gate handoffs for the same worker card: a worker whose question
     // is still unsettled must not be re-prompted by a second handoff. A review
     // card never asks, so it is never gated on one.
+    // A timed-out row waits out its backoff. Question rows are never filtered:
+    // an unsettled question must keep blocking its card's handoff.
+    const due = (row) => {
+      const at = Date.parse(String(row.retry_at ?? ""));
+      return Number.isNaN(at) || at <= now();
+    };
     const questionRows = pending.filter(isQuestionRow);
-    const handoffRows = pending.filter((row) => !isQuestionRow(row));
+    const handoffRows = pending.filter((row) => !isQuestionRow(row) && due(row));
     if (handoffRows.length === 0) {
       return { ok: true, dispatched: 0 };
     }
@@ -1311,7 +1333,8 @@ export function createSessionPool(input = {}) {
       const kept = [];
       let dropped = 0;
       for (const card of cards) {
-        if (Number(card.attempts ?? 0) === 0) {
+        // A first dispatch needs no re-check; a retry of either kind does.
+        if (Number(card.attempts ?? 0) === 0 && Number(card.timeouts ?? 0) === 0) {
           kept.push(card);
           continue;
         }
@@ -1494,7 +1517,7 @@ export function createSessionPool(input = {}) {
         if (String(cards[0].role ?? "worker") === "reviewer") {
           // A review has no human to wake; a failed open is retried by the queue
           // on a later tick, and held at the row's attempt bound.
-          settleFailedHandoff(cards[0], true, err.message);
+          await settleFailedHandoff(cards[0], true, err.message);
         } else {
           // An unrestorable worker session is not retried: the row fails and the
           // card is parked at once (docs/scheduling.md, "worker session
@@ -1559,7 +1582,53 @@ export function createSessionPool(input = {}) {
     // handle. Planning and claiming finished before the first send, so the
     // per-tick budget is fixed. Results are applied serially — the ledger and
     // the queue are single files.
-    const sendCardJob = async (job) => {
+    /**
+     * Pulse the claimed card as its holder for the life of the turn.
+     *
+     * A 60-minute turn cannot beat the board's 10-minute fresh window from
+     * inside the agent, so the loop writes the heartbeat itself. The pulse is
+     * best-effort: a refusal stops it, and it never changes the turn's outcome.
+     *
+     * @param {object} row the handoff queue row
+     * @returns {{stop: () => void}}
+     */
+    const startCardPulse = (row) => {
+      const agent = typeof row?.agent === "string" ? row.agent.trim() : "";
+      const card = String(row?.card ?? "");
+      if (opts.dryRun || agent === "" || card === "") return { stop: () => {} };
+      const every = Math.max(1, Number(opts.cardHeartbeatMs ?? CARD_HEARTBEAT_MS));
+      let stopped = false;
+      let inFlight = false;
+      const stop = () => {
+        if (stopped) return;
+        stopped = true;
+        clearInterval(timer);
+      };
+      const timer = setInterval(() => {
+        // One pulse at a time: a slow board must not stack calls, and one
+        // refusal must be the end of the timer, not the first of several.
+        if (stopped || inFlight) return;
+        inFlight = true;
+        void runCliAsync(opts, agent, ["issue", "heartbeat", card], {
+          actorKind: row.actor_kind ?? opts.actorKind,
+        })
+          .then((result) => {
+            if (result.ok === true) return;
+            stop();
+            log(
+              `session: card heartbeat for ${card} refused (${result.code ?? result.error ?? "unknown"}) — pulse stopped`,
+              { level: "debug" },
+            );
+          })
+          .finally(() => {
+            inFlight = false;
+          });
+      }, every);
+      timer.unref?.();
+      return { stop };
+    };
+
+    const sendCardTurn = async (job) => {
       const row = job.cards[0];
       const plan = job.entry.worker?.planMode ?? "fresh";
       let answer = null;
@@ -1567,7 +1636,7 @@ export function createSessionPool(input = {}) {
         const context = await readRedispatchContext(opts, row.card, log);
         answer = context.ok === true ? context.answer : null;
       }
-      const run = async (entry, planMode) => {
+      const run = async (entry, planMode, { skipOpener = false } = {}) => {
         entry.busy = true;
         entry.worker.status = "running";
         persistState();
@@ -1583,20 +1652,28 @@ export function createSessionPool(input = {}) {
               cwd: entry.cwd,
             };
           }
-          const opened = await ensureOpener(
-            entry,
-            job.skill?.opener ?? null,
-            job.skill?.fingerprint ?? null,
-          );
-          // The opener's own turn can time out and leave the handle closed. That
-          // is the failed turn; the card prompt must not follow it into the pipe.
-          if (opened.ok !== true && entry.handle?.closed === true) {
-            return {
-              ok: false,
-              error: opened.error ?? "session is closed",
-              sessionId: entry.sessionId,
-              cwd: entry.cwd,
-            };
+          let opened = { ok: true, sent: false };
+          if (!skipOpener) {
+            opened = await ensureOpener(
+              entry,
+              job.skill?.opener ?? null,
+              job.skill?.fingerprint ?? null,
+            );
+            // The opener is optional: a timeout or a closed handle is transient.
+            // Report it so the caller reopens a conversation instead of spending
+            // the card's attempt on a turn it never received.
+            if (
+              opened.ok !== true &&
+              (isTurnTimeoutError(opened.error) || entry.handle?.closed === true)
+            ) {
+              return {
+                ok: false,
+                error: opened.error ?? "session is closed",
+                openerTimedOut: true,
+                sessionId: entry.sessionId,
+                cwd: entry.cwd,
+              };
+            }
           }
           const prompt =
             planMode === "replay"
@@ -1617,28 +1694,40 @@ export function createSessionPool(input = {}) {
                     sessionId: entry.sessionId,
                   })
                 : buildWorkerDispatchPrompt({ row, handoff: row.handoff });
+          // A skipped opener (the reopen path) needs the same pointer a failed
+          // opener gets: the new conversation has not loaded the skill.
           const fallback =
-            opened.ok !== true && typeof job.skill?.path === "string"
+            (skipOpener || opened.ok !== true) && typeof job.skill?.path === "string"
               ? `Role skill: ${job.skill.path} — read it before acting.\n\n`
               : "";
           appendWorkerTurn(stateDir, job.key, { kind: "dispatch", text: `${planMode} ${row.card}` });
-          return await entry.handle.send(`${fallback}${prompt}`, { timeoutMs: turnTimeoutMs });
+          const result = await entry.handle.send(`${fallback}${prompt}`, {
+            timeoutMs: turnTimeoutMs,
+          });
+          if (result?.ok === true && skipOpener === true) {
+            // The card prompt carried the skill pointer; record the skill as
+            // loaded so this session's next retry does not spend another opener.
+            markOpener(entry, job.skill?.opener?.fingerprint ?? null);
+          }
+          return result;
         } finally {
           entry.busy = false;
           entry.lastUsedAt = nowIso(now);
         }
       };
       // Normalize through the one seam that replaces a closed handle: a session
-      // that died between ticks must not cost the card a turn.
+      // that died between ticks must not cost the card a turn. A timed-out
+      // opener takes the same path — the opener holds the skill, not the card.
       let entry = await ensureSession(job.key, job.openOptions);
       job.entry = entry;
       let usedPlan = entry.worker?.planMode ?? plan;
       let reopened = false;
-      // A closed handle is not work: reopen once, without touching the row's
-      // attempt budget, and send the same card to the fresh conversation.
       const runTurn = async (current, planMode) => {
         const result = await run(current, planMode);
-        if (result?.error !== "session is closed" || reopened === true) {
+        if (
+          (result?.error !== "session is closed" && result?.openerTimedOut !== true) ||
+          reopened === true
+        ) {
           return { result, current, planMode };
         }
         reopened = true;
@@ -1646,7 +1735,11 @@ export function createSessionPool(input = {}) {
         const next = await ensureSession(job.key, job.openOptions);
         job.entry = next;
         const nextPlan = next.worker?.planMode ?? "fresh";
-        return { result: await run(next, nextPlan), current: next, planMode: nextPlan };
+        return {
+          result: await run(next, nextPlan, { skipOpener: true }),
+          current: next,
+          planMode: nextPlan,
+        };
       };
       let turn = await runTurn(entry, usedPlan);
       entry = turn.current;
@@ -1672,6 +1765,17 @@ export function createSessionPool(input = {}) {
       }
       return { outcome, plan: usedPlan };
     };
+
+    // The pulse covers the opener and the card prompt, and is cleared whatever
+    // path the turn takes.
+    const sendCardJob = async (job) => {
+      const pulse = startCardPulse(job.cards[0]);
+      try {
+        return await sendCardTurn(job);
+      } finally {
+        pulse.stop();
+      }
+    };
     const settled = await Promise.allSettled(jobs.map((job) => sendCardJob(job)));
 
     for (let index = 0; index < jobs.length; index += 1) {
@@ -1683,7 +1787,7 @@ export function createSessionPool(input = {}) {
       if (settledJob.status === "rejected") {
         const error = String(settledJob.reason?.message ?? settledJob.reason ?? "card turn failed");
         for (const failedCard of batch) {
-          settleFailedHandoff(failedCard, lane === "reviewer", error);
+          await settleFailedHandoff(failedCard, lane === "reviewer", error);
         }
         entry.worker.status = "idle";
         entry.worker.lastError = error;
@@ -1702,7 +1806,7 @@ export function createSessionPool(input = {}) {
           const live = await revalidateCard({ card: row.card, row });
           if (live?.ok === true && live.status === "in_progress") {
             const error = "review turn ended without delivering a verdict";
-            settleFailedHandoff(row, true, error);
+            await settleFailedHandoff(row, true, error);
             entry.worker.status = "idle";
             entry.worker.lastError = error;
             persistState();
@@ -1744,11 +1848,21 @@ export function createSessionPool(input = {}) {
       const error = String(outcome?.error ?? `${review ? "review" : "worker"} turn failed`);
       if (plan === "replay" || outcome?.resumeFailed === true) {
         entry.worker.lastError = error;
+        // A resume/replay that timed out is the same transient failure as a
+        // first turn: it never parks the card.
+        if (isTurnTimeoutError(error)) {
+          await settleTimedOutHandoff(row, review, `session resume/replay failed: ${error}`);
+          entry.worker.status = "idle";
+          entry.worker.lastError = error;
+          await closeEntry(entry, { dropSession: false });
+          persistState();
+          continue;
+        }
         if (review) {
           // A review has no question lane of its own: the session record is not
           // marked blocked, and the queue's attempt budget is what stops it. At
           // the bound the card gets the same execution hold as a worker's.
-          settleFailedHandoff(row, true, `review session resume/replay failed: ${error}`);
+          await settleFailedHandoff(row, true, `review session resume/replay failed: ${error}`);
           entry.worker.status = "idle";
           await closeEntry(entry, { dropSession: true });
           persistState();
@@ -1790,7 +1904,7 @@ export function createSessionPool(input = {}) {
         }
       }
       if (stillWorkable) {
-        settleFailedHandoff(row, review, error);
+        await settleFailedHandoff(row, review, error);
       }
       if (/closed|exited|spawn error|timed out/.test(error)) {
         await closeEntry(entry, { dropSession: false });
@@ -1898,17 +2012,19 @@ export function createSessionPool(input = {}) {
   }
 
   /**
-   * Settle a failed card handoff. Below the queue's attempt bound the same
-   * claim is retried; at the bound the row is terminal, so the card gets the
-   * execution hold instead of being left `in_progress` for a stale recovery
-   * that may never come (docs/scheduling.md, ADR 0009).
+   * Settle a failed card handoff. A transient timeout takes the timeout path;
+   * everything else keeps the attempt bound. Below the bound the same claim is
+   * retried; at the bound the row is terminal, so the card gets the execution
+   * hold instead of being left `in_progress` for a stale recovery that may
+   * never come (docs/scheduling.md, ADR 0009).
    *
    * @param {object} row queue row (one card)
    * @param {boolean} review
    * @param {string} error
-   * @returns {{terminal: boolean}}
+   * @returns {Promise<{terminal: boolean}>}
    */
-  function settleFailedHandoff(row, review, error) {
+  async function settleFailedHandoff(row, review, error) {
+    if (isTurnTimeoutError(error)) return settleTimedOutHandoff(row, review, error);
     const label = review ? "review " : "worker ";
     const result = requeueCards(stateDir, [row.id], { error });
     if (result.ok !== true) {
@@ -1944,6 +2060,91 @@ export function createSessionPool(input = {}) {
       });
     }
     return { terminal: false };
+  }
+
+  /**
+   * Settle a timed-out turn: its own counter, its own backoff, never a hold.
+   *
+   * Below the bound the row is pending with a `retry_at`; the next tick after
+   * the backoff re-dispatches the card to the same session. On the third, the
+   * card is re-read **before** it is moved: the turn may have delivered (or a
+   * human may have moved it) while it was unwinding. Only a card still
+   * `in_progress` returns to `todo`; a read failure leaves it to the ordinary
+   * stale-claim recovery.
+   *
+   * @param {object} row queue row (one card)
+   * @param {boolean} review
+   * @param {string} error
+   * @returns {Promise<{terminal: boolean}>}
+   */
+  async function settleTimedOutHandoff(row, review, error) {
+    const label = review ? "review " : "worker ";
+    const result = timeoutCards(stateDir, [row.id], { error, now: now() });
+    if (result.ok !== true) {
+      log(
+        `session: ${label}${row.card} could not record the timeout: ${result.error ?? "unknown error"}`,
+        { level: "error" },
+      );
+      return { terminal: false };
+    }
+    const count = Number(result.timeouts?.[String(row.id)] ?? 0);
+    if (count === 0) {
+      log(`session: ${label}${row.card} has no in-flight row to time out`, { level: "warn" });
+      return { terminal: false };
+    }
+    if (result.exhaustedIds.length === 0) {
+      log(
+        `session: ${label}${row.card} timed out (${count}/${TIMEOUT_MAX_ATTEMPTS}) — ` +
+          `retry at ${result.retryAt ?? "the next tick"}`,
+      );
+      return { terminal: false };
+    }
+    // The release is a board write after a re-read: never move a card that has
+    // already moved (a delivery, a human, or an awaiting/review state).
+    const live = revalidateCard === null ? null : await revalidateCard({ card: row.card, row });
+    if (live?.ok === true && live.status === "in_progress") {
+      const released = releaseCard(opts, log, row.card, {
+        reason: `turn timed out ${count} time(s); returned to the queue`,
+        body: [
+          `The loop stopped waiting on this turn after ${count} timeout(s).`,
+          "",
+          "The card is back in `todo`; a later poll will dispatch it again. This is a loop-side timeout, not a delivery failure.",
+        ].join("\n"),
+      });
+      completeCards(stateDir, [row.id], {
+        status: "failed",
+        error: `turn timed out ${count} time(s)`,
+      });
+      if (released.ok !== true) {
+        log(
+          `session: ${label}${row.card} could not be released after ${count} timeout(s): ` +
+            `${released.error ?? "unknown error"}`,
+          { level: "error" },
+        );
+      }
+      return { terminal: true };
+    }
+    if (live?.ok === true) {
+      completeCards(stateDir, [row.id], {
+        status: "done",
+        error: `not re-dispatched: card is ${live.status ?? "unknown"}`,
+      });
+      log(
+        `session: ${label}${row.card} is ${live.status ?? "unknown"} after the timeout — handoff completed`,
+      );
+      return { terminal: true };
+    }
+    // Fail-soft: an unreadable board never moves a card. The row is closed and
+    // the ordinary stale-claim recovery owns the claim.
+    completeCards(stateDir, [row.id], {
+      status: "failed",
+      error: `turn timed out ${count} time(s); card state unreadable`,
+    });
+    log(
+      `session: ${label}${row.card} could not be re-checked after ${count} timeout(s) — not released`,
+      { level: "warn" },
+    );
+    return { terminal: true };
   }
 
   function parkCard(ref, reason, blockedReason = "resource") {

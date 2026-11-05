@@ -34,6 +34,7 @@ what a change must comply with.
 | [0013](0013-the-role-catalog-is-a-local-taskctl-file.md) | The discovered role set is published as a local `roles.json`; the scan set is the discovered worker roles; the scan-set key is removed | Accepted |
 | [0014](0014-a-review-is-a-third-kind.md) | A review is a third card `kind`; the marker stays its identity and the database ties them together | Proposed |
 | [0015](0015-stale-claim-recovery-keeps-the-assignee.md) | Stale-claim recovery keeps the assignee's role; a non-assignee takeover needs the audited override; Worker is a formal, commented fallback | Accepted |
+| [0016](0016-turn-timeouts-are-transient.md) | A turn timeout has its own counter and backoff and returns the card to `todo`, never `blocked`; the loop pulses the claim and the deadline includes the opener | Accepted |
 
 ## Writing one
 

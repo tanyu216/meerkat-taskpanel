@@ -246,19 +246,21 @@ immediately. Polling first would delay that review by a whole cadence.
 
 The clocks below are not independent knobs: each one is a bound on another, and the
 inequalities are asserted in `test/orchestrator/time-contract.test.mjs`. `--session-turn-timeout`
-is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `1800`).
+is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `3600`).
 
 | Clock | Default | Where |
 |---|---:|---|
-| agent turn timeout | 30 min (`--session-turn-timeout`) | `src/orchestrator/options.mjs`, `src/orchestrator/session.mjs` |
+| agent turn timeout | 60 min (`--session-turn-timeout`) | `src/orchestrator/options.mjs`, `src/orchestrator/session.mjs` |
+| skill opener timeout | 10 min (`OPENER_TIMEOUT_MS`) | `src/foundation/loop-state.mjs`, `src/orchestrator/session.mjs` |
 | worker heartbeat interval | ≤ 10 min | worker handoff (`src/foundation/scheduling.mjs`) |
+| loop card heartbeat (during a turn) | 5 min (`CARD_HEARTBEAT_MS`) | `src/orchestrator/session.mjs` |
 | `HEARTBEAT_FRESH_MS` | 10 min | `src/foundation/constants.mjs` |
 | `CLAIM_STALE_SAME_MS` | 30 min | `src/foundation/constants.mjs` |
 | `CLAIM_STALE_ANY_MS` | 6 h | `src/foundation/constants.mjs` |
 | patrol stale (scans `in_progress` work cards; an epic container is excluded) | 30 min (= `CLAIM_STALE_SAME_MS`) | `src/foundation/scheduling.mjs` |
 | tick interval (the `continue` unit) | 10 min | `src/orchestrator/options.mjs` |
 | queue `recoverStaleCards` | `2 × turn` | `src/orchestrator/session.mjs` |
-| pool `wedged` verdict | `turn + POOL_WEDGE_MARGIN_MS` (default 32 min) | `src/foundation/loop-state.mjs` |
+| pool `wedged` verdict | `turn + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS` (default 72 min) | `src/foundation/loop-state.mjs` |
 | ping kill deadline (the only authority) | `wedged + POOL_KILL_GRACE_MS` (60 s); starting at `POOL_START_BUDGET_MS + 60 s` | `src/foundation/loop-state.mjs`, `src/orchestrator/supervisor.mjs` |
 | pool start budget / reattach bound | 5 min / `min(turn, 120 s)` | `src/foundation/loop-state.mjs`, `src/orchestrator/session.mjs` |
 | `runCli` spawn bound | 60 s (`CLI_TIMEOUT_MS`) | `src/orchestrator/runtime.mjs` |
@@ -274,10 +276,13 @@ The contract:
 - `2 × HEARTBEAT_FRESH_MS ≤ TURN_MIN` and `TURN_DEFAULT < LEDGER_STALE_MS` — a turn covers two
   pulse windows and still ends before the ledger reclaims a live row.
 - `CONTINUE_INTERVAL < TURN_DEFAULT`; `PATROL_STALE_MS = CLAIM_STALE_SAME_MS`;
-  `POOL_STALE_MS > POOL_HEARTBEAT_MS`.
-- `sendDeadlineMs > turn` and `killDeadlineMs = sendDeadlineMs + POOL_KILL_GRACE_MS`; the
-  starting phase's kill deadline is `POOL_START_BUDGET_MS + POOL_KILL_GRACE_MS`. A legitimate
-  turn is never a kill, and the ping waits one more minute after the verdict says `wedged`.
+  `POOL_STALE_MS > POOL_HEARTBEAT_MS`; `CARD_HEARTBEAT_MS < HEARTBEAT_FRESH_MS` — the loop's
+  own pulse keeps a long turn inside the fresh window.
+- `sendDeadlineMs = turn + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS` (a card job is the opener
+  plus the card prompt, so the deadline covers both) and
+  `killDeadlineMs = sendDeadlineMs + POOL_KILL_GRACE_MS`; the starting phase's kill deadline is
+  `POOL_START_BUDGET_MS + POOL_KILL_GRACE_MS`. A legitimate turn is never a kill, and the ping
+  waits one more minute after the verdict says `wedged`.
 - `CLI_TIMEOUT_MS = 60 s` is the outer child bound and is longer than the CLI's own 30 s HTTP
   bound (`REQUEST_TIMEOUT_MS`), so a slow board is not a hung one.
 
@@ -313,13 +318,14 @@ policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
 | Deliver → review → rework | `delivery_round − meta.loop_hold_round` (board) | `--rework-max-rounds` = 4 | `hold_card`: question + `blocked/decision` + close the review |
 | Review verdict unappliable | `meta.review_retry − meta.loop_hold_retry_base` (board) | 2 | `hold_card` on the original + `close_review` |
 | Card handoff turn | queue row `attempts` | 3 | row `failed`; execution hold |
+| Handoff turn timeout | queue row `timeouts` | 3 (backoff 2/4/8 min) | below the bound, row pending with `retry_at`; at it, the card is re-read and (still `in_progress`) released to `todo` — never `blocked` |
 | Crash recovery | queue row `recoveries` | 3 | row `failed` + card `blocked/resource` |
 | Admission failure | `deferrals.json` `count` | backoff at 3 (30 s→1 h), hold at 5 | `blocked/external` + `Orchestrator` question |
 | Dispatch failure after a claim | `deferrals.json` `DISPATCH_FAILED` | 3 | claim released immediately; `blocked/resource` at the bound |
 | Worker session unrestorable | session record | first failure | row failed, claim released, `blocked/resource` |
 | Question turn | director row dispatches | 2 | left for the human; `question_stale` + doctor |
 | Route turn | route row dispatches | 2 | the card is parked `blocked/decision` (never assigned) |
-| Wedged pool | `sessions.state.json` `tickStartedAt` / `startStartedAt` | verdict at `turn + POOL_WEDGE_MARGIN_MS` / start budget; ping acts 60 s later | one `pool_killed` + SIGTERM, recorded in `pool-wedge.json`; SIGKILL on a later ping if it survives; the unit restarts it |
+| Wedged pool | `sessions.state.json` `tickStartedAt` / `startStartedAt` | verdict at `turn + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS` / start budget; ping acts 60 s later | one `pool_killed` + SIGTERM, recorded in `pool-wedge.json`; SIGKILL on a later ping if it survives; the unit restarts it |
 | Hung `taskctl` | `runCli` | 60 s (`CLI_TIMEOUT_MS`) | the child is killed with SIGKILL; the pass fails and releases the tick lock |
 
 **The hold is an epoch, not a latch.** `meta.loop_hold_round` records the round the card was
@@ -336,7 +342,7 @@ The requested E-code rides in the `question` comment and `meta.loop_hold_e_code`
 **The pool has five live verdicts.** A live pid is always `live: true`; `starting`,
 `running`, `busy` (a dispatch tick is in flight), `unresponsive` (heartbeat stale) and
 `wedged` (`starting` past the start budget, or `tickStartedAt` past `turn +
-POOL_WEDGE_MARGIN_MS`) say which kind of live it is. Only `gone` — a dead pid or a start-token
+OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS`) say which kind of live it is. Only `gone` — a dead pid or a start-token
 mismatch — is absent, and the heartbeat never decides it. A second pool is refused in every
 one of them, and only `wedged` is acted on by the ping clock — `starting` and `unresponsive` may
 still recover. The verdict is not yet permission to kill: the ping acts one minute later
@@ -661,6 +667,7 @@ Every dependency's failure is named; nothing degrades silently.
 | board unreachable | the pass logs the error and claims nothing |
 | worker crashed | the next tick resumes the session by id, or replays a bounded transcript; three failed recoveries park the card |
 | worker session cannot be restored | row failed, claim released, card `blocked/resource` with a question — never a 30-minute re-dispatch loop |
+| handoff turn timeout | transient: its own `timeouts` counter, 2/4/8-minute backoff; after three, re-read the card and release it to `todo` with a note — never `blocked` (ADR [0016](adr/0016-turn-timeouts-are-transient.md)) |
 | dispatch failed after the claim | the claim is handed back to `todo` immediately; at three consecutive failures the card is parked |
 | a card keeps coming back | the board's plan emits `hold_card`; the card is `blocked/decision` with a question, and a human move starts a fresh epoch |
 | resident pool wedged | `loop doctor`/`status` report `wedged`; one minute later the ping clock SIGTERMs it once and SIGKILLs on a later ping if needed (`--recover-wedged=no` opts out) |
@@ -675,6 +682,7 @@ enforces exactly them.
 
 | Heartbeat age | Meaning | What the supervisor does |
 |---|---|---|
+| every 5 min while a turn runs | the loop pulses the card as its holder | the claim stays fresh even when a 60-minute turn cannot reach the board itself; a refused pulse stops the timer and never affects the turn |
 | ≤ 30 min | live | nothing — the poll will not see a claimable card, and patrol stays quiet |
 | > 30 min | stale | patrol **escalates**: a log line and, if configured, `--notify <cmd>` |
 | unreadable / absent | a corrupt or half-written claim | patrol reports it (`heartbeat-unreadable`) — **never** swallowed |
