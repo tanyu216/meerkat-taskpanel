@@ -556,22 +556,25 @@ describe("board skill: the language of a card", () => {
     text.indexOf("## Claim one card"),
   );
 
-  it("decides the language from the conversation, not English by default", () => {
-    // The board stores text verbatim, so the first writer sets the language of the whole
-    // trail. A skill that says nothing leaves the model on its English default.
+  it("follows the card's own body for card-surface text, not the conversation", () => {
+    // A card is one trail of text. A Chinese card takes a Chinese report even when the
+    // session is English; an English card takes an English comment even when the human
+    // typed Chinese. The conversation only sets the language of a card being created.
     assert.ok(section.length > 0, "the skill has a language section before the write workflow");
-    assert.match(section, /not the default|never the default|not .{0,20}default/i);
-    assert.match(section, /the human/i);
-    assert.match(section, /conversation/i);
-    for (const surface of ["title", "comment", "question", "report"]) {
+    assert.match(section, /card'?s own (body|text)/i);
+    assert.match(section, /not the default|never the default/i);
+    assert.match(section, /not\s+the\s+authority/i);
+    for (const surface of ["comment", "question", "report", "leftovers", "acceptance"]) {
       assert.match(section, new RegExp(surface, "i"), `the rule covers the ${surface}`);
     }
   });
 
-  it("inherits the card's language when no human is in the session", () => {
-    // A loop tick or a subagent has no human message to read, so the rule needs a fallback
-    // chain; otherwise the "no human" case silently becomes the English default again.
-    assert.match(section, /inherit/i);
+  it("lets the first writer set the language of a card with no body yet", () => {
+    // A new card has nothing to inherit, so the create needs a fallback chain; otherwise
+    // the "no body" case silently becomes the English default again.
+    assert.match(section, /creating|no body yet|first writer/i);
+    assert.match(section, /the human/i);
+    assert.match(section, /conversation/i);
     assert.match(section, /README|CLAUDE\.md|GLOSSARY/);
   });
 
