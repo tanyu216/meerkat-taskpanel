@@ -1,5 +1,5 @@
 /**
- * Pure prompt fragments for the optional team-role layer.
+ * Pure prompt fragments for the optional team-role routing.
  *
  * `scheduling.mjs` is a pure decision module; keeping these renderers here (and
  * importing no filesystem) means the handoff builders stay testable without a
@@ -11,7 +11,6 @@
  */
 
 const ROLE_PROMPT_LIMITS = Object.freeze({
-  layerOne: 1400,
   // The decision layer now carries the bounded `issue wait` hold; the extra
   // headroom keeps the whole frontier + the policy pointer from truncating.
   decision: 1700,
@@ -24,12 +23,6 @@ function clamp(text, max) {
   const cut = text.slice(0, max);
   const newline = cut.lastIndexOf("\n");
   return `${newline > 0 ? cut.slice(0, newline) : cut}\n[truncated — see the role files]`;
-}
-
-/** @param {string} title @param {string[]} values */
-function bullets(title, values) {
-  if (!Array.isArray(values) || values.length === 0) return [];
-  return [title, ...values.map((value) => `- ${value}`)];
 }
 
 /**
@@ -58,27 +51,7 @@ function renderDecisionRoundPrinciples() {
 }
 
 /**
- * Layer 1 — the supervisor's routing decision: which role, and what it owns. This
- * is deliberately short; the full workflow is layer 2.
- *
- * @param {object} role
- * @returns {string[]}
- */
-export function renderRoleLayerOne(role) {
-  const lines = [
-    "## Team role",
-    `Role: ${role.agent} — ${role.title}.`,
-    ...(role.summary ? [role.summary] : []),
-    ...bullets("Responsibilities:", role.responsibilities),
-    ...bullets("Boundaries:", role.boundaries),
-    "The supervisor selected this role from the card's assignee. This is routing guidance;",
-    "the role skill below is authoritative for how the role works.",
-  ];
-  return [clamp(lines.join("\n"), ROLE_PROMPT_LIMITS.layerOne)];
-}
-
-/**
- * Layer 2 — a path, not the text. The spawned subagent reads the workflow itself.
+ * A path, not the text. The spawned subagent reads the workflow itself.
  *
  * @param {object} role
  * @param {string} path

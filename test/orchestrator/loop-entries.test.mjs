@@ -1705,9 +1705,12 @@ describe("the resident poll dispatch", () => {
     assert.equal(entry.task_id, "uuid-2");
     assert.equal(entry.review_of, "T-1");
     assert.equal(entry.review_round, 1);
-    assert.match(entry.handoff, /^You are the reviewer for the P project/);
-    assert.match(entry.handoff, /Review brief: \.meerkat\/T-2\/card\.md/);
-    assert.match(entry.handoff, /Original brief: \.meerkat\/T-1\/card\.md/);
+    assert.match(entry.handoff, /^Review card: T-2; card under review: T-1 \(round 1\)\./);
+    assert.match(entry.handoff, /Step 0 — the review_not_ready check/);
+    assert.match(entry.handoff, /taskctl issue get T-1 --json <flags>/);
+    assert.match(entry.handoff, /taskctl issue deliver T-2 --report-file - <flags>/);
+    assert.match(entry.handoff, /VERDICT: APPROVE/);
+    assert.doesNotMatch(entry.handoff, /Review brief:|Original brief:/);
     assert.deepEqual(watched, [["T-2", "T-1"]], "the claim event refreshes it; no second export");
   });
 
