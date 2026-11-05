@@ -52,8 +52,9 @@ const roleSet = {
       summary: "Owns the brief",
       lanes: ["worker"],
       shapes: ["product brief"],
-      responsibilities: [],
-      boundaries: [],
+      // `loadRoles` still reads the contract prose from role.json; the payload drops it.
+      responsibilities: ["Write the product brief first"],
+      boundaries: ["Do not write production backend code"],
       installedOn: ["claude"],
       defaultReviewer: false,
       skillDir: "/home/tester/.claude/skills/jobs",
@@ -72,6 +73,15 @@ describe("role-sync — the published payload", () => {
     assert.equal(payload.updated_at, "2026-01-01T00:00:00.000Z");
     assert.deepEqual(payload.roles.map((role) => role.id), ["jobs"]);
     assert.equal(JSON.stringify(payload).includes("/home/tester"), false);
+  });
+
+  it("does not carry the role contract's prose, so every tick publishes less", () => {
+    const payload = roleCatalogPayload(roleSet, new Date("2026-01-01T00:00:00.000Z"));
+    const projected = payload.roles[0];
+    assert.equal(Object.hasOwn(projected, "responsibilities"), false);
+    assert.equal(Object.hasOwn(projected, "boundaries"), false);
+    assert.equal(JSON.stringify(payload).includes("Write the product brief first"), false);
+    assert.equal(projected.title, "Product design", "the routing fields stay");
   });
 });
 
