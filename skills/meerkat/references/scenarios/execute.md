@@ -1,7 +1,7 @@
 # Claiming and delivering a card
 
 This page is complete for the claim → deliver cycle; do not read the other scenario pages.
-Read the universal core's
+Read the core's
 [`The acceptance list is the contract`](../../SKILL.md#the-acceptance-list-is-the-contract)
 rule first.
 
@@ -36,7 +36,7 @@ round — and only the holder may send it; an un-pulsed claim reads as abandoned
 ## Delivering
 
 `issue deliver` writes the report and moves to `in_review` in one transaction; the gate reads
-the **current** delivery round's report — re-deliver rather than reuse an earlier one. A waiver
+the **current** round's report — re-deliver rather than reuse one. A waiver
 (`--no-report --reason "<why>"`, ≥ 8 characters) excuses the report for one round, not acceptance.
 
 The mode is fixed at creation (`--acceptance-mode off|auto|human`, default `auto`; no project
@@ -51,10 +51,10 @@ written `evidence[n]` (1-based; the template seeds `evidence[1]`). A missing ref
 
 ## The card's session row (manual claim)
 
-A card **you claimed yourself** registers its row once with
-`taskctl session set <ref> --seg manual --owner <name> --owner-kind <kind>`, then closes it at
-delivery with `taskctl session close <ref> --seg manual --owner <name>`. One row per card per
-segment, across rounds; a **dispatched** card's `worker`/`reviewer` row is the loop's.
+A card **you claimed yourself** registers one row
+(`taskctl session set <ref> --seg manual --owner <name> --owner-kind <kind>`) and closes it at
+delivery (`session close <ref> --seg manual --owner <name>`) — one row per card per segment; a
+**dispatched** card's `worker`/`reviewer` row is the loop's.
 
 ## Handoff
 

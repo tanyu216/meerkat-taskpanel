@@ -237,8 +237,7 @@ are in [`references/scenarios/wait.md`](references/scenarios/wait.md).
 - **Never force a conflict** — the retry rule is in *Reading a refusal*.
 - **Stamp every write with your identity:** `--actor-kind <kind> --session-id <id>`
   ([derivation and the offline script](references/cli/core.md#session)).
-- **A self-claimed card registers its row** (`--seg manual`) and closes it at delivery; a
-  dispatched card's row is the loop's.
+- **A self-claimed card owns its row** (`--seg manual`); a dispatched card's is the loop's.
 - **Metadata has two writers.** `issue meta` is a read-modify-write with `--if-version` that
   preserves value types; `issue update --meta` merges but stringifies and sends no CAS, so a
   concurrent write can be lost. Use `issue meta` for machine keys. Neither writes
