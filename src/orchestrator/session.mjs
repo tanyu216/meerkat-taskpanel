@@ -130,6 +130,14 @@ const QUESTION_BATCH_MAX = 8;
 const QUESTION_RETRY_BACKOFF_MS = 30_000;
 
 /**
+ * The director lane's own dispatch bound: a question or route row gets two
+ * turns, then the card is parked for a human. Named and exported because it is
+ * a different bound from the worker handoff's three, and
+ * `test/contract/recovery-inventory.test.mjs` pins it.
+ */
+export const DIRECTOR_MAX_ATTEMPTS = 2;
+
+/**
  * How often the loop pulses a claimed card while its turn is in flight. Below
  * the board's 10-minute fresh window (and the 30-minute stale window), so a long
  * turn is never mistaken for a stale claim. `opts.cardHeartbeatMs` is a test
@@ -1167,7 +1175,7 @@ export function createSessionPool(input = {}) {
           // the answer and only missed the release, and the worker is holding for
           // one bounded wait. The attempt budget is two turns per question.
           const retried = requeueCards(stateDir, unsettled.map((card) => card.id), {
-            maxAttempts: 2,
+            maxAttempts: DIRECTOR_MAX_ATTEMPTS,
             error: "director turn did not settle the question",
             retryAt: new Date(now() + QUESTION_RETRY_BACKOFF_MS).toISOString(),
           });
@@ -1206,7 +1214,7 @@ export function createSessionPool(input = {}) {
       // runs every second, so the row waits out the same backoff as an unsettled
       // turn, with the same two-turn budget.
       requeueCards(stateDir, claimed.cards.map((card) => card.id), {
-        maxAttempts: 2,
+        maxAttempts: DIRECTOR_MAX_ATTEMPTS,
         error: outcome?.error ?? "question turn failed",
         retryAt: new Date(now() + QUESTION_RETRY_BACKOFF_MS).toISOString(),
       });
@@ -1266,6 +1274,17 @@ export function createSessionPool(input = {}) {
     }
     if (recovered.reowned > 0) {
       log(`session: re-owned ${recovered.reowned} live orphan claim(s)`, { level: "debug" });
+    }
+    // A row the stale-claim recovery failed has no owner and no pending handoff:
+    // leaving the card in_progress would strand it with no loop process behind it.
+    for (const failed of recovered.failedRows ?? []) {
+      if (failed.card === "") continue;
+      await holdCard(opts, log, failed.card, {
+        code: "STALE_CLAIM_EXHAUSTED",
+        reason: "stale claim recovery exhausted its attempts",
+        blockedReason: "resource",
+      });
+      log(`session: parked ${failed.card} after stale-claim recovery exhausted`, { level: "warn" });
     }
     // The queue is a work list, not a log: a terminal row is dropped after its
     // retention, and the board's card remains the durable record.
@@ -2147,20 +2166,15 @@ export function createSessionPool(input = {}) {
     return { terminal: true };
   }
 
-  function parkCard(ref, reason, blockedReason = "resource") {
+  function parkCard(ref, reason, blockedReason = "resource", code = "WORKER_SESSION_UNRESTORABLE") {
     const card = String(ref ?? "");
     if (card === "") return;
     const body = [
-      `The loop could not restore this card's worker session (${reason}).`,
+      `The loop could not restore this card's session (${reason}).`,
       "",
       "It will not be dispatched again automatically. Fix the cause (the agent CLI, the session, the workspace), then move this card back to `todo` or `in_progress`.",
     ].join("\n");
-    holdCard(opts, log, card, {
-      code: "WORKER_SESSION_UNRESTORABLE",
-      reason,
-      blockedReason,
-      body,
-    });
+    holdCard(opts, log, card, { code, reason, blockedReason, body });
   }
 
   /**
@@ -2239,13 +2253,17 @@ export function createSessionPool(input = {}) {
       for (const id of resumed.failedIds ?? []) {
         const row = read.value.cards.find((entry) => String(entry.id) === id);
         if (row === undefined) continue;
-        if (String(row.role ?? "worker") === "reviewer") {
-          // A review is never parked: with no handoff it simply falls back to
-          // the board's stale-claim recovery, and the next poll re-enqueues it.
-          log(`session: review ${row.card} stopped after repeated crash recoveries — not parked`);
-          continue;
-        }
-        parkCard(row.card, "repeated crash recoveries");
+        // A review gets a code of its own so the hold is legible, but it is
+        // parked like a worker: leaving it un-owned lets the next poll plan a
+        // fresh review for the same round and the crash loop never ends.
+        parkCard(
+          row.card,
+          "repeated crash recoveries",
+          "resource",
+          String(row.role ?? "worker") === "reviewer"
+            ? "REVIEW_SESSION_UNRESTORABLE"
+            : "WORKER_SESSION_UNRESTORABLE",
+        );
       }
       log(
         `session: ${resumed.failed} worker row(s) stopped after repeated crash recoveries — ` +

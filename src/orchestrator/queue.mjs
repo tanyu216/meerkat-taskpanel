@@ -28,7 +28,7 @@ export { QUEUE_FILES } from "../foundation/loop-state.mjs";
 import { LIVE_STATUSES, QUEUE_FILES } from "../foundation/loop-state.mjs";
 
 /** A card handoff's terminal failure threshold. */
-const DEFAULT_CARD_MAX_ATTEMPTS = 3;
+export const DEFAULT_CARD_MAX_ATTEMPTS = 3;
 /**
  * A turn timeout is a transient failure with its own counter. It never touches
  * `attempts`; after this many the caller releases the card instead of holding
@@ -42,7 +42,7 @@ export const TIMEOUT_BACKOFF_MS = Object.freeze([2, 4, 8].map((minutes) => minut
  * A crash is not a delivery attempt, so it has its own counter; three in a row
  * means the same session cannot be restored and replaying it is the loop.
  */
-const DEFAULT_RECOVERY_MAX = 3;
+export const DEFAULT_RECOVERY_MAX = 3;
 
 /**
  * Rows that are history, not work. A row's id is deterministic (`<card>-<role>`),
@@ -730,10 +730,10 @@ function timeoutCardsUnlocked(stateDir, ids, options = {}) {
  *
  * @param {string} stateDir
  * @param {{isAlive?: (pid: number) => boolean, now?: number, maxAgeMs?: number, maxAttempts?: number, isResumableWorker?: (row: object) => boolean}} [options]
- * @returns {{ok: boolean, recovered: number, failed: number, error: string|null}}
+ * @returns {{ok: boolean, recovered: number, failed: number, failedRows: {id: string, card: string}[], error: string|null}}
  */
 export function recoverStaleCards(stateDir, options = {}) {
-  return locked(stateDir, { ok: false, recovered: 0, failed: 0, error: null }, () =>
+  return locked(stateDir, { ok: false, recovered: 0, failed: 0, failedRows: [], error: null }, () =>
     recoverStaleCardsUnlocked(stateDir, options),
   );
 }
@@ -804,7 +804,9 @@ function recoverStaleCardsUnlocked(stateDir, options = {}) {
   const isResumableWorker =
     typeof options.isResumableWorker === "function" ? options.isResumableWorker : null;
   const read = readCards(stateDir);
-  if (read.error !== null) return { ok: false, recovered: 0, failed: 0, reowned: 0, error: read.error };
+  if (read.error !== null) {
+    return { ok: false, recovered: 0, failed: 0, failedRows: [], reowned: 0, error: read.error };
+  }
   const value = read.value;
   const liveDirs = liveOwnerDirs(stateDir, isAlive);
   const liveLedger = liveLedgerRows(stateDir);
@@ -845,15 +847,20 @@ function recoverStaleCardsUnlocked(stateDir, options = {}) {
       ok: reowned.ok,
       recovered: 0,
       failed: 0,
+      failedRows: [],
       reowned: reowned.cards.length,
       error: reowned.error,
     };
   }
   const result = requeueCards(stateDir, stale, { maxAttempts, error: "stale claim recovered" });
+  const failedIds = new Set(result.failedIds.map(String));
   return {
     ok: result.ok && reowned.ok,
     recovered: result.requeued,
     failed: result.failed,
+    failedRows: value.cards
+      .filter((entry) => failedIds.has(String(entry.id)))
+      .map((entry) => ({ id: String(entry.id), card: String(entry.card ?? "") })),
     reowned: reowned.cards.length,
     error: result.error ?? reowned.error,
   };

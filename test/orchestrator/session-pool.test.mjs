@@ -189,6 +189,15 @@ function setAttempts(dir, ref, attempts) {
   writeFileSync(file, JSON.stringify(value), "utf8");
 }
 
+/** Force a queue row's independent crash-recovery counter. */
+function setRecoveries(dir, ref, recoveries) {
+  const file = join(dir, "cards.queue.json");
+  const value = JSON.parse(readFileSync(file, "utf8"));
+  const row = value.cards.find((entry) => entry.card === ref);
+  row.recoveries = recoveries;
+  writeFileSync(file, JSON.stringify(value), "utf8");
+}
+
 /** Force a queue row's independent timeout counter. */
 function setTimeouts(dir, ref, timeouts) {
   const file = join(dir, "cards.queue.json");
@@ -2298,6 +2307,58 @@ describe("worker session resume", () => {
     assert.match(row.lastError, /resume\/replay failed/);
   });
 
+  // TP-0146 P0.4: a review that crashes every time used to be exempt from the
+  // park, so the next poll re-enqueued it and the loop never ended.
+  it("parks a review card after repeated crash recoveries", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    const key = workerKey("R-1", 1);
+    writeFileSync(
+      join(f.dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 3,
+        projects: {
+          [key]: {
+            kind: "worker-session",
+            card: "R-1",
+            round: 1,
+            worktree: f.app,
+            cwd: f.app,
+            sessionId: "sid-old",
+            status: "running",
+            startedAt: new Date().toISOString(),
+            lastUsedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    );
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    t.after(() => pool.stop());
+    enqueueCard(join(f.dir), {
+      ...card(f, "R-1", f.app, "reviewer"),
+      round: 1,
+      worker_key: key,
+    });
+    claimCards(join(f.dir), { claimedBy: f.app, pid: 999999, limit: 1 });
+    setRecoveries(f.dir, "R-1", 2);
+    assert.equal((await pool.start()).ok, true);
+
+    const resumed = await pool.reattachOnStart();
+
+    assert.equal(resumed.failed, 1);
+    assert.equal(readCards(f.dir).value.cards[0].status, "failed");
+    assert.ok(
+      calls().some(
+        (argv) =>
+          argv.includes("move") &&
+          argv.includes("R-1") &&
+          argv.includes("blocked") &&
+          argv.includes("resource"),
+      ),
+      "the review card is parked blocked/resource",
+    );
+  });
+
   it("recovers a processing worker row and resumes its stored session", async (t) => {
     const f = fixture(t);
     const key = workerKey("T-1", 1);
@@ -2339,6 +2400,89 @@ describe("worker session resume", () => {
     assert.ok(handle);
     assert.equal(handle.sessionId, "sid-old");
     assert.match(handle.prompts[0], /same-round resume/i);
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+  });
+
+  // TP-0146 P0.3: the queue fails the row on its last stale-claim attempt; the
+  // card must not stay `in_progress` with no owner behind it.
+  it("parks a card when stale-claim recovery exhausts its attempts", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    claimCards(join(f.dir), { claimedBy: "other-pool", pid: 999999, limit: 1 });
+    setAttempts(f.dir, "T-1", 2);
+    const pool = createSessionPool({ opts: optsFor(f), log: () => {}, kindPool: fakePool() });
+    t.after(() => pool.stop());
+
+    const result = await pool.routeCards();
+
+    assert.equal(result.ok, true);
+    assert.equal(readCards(f.dir).value.cards[0].status, "failed");
+    assert.ok(
+      calls().some(
+        (argv) =>
+          argv.includes("move") &&
+          argv.includes("T-1") &&
+          argv.includes("blocked") &&
+          argv.includes("resource"),
+      ),
+      "the card is parked blocked/resource once the row is failed",
+    );
+  });
+
+  // TP-0146 P3.3: fan-out completes in any order, but the results are applied
+  // in source order. The ledger's per-turn records are the observable proof.
+  it("applies fan-out results in source order regardless of completion order", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool({
+      behavior: ({ handle }) =>
+        new Promise((resolve) => {
+          // The second job finishes first; the apply loop must still be in
+          // source order.
+          const delay = handle.cwd === f.app ? 60 : 5;
+          setTimeout(() => resolve({ ids: [`a-${handle.cwd}`] }), delay);
+        }),
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    enqueueCard(join(f.dir), card(f, "T-2", f.api));
+
+    await pool.tick();
+
+    assert.deepEqual(
+      readCards(f.dir).value.cards.map((row) => [row.card, row.status]),
+      [
+        ["T-1", "done"],
+        ["T-2", "done"],
+      ],
+    );
+    assert.deepEqual(
+      readLedger(f.dir).value.subagents.map((row) => row.card),
+      ["T-1", "T-2"],
+      "results are recorded in source order, not completion order",
+    );
+  });
+
+  // TP-0146 P3.3: a bounded stop drains work, it does not consume the queue.
+  it("leaves pending handoffs intact across a bounded stop", async (t) => {
+    const f = fixture(t);
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+
+    await pool.stop();
+
+    const rows = readCards(f.dir).value.cards;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, "pending", "stop must not drop a handoff nobody ran");
+
+    // The next pool is the evidence that the row is still deliverable.
+    const next = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    t.after(() => next.stop());
+    await next.start();
+    await next.tick();
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
   });
 

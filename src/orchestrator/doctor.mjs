@@ -31,9 +31,14 @@ import { closeSync, existsSync, fstatSync, openSync, readSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { ROUTE_UNASSIGNED_MS } from "../foundation/constants.mjs";
+import {
+  cycleVerdict,
+  groupQueueRowsByCard,
+  newestRow,
+} from "../foundation/cycle-status.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import { markerMatches } from "../foundation/handoff-round.mjs";
-import { QUEUE_FILES, SESSION_DEFAULTS } from "../foundation/loop-state.mjs";
+import { QUEUE_FILES, SESSION_DEFAULTS, statePathsForDir } from "../foundation/loop-state.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import { PATROL_STALE_MS, planPatrol } from "../foundation/scheduling.mjs";
@@ -45,7 +50,7 @@ import {
 } from "./deferrals.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { parseArgs } from "./options.mjs";
-import { readCards } from "./queue.mjs";
+import { readCards, readJsonFile } from "./queue.mjs";
 import { isProcessAlive, readPeerMarker } from "./runtime.mjs";
 import { readWorkerSessions, workerRecordIsRunning } from "./worker-session.mjs";
 import { probeSupervisor } from "./status.mjs";
@@ -625,6 +630,26 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     errors.push(`queue: ${error.message}`);
   }
 
+  // 5b. The settled ladder: one verdict per card the queue knows, from the rows
+  // and the board snapshot read above. Observe-only — the doctor names the level
+  // and nothing dispatches on it. A card with no row cannot be judged here; the
+  // board sections above already own "stuck" and "undispatched".
+  const cycles = { terminal: 0, settled: 0, needs_human: 0, in_flight: 0, by_ref: {} };
+  for (const [ref, rows] of groupQueueRowsByCard(queueRows)) {
+    const row = newestRow(rows);
+    const verdict = cycleVerdict({
+      cardStatus: boardByRef.get(ref)?.status ?? null,
+      rowStatus: row?.status ?? null,
+      attempts: row?.attempts ?? 0,
+      timeouts: row?.timeouts ?? 0,
+      recoveries: row?.recoveries ?? 0,
+      retryAt: row?.retry_at ?? null,
+      now: nowMs,
+    });
+    cycles[verdict.level] += 1;
+    cycles.by_ref[ref] = verdict;
+  }
+
   const subagents = {
     file: join(stateDir, QUEUE_FILES.ledger),
     live: 0,
@@ -739,6 +764,62 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   } catch (error) {
     errors.push(`deferrals: ${error.message}`);
   }
+
+  // A refused claim is ordinary competition, counted on its own field. It is
+  // reported apart from `looping.deferrals`: that list filters on the shared
+  // streak, and a claim-only entry has no streak to reach.
+  const claimRefusals = deferralRows
+    .filter((entry) => Number(entry?.claim_refusals ?? 0) > 0)
+    .map((entry) => ({
+      ref: entry.identifier ?? null,
+      count: Number(entry.claim_refusals),
+      last_at: entry.claim_last_at ?? null,
+      last_reason: entry.claim_last_reason ?? null,
+    }))
+    .sort((left, right) => String(left.ref).localeCompare(String(right.ref)));
+
+  // 6c. The workflow de-duplication ledger. A workflow action that fails every
+  // pass is a standing alarm with no card of its own; without this the only
+  // evidence is the log. `workflow_action_failed|` is the exact prefix — the
+  // `_escalated` sibling is the same failure re-sent, not a second one.
+  const workflowActions = [];
+  try {
+    const read = readJsonFile(statePathsForDir(stateDir).workflowLedger, null);
+    if (read.error !== null) errors.push(`workflow_ledger: ${read.error}`);
+    const seen = read.value?.seen;
+    if (seen !== null && typeof seen === "object" && !Array.isArray(seen)) {
+      for (const [key, entry] of Object.entries(seen)) {
+        if (!key.startsWith("workflow_action_failed|")) continue;
+        workflowActions.push({
+          key,
+          first_seen: typeof entry?.first_seen === "string" ? entry.first_seen : null,
+          count: Number.isInteger(entry?.count) ? entry.count : null,
+        });
+      }
+      workflowActions.sort((left, right) => left.key.localeCompare(right.key));
+    }
+  } catch (error) {
+    errors.push(`workflow_ledger: ${error.message}`);
+  }
+
+  // A hold written by a path that does not set `meta.loop_hold_code` (the
+  // stale-claim, crash and claim-release holds) is invisible to `looping.held`.
+  // The board status is the fact; the code is optional evidence.
+  const blockedCards =
+    board.error === null
+      ? tasks
+          .filter((task) => String(task?.status ?? "") === "blocked")
+          .map((task) => ({
+            ref: task.identifier ?? null,
+            title: task.title ?? null,
+            hold_code:
+              typeof task?.meta?.loop_hold_code === "string" && task.meta.loop_hold_code !== ""
+                ? task.meta.loop_hold_code
+                : null,
+            since: task.status_changed_at ?? task.updated_at ?? null,
+          }))
+          .sort((left, right) => String(left.ref).localeCompare(String(right.ref)))
+      : [];
 
   // 7. The cards that look like they are looping. The board half reuses the
   // same snapshot; the local halves read the queue and ledger rows the sections
@@ -1191,6 +1272,12 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   if (workers.missing_worktree.length > 0) {
     attentionReasons.push(`worker_worktrees: ${workers.missing_worktree.length}`);
   }
+  if (cycles.needs_human > 0) {
+    attentionReasons.push(`cycles: ${cycles.needs_human} need a human`);
+  }
+  if (blockedCards.length > 0) {
+    attentionReasons.push(`blocked_cards: ${blockedCards.length}`);
+  }
   if (queue.failed > 0) attentionReasons.push(`queue: ${queue.failed} failed`);
   if (handoffUnconsumed.length > 0) {
     attentionReasons.push(`handoff_unconsumed: ${handoffUnconsumed.length}`);
@@ -1220,6 +1307,10 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     log,
     queue,
     subagents,
+    cycles,
+    workflow_actions: workflowActions,
+    claim_refusals: claimRefusals,
+    blocked_cards: blockedCards,
     stuck_cards: stuck,
     undispatched_claims: undispatched,
     looping,
@@ -1339,6 +1430,24 @@ function humanReport(report) {
       .map(([name, count]) => `${name} ${count}`)
       .join(", ")}` + (loopListed > report.looping.total ? " (a card can appear in more than one list)" : ""),
   );
+  lines.push(
+    `cycles      ${report.cycles.terminal} terminal, ${report.cycles.settled} settled, ` +
+      `${report.cycles.needs_human} need a human, ${report.cycles.in_flight} in flight`,
+  );
+  if (report.blocked_cards.length > 0) {
+    lines.push(`blocked     ${report.blocked_cards.length} card(s) parked for a human`);
+    for (const card of report.blocked_cards) {
+      lines.push(
+        `  ${card.ref}  ${card.hold_code ?? "no loop_hold_code"}  ${card.title ?? ""}`.trimEnd(),
+      );
+    }
+  }
+  if (report.claim_refusals.length > 0) {
+    lines.push(`claims      ${report.claim_refusals.length} card(s) with refused claims`);
+  }
+  if (report.workflow_actions.length > 0) {
+    lines.push(`workflow    ${report.workflow_actions.length} failing workflow action(s)`);
+  }
   for (const card of report.looping.rework_rounds) {
     const age = card.age_ms === null ? "?" : minutes(card.age_ms);
     lines.push(

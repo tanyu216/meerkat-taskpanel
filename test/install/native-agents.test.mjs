@@ -51,7 +51,10 @@ describe("native agent definitions", () => {
     assert.equal(result.written.length, 1);
     const text = readFileSync(join(f.home, ".claude", "agents", "jobs.md"), "utf8");
     assert.match(text, /^---\nname: jobs\n/);
-    assert.match(text, /tools: Read, Edit, Write, Grep, Glob, Bash/);
+    assert.match(
+      text,
+      /tools: Read,Edit,Write,Grep,Glob,Bash\(taskctl \*\),Bash\(node \*\),Bash\(git \*\)/,
+    );
     assert.match(text, /skills\/jobs\/SKILL\.md/);
   });
 
@@ -73,8 +76,47 @@ describe("native agent definitions", () => {
     );
     writeNativeAgents({ kind: "claude", home: f.home, repo: f.repo });
     const text = readFileSync(join(f.home, ".claude", "agents", "reviewer.md"), "utf8");
-    assert.match(text, /tools: Read, Grep, Glob, Bash/);
+    assert.match(
+      text,
+      /tools: Read,Grep,Glob,Bash\(taskctl \*\),Bash\(git \*\),Bash\(npm run \*\),Bash\(node \*\),Bash\(bash \*\)/,
+    );
     assert.doesNotMatch(text, /tools:.*Write/);
+  });
+
+  // TP-0146 P2.3: the installer and the session adapters render the same table.
+  it("renders each kind's tools from the shared table", () => {
+    const f = fixture();
+    const reviewer = join(f.repo, "skills", "reviewer");
+    mkdirSync(reviewer, { recursive: true });
+    writeFileSync(join(reviewer, "SKILL.md"), "---\nname: reviewer\n---\n");
+    writeFileSync(
+      join(reviewer, "role.json"),
+      JSON.stringify({
+        schema: "meerkat-role",
+        id: "reviewer",
+        agent: "Reviewer",
+        native_agent: "reviewer",
+        lanes: ["reviewer"],
+        description: "Independent review",
+      }),
+    );
+    writeNativeAgents({ kind: "claude", home: f.home, repo: f.repo });
+    writeNativeAgents({ kind: "pi", home: f.home, repo: f.repo });
+
+    const claudeWorker = readFileSync(join(f.home, ".claude", "agents", "jobs.md"), "utf8");
+    const claudeReviewer = readFileSync(join(f.home, ".claude", "agents", "reviewer.md"), "utf8");
+    const piWorker = readFileSync(join(f.home, ".pi", "agent", "agents", "jobs.md"), "utf8");
+    const piReviewer = readFileSync(join(f.home, ".pi", "agent", "agents", "reviewer.md"), "utf8");
+
+    assert.match(
+      claudeWorker,
+      /tools: Read,Edit,Write,Grep,Glob,Bash\(taskctl \*\),Bash\(node \*\),Bash\(git \*\)/,
+      "a Claude worker gets the scoped Bash surface",
+    );
+    assert.doesNotMatch(claudeReviewer, /tools:.*Edit/);
+    assert.match(piWorker, /tools: read,bash,edit,write/, "a Pi worker gets Pi's own syntax");
+    assert.match(piReviewer, /tools: read,bash/);
+    assert.doesNotMatch(piReviewer, /tools:.*edit/);
   });
 
   it("writes TOML for codex and markdown under .pi for pi", () => {
