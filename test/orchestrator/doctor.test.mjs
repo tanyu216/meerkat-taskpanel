@@ -171,6 +171,14 @@ describe("loop doctor — the report", () => {
         delivery_round: 1,
         meta: { stage_handoff: "required", handoff_consumed_round: "1" },
       },
+      {
+        identifier: "T-403",
+        title: "Consumed, refs recorded in the value",
+        status: "done",
+        status_changed_at: at(30 * MIN),
+        delivery_round: 1,
+        meta: { stage_handoff: "required", handoff_consumed_round: "1 (T-999)" },
+      },
     ];
     const { script } = sentinel(dir, { tasks });
     seedState(dir, { cards: [] });
@@ -579,6 +587,44 @@ describe("loop doctor — the report", () => {
     assert.equal(report.unlanded.total, 1);
     assert.ok(report.attention_reasons.includes("unlanded: 1"));
     assert.deepEqual(report.errors, [], "a plain finding is not an error");
+  });
+
+  it("finds a never-registered lane by its slugged name", () => {
+    const dir = tempDir();
+    const projectDir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [{ identifier: "T-505", title: "Fix the rail", status: "done", project_id: "proj" }],
+    });
+    seedState(dir);
+    const opts = optsFor(dir, script);
+    opts.projectsJson = join(dir, "projects.json");
+    writeJson(opts.projectsJson, { projects: [{ project: "proj", local_path: projectDir }] });
+
+    const branch = "lane/T-505-fix-the-rail";
+    const report = doctorReport(opts, { HOME: dir }, deps({
+      git: (cmd, argv) => {
+        const key = argv.join(" ");
+        if (key.includes("worktree list")) {
+          return ok(
+            [
+              `worktree ${projectDir}`,
+              "branch refs/heads/dev",
+              "",
+              `worktree ${projectDir}/.worktrees/T-505-fix-the-rail`,
+              `branch refs/heads/${branch}`,
+              "",
+            ].join("\n"),
+          );
+        }
+        if (key.includes("branch --no-merged")) return ok(`  ${branch}\n`);
+        return ok("");
+      },
+    }));
+
+    assert.deepEqual(
+      report.unlanded.cards.map((card) => [card.ref, card.branch, card.path === null ? null : "worktree"]),
+      [["T-505", branch, "worktree"]],
+    );
   });
 
   it("does not report an unmerged old round when the delivery round's record was cleaned", () => {

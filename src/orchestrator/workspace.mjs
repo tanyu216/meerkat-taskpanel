@@ -13,8 +13,11 @@
  * the loop and by the one integration leg.
  *
  * Naming matches the repository's own convention (CLAUDE.md): directory
- * `.worktrees/<ref>[-r<round>]`, branch `lane/<ref>[-r<round>]`. `taskDirName`
- * sanitizes the identifier, so a card id cannot escape the directory.
+ * `.worktrees/<ref>[-r<round>][-<slug>]`, branch `lane/<ref>[-r<round>][-<slug>]`.
+ * `taskDirName` sanitizes the identifier, so a card id cannot escape the
+ * directory; `laneSlug` derives the readable segment from the card title and
+ * yields nothing when the title has no ASCII word, leaving the older
+ * `<ref>[-r<round>]` name.
  *
  * Failure is always a coded result, never a throw: a card whose workspace
  * cannot be created is deferred by the caller, never moved into the shared
@@ -109,21 +112,52 @@ export function isStaleWorkspaceRecord(record, { exists = existsSync, run = runG
   return probe.ok === true && probe.exists === false;
 }
 
-/** `TP-0001` round 1 → `TP-0001`; round 2 → `TP-0001-r2`. */
-export function worktreeName(identifier, round) {
-  const slug = taskDirName(identifier);
+/**
+ * The readable segment's cap: a title contributes at most this many characters,
+ * so a long title cannot push a lane past a filesystem name limit.
+ */
+const LANE_SLUG_MAX = 40;
+
+/**
+ * A card title as one ref-safe segment.
+ *
+ * Lower-case ASCII words joined by `-`; every other run of characters is a
+ * separator. A title with no ASCII word (CJK, symbols) yields `""` — the caller
+ * then keeps the identifier-only name rather than inventing a marker. The cap
+ * is a hard cut, then any dangling separator is trimmed.
+ *
+ * @param {unknown} title
+ * @returns {string}
+ */
+export function laneSlug(title) {
+  const words = String(title ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (words === "") return "";
+  return words.slice(0, LANE_SLUG_MAX).replace(/-+$/g, "");
+}
+
+/**
+ * `TP-0001` round 1 → `TP-0001`; round 2 → `TP-0001-r2`; a titled card adds
+ * `-<slug>` after the round (`TP-0001-r2-fix-the-rail`).
+ */
+export function worktreeName(identifier, round, title = null) {
+  const slug = laneSlug(title);
   const n = Number(round);
-  return Number.isInteger(n) && n > 1 ? `${slug}-r${n}` : slug;
+  const roundPart = Number.isInteger(n) && n > 1 ? `-r${n}` : "";
+  const slugPart = slug === "" ? "" : `-${slug}`;
+  return `${taskDirName(identifier)}${roundPart}${slugPart}`;
 }
 
-/** `lane/TP-0001` round 1 → `lane/TP-0001`; round 2 → `lane/TP-0001-r2`. */
-export function laneBranch(identifier, round) {
-  return `lane/${worktreeName(identifier, round)}`;
+/** The same name behind the loop's branch namespace: `lane/<name>`. */
+export function laneBranch(identifier, round, title = null) {
+  return `lane/${worktreeName(identifier, round, title)}`;
 }
 
-/** `<project>/.worktrees/<name>`. */
-export function workspacePath(projectDir, identifier, round) {
-  return join(String(projectDir), ".worktrees", worktreeName(identifier, round));
+/** `<project>/.worktrees/<name>`, naming the directory exactly as the branch. */
+export function workspacePath(projectDir, identifier, round, title = null) {
+  return join(String(projectDir), ".worktrees", worktreeName(identifier, round, title));
 }
 
 /**
@@ -251,6 +285,7 @@ export function resolveBaseRef({ projectDir, entry, previousBranch = null, run =
  *   entry: object|null,
  *   identifier: string,
  *   round?: number,
+ *   title?: string|null,
  *   previousBranch?: string|null,
  *   reuseExistingBranch?: boolean,
  *   project?: string|null,
@@ -270,6 +305,7 @@ export function createWorkspace(input) {
     project = null,
     identifier,
     round = 1,
+    title = null,
     previousBranch = null,
     reuseExistingBranch = false,
     run = runGit,
@@ -288,8 +324,8 @@ export function createWorkspace(input) {
     };
   }
 
-  const path = workspacePath(projectDir, identifier, round);
-  const branch = laneBranch(identifier, round);
+  const path = workspacePath(projectDir, identifier, round, title);
+  const branch = laneBranch(identifier, round, title);
   try {
     mkdir(join(String(projectDir), ".worktrees"), { recursive: true });
   } catch (err) {

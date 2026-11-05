@@ -26,6 +26,7 @@ import { dirname, join } from "node:path";
 
 import { CLI_TIMEOUT_MS, EVENT_STREAM_LINE } from "../foundation/constants.mjs";
 import { pidMatches, processStartToken } from "../foundation/daemon-state.mjs";
+import { markerMatches } from "../foundation/handoff-round.mjs";
 import { STOP_DRAIN_MS, wedgeKillAction } from "../foundation/loop-state.mjs";
 import {
   createFileSink,
@@ -395,8 +396,8 @@ export function readTriageOutcome(opts, ref, round, log = () => {}, run = runCli
     return { ok: true, settled: false, stale: true, error: null };
   }
   const meta = task.meta ?? {};
-  const consumed = Number(meta.handoff_consumed_round) === Number(round);
-  const declined = Number(meta.handoff_declined_round) === Number(round);
+  const consumed = markerMatches(meta.handoff_consumed_round, round);
+  const declined = markerMatches(meta.handoff_declined_round, round);
   return { ok: true, settled: consumed || declined, stale: false, consumed, declined, error: null };
 }
 

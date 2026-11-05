@@ -602,8 +602,8 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
 ### Per-card workspace isolation
 
 The supervisor creates a git worktree for every card in a git project
-(`.worktrees/<ref>[-r<round>]` on branch `lane/<ref>[-r<round>]`) and points the queue's
-`target_dir` at it. Every base ref is **probed** (`rev-parse --verify --quiet`): the
+(`.worktrees/<ref>[-r<round>][-<slug>]` on branch `lane/<ref>[-r<round>][-<slug>]`) and points
+the queue's `target_dir` at it. Every base ref is **probed** (`rev-parse --verify --quiet`): the
 project's declared `base_ref` first (a missing one is `WORKSPACE_BASE_UNRESOLVED`, not a
 silent fallback), then the most recent previous round's lane branch that still resolves,
 then the current branch. A previous lane branch whose work was merged and deleted therefore
@@ -638,8 +638,9 @@ a session makes for itself (`using-git-worktrees`, any `.worktrees/<slug>`) is n
 registry, so accepting its card merges nothing: the pass logs `has no lane record`, and `done`
 means *accepted*, not *merged*. `loop doctor` judges only each card's **delivery round**: a
 `meta.landed_sha` in the current branch, else that round's own registry record, else the exact
-`lane/<ref>[-r<N>]` branch a loop lane would use. A session worktree outside that lane naming is
-not surfaced by the `unlanded` check.
+`lane/<ref>[-r<N>][-<slug>]` branch a loop lane would use (the pre-slug `lane/<ref>[-r<N>]` name
+is also accepted, for a lane created before the rule). A session worktree outside that lane
+naming is not surfaced by the `unlanded` check.
 
 ### Session worktrees: the human half
 
@@ -2570,7 +2571,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids; no board read |
 | `--continue-interval <sec>` | `600` | tick clock: run `patrol → workflow → poll` in-process |
 | `--max-concurrency <n>` | `8` | cap on simultaneously running worker sessions and reviewer subagents; both share it and the split follows demand (no per-role reservation) |
-| `--workspace=worktree\|shared` | `worktree` | a git project's cards each run in `.worktrees/<ref>[-r<round>]` on `lane/<ref>[-r<round>]`; a creation failure defers the card (no fallback). `shared` restores the old shared-checkout behaviour |
+| `--workspace=worktree\|shared` | `worktree` | a git project's cards each run in `.worktrees/<ref>[-r<round>][-<slug>]` on `lane/<ref>[-r<round>][-<slug>]`; a creation failure defers the card (no fallback). `shared` restores the old shared-checkout behaviour |
 | `--claim-unassigned=yes\|no` | from per-kind config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
 | `--recover-stale=yes\|no` | from per-kind config → `yes` | add stale `in_progress` cards to the candidate read (`--stale`); the claim itself is `issue claim` — the holder after 10 min, the assignee after 6 h, anyone else with `--allow-steal --reason` |

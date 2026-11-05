@@ -37,12 +37,35 @@ function recorder(responses = []) {
 const entryNone = null;
 
 describe("orchestrator/workspace — names and refs", () => {
-  it("names the worktree and the lane branch by identifier and round", () => {
+  it("names the worktree and the lane branch by identifier, round and title slug", () => {
     assert.equal(ws.worktreeName("TP-0001", 1), "TP-0001");
     assert.equal(ws.worktreeName("TP-0001", 2), "TP-0001-r2");
     assert.equal(ws.laneBranch("TP-0001", 1), "lane/TP-0001");
     assert.equal(ws.laneBranch("TP-0001", 3), "lane/TP-0001-r3");
     assert.equal(ws.workspacePath("/p", "TP-0001", 2), "/p/.worktrees/TP-0001-r2");
+
+    // A title adds one readable segment after the round, in the branch and in
+    // the directory equally: lane/<taskid>[-r<round>]-<slug>.
+    assert.equal(ws.worktreeName("TP-0001", 1, "Fix the rail"), "TP-0001-fix-the-rail");
+    assert.equal(ws.worktreeName("TP-0001", 2, "Fix the rail"), "TP-0001-r2-fix-the-rail");
+    assert.equal(ws.laneBranch("TP-0001", 2, "Fix the rail"), "lane/TP-0001-r2-fix-the-rail");
+    assert.equal(
+      ws.workspacePath("/p", "TP-0001", 2, "Fix the rail"),
+      "/p/.worktrees/TP-0001-r2-fix-the-rail",
+    );
+    assert.equal(ws.worktreeName("TP-0001", 2, null), "TP-0001-r2", "no title, no slug");
+  });
+
+  it("slugifies a title to lower-case ASCII words, capped, empty when nothing survives", () => {
+    assert.equal(ws.laneSlug("Fix the rail"), "fix-the-rail");
+    assert.equal(ws.laneSlug("  --Weird__title!!  "), "weird-title");
+    assert.equal(ws.laneSlug("Café/Über"), "caf-ber", "non-ASCII is a word separator");
+    assert.equal(ws.laneSlug("修复侧栏溢出"), "", "a title with no ASCII words has no slug");
+    assert.equal(ws.laneSlug(undefined), "");
+    assert.equal(ws.laneSlug("a".repeat(60)), "a".repeat(40));
+    const long = ws.laneSlug("word ".repeat(20));
+    assert.ok(long.length <= 40);
+    assert.equal(long.endsWith("-"), false, "a cap never leaves a dangling separator");
   });
 
   it("sanitizes an identifier with taskDirName so it cannot escape the directory", () => {
@@ -159,6 +182,7 @@ describe("orchestrator/workspace — create and remove", () => {
       project: "TP",
       identifier: "TP-0001",
       round: 2,
+      title: "Fix the rail",
       previousBranch: "lane/TP-0001",
       run,
       mkdir: () => {},
@@ -170,8 +194,8 @@ describe("orchestrator/workspace — create and remove", () => {
       identifier: "TP-0001",
       project: "TP",
       round: 2,
-      path: "/p/.worktrees/TP-0001-r2",
-      branch: "lane/TP-0001-r2",
+      path: "/p/.worktrees/TP-0001-r2-fix-the-rail",
+      branch: "lane/TP-0001-r2-fix-the-rail",
       base_ref: "lane/TP-0001",
       project_dir: "/p",
       created_by_loop: true,
@@ -184,8 +208,8 @@ describe("orchestrator/workspace — create and remove", () => {
       "worktree",
       "add",
       "-b",
-      "lane/TP-0001-r2",
-      "/p/.worktrees/TP-0001-r2",
+      "lane/TP-0001-r2-fix-the-rail",
+      "/p/.worktrees/TP-0001-r2-fix-the-rail",
       "lane/TP-0001",
     ]);
   });
