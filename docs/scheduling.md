@@ -32,7 +32,7 @@ The design stance, in four sentences:
 | **poll** | scans candidates, claims, enqueues the handoff | **the atomic claim is the single dispatch source** |
 | **patrol** | the SLA pass: stale claims, review aging, recovery | no silent state; every alert is re-checked before emit |
 | **workflow** | review dispatch, verdict application, containers | the delivery gate is enforced by the board, not the prompt |
-| **session pool** | worker sessions per card, a reviewer lane per directory, a director lane per project | one writer per card; concurrency is capped |
+| **session pool** | worker and reviewer sessions per card, a director lane per project | one writer per card; concurrency is capped |
 | **director** | assigns unowned cards, answers worker questions, escalates E1–E5 | the only LLM decision lane; it moves nothing to `done` |
 | **subscriber** | event-driven early ticks | a latency path only — the clocks remain the fallback |
 | **taskd guard** | keepalive for the board service itself | one guard per machine; one writer per data directory |
@@ -75,7 +75,7 @@ the board back through `taskctl`.
                │ drain — only the pool opens, resumes or closes a lane
 ┌──────────────▼───────────────────────────────────────────────────────────┐
 │ POOL  `loop session` — one process; sessions keyed by (lane, actor kind) │
-│ worker:<card>:r<n>   <dir>#reviewer[@<kind>]   <dir> (director)          │
+│ worker:<card>:r<n> (worker or reviewer)       director:<dir>            │
 │ cwd = card worktree  cwd = target dir          cwd = project dir         │
 └─────────┬───────────────────────────┬───────────────────────────┬────────┘
           │ kind=claude               │ kind=codex                │ kind=pi
@@ -122,9 +122,9 @@ the board; they are not slots in the pipeline.
 Two execution shapes serve the same model:
 
 - **resident** (default on launchd/systemd): `taskctl loop session` runs a long-lived *session
-  pool* — one *worker session* per card, a reviewer lane per directory and a director lane
-  per project. Poll claims a card and **enqueues** the handoff; the pool opens or resumes the
-  card's own session, so a same-round re-dispatch continues the worker that already holds
+  pool* — one *session per card* (a review card gets its own reviewer session) and a director
+  lane per project. Poll claims a card and **enqueues** the handoff; the pool opens or resumes
+  the card's own session, so a same-round re-dispatch continues the worker that already holds
   the context.
 - **one-shot** (cron, or an agent kind with no session service): each tick cadence runs the
   passes in-process but, with no resident pool, poll claims nothing and worker/reviewer
@@ -171,7 +171,7 @@ separate `taskctl loop` verbs, and the supervisor runs them **in process**.
 | | **ping** | **tick** | **session** |
 |---|---|---|---|
 | Cadence | 60 seconds | 600 seconds (10 minutes); the installed unit is still named `continue` | long-lived |
-| Job | process liveness: prune worker registry entries whose pid is gone | run `patrol → workflow → poll` under one single-flight lock | hold each card's worker session, each directory's reviewer lane and each project's director lane; route queued rows to them |
+| Job | process liveness: prune worker registry entries whose pid is gone | run `patrol → workflow → poll` under one single-flight lock | hold each card's worker or reviewer session and each project's director lane; route queued rows to them |
 | Reads | `supervisor.state.json` only | the board, through the passes | the queues, the ledger, `sessions.state.json` |
 | On a hit | — | the supervisor claims and enqueues; the pool opens or resumes the matching session | drains the queue; a worker/reviewer/director session runs the handed-off work |
 | Cost | one small file read | no model turn | one agent conversation per active lane |
@@ -475,8 +475,8 @@ the `reviewer` role: the allowlist that excludes `Write` is per session.
 session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
 ├── worker session         cwd = the card's workspace       (one per card, per kind)
 │     (kind, worker:<card>:r<round>) — resumed by session id
-├── reviewer session       cwd = the same target_dir         (one lane per dir, per kind)
-│     (kind, reviewer:<dir>) — batch prompt, no Write
+├── reviewer session       cwd = the same target_dir         (one per review card, per kind)
+│     (kind, worker:<card>:r<round>) — no Write
 └── director session       cwd = the project directory       (one lane per project)
       (primary, director:<dir>) — meerkat-director, question/route/escalation rows
 ```
@@ -516,8 +516,8 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   Claude, developer instructions on Codex, an appended system prompt on Pi), and the
   system prompt carries the review card ref and brief, the card under review with its round,
   the original's brief and plan, and the `Flags:` line — so Step 0 and the verdict rules
-  survive a lost handoff. The batch prompt is the reviewer variant: no question ladder,
-  verdict-only. Each review card is one session with its **full** review handoff — a
+  survive a lost handoff. The reviewer handoff prompt is the reviewer variant: no question
+  ladder, verdict-only. Each review card is one session with its **full** review handoff — a
   subagent does not inherit the parent's loaded skill, so the review protocol and the role
   path must be in that first context. The allowlist is real for Claude and Pi; Codex and
   other adapters have no per-role tool surface, and the pool logs a one-time warning for
@@ -908,7 +908,7 @@ authenticating agents, not adding a rule to the same layer.
   the reviewer allowlist (no `Edit`/`Write`) to the subagent it spawns. Codex,
   OpenCode and Cursor adapters have no per-role tool surface; there the boundary is
   the prompt plus the board's acceptance authority and the supervisor's report-attribution
-  check. The pool logs a one-time warning when it opens a reviewer lane on such a
+  check. The pool logs a one-time warning when it opens a reviewer session on such a
   kind.
 
 ### Rejecting an epic: the fix child comes first
@@ -1105,7 +1105,7 @@ retried once, never a silent completion. Any human comment resumes an awaiting c
 its kind, and the
 resumed worker judges from its content whether it is a complete decision.
 
-A director row is not a card handoff: it is never claimed, never opens a reviewer lane, and
+A director row is not a card handoff: it is never claimed, it opens no reviewer session, and
 does not consume a worker slot. The read is bounded by `--board-limit` and costs one
 `comment list` per `in_progress` card per poll. The ladder is stated here: worker → director →
 human. A worker asks and waits; the director decides the collaboration questions and the
@@ -2178,8 +2178,8 @@ systemctl --user enable --now meerkat-taskpanel-session.service meerkat-taskpane
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
-The `.session` unit is the **resident pool** — one manager, one worker session per card, a
-reviewer lane per directory and a director lane per project. It is the only unit that can
+The `.session` unit is the **resident pool** — one manager, one worker or reviewer session
+per card and a director lane per project. It is the only unit that can
 dispatch a worker, a reviewer or a director; without it the tick still runs patrol and
 workflow, and poll stops at "no resident pool".
 
