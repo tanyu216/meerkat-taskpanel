@@ -65,3 +65,54 @@ export function holdCard(opts, log, ref, options = {}) {
   }
   return moved.ok ? { ok: true } : { ok: false, error: moved.error ?? "unknown error" };
 }
+
+/**
+ * Release a card the loop gave up on a **transient** failure.
+ *
+ * The mirror image of `holdCard`: the card goes back to `todo` for a later
+ * re-dispatch, with a `note` explaining the loop-side timeout. The **move comes
+ * first, deliberately**: an open-question scan reads `in_progress` cards without
+ * an author filter, so a comment written first would be routed to the director
+ * as a question. A note after the move only feeds the normal poll.
+ *
+ * @param {object} opts
+ * @param {(line: string, meta?: object) => void} log
+ * @param {string} ref card identifier
+ * @param {{reason?: string, body?: string|null}} [options]
+ * @returns {{ok: boolean, dryRun?: boolean, error?: string|null}}
+ */
+export function releaseCard(opts, log, ref, options = {}) {
+  const card = String(ref ?? "");
+  if (card === "") return { ok: false, error: "no card to release" };
+  if (opts?.dryRun) return { ok: true, dryRun: true };
+  const reason =
+    typeof options.reason === "string" && options.reason !== ""
+      ? options.reason
+      : "turn timed out; returned to the queue";
+  const moved = runCli(
+    opts,
+    ORCHESTRATOR_ACTOR_ID,
+    ["issue", "move", card, "todo", "--reason", reason],
+    { actorKind: SYSTEM_KIND },
+  );
+  if (moved.ok !== true) {
+    log(`release ${card}: move failed: ${moved.error ?? "unknown error"}`, { level: "warn" });
+    return { ok: false, error: moved.error ?? "unknown error" };
+  }
+  const body =
+    typeof options.body === "string" && options.body !== ""
+      ? options.body
+      : [
+          reason,
+          "",
+          "The loop stopped dispatching this turn on a transient timeout. The card will be dispatched again on a later poll.",
+        ].join("\n");
+  const commented = runCli(
+    opts,
+    ORCHESTRATOR_ACTOR_ID,
+    ["comment", "add", card, "--kind", "note", "--body", body],
+    { actorKind: SYSTEM_KIND },
+  );
+  if (!commented.ok) log(`release ${card}: note failed: ${commented.error}`, { level: "warn" });
+  return { ok: true };
+}

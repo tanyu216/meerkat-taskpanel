@@ -5,7 +5,8 @@ refresh the card brief, then audit against the current card. The Shared checks a
 gates apply to **every branch**; then run the section for the branch you took. The evidence
 table lives in `plan.md` and grows while you work — this check audits it, it does not write it
 from memory. A no-card run skips the brief and board state: its evidence lives in the artifacts
-it produces.
+it produces. Run this audit in both modes; a card-only item is `not_applicable — no card`, and
+the audit itself is mandatory before delivery.
 
 This is the role's **pre-delivery audit**, not the delivery itself. It is not the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design, Linus
 architecture only).
@@ -25,12 +26,13 @@ IDs: `S` shared, `A` architecture, `R` reconstruction/audit, `I` implementation,
   and re-run, or ask through the board; the delivery gate refuses either on a baseline item.
   Reconstruction rows are prefixed `reconstructed — <evidence>`.
 - **S4.** A **leftover** is work the card surfaced but does not own: outside the frozen
-  acceptance, with the item, its owner and the follow-up card (or why none is needed). Never a leftover: a red gate, a security finding, a missing acceptance item, a missing or invalid
-  handoff path, or a published contract, schema or migration change.
+  acceptance, with the item, its owner and the follow-up card (or why none is needed). A
+  blocker, not a leftover: a red gate, a security finding, a missing acceptance item, a missing
+  or invalid handoff path, or a published contract, schema or migration change.
 - **S5.** Re-run the gates you claim; a red gate is a blocker, not a leftover. The decision
   round is closed: every item answered or explicitly deferred, no frontier open.
-- **S6.** If the card has a `## Handoff` block or `meta.design_stage`, every named path exists
-  and was used, and the handoff's acceptance source is in the frozen acceptance.
+- **S6.** If the card has a `## Handoff` block or a project epic graph's stage row, every named
+  path exists and was used, and the handoff's acceptance source is in the frozen acceptance.
 
 ## Mandatory gates
 
@@ -41,7 +43,7 @@ records `n/a` and does not run them.
 |---|---|
 | Test suites | unit, integration, **API** and **browser**-based (where applicable): **100%** pass; any failure is a failure |
 | Coverage | line, branch and function all **≥80%** (or the project's stricter floor) |
-| Mocks | only at http / websocket / db / redis and comparable external boundaries; never an internal module or function |
+| Mocks | only at http / websocket / db / redis and comparable external boundaries; internal modules stay real |
 | Security scan | the project's documented scan — dependency audit (default `osv-scanner`), secret scan, SAST — each arm with the command the standard records or its recorded `n/a — <reason>`; no unaddressed high/critical |
 
 ## Architecture branch
@@ -115,7 +117,7 @@ records `n/a` and does not run them.
   resolves, or to `missing — <reason>` with its follow-up.
 - **R3.** Gate honesty: every gate names the real entry point and a failure probe; a
   placeholder or liveness-only service is `not a gate — <reason>`; an unexecuted gate is
-  `not run — <reason>`, never by a claimed pass.
+  `not run — <reason>`, only by an observed exit code.
 - **R4.** A release that changes stored data records its backup, recovery, startup-apply
   behaviour and the older-store upgrade path; a squashed baseline records its pre-baseline
   disposition.
@@ -125,7 +127,7 @@ records `n/a` and does not run them.
   parity check enumerates its enforcement sites; a prose-only boundary is review-only.
 
 On an audit, items A3, A4 and A5 are satisfied by `observed — <file:line>` or
-`not run — <reason>`, never by a claimed pass.
+`not run — <reason>`, only by an observed exit code.
 
 ## Implementation branch
 
@@ -161,6 +163,6 @@ leftover its owner and follow-up. The report is `plan.md`'s table projected onto
 acceptance — not a narrative rewritten at delivery. A card with an open omission, a red gate or
 an unanswered question is not delivered: close it and re-run, or ask and keep the card open.
 The delivered tree is committed on the card's branch and the report carries the `commit` anchor; nothing was merged, rebased or pushed from this card. Call the `meerkat` board skill to deliver at
-`in_review`. Do not accept your own work.
+`in_review`; the reviewer is independent.
 
 A no-card run stops here: it records `E5 pending` and writes no board state.

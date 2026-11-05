@@ -12,26 +12,25 @@
 
 Builds or refreshes the test inventory for a feature or change. The implementation is
 delivered for review; the supervisor lands it on acceptance, and the red-green cycle belongs
-to the implementation card. Board operations are the `meerkat` board skill's contract; the shared contract in
-`SKILL.md` (Delivery and Hard boundaries) applies.
-
-Inputs: `.meerkat/<id>/card.md`, the live card, the frozen acceptance, this card's `plan.md`
-and `test-plan.md`; for a feature or behaviour change, the `## Handoff` block names the
-`archived spec`/PRD, the acceptance source and the named report — read that report.
-`meta.product_change=none` means no design artifacts; add `docs/tech-spec.md`, the
-architecture document and ADRs when they exist.
+to the implementation card. Board operations are the `meerkat` board skill's contract; the
+shared contract in `SKILL.md` (Delivery and Hard boundaries) applies; for a feature or behaviour change,
+the `## Handoff` block (or a project epic graph's stage row in `docs/agents/epic-graphs.md`
+when `meta.epic_graph` is set) names the archived spec/PRD, the acceptance source and the
+**named report** — read that report. Add `docs/tech-spec.md`, the architecture document and
+ADRs when they exist.
 
 ### 1. Plan (adopt and audit)
 
 Purpose: settle what the tests must prove. Leave behind `plan.md` and `test-plan.md`.
-This card's plan already exists: extend it; otherwise call the `meerkat` board skill to adopt
-the plan `attachments` (a text `plan.md`, or a transcribed `plan.pdf` with its source);
-no plan attached: write it from the card and the acceptance. Settle the branch `frontier` in
-one decision round and record the answers in `test-plan.md`. **Audit the plan** before
-starting: every requirement and frozen acceptance item maps to a scenario and its evidence; order,
-prerequisites, environments and mock boundaries are written; no scenario widens acceptance.
-`test-plan.md` carries scope, environments, data, mock policy, priority, entry/exit, the
-traceability matrix and the gates.
+When a plan already exists, extend it; otherwise call the `meerkat` board skill to adopt the
+plan `attachments` (a text `plan.md`, or a transcribed `plan.pdf` with its source);
+**no plan attached**: write it from the card and its frozen acceptance; with no card, the handed
+task, plan or requirement is the plan source. Settle the branch `frontier` in one decision round
+and record the answers in `test-plan.md`. **Audit the plan** in the three passes of `SKILL.md`
+§Plan audit — logic, blast radius and simplest reliable: every acceptance item maps to a
+scenario and its evidence; order, prerequisites, environments and mock boundaries are written;
+no scenario widens acceptance. `test-plan.md` carries scope, environments, data, mock policy,
+priority, entry/exit, the traceability matrix and the gates.
 
 ### 2. Inventory
 
@@ -53,8 +52,8 @@ and isolated; reject coverage padding, constructor-only and mock-only tests.
 Purpose: prove the inventory is complete and honest; leave behind the checked matrix, the
 coverage reading and the review findings in `test-plan.md`. Every acceptance item has a
 test; a test that still passes when the behaviour regresses is not evidence. Traceability,
-test quality, missing branches, data isolation and determinism are reviewed. Do not start
-the full run with an unhandled blocker.
+test quality, missing branches, data isolation and determinism are reviewed. Resolve a
+blocker before the full run.
 
 ### 5. Execute
 
@@ -68,7 +67,8 @@ Purpose: cover the change's security surface; leave behind findings with severit
 scan command or `n/a — <reason>`. Cover authorization, input validation, secrets, injection,
 path traversal and SSRF, including API authentication; the dependency audit defaults to
 `osv-scanner`. A serious finding blocks delivery — raise it as a question, not a leftover.
-The manual checklist is the reviewer's; deliver findings, never a security verdict.
+The manual checklist is the reviewer's; deliver findings, and leave the security verdict to
+the reviewer.
 
 ### 7. Regression
 

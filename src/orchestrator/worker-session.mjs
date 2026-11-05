@@ -249,8 +249,8 @@ export function buildWorkerResumePrompt(input = {}) {
     "",
     `Re-read .meerkat/${ref}/card.md and the comments after your question before acting.`,
     review
-      ? "Continue the review you already started; do not start over, and end in one verdict."
-      : "Continue the work you already started; do not start over, and do not repeat completed work.",
+      ? "Continue the review you already started and end in one verdict."
+      : "Continue the work you already started from the last completed step; verify the tree before repeating anything.",
     "",
     String(input.handoff ?? "").trim(),
   ].join("\n");
@@ -270,10 +270,10 @@ export function buildWorkerReworkPrompt(input = {}) {
     : Math.max(1, round - 1);
   return [
     `This is rework round ${round} of the SAME worktree and the SAME conversation for card ${ref}; the delivery in round ${previous} was rejected by the independent review.`,
-    "Do not start over, do not re-read the whole brief, and do not repeat work that is already done.",
+    "Continue from the last completed step of this conversation: the worktree, the brief you already read, and the completed work are the starting point for this turn.",
     "",
     `Read .meerkat/${ref}/card.md, the latest \`VERDICT: REJECT\` comment, and the acceptance baseline appended for round ${round}.`,
-    `Answer every must-fix item in the review one by one, then deliver a NEW report for round ${round} — do not reuse the rejected report.`,
+    `Answer every must-fix item in the review one by one, then deliver a new report for round ${round} written from this round's work; the rejected report records round ${previous}.`,
     "",
     String(input.handoff ?? "").trim(),
   ].join("\n");
@@ -299,7 +299,7 @@ export function buildWorkerReplayPrompt(input = {}) {
     "This is a NEW session; the bounded transcript of the previous session follows.",
     ...(input.rework === true
       ? [
-          `This turn is rework round ${round} of the SAME worktree; the previous delivery was rejected. Do not start over — answer every must-fix item and deliver a new report for this round.`,
+          `This turn is rework round ${round} of the SAME worktree; the previous delivery was rejected. Continue from the last completed step, answer every must-fix item, and deliver a new report for this round.`,
         ]
       : []),
     "",
@@ -310,8 +310,8 @@ export function buildWorkerReplayPrompt(input = {}) {
     answer,
     "",
     review
-      ? `Before acting, re-read .meerkat/${ref}/card.md and both briefs, and check the board: the card under review may have moved, and the verdict must answer the current round. Do not move either card.`
-      : `Before acting, verify the worktree and the board: re-read .meerkat/${ref}/card.md, check git status/log and the card comments. Do not repeat work that is already done.`,
+      ? `Before acting, re-read .meerkat/${ref}/card.md and both briefs, and check the board: the card under review may have moved, and the verdict must answer the current round. Leave both cards where they are.`
+      : `Before acting, verify the worktree and the board: re-read .meerkat/${ref}/card.md, check git status/log and the card comments, and resume from the last completed step.`,
     "",
     String(input.handoff ?? "").trim(),
   ].join("\n");

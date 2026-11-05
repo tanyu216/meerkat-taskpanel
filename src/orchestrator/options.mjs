@@ -421,7 +421,7 @@ export function parseArgs(argv, env = process.env) {
     flag: opts.sessionTurnTimeout,
     env: env.MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT,
     file: opts.configFile.MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT,
-    fallback: 30 * 60,
+    fallback: 60 * 60,
   });
   // 0034 — the time contract's turn bound. Below 20 minutes a turn can end
   // before a worker's first heartbeat window (10 min) has even been exercised
@@ -783,7 +783,7 @@ Options:
                             no forces the one-shot fallback with poll skipped.
   --session-state <path>    Sessions state file (default: sessions.state.json beside --state).
   --session-max-age <sec>   Fresh conversation after this age (default: 86400; 0 = never).
-  --session-turn-timeout <sec> Per-turn cap, 1200..7199 (default: 1800). A turn
+  --session-turn-timeout <sec> Per-turn cap, 1200..7199 (default: 3600). A turn
                             shorter than 2x the heartbeat window starves workers;
                             at 2h the ledger reaps them.
   --opened-by human|supervisor  Who started this loop (default: supervisor).

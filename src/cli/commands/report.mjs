@@ -296,7 +296,9 @@ export const COMMANDS = [
 
   {
     name: "template",
-    summary: "Print a report template for a task, ready to fill in and deliver.",
+    summary:
+      "Print a report template for a task, ready to fill in and deliver. " +
+      "The conclusion, leftovers and acceptance notes are Markdown.",
     usage: "report template <id|identifier> [--commit <sha>] [--path <p>]…",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: [

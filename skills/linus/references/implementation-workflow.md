@@ -21,15 +21,12 @@ Board operations are the `meerkat` board skill's contract; decisions follow the 
 The round settles the smallest design, files and contracts, test selection and any dependency.
 Record the answers in `plan.md`; Linus recommends, the director decides.
 
-## Inputs
-
-The card, its brief and frozen acceptance; this card's `plan.md`, **written or adopted by you**
-and audited before starting; for a feature or behaviour change, the `## Handoff` block names the
-archived spec, PRD and prototype and the acceptance source; a design artifact that disagrees
-with the card is a question, not a choice. **A bug fix does not need the design artifacts**: use
-the report, the reproduction and any production evidence. Never read the design card's
-`plan.md` as this card's plan. Read `docs/tech-spec.md`, the architecture document and the ADRs
-when present; a missing handoff path is a question, not a guessed slug.
+This card's plan is the one **written or adopted by you** and audited before starting.
+**A bug fix does not need the design artifacts**: use the report, the reproduction and any
+production evidence; for a feature or behaviour change, the `## Handoff` block names the
+archived spec, PRD and prototype and the acceptance source. A design artifact that disagrees
+with the card is a question, not a choice. Read `docs/tech-spec.md`, the architecture document
+and the ADRs when present; a missing handoff path is a question, not a guessed slug.
 
 ### 1. Understand and reproduce
 
@@ -70,11 +67,12 @@ scoped diff.
 
 ### 4. Review your change
 
-**Purpose.** Catch what the tests do not before the gates.
+**Purpose.** Catch the gaps the tests leave before the gates.
 
 **Watch for.** Correctness, public contracts, migrations, error paths, dead code, logging and
 tests. A new key flow emits its `info` line and a new failure path one `error` line with its
-code; never log a secret. Remove dead code only when proven dead; do not mix in a refactor.
+code; keep secrets out of logs. Remove dead code only when proven dead; keep a refactor out
+of this diff.
 
 **Essentials.** The findings and fixes; the logging evidence.
 
@@ -84,8 +82,8 @@ code; never log a secret. Remove dead code only when proven dead; do not mix in 
 
 **Watch for.** Run every applicable suite and the mandatory gates in `self-check.md`: unit,
 integration, API and browser-based suites **100%** pass; line/branch/function coverage **≥80%**;
-mocks only at http, websocket, db, redis and comparable external boundaries, never an internal
-module or function; the security scan (dependency audit default `osv-scanner`, secret scan,
+mocks only at http, websocket, db, redis and comparable external boundaries; internal modules
+stay real. The security scan (dependency audit default `osv-scanner`, secret scan,
 SAST) has no unaddressed high/critical. A red gate is a blocker; a waiver is a human E4 decision.
 
 **Essentials.** The commands, exit codes and coverage recorded; a red gate is not delivered.
@@ -104,9 +102,11 @@ disposition per row.
 
 **Purpose.** Make the change reviewable and auditable.
 
-**Watch for.** The tree is committed and the report carries the `commit` anchor; the board's delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses a report that does not. Do not merge, rebase or push from this card; the supervisor's acceptance pass lands it and cleans up. A production bug fix
-carries a committed regression test; Turing's verification is a follow-up card, not delivery
-evidence.
+**Watch for.** The tree is committed and the report carries the `commit` anchor; the board's delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses a report that does not. Deliver the committed tree; the supervisor's acceptance pass merges, rebases, pushes and cleans up. A production bug fix
+carries a committed regression test. Turing's verification is a follow-up card, not delivery
+evidence: outside a project epic graph a card without a verification card sets
+`meta.stage_handoff=required` and names the verification scope; inside a graph the verification
+stage already exists and the report names it.
 
 **Essentials.** Commit the delivered tree; call the `meerkat` board skill to deliver at
 `in_review` with what changed, the tests and gates, the evidence anchors, the acceptance
@@ -116,5 +116,5 @@ mapping, the `## Handoff` when the card has one, and the leftovers.
 
 - No restructuring here; a refactor card runs `refactor-workflow.md`.
 - A published contract, schema or migration change needs the human.
-- Do not change scope or acceptance yourself.
-- Do not accept your own work; the reviewer is independent.
+- A scope or acceptance change is a question.
+- Stop at `in_review`; the reviewer is independent.

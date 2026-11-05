@@ -65,6 +65,7 @@ import { t } from "../../i18n/index.js";
 
 import ComboField from "../combo/ComboField.vue";
 import MarkdownEditor from "../create/MarkdownEditor.vue";
+import MarkdownBlock from "./MarkdownBlock.vue";
 
 const commentDraft = ref("");
 /** One comment at a time: the button is disabled while the POST is in flight. */
@@ -1722,7 +1723,9 @@ async function submitComment() {
              parent is the `section`; the empty state is a plain `span` inside it,
              which is the shape the prototype's `fill()` injects (A21/D49).
 
-             The `v-html` half is the board's one rendering sink and it is the
+             The `v-html` half is one of the board's rendering sinks (the prose
+             bodies — comments, report conclusions, acceptance notes and
+             leftovers — go through `MarkdownBlock.vue`) and it is the
              prototype's own vendored renderer: `lib/markdown.js` escapes its
              input before it emits anything (`MarkdownLite.escape`) and falls back
              to escaped plain text when the renderer is absent, so a description
@@ -1991,7 +1994,7 @@ async function submitComment() {
                 <span v-else :data-i18n="`comment.${row.label}`">{{ $t(`comment.${row.label}`) }}</span>
                 <span v-if="row.stamp" class="td-mono" :title="row.stamp.absolute" :data-i18n="`${row.stamp.key}`">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
               </div>
-              <div class="td-comment-body">{{ row.body }}</div>
+              <MarkdownBlock class="td-comment-body" :source="row.body" />
             </div>
           </article>
         </div>
@@ -2040,7 +2043,7 @@ async function submitComment() {
                 <span class="td-dv-kind">{{ $t(`comment.${row.label}`) }}</span>
                 <span v-if="row.stamp" class="td-dv-ts td-mono" :title="row.stamp.absolute">{{ row.stamp.absolute }}</span>
               </div>
-              <p class="td-dv-conclusion">{{ row.conclusion }}</p>
+              <MarkdownBlock class="td-dv-conclusion" :source="row.conclusion" />
             </article>
             <p v-if="reportRows.length === 0" class="td-dv-empty" data-i18n="drawer.reports.empty">{{ $t("drawer.reports.empty") }}</p>
           </div>
@@ -2061,7 +2064,7 @@ async function submitComment() {
               <span v-if="deliverySummary.round !== null" class="badge badge-sm td-chip td-dv-round" data-detail-acceptance-round>{{ $t("drawer.report.round", deliverySummary.round) }}</span>
               <span class="td-dv-author td-mono" data-detail-acceptance-author>{{ $t("drawer.acceptance.author", deliverySummary.author) }}</span>
             </div>
-            <p v-if="deliverySummary.conclusion" class="td-dv-conclusion" data-detail-acceptance-conclusion>{{ deliverySummary.conclusion }}</p>
+            <MarkdownBlock v-if="deliverySummary.conclusion" class="td-dv-conclusion" data-detail-acceptance-conclusion :source="deliverySummary.conclusion" />
           </div>
           <!-- ADR 0014 — the reviews that audited this card, oldest round first.
                Read-only: the review card is the loop's record of the round, and
@@ -2128,10 +2131,10 @@ async function submitComment() {
                 <svg v-else-if="row.status === 'not_met'" class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" /></svg>
                 <svg v-else class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 12h12" /></svg>
               </span>
-              <span class="td-dv-text">
+              <div class="td-dv-text">
                 {{ row.text }}
-                <span v-if="row.note" class="td-dv-note" data-acceptance-note>{{ row.note }}</span>
-              </span>
+                <MarkdownBlock v-if="row.note" class="td-dv-note" data-acceptance-note :source="row.note" />
+              </div>
             </li>
           </ul>
           <p v-if="acceptanceRows.length === 0" class="td-dv-empty" data-i18n="drawer.acceptance.empty">{{ $t("drawer.acceptance.empty") }}</p>
@@ -2144,7 +2147,7 @@ async function submitComment() {
           <ul class="td-dv-list">
             <li v-for="row in leftoverRows" :key="row.id" class="td-dv-item" :data-dv-leftover-round="row.round" :data-dv-leftover-empty="row.text ? undefined : 'true'">
               <span class="td-dv-round-mono td-mono">{{ $t("drawer.leftovers.round", row.round) }}</span>
-              <span v-if="row.text" class="td-dv-text">{{ row.text }}</span>
+              <MarkdownBlock v-if="row.text" class="td-dv-text" :source="row.text" />
               <span v-else class="td-dv-empty" data-i18n="drawer.leftovers.empty">{{ $t("drawer.leftovers.empty") }}</span>
             </li>
           </ul>

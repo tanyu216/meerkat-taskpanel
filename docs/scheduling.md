@@ -32,7 +32,7 @@ The design stance, in four sentences:
 | **poll** | scans candidates, claims, enqueues the handoff | **the atomic claim is the single dispatch source** |
 | **patrol** | the SLA pass: stale claims, review aging, recovery | no silent state; every alert is re-checked before emit |
 | **workflow** | review dispatch, verdict application, containers | the delivery gate is enforced by the board, not the prompt |
-| **session pool** | worker sessions per card, a reviewer lane per directory, a director lane per project | one writer per card; concurrency is capped |
+| **session pool** | worker and reviewer sessions per card, a director lane per project | one writer per card; concurrency is capped |
 | **director** | assigns unowned cards, answers worker questions, escalates E1–E5 | the only LLM decision lane; it moves nothing to `done` |
 | **subscriber** | event-driven early ticks | a latency path only — the clocks remain the fallback |
 | **taskd guard** | keepalive for the board service itself | one guard per machine; one writer per data directory |
@@ -75,7 +75,7 @@ the board back through `taskctl`.
                │ drain — only the pool opens, resumes or closes a lane
 ┌──────────────▼───────────────────────────────────────────────────────────┐
 │ POOL  `loop session` — one process; sessions keyed by (lane, actor kind) │
-│ worker:<card>:r<n>   <dir>#reviewer[@<kind>]   <dir> (director)          │
+│ worker:<card>:r<n> (worker or reviewer)       director:<dir>            │
 │ cwd = card worktree  cwd = target dir          cwd = project dir         │
 └─────────┬───────────────────────────┬───────────────────────────┬────────┘
           │ kind=claude               │ kind=codex                │ kind=pi
@@ -122,9 +122,9 @@ the board; they are not slots in the pipeline.
 Two execution shapes serve the same model:
 
 - **resident** (default on launchd/systemd): `taskctl loop session` runs a long-lived *session
-  pool* — one *worker session* per card, a reviewer lane per directory and a director lane
-  per project. Poll claims a card and **enqueues** the handoff; the pool opens or resumes the
-  card's own session, so a same-round re-dispatch continues the worker that already holds
+  pool* — one *session per card* (a review card gets its own reviewer session) and a director
+  lane per project. Poll claims a card and **enqueues** the handoff; the pool opens or resumes
+  the card's own session, so a same-round re-dispatch continues the worker that already holds
   the context.
 - **one-shot** (cron, or an agent kind with no session service): each tick cadence runs the
   passes in-process but, with no resident pool, poll claims nothing and worker/reviewer
@@ -171,7 +171,7 @@ separate `taskctl loop` verbs, and the supervisor runs them **in process**.
 | | **ping** | **tick** | **session** |
 |---|---|---|---|
 | Cadence | 60 seconds | 600 seconds (10 minutes); the installed unit is still named `continue` | long-lived |
-| Job | process liveness: prune worker registry entries whose pid is gone | run `patrol → workflow → poll` under one single-flight lock | hold each card's worker session, each directory's reviewer lane and each project's director lane; route queued rows to them |
+| Job | process liveness: prune worker registry entries whose pid is gone | run `patrol → workflow → poll` under one single-flight lock | hold each card's worker or reviewer session and each project's director lane; route queued rows to them |
 | Reads | `supervisor.state.json` only | the board, through the passes | the queues, the ledger, `sessions.state.json` |
 | On a hit | — | the supervisor claims and enqueues; the pool opens or resumes the matching session | drains the queue; a worker/reviewer/director session runs the handed-off work |
 | Cost | one small file read | no model turn | one agent conversation per active lane |
@@ -246,19 +246,21 @@ immediately. Polling first would delay that review by a whole cadence.
 
 The clocks below are not independent knobs: each one is a bound on another, and the
 inequalities are asserted in `test/orchestrator/time-contract.test.mjs`. `--session-turn-timeout`
-is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `1800`).
+is validated at parse time (`1200 ≤ turn < 7200` seconds; the default is `3600`).
 
 | Clock | Default | Where |
 |---|---:|---|
-| agent turn timeout | 30 min (`--session-turn-timeout`) | `src/orchestrator/options.mjs`, `src/orchestrator/session.mjs` |
+| agent turn timeout | 60 min (`--session-turn-timeout`) | `src/orchestrator/options.mjs`, `src/orchestrator/session.mjs` |
+| skill opener timeout | 10 min (`OPENER_TIMEOUT_MS`) | `src/foundation/loop-state.mjs`, `src/orchestrator/session.mjs` |
 | worker heartbeat interval | ≤ 10 min | worker handoff (`src/foundation/scheduling.mjs`) |
+| loop card heartbeat (during a turn) | 5 min (`CARD_HEARTBEAT_MS`) | `src/orchestrator/session.mjs` |
 | `HEARTBEAT_FRESH_MS` | 10 min | `src/foundation/constants.mjs` |
 | `CLAIM_STALE_SAME_MS` | 30 min | `src/foundation/constants.mjs` |
 | `CLAIM_STALE_ANY_MS` | 6 h | `src/foundation/constants.mjs` |
 | patrol stale (scans `in_progress` work cards; an epic container is excluded) | 30 min (= `CLAIM_STALE_SAME_MS`) | `src/foundation/scheduling.mjs` |
 | tick interval (the `continue` unit) | 10 min | `src/orchestrator/options.mjs` |
 | queue `recoverStaleCards` | `2 × turn` | `src/orchestrator/session.mjs` |
-| pool `wedged` verdict | `turn + POOL_WEDGE_MARGIN_MS` (default 32 min) | `src/foundation/loop-state.mjs` |
+| pool `wedged` verdict | `turn + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS` (default 72 min) | `src/foundation/loop-state.mjs` |
 | ping kill deadline (the only authority) | `wedged + POOL_KILL_GRACE_MS` (60 s); starting at `POOL_START_BUDGET_MS + 60 s` | `src/foundation/loop-state.mjs`, `src/orchestrator/supervisor.mjs` |
 | pool start budget / reattach bound | 5 min / `min(turn, 120 s)` | `src/foundation/loop-state.mjs`, `src/orchestrator/session.mjs` |
 | `runCli` spawn bound | 60 s (`CLI_TIMEOUT_MS`) | `src/orchestrator/runtime.mjs` |
@@ -274,10 +276,13 @@ The contract:
 - `2 × HEARTBEAT_FRESH_MS ≤ TURN_MIN` and `TURN_DEFAULT < LEDGER_STALE_MS` — a turn covers two
   pulse windows and still ends before the ledger reclaims a live row.
 - `CONTINUE_INTERVAL < TURN_DEFAULT`; `PATROL_STALE_MS = CLAIM_STALE_SAME_MS`;
-  `POOL_STALE_MS > POOL_HEARTBEAT_MS`.
-- `sendDeadlineMs > turn` and `killDeadlineMs = sendDeadlineMs + POOL_KILL_GRACE_MS`; the
-  starting phase's kill deadline is `POOL_START_BUDGET_MS + POOL_KILL_GRACE_MS`. A legitimate
-  turn is never a kill, and the ping waits one more minute after the verdict says `wedged`.
+  `POOL_STALE_MS > POOL_HEARTBEAT_MS`; `CARD_HEARTBEAT_MS < HEARTBEAT_FRESH_MS` — the loop's
+  own pulse keeps a long turn inside the fresh window.
+- `sendDeadlineMs = turn + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS` (a card job is the opener
+  plus the card prompt, so the deadline covers both) and
+  `killDeadlineMs = sendDeadlineMs + POOL_KILL_GRACE_MS`; the starting phase's kill deadline is
+  `POOL_START_BUDGET_MS + POOL_KILL_GRACE_MS`. A legitimate turn is never a kill, and the ping
+  waits one more minute after the verdict says `wedged`.
 - `CLI_TIMEOUT_MS = 60 s` is the outer child bound and is longer than the CLI's own 30 s HTTP
   bound (`REQUEST_TIMEOUT_MS`), so a slow board is not a hung one.
 
@@ -313,13 +318,14 @@ policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
 | Deliver → review → rework | `delivery_round − meta.loop_hold_round` (board) | `--rework-max-rounds` = 4 | `hold_card`: question + `blocked/decision` + close the review |
 | Review verdict unappliable | `meta.review_retry − meta.loop_hold_retry_base` (board) | 2 | `hold_card` on the original + `close_review` |
 | Card handoff turn | queue row `attempts` | 3 | row `failed`; execution hold |
+| Handoff turn timeout | queue row `timeouts` | 3 (backoff 2/4/8 min) | below the bound, row pending with `retry_at`; at it, the card is re-read and (still `in_progress`) released to `todo` — never `blocked` |
 | Crash recovery | queue row `recoveries` | 3 | row `failed` + card `blocked/resource` |
 | Admission failure | `deferrals.json` `count` | backoff at 3 (30 s→1 h), hold at 5 | `blocked/external` + `Orchestrator` question |
 | Dispatch failure after a claim | `deferrals.json` `DISPATCH_FAILED` | 3 | claim released immediately; `blocked/resource` at the bound |
 | Worker session unrestorable | session record | first failure | row failed, claim released, `blocked/resource` |
 | Question turn | director row dispatches | 2 | left for the human; `question_stale` + doctor |
 | Route turn | route row dispatches | 2 | the card is parked `blocked/decision` (never assigned) |
-| Wedged pool | `sessions.state.json` `tickStartedAt` / `startStartedAt` | verdict at `turn + POOL_WEDGE_MARGIN_MS` / start budget; ping acts 60 s later | one `pool_killed` + SIGTERM, recorded in `pool-wedge.json`; SIGKILL on a later ping if it survives; the unit restarts it |
+| Wedged pool | `sessions.state.json` `tickStartedAt` / `startStartedAt` | verdict at `turn + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS` / start budget; ping acts 60 s later | one `pool_killed` + SIGTERM, recorded in `pool-wedge.json`; SIGKILL on a later ping if it survives; the unit restarts it |
 | Hung `taskctl` | `runCli` | 60 s (`CLI_TIMEOUT_MS`) | the child is killed with SIGKILL; the pass fails and releases the tick lock |
 
 **The hold is an epoch, not a latch.** `meta.loop_hold_round` records the round the card was
@@ -336,7 +342,7 @@ The requested E-code rides in the `question` comment and `meta.loop_hold_e_code`
 **The pool has five live verdicts.** A live pid is always `live: true`; `starting`,
 `running`, `busy` (a dispatch tick is in flight), `unresponsive` (heartbeat stale) and
 `wedged` (`starting` past the start budget, or `tickStartedAt` past `turn +
-POOL_WEDGE_MARGIN_MS`) say which kind of live it is. Only `gone` — a dead pid or a start-token
+OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS`) say which kind of live it is. Only `gone` — a dead pid or a start-token
 mismatch — is absent, and the heartbeat never decides it. A second pool is refused in every
 one of them, and only `wedged` is acted on by the ping clock — `starting` and `unresponsive` may
 still recover. The verdict is not yet permission to kill: the ping acts one minute later
@@ -475,8 +481,8 @@ the `reviewer` role: the allowlist that excludes `Write` is per session.
 session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
 ├── worker session         cwd = the card's workspace       (one per card, per kind)
 │     (kind, worker:<card>:r<round>) — resumed by session id
-├── reviewer session       cwd = the same target_dir         (one lane per dir, per kind)
-│     (kind, reviewer:<dir>) — batch prompt, no Write
+├── reviewer session       cwd = the same target_dir         (one per review card, per kind)
+│     (kind, worker:<card>:r<round>) — no Write
 └── director session       cwd = the project directory       (one lane per project)
       (primary, director:<dir>) — meerkat-director, question/route/escalation rows
 ```
@@ -493,21 +499,31 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   same `resolveWakeDir` the glue uses). A card whose project is unmapped or names no
   directory is **deferred before the claim**, so the board never shows a claim that has
   nowhere to run. The handoff tells the session it is the card's own worker — not a
-  subagent of a shared conversation — and that the supervisor holds the claim. The role
-  skill loads once, when the session opens: Claude receives a `/<role>` message with a
-  `Flags:` line; Codex receives the skill entry as `developerInstructions` on
+  subagent of a shared conversation — and that the supervisor holds the claim. The
+  **card context is a system prompt injected when the native session opens**: the
+  supervisor formats the runtime half (agent, project, card ref, absolute `card.md` and
+  `plan.md` paths, process directory and the `--agent … --actor-kind=…` flags) and appends
+  the role's static `system_prompt` (or the lane's built-in board text). Claude receives it
+  as `--append-system-prompt`, Codex as `developerInstructions`, Pi as one more
+  `--append-system-prompt`. It is in place before the first turn, so a timed-out opener or
+  a lost handoff cannot leave the agent without the card, plan, flags or board moves. The
+  role skill still loads once at open: Claude receives a `/<role>` message with a `Flags:`
+  line; Codex receives the skill entry as `developerInstructions` on
   `thread/start`/`thread/resume`; Pi receives it as an appended system-prompt file. The
-  handoff is then a thin task envelope (brief, plan, board moves, no role layer). On an
-  inline kind the envelope carries the `Flags:` line itself, because no opener message
-  exists to carry it. The session's cwd is the card's admitted worktree, and its id is
-  persisted **before** the turn so a crash can resume it. The key includes the actor kind: a
-  role migrated between platforms never resumes the old platform's native session. A changed
-  installed skill reopens the lane the same way on every kind.
-- **Reviewer sessions** — keyed `(actor_kind, reviewer:<dir>)`, opened only when a review
-  card is queued and evicted by the same idle clock. The reviewer skill loads at open by the
-  kind's mechanism (`/reviewer` on Claude, developer instructions on Codex, an appended
-  system prompt on Pi). The batch prompt is the reviewer variant: no question ladder,
-  verdict-only. Each review card is one subagent with its **full** review handoff — a
+  handoff is then a thin task envelope (brief, plan, round details, board moves, no role
+  layer). On an inline kind the envelope carries the `Flags:` line itself, because no
+  opener message exists to carry it. The session's cwd is the card's admitted worktree, and
+  its id is persisted **before** the turn so a crash can resume it. The key includes the
+  actor kind: a role migrated between platforms never resumes the old platform's native
+  session. A changed installed skill reopens the lane the same way on every kind.
+- **Reviewer sessions** — keyed per review card, exactly like a worker
+  (`worker:<card>:r<round>`), opened only when a review card is queued and evicted by the
+  same idle clock. The reviewer skill loads at open by the kind's mechanism (`/reviewer` on
+  Claude, developer instructions on Codex, an appended system prompt on Pi), and the
+  system prompt carries the review card ref and brief, the card under review with its round,
+  the original's brief and plan, and the `Flags:` line — so Step 0 and the verdict rules
+  survive a lost handoff. The reviewer handoff prompt is the reviewer variant: no question
+  ladder, verdict-only. Each review card is one session with its **full** review handoff — a
   subagent does not inherit the parent's loaded skill, so the review protocol and the role
   path must be in that first context. The allowlist is real for Claude and Pi; Codex and
   other adapters have no per-role tool surface, and the pool logs a one-time warning for
@@ -620,8 +636,10 @@ worktree and is logged for a human rather than merged on a guess.
 Landing covers the lanes **admission created and registered** in `workspaces.json`. A worktree
 a session makes for itself (`using-git-worktrees`, any `.worktrees/<slug>`) is never in that
 registry, so accepting its card merges nothing: the pass logs `has no lane record`, and `done`
-means *accepted*, not *merged*. `loop doctor` reports those cards as `unlanded` (branch still
-outside the project's current branch), which is the only place they surface.
+means *accepted*, not *merged*. `loop doctor` judges only each card's **delivery round**: a
+`meta.landed_sha` in the current branch, else that round's own registry record, else the exact
+`lane/<ref>[-r<N>]` branch a loop lane would use. A session worktree outside that lane naming is
+not surfaced by the `unlanded` check.
 
 ### Session worktrees: the human half
 
@@ -674,6 +692,7 @@ Every dependency's failure is named; nothing degrades silently.
 | board unreachable | the pass logs the error and claims nothing |
 | worker crashed | the next tick resumes the session by id, or replays a bounded transcript; three failed recoveries park the card |
 | worker session cannot be restored | row failed, claim released, card `blocked/resource` with a question — never a 30-minute re-dispatch loop |
+| handoff turn timeout | transient: its own `timeouts` counter, 2/4/8-minute backoff; after three, re-read the card and release it to `todo` with a note — never `blocked` (ADR [0016](adr/0016-turn-timeouts-are-transient.md)) |
 | dispatch failed after the claim | the claim is handed back to `todo` immediately; at three consecutive failures the card is parked |
 | a card keeps coming back | the board's plan emits `hold_card`; the card is `blocked/decision` with a question, and a human move starts a fresh epoch |
 | resident pool wedged | `loop doctor`/`status` report `wedged`; one minute later the ping clock SIGTERMs it once and SIGKILLs on a later ping if needed (`--recover-wedged=no` opts out) |
@@ -688,6 +707,7 @@ enforces exactly them.
 
 | Heartbeat age | Meaning | What the supervisor does |
 |---|---|---|
+| every 5 min while a turn runs | the loop pulses the card as its holder | the claim stays fresh even when a 60-minute turn cannot reach the board itself; a refused pulse stops the timer and never affects the turn |
 | ≤ 30 min | live | nothing — the poll will not see a claimable card, and patrol stays quiet |
 | > 30 min | stale | patrol **escalates**: a log line and, if configured, `--notify <cmd>` |
 | unreadable / absent | a corrupt or half-written claim | patrol reports it (`heartbeat-unreadable`) — **never** swallowed |
@@ -923,7 +943,7 @@ authenticating agents, not adding a rule to the same layer.
   the reviewer allowlist (no `Edit`/`Write`) to the subagent it spawns. Codex,
   OpenCode and Cursor adapters have no per-role tool surface; there the boundary is
   the prompt plus the board's acceptance authority and the supervisor's report-attribution
-  check. The pool logs a one-time warning when it opens a reviewer lane on such a
+  check. The pool logs a one-time warning when it opens a reviewer session on such a
   kind.
 
 ### Rejecting an epic: the fix child comes first
@@ -1055,8 +1075,9 @@ skills/<role>/
 ```
 
 `role.json` carries `id`, `agent`, `native_agent`, `lanes`, `title`, `summary`,
-`responsibilities`, `boundaries`, `shapes` (the work shapes it owns), `self_check` and
-`reviewer_prompt`. It must carry `"schema": "meerkat-role"`; a skill without that marker is
+`responsibilities`, `boundaries`, `shapes` (the work shapes it owns), `system_prompt`
+(static text only), `self_check` and `reviewer_prompt`. It must carry
+`"schema": "meerkat-role"`; a skill without that marker is
 not a role, so a third-party skill cannot register itself as a board agent. Every referenced
 path must stay inside the skill directory, including through symlinks.
 
@@ -1075,10 +1096,20 @@ responsibilities and boundaries into the full handoff (layer 1); a resident work
 has the role's `SKILL.md` loaded from the **selected kind's** skill directory at session
 open, and reads `self_check` from the same directory before acting (layer 2). The inline
 forms are verified against codex-cli 0.161.0 (`developerInstructions`) and pi 1.4.0
-(`--append-system-prompt` reads an existing file path). The reviewer's
-prompt is inlined at the start of the review handoff,
-bounded at 2,400 characters. Every role is told to write and maintain
+(`--append-system-prompt` reads an existing file path); Claude's `--append-system-prompt`
+needs 2.1.292 or newer. The reviewer's prompt is inlined at the start of the review
+handoff, bounded at 2,400 characters. Every role is told to write and maintain
 `.meerkat/<identifier>/plan.md`, which the reviewer reads.
+
+**The system prompt is a third, earlier layer.** `role.json`'s `system_prompt` is static
+board text (read the card, heartbeat, deliver, ask the director); the supervisor formats
+the runtime values — agent, project, card ref, absolute paths, flags, and for a reviewer
+the original card and round — and appends the static text verbatim at session open. The
+static body is capped at 8 KiB (`ROLES_LIMITS.systemPromptBytes`) and is never templated,
+so a role file cannot rewrite the card's paths. An older `role.json` without the field
+falls back to the lane's built-in board text. A resumed native session already carries the
+prompt; a fresh or replayed native session is injected again. The director lane and other
+non-card sessions receive no card system prompt.
 
 **Routing.** The routing table is generated from each **worker-capable** role's `shapes`; there
 is no separate `ownership.md`. The Reviewer is never routed: review cards are created and
@@ -1109,7 +1140,7 @@ retried once, never a silent completion. Any human comment resumes an awaiting c
 its kind, and the
 resumed worker judges from its content whether it is a complete decision.
 
-A director row is not a card handoff: it is never claimed, never opens a reviewer lane, and
+A director row is not a card handoff: it is never claimed, it opens no reviewer session, and
 does not consume a worker slot. The read is bounded by `--board-limit` and costs one
 `comment list` per `in_progress` card per poll. The ladder is stated here: worker → director →
 human. A worker asks and waits; the director decides the collaboration questions and the
@@ -1162,6 +1193,12 @@ per-decision prompt is generated by the supervisor: the routing table built from
 worker's. The director never claims a card, never
 implements, never writes `decision`/`confirm`/`change` kinds, never uses `--as-human`, and
 never moves a card to `done`. A question row is capped at two attempts; a route row is enqueued once per window.
+A triage row first resolves the project directory and reads `docs/agents/epic-graphs.md`; the
+project's canonical multi-role shape is guidance, not board data. The director adopts an
+accepted producer as its matching stage, reuses an existing epic instance, and creates only
+the missing epic, stages and edges with the graph's `Epic mode` and the `meerkat` skill's
+recipe (`--parent <epic> --target <stage-id>`); when no graph matches, the per-deliverable
+behavior applies. The supervisor never sequences roles.
 A triage row is enqueued **after** the question and route rows: it is post-acceptance work
 and never displaces a held worker. Its completion is the marker on the producer, not a linked
 child; a producer that moved off `done` makes the row stale. A triage that exhausts its two
@@ -1284,20 +1321,26 @@ model.
 A **same-round** re-dispatch does not build that handoff again. It opens the stored
 session id and sends a bounded **resume** prompt carrying what changed — the human's
 answer, the rework reason, or "the previous turn was interrupted" — and tells the worker to
-re-read `card.md` and the comments before continuing, not to start over. When the native
-session cannot be restored, a **replay** prompt carries the supervisor-owned transcript instead
-(bounded at 12 turns / 8 000 characters) and the record is marked `resumed_by_replay`. A
-**new round** is a new generation: it gets the full handoff and a fresh session.
+re-read `card.md` and the comments before continuing from the last completed step. A resume
+does **not** re-inject the system prompt: the native session already holds it from the turn
+that opened it. When the native session cannot be restored, a **replay** prompt carries the
+supervisor-owned transcript instead (bounded at 12 turns / 8 000 characters) and the record
+is marked `resumed_by_replay`; a replay opens a fresh native session, so the system prompt is
+injected again. A **new round** is a new generation: it gets the full handoff, a fresh
+session and the system prompt.
 
 The handoff names the task's **process directory**, relative to the session's cwd:
 `.meerkat/<identifier>/`. `card.md` inside it is the supervisor's authoritative export of the
 card: poll registers it with the local event hub before the claim, the hub writes the first
 snapshot synchronously (a temp file plus an atomic rename), and the registration keeps it
 fresh until the card is `done` or `canceled`. The handoff tells the worker to read it
-first, to re-read it on resume, and never to edit it. Every other process file — notes, logs, evidence, report drafts, downloaded
-attachments — belongs in the same directory. The board still holds no directory (O3): the
-worker session's cwd **is** the directory, and `.meerkat/` is the supervisor's convention
-under it — see [Where a worker runs](#where-a-worker-runs).
+first, to re-read it on resume, and to leave it to the supervisor. The **system prompt**
+names the same `card.md` and `plan.md` as absolute paths (the handoff keeps the relative
+`.meerkat/<identifier>/` form); both resolve to one file under the session's cwd. Every other
+process file — notes, logs, evidence, report drafts, downloaded attachments — belongs in the
+same directory. The board still holds no directory (O3): the worker session's cwd **is** the
+directory, and `.meerkat/` is the supervisor's convention under it — see
+[Where a worker runs](#where-a-worker-runs).
 
 The hub owns the refresh for every registration: a debounced batch updates each watched file
 (and a review card's original, because the supervisor registers both), independent of
@@ -2170,8 +2213,8 @@ systemctl --user enable --now meerkat-taskpanel-session.service meerkat-taskpane
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
-The `.session` unit is the **resident pool** — one manager, one worker session per card, a
-reviewer lane per directory and a director lane per project. It is the only unit that can
+The `.session` unit is the **resident pool** — one manager, one worker or reviewer session
+per card and a director lane per project. It is the only unit that can
 dispatch a worker, a reviewer or a director; without it the tick still runs patrol and
 workflow, and poll stops at "no resident pool".
 

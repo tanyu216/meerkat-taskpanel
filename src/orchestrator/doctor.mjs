@@ -28,7 +28,7 @@
  */
 
 import { closeSync, existsSync, fstatSync, openSync, readSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { ROUTE_UNASSIGNED_MS } from "../foundation/constants.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
@@ -50,6 +50,7 @@ import { readWorkerSessions, workerRecordIsRunning } from "./worker-session.mjs"
 import { probeSupervisor } from "./status.mjs";
 import {
   isStaleWorkspaceRecord,
+  laneBranch,
   readWorkspaceRegistry,
   registryPath,
   runGit,
@@ -716,6 +717,9 @@ export function doctorReport(opts, env = process.env, deps = {}) {
               : {
                   status: row?.status ?? null,
                   attempts: row?.attempts ?? null,
+                  // A transient timeout is a third counter: an operator must be
+                  // able to tell a timeout retry from a delivery retry.
+                  timeouts: row?.timeouts ?? null,
                   retry_at: row?.retry_at ?? null,
                   last_error: row?.lastError ?? null,
                 },
@@ -1005,6 +1009,12 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   // `canceled` branch is abandoned work, and an active lane is correctly open.
   // The project's directory comes from the loop's own map (`projects.json`), not
   // from the card: `meta.target` is an opaque label, not a checkout path.
+  //
+  // Only the **delivery round** decides. A rework leaves its rejected round's
+  // tree and branch behind (`lane/<ref>-rN`, unmerged), so matching the first
+  // name the way the old code did reported landed cards through their oldest
+  // lane. The registry keys one record per (card, round); the delivery round is
+  // the card's current `delivery_round`.
   const unlanded = { cards: [], total: 0 };
   if (board.error === null) {
     const byProject = new Map();
@@ -1014,6 +1024,13 @@ export function doctorReport(opts, env = process.env, deps = {}) {
       if (project === "") continue;
       if (!byProject.has(project)) byProject.set(project, []);
       byProject.get(project).push(task);
+    }
+    const recordsByRef = new Map();
+    for (const record of readWorkspaceRegistry(stateDir).workspaces) {
+      const ref = String(record?.identifier ?? "");
+      if (ref === "") continue;
+      if (!recordsByRef.has(ref)) recordsByRef.set(ref, []);
+      recordsByRef.get(ref).push(record);
     }
     for (const [project, cards] of byProject) {
       const target = resolveWakeTarget({ project, projectsJson: opts.projectsJson });
@@ -1032,23 +1049,36 @@ export function doctorReport(opts, env = process.env, deps = {}) {
       for (const task of cards) {
         const ref = String(task.identifier ?? "");
         if (ref === "") continue;
-        // Two ways a lane outlives the card: its worktree is still on disk, or
-        // (after a cleanup) only the branch is. The worktree is matched by path
-        // because a session's own name never has to follow the loop's.
-        const tree = worktrees.find((row) => {
-          const name = basename(row.path);
-          return name === ref || name.startsWith(`${ref}-`);
-        });
-        if (tree !== undefined && tree.branch !== null && open.has(tree.branch)) {
-          unlanded.cards.push({ ref, title: task.title ?? null, branch: tree.branch, path: tree.path });
+        const round = Number(task.delivery_round ?? 1);
+        // A recorded landing is the strongest fact: the commit is in HEAD even
+        // when the lane branch itself was never merged. A sha git cannot place
+        // is unknown, not evidence of absence.
+        const landedSha =
+          typeof task.meta?.landed_sha === "string" ? task.meta.landed_sha.trim() : "";
+        if (
+          landedSha !== "" &&
+          gitRead(git, target.dir, ["merge-base", "--is-ancestor", landedSha, "HEAD"]) !== null
+        ) {
           continue;
         }
-        const branch = [...open].find(
-          (name) => name === `lane/${ref}` || name.startsWith(`lane/${ref}-`),
-        );
-        if (branch !== undefined) {
-          unlanded.cards.push({ ref, title: task.title ?? null, branch, path: null });
+        const records = recordsByRef.get(ref) ?? [];
+        const record = records.find((entry) => Number(entry.round) === round) ?? null;
+        let branch = null;
+        if (record !== null) {
+          // The delivery round's own record: only its branch is judged, and the
+          // path reported is the live worktree for it (null after a cleanup).
+          if (open.has(record.branch)) branch = record.branch;
+        } else if (records.length === 0) {
+          // Never registered — the only honest guess is the delivery round's
+          // exact branch name, never a `<ref>-*` prefix that names an old round.
+          const candidate = laneBranch(ref, round);
+          if (open.has(candidate)) branch = candidate;
         }
+        // No record for a card the registry knows means the delivery round's
+        // record was removed after its successful merge — landed.
+        if (branch === null) continue;
+        const tree = worktrees.find((row) => row.branch === branch);
+        unlanded.cards.push({ ref, title: task.title ?? null, branch, path: tree?.path ?? null });
       }
     }
     unlanded.cards.sort((left, right) => left.ref.localeCompare(right.ref));
@@ -1278,7 +1308,8 @@ function humanReport(report) {
       const queueText =
         row === null
           ? "no queue row"
-          : `queue ${row.status ?? "?"} after ${row.attempts ?? "?"} attempt(s), retry_at ${row.retry_at ?? "null"}`;
+          : `queue ${row.status ?? "?"} after ${row.attempts ?? "?"} attempt(s), ` +
+            `${row.timeouts ?? "?"} timeout(s), retry_at ${row.retry_at ?? "null"}`;
       lines.push(`  ${card.ref}  ${queueText}  ${card.title ?? ""}`.trimEnd());
     }
   }

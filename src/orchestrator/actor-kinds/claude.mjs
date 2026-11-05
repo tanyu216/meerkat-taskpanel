@@ -16,7 +16,7 @@ import { spawn } from "node:child_process";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
-export const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
+export const DEFAULT_TURN_TIMEOUT_MS = 60 * 60 * 1000;
 
 /**
  * The tool surface a role gets when full access is not enabled. The operator
@@ -42,7 +42,7 @@ export function allowedToolsFor(role) {
 /**
  * The argv for one Claude resident session.
  *
- * @param {{opts: object, sessionId?: string|null, role?: string}} input
+ * @param {{opts: object, sessionId?: string|null, role?: string, systemPrompt?: string|null}} input
  * @returns {string[]}
  */
 export function sessionArgs(input) {
@@ -63,6 +63,11 @@ export function sessionArgs(input) {
   }
   if (input.sessionId !== undefined && input.sessionId !== null && input.sessionId !== "") {
     args.push("--resume", String(input.sessionId));
+  }
+  // The card's context is a system prompt from the first turn, so a lost opener
+  // turn cannot leave the agent without the card, plan, flags or board rules.
+  if (typeof input.systemPrompt === "string" && input.systemPrompt !== "") {
+    args.push("--append-system-prompt", input.systemPrompt);
   }
   return args;
 }
@@ -94,7 +99,8 @@ function waitFor(predicate, timeoutMs, stepMs = 50) {
 class ClaudeSession {
   /**
    * @param {{opts: object, cwd: string, sessionId?: string|null, role?: string,
-   *   bin?: string, log: (line: string) => void, onEvent?: (event: object) => void}} input
+   *   systemPrompt?: string|null, bin?: string, log: (line: string) => void,
+   *   onEvent?: (event: object) => void}} input
    */
   constructor(input) {
     this.opts = input.opts;
@@ -280,7 +286,7 @@ export function createClaudePool(input) {
   return {
     actorKind: "claude",
     /**
-     * @param {{cwd: string, sessionId?: string|null, role?: string}} options
+     * @param {{cwd: string, sessionId?: string|null, role?: string, systemPrompt?: string|null}} options
      */
     openSession(options) {
       const session = new ClaudeSession({
@@ -288,6 +294,7 @@ export function createClaudePool(input) {
         cwd: options.cwd,
         sessionId: options.sessionId ?? null,
         role: options.role ?? "worker",
+        systemPrompt: options.systemPrompt ?? null,
         bin: input.bin,
         env: input.env,
         log: input.log,

@@ -126,14 +126,14 @@ describe("role skills: identity, discovery and model invocation", () => {
       /product.*prototype.*architecture.*implementation.*refactor.*test.*docs.*epic/i,
       "the common shapes stay named as refinements",
     );
-    assert.match(description, /never a skip/i);
-    assert.match(description, /never a REJECT merely for being unlisted/i);
+    assert.match(description, /the floor is mandatory/i);
+    assert.match(description, /an unlisted type is not itself a REJECT/i);
     assert.match(description, /Return one VERDICT\.$/);
 
     assert.match(text, /any delivered card dispatched for review is in scope/i);
     assert.match(text, /a type no shape names, or a mixed one/i);
-    assert.match(text, /never a skip/i);
-    assert.match(text, /never routed an ordinary card/i);
+    assert.match(text, /the floor is mandatory/i);
+    assert.match(text, /the loop routes review cards only/i);
 
     const identity = roleJson("reviewer");
     assert.match(identity.summary, /any delivered card/i);
@@ -142,7 +142,7 @@ describe("role skills: identity, discovery and model invocation", () => {
       "the reviewer still owns review cards, and only review cards",
     );
     assert.ok(
-      identity.boundaries.some((line) => /never routed an ordinary card/i.test(line)),
+      identity.boundaries.some((line) => /ordinary card belongs to a worker role/i.test(line)),
       "the identity keeps the reviewer out of ordinary work routing",
     );
     assert.ok(
@@ -182,7 +182,7 @@ describe("role skills: identity, discovery and model invocation", () => {
 });
 
 describe("role workflows: plan, audit, execute, self-check and deliver", () => {
-  it("takes the card's plan before work — adopted first, then audited", () => {
+  it("takes the plan it is handed before work — adopted first, then audited", () => {
     for (const role of ["jobs", "linus"]) {
       const text = read(role);
       const start = text.indexOf("## Before work — the plan");
@@ -205,7 +205,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     }
   });
 
-  it("takes the card's plan before work in every Turing branch", () => {
+  it("takes the plan it is handed in every Turing branch", () => {
     for (const rel of [
       "references/test-design-workflow.md",
       "references/regression-workflow.md",
@@ -234,7 +234,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     );
   });
 
-  it("names an adopted plan in every branch input", () => {
+  it("names an adopted plan in every branch's first step", () => {
     for (const [role, rel] of [
       ["linus", "references/implementation-workflow.md"],
       ["linus", "references/refactor-workflow.md"],
@@ -242,6 +242,72 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     ]) {
       assert.match(read(role, rel), /written or adopted by you/, `${role}/${rel} accepts an adopted plan`);
     }
+  });
+
+  describe("role workflows: any input, not a prescribed card", () => {
+    const PLAIN = /task,\s*plan(?:,|\s+or)\s+(?:a\s+)?requirement/i;
+
+    it("describes the role for a plain task, plan or requirement", () => {
+      for (const role of ["jobs", "linus", "turing", "worker"]) {
+        const text = read(role);
+        const frontmatter = text.slice(0, text.indexOf("\n---", 4));
+        const description = frontmatter.match(/\ndescription: ([^\n]+)/)?.[1] ?? "";
+        assert.match(description, PLAIN, `${role}: the description invites a task, plan or requirement`);
+      }
+    });
+
+    it("ships no prescribed input section", () => {
+      for (const role of ["jobs", "linus", "turing", "worker"]) {
+        const refs = readdirSync(join(roleDir(role), "references"))
+          .filter((name) => name.endsWith(".md"))
+          .map((name) => `references/${name}`);
+        for (const rel of ["SKILL.md", ...refs]) {
+          const text = read(role, rel);
+          assert.doesNotMatch(text, /^## Inputs\b/m, `${role}/${rel} has no Inputs section`);
+          assert.doesNotMatch(text, /^Inputs:/m, `${role}/${rel} has no Inputs line`);
+        }
+      }
+    });
+
+    it("audits a plan through logic, blast radius and the simplest reliable option", () => {
+      for (const role of ["jobs", "linus", "turing", "worker"]) {
+        const text = read(role);
+        assert.match(text, /logic/i, `${role}: the audit names logic`);
+        assert.match(text, /blast radius/i, `${role}: checks the blast radius`);
+        assert.match(text, /simplest reliable/i, `${role}: chooses the simplest reliable option`);
+        assert.doesNotMatch(text, /impact scope/i, `${role}: uses the repo's blast-radius term`);
+      }
+      for (const rel of ["test-design-workflow.md", "regression-workflow.md", "performance-workflow.md"]) {
+        const text = read("turing", `references/${rel}`);
+        const plan = text.slice(text.indexOf("### 1. Plan"), text.indexOf("### 2."));
+        assert.match(plan, /logic/i, `${rel}: its plan step names logic`);
+        assert.match(plan, /blast radius/i, `${rel}: its plan step names the blast radius`);
+        assert.match(plan, /simplest reliable/i, `${rel}: its plan step names the simplest reliable option`);
+        assert.match(plan, /SKILL\.md/, `${rel}: the canonical wording lives once in SKILL.md`);
+      }
+    });
+
+    it("runs the pre-delivery self-check in both modes", () => {
+      for (const role of ["jobs", "linus", "turing", "worker"]) {
+        const skill = read(role);
+        assert.match(skill, /self-check\.md/, `${role}: delivery names the pre-delivery audit`);
+        const check = read(role, "references/self-check.md");
+        assert.match(check, /both modes/i, `${role}: the audit covers both modes`);
+        assert.match(check, /not_applicable — no card/, `${role}: card-only items are dispositioned`);
+      }
+    });
+
+    it("writes the plan from the card when the card carries none", () => {
+      for (const role of ["jobs", "linus", "turing", "worker"]) {
+        const text = read(role);
+        assert.match(text, /no plan attached/i, `${role}: names the card-without-plan path`);
+        assert.match(
+          text,
+          /no plan attached[\s\S]{0,200}(frozen acceptance|acceptance)/i,
+          `${role}: writes the plan from the card and its acceptance`,
+        );
+      }
+    });
   });
 
   it("runs a product card as frame → define → decide → validate → converge → deliver", () => {
@@ -304,7 +370,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(regression, /production bug/i, "regression covers production bugs");
     assert.match(regression, /before and after|before\/after|pre-fix/i, "regression proves the fix");
     assert.doesNotMatch(turing, /\|\s*Card\s*\|\s*Branch\s*\|/i, "the branch table is not duplicated");
-    assert.match(turing, /do not merge, rebase or push/i, "the shared delivery leaves landing to the director");
+    assert.match(turing, /the supervisor's acceptance pass lands it/i, "the shared delivery leaves landing to the director");
     assert.match(testDesign, /already landed|landed implementation/i, "test design verifies a landed implementation");
     assert.doesNotMatch(testDesign, /test-first|red-first/i, "red-first belongs to the implementation card");
     assert.match(
@@ -464,7 +530,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(arch, /E5 pending/i, "a reconstruction records E5 pending");
     assert.match(check, /reconstructed — <evidence>/, "the self-check knows provenance");
     assert.match(check, /not run — <reason>/, "an unexecuted gate is recorded");
-    assert.match(check, /never by a claimed pass/i, "an audit never claims a gate");
+    assert.match(check, /only by an observed exit code/i, "an audit never claims a gate");
     assert.match(check, /^[-*] \*\*R1\.\*\*/m, "the reconstruction items start at R1");
     assert.match(linus, /missing or partial|reconstruction/i, "a missing foundation routes here");
     // A role workflow is capped by the runtime; keep headroom rather than drift to the edge.
@@ -780,12 +846,12 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.doesNotMatch(impl, /^### \d+\. Operations/m, "no operations step");
     assert.match(
       linus,
-      /not architecture, implementation, refactoring or a bug fix/i,
+      /Take architecture, implementation, refactoring and bug-fix work/i,
       "the boundary is stated",
     );
     assert.match(
       linus,
-      /operations on a running system goes outside the roles/i,
+      /operations on a running\s+system are outside the roles/i,
       "operations is routed out of the role",
     );
 
@@ -814,7 +880,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     for (const role of ["jobs", "linus", "turing"]) {
       assert.match(
         read(role, "role.json"),
-        /Do not merge, rebase or push/i,
+        /the supervisor's acceptance pass merges, rebases, pushes/i,
         `${role}'s identity leaves integration alone`,
       );
     }
@@ -826,7 +892,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       assert.match(check, /falsifiable/i, `${role} requires falsifiable evidence`);
       assert.match(check, /not_applicable/, `${role} names the not_applicable disposition`);
       assert.match(check, /\bowner\b/i, `${role} makes a leftover name its owner`);
-      assert.match(check, /never a leftover/i, `${role} lists what may not be a leftover`);
+      assert.match(check, /a blocker, not a leftover/i, `${role} lists what may not be a leftover`);
     }
 
     for (const role of ["linus", "turing"]) {
@@ -841,7 +907,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       /outside the frozen acceptance/i,
       "the reviewer accepts a leftover only outside the acceptance",
     );
-    assert.match(reviewer, /never a leftover|not a leftover/i, "a missing item is not a leftover");
+    assert.match(reviewer, /missing acceptance item\s+is a `REJECT`/i, "a missing item is a REJECT");
     assert.match(reviewer, /falsifiable/i, "the reviewer workflow says what counts as proof");
     const prompt = read("reviewer", "references/reviewer-prompt.md");
     assert.match(prompt, /falsifiable/i, "the inlined reviewer prompt says what counts as proof");
@@ -863,7 +929,11 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(impl, /for a feature or behaviour change,[\s\S]*archived spec/, "a feature reads the design artifacts");
     assert.match(impl, /bug fix does not\s+need the design artifacts/, "a bug does not need them");
     assert.match(testDesign, /for a feature or behaviour change,[\s\S]*archived spec/, "test design reads them for a feature");
-    assert.match(regression, /are not inputs here/, "regression verifies the defect, not the design");
+    assert.match(
+      regression,
+      /verify against the defect, the reproduction, the frozen acceptance and the baseline/i,
+      "regression verifies the defect, not the design",
+    );
   });
 
   it("triages the card shape and hands off design outputs explicitly", () => {
@@ -890,16 +960,17 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(jobs, /epic/i);
     assert.match(jobs, /children/i);
     assert.match(jobs, /stage_handoff/);
-    assert.match(jobs, /product_change=none/);
+    assert.match(jobs, /Downstream cards:/, "the handoff names an existing graph stage");
+    assert.match(jobs, /epic graph/i);
     assert.match(jobs, /director/i);
     assert.match(jobs, /card and plan lifecycle/i, "the director owns the triage lifecycle");
-    assert.match(jobs, /do not create .*downstream card/i);
+    assert.match(jobs, /the director creates the downstream card/i);
     assert.doesNotMatch(jobs, /five stages/i);
     assert.doesNotMatch(jobs, /inherit or extend/i);
 
     // A child is a deliverable that can land alone; one change's layers are its scope.
     assert.match(jobs, /not one card per layer/i);
-    assert.match(jobsCheck, /never one child per layer/i);
+    assert.match(jobsCheck, /one child per layer` is a mis-size/i);
     assert.match(impl, /not the layers of one change/i);
     assert.match(jobs, /can land on the base branch alone/i);
 
@@ -913,13 +984,24 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       assert.match(text, /## Handoff/, `${name} reads the handoff block`);
       assert.doesNotMatch(text, /inherit or extend/i, `${name} does not inherit another card's plan`);
     }
-    assert.match(linus, /product_change=none/i);
+    assert.match(linus, /epic_graph/);
+    assert.match(linus, /epic-graphs\.md/);
+    assert.match(linus, /product_change/);
     assert.match(linus, /design_stage/);
+    assert.match(linus, /optional hints/i);
+    // Classification is the graph's or the creator's, never the executor's. TP-0033
+    // burned a round because the executor classified the card in `plan.md` and proceeded.
+    assert.match(linus, /the creator or the\s+director's triage classifies it/i, "a worker never writes its own classification");
+    assert.match(linus, /ask and hold/i, "a card it cannot classify holds instead of proceeding");
     assert.match(impl, /## Handoff/);
     assert.match(impl, /does not\s+need the design artifacts/i);
     assert.match(testDesign, /## Handoff/);
     assert.match(testDesign, /named report/i);
-    assert.match(regression, /not inputs here/);
+    assert.match(
+      regression,
+      /verify against the defect, the reproduction, the frozen acceptance and the baseline/i,
+    );
+    assert.doesNotMatch(regression, /^Inputs:/m, "the branch names no input contract");
     assert.match(testDesign, /test-plan\.md/);
     assert.match(turing, /API/i);
     assert.match(turing, /browser/i);
@@ -932,8 +1014,11 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     // sha, the anchor behind each claim and the earlier findings.
     for (const [name, text] of [["workflow", reviewer], ["prompt", prompt]]) {
       assert.match(text, /## Handoff/, `${name} reads the handoff`);
-      assert.match(text, /design_stage|stage_handoff/, `${name} triages the stage`);
-      assert.match(text, /product_change/, `${name} reads the triage marker`);
+      assert.match(
+        text,
+        /epic_graph|epic-graphs\.md|stage_handoff/,
+        `${name} classifies from the graph or the handoff`,
+      );
       assert.match(text, /ledger/i, `${name} builds the requirement ledger`);
       assert.match(text, /commit|sha/i, `${name} verifies the delivered commit`);
       assert.match(text, /earlier round|prior finding|earlier finding/i, `${name} re-checks earlier findings`);
@@ -1024,7 +1109,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       const deliver = text.slice(text.indexOf(heading));
       assert.match(deliver, /commit/i, `${role}/${rel} commits before it delivers`);
       assert.match(deliver, /DELIVERY_NEEDS_COMMIT/, `${role}/${rel} names the delivery gate`);
-      assert.match(deliver, /do not merge, rebase or push/i, `${role}/${rel} leaves landing to the director`);
+      assert.match(deliver, /the\s+supervisor's acceptance pass merges, rebases, pushes/i, `${role}/${rel} leaves landing to the director`);
     }
 
     const turingWorkflow = read("turing");
@@ -1032,7 +1117,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(turingWorkflow, /commit/i, "the shared delivery commits before it delivers");
     assert.match(
       turingWorkflow,
-      /do not merge, rebase or push/i,
+      /the supervisor's acceptance pass lands it/i,
       "the shared delivery leaves landing to the director",
     );
     for (const rel of [
@@ -1220,7 +1305,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       );
     }
     assert.match(workflow, /not one card per layer/i);
-    assert.match(check, /never one child per layer/i);
+    assert.match(check, /one child per layer` is a mis-size/i);
   });
 
   it("keeps the reviewer workflow step-navigable, concise and board-delegated", () => {
@@ -1239,7 +1324,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       assert.match(block, /\*\*Watch for\.\*\*/, "the step names what to watch");
       assert.match(block, /\*\*Essentials\.\*\*/, "the step names what is indispensable");
     }
-    assert.ok(workflow.split("\n").length <= 130, "the reviewer workflow stays concise");
+    assert.ok(workflow.split("\n").length <= 270, "the reviewer skill carries the universal floor");
     assert.ok(check.split("\n").length <= 35, "the pre-verdict audit stays concise");
     assert.match(
       workflow,
@@ -1250,46 +1335,67 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
   });
 
   it("ships the shape audit floor every reviewer walks", () => {
-    const playbook = read("reviewer", "references/audit-playbook.md");
+    const universal = read("reviewer");
+    const product = read("reviewer", "references/audit-product.md");
+    const development = read("reviewer", "references/audit-development.md");
+    const testFloor = read("reviewer", "references/audit-test.md");
+    const scenarios = [product, development, testFloor];
+    const all = [universal, ...scenarios].join("\n");
 
     for (const [name, text] of [
-      ["SKILL.md", read("reviewer")],
       ["references/reviewer-prompt.md", read("reviewer", "references/reviewer-prompt.md")],
       ["references/self-check.md", read("reviewer", "references/self-check.md")],
       ["role.json", read("reviewer", "role.json")],
-    ]) assert.match(text, /audit-playbook\.md/, `${name} points at the audit playbook`);
+    ]) assert.match(text, /SKILL\.md/, `${name} points at the universal floor`);
 
-    assert.match(playbook, /floor, not a ceiling/i);
-    assert.match(playbook, /not limited to these/i);
-    assert.match(playbook, /not exempt/i);
-    assert.match(playbook, /n\/a — <reason>/i);
-    assert.match(playbook, /any read-only method|any method/i);
-    assert.match(playbook, /beyond the floor|outside the list/i);
-    assert.match(playbook, /record[^.]*extra check/i);
-    assert.match(playbook, /extra finding[^.]*block/i);
-    assert.match(playbook, /do not suppress/i);
+    assert.match(universal, /floor, not a ceiling/i);
+    assert.match(universal, /not limited to these/i);
+    assert.match(universal, /not exempt/i);
+    assert.match(universal, /n\/a — <reason>/i);
+    assert.match(universal, /any read-only method|any method/i);
+    assert.match(universal, /beyond the floor|outside the list/i);
+    assert.match(universal, /record[^.]*extra check/i);
+    assert.match(universal, /extra finding[^.]*block/i);
+    assert.match(universal, /surface a real problem even outside the list/i);
 
     for (const [shape, pattern] of [
       ["product planning", /product planning/i],
       ["prototype / UI", /prototype\s*\/\s*UI/i],
+    ]) assert.match(product, pattern, `the product floor names ${shape}`);
+    for (const [shape, pattern] of [
       ["architecture", /architecture/i],
       ["development / implementation", /development\s*\/\s*implementation|implementation\s*\/\s*development/i],
       ["refactor", /refactor/i],
-      ["test design", /test design/i],
       ["docs / operations / release", /docs\s*\/\s*operations\s*\/\s*release/i],
-      ["epic / rollup", /epic\s*\/\s*rollup/i],
-    ]) assert.match(playbook, pattern, `the playbook floors ${shape}`);
+    ]) assert.match(development, pattern, `the development floor names ${shape}`);
+    for (const [shape, pattern] of [
+      ["test design", /test design/i],
+      ["regression", /regression/i],
+      ["performance", /performance/i],
+    ]) assert.match(testFloor, pattern, `the test floor names ${shape}`);
+    assert.match(universal, /epic\s*\/\s*rollup/i, "the universal floor keeps epic/rollup");
+
+    for (const text of scenarios) assert.match(text, /SKILL\.md/, "a scenario points back at the universal floor");
+    for (const name of ["audit-product.md", "audit-development.md", "audit-test.md"]) {
+      assert.ok(universal.includes(name), `SKILL.md routes to ${name}`);
+    }
+
+    // The plan-quality refinement is defined once; the scenarios only apply it.
+    assert.match(universal, /Plan-quality refinement/);
+    assert.match(universal, /blocking/);
+    for (const text of scenarios) assert.match(text, /plan-quality refinement/i);
+    assert.doesNotMatch(scenarios.join("\n"), /goal → acceptance → step → proof/i, "the three axes live once");
 
     // The named shapes refine the universal floor; they are never the set of
     // reviewable cards, and a type none names is a normal path.
-    assert.match(playbook, /Default — a target type no floor names/);
-    assert.match(playbook, /refinement index, not a scope/i);
-    assert.match(playbook, /all nine steps/i);
-    assert.match(playbook, /Step 8 adding the classification/i);
-    assert.match(playbook, /record the classification/i);
-    assert.match(playbook, /project's own standards/i);
-    assert.match(playbook, /is not by itself a REJECT/i);
-    assert.match(playbook, /never routed an ordinary card/i);
+    assert.match(universal, /Default — a target type no floor names/);
+    assert.match(universal, /refinement index, not a scope/i);
+    assert.match(universal, /all nine steps/i);
+    assert.match(universal, /Step 8 adding the classification/i);
+    assert.match(universal, /record the classification/i);
+    assert.match(universal, /project's own standards/i);
+    assert.match(universal, /or by itself a REJECT/i);
+    assert.match(universal, /the loop routes review cards only/i);
 
     for (const [subject, pattern] of [
       ["unit tests", /unit test/i],
@@ -1299,57 +1405,60 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       ["technical standards", /technical standard/i],
       ["code review", /code review/i],
       ["the security scan", /security scan/i],
-    ]) assert.match(playbook, pattern, `the development floor names ${subject}`);
+    ]) assert.match(development, pattern, `the development floor names ${subject}`);
 
     for (const command of [
       "scripts/verify/contract.mjs",
       "route-request.mjs",
       "cli-contract.mjs",
       "scan-gate.mjs",
-    ]) assert.ok(playbook.includes(command), `the playbook names the repo check ${command}`);
+    ]) assert.ok(universal.includes(command), `the universal floor names the repo check ${command}`);
 
-    assert.match(playbook, /git -C/);
-    assert.match(playbook, /git diff <sha>\^ <sha>|git show <sha> --/);
-    assert.match(playbook, /target[^.]*worktree|original[^.]*worktree/i);
-    assert.match(playbook, /parallel|concurren/i);
-    assert.match(playbook, /primary checkout/i);
-    assert.match(playbook, /shared tree/i);
-    assert.doesNotMatch(playbook, /\.worktrees\//);
+    assert.match(universal, /git -C/);
+    assert.match(universal, /git diff <sha>\^ <sha>|git show <sha> --/);
+    assert.match(universal, /target[^.]*worktree|original[^.]*worktree/i);
+    assert.match(universal, /parallel|concurren/i);
+    assert.match(universal, /primary checkout/i);
+    assert.match(universal, /shared tree/i);
+    assert.doesNotMatch(all, /\.worktrees\//);
     assert.doesNotMatch(read("reviewer"), /\.worktrees\//);
     assert.doesNotMatch(read("reviewer", "references/reviewer-prompt.md"), /\.worktrees\//);
     assert.match(read("reviewer"), /git -C/);
     assert.match(read("reviewer", "references/reviewer-prompt.md"), /git -C/);
 
-    assert.match(playbook, /verdict rule/i);
-    assert.match(playbook, /APPROVE only when/i);
-    assert.match(playbook, /otherwise REJECT/i);
-    assert.match(playbook, /precedence/i);
-    assert.match(playbook, /blocking/i);
-    assert.match(playbook, /observation/i);
-    assert.match(playbook, /leftover/i);
-    assert.match(playbook, /no APPROVE with an open check/i);
-    assert.match(playbook, /missing acceptance item is never a leftover/i);
-    assert.match(playbook, /subjective preference is not a must-fix/i);
-    assert.match(playbook, /reviewer never waives/i);
-    assert.match(playbook, /one pass/i);
-    assert.match(playbook, /falsify/i);
+    assert.match(universal, /verdict rule/i);
+    assert.match(universal, /APPROVE only when/i);
+    assert.match(universal, /otherwise REJECT/i);
+    assert.match(universal, /precedence/i);
+    assert.match(universal, /blocking/i);
+    assert.match(universal, /observation/i);
+    assert.match(universal, /leftover/i);
+    assert.match(universal, /an open check blocks APPROVE/i);
+    assert.match(universal, /missing acceptance item is a REJECT/i);
+    assert.match(universal, /subjective preference is not a must-fix/i);
+    assert.match(universal, /risk acceptance belongs to the human/i);
+    assert.match(universal, /one pass/i);
+    assert.match(universal, /falsify/i);
 
     for (const status of ["met", "partial", "not_met", "not_applicable"]) {
-      assert.match(playbook, new RegExp(`\\b${status}\\b`), `the playbook names ${status}`);
+      assert.match(universal, new RegExp(`\\b${status}\\b`), `the universal floor names ${status}`);
     }
     for (let step = 1; step <= 9; step += 1) {
-      assert.match(playbook, new RegExp(`Step ${step}\\b`, "i"), `the playbook covers Step ${step}`);
+      assert.match(universal, new RegExp(`^### ${step}\\. `, "m"), `the universal floor covers Step ${step}`);
     }
 
-    assert.match(playbook, /security-checklist\.md/);
-    assert.match(playbook, /floor/i);
-    assert.match(playbook, /surface (security )?check/i);
+    assert.match(universal, /security-checklist\.md/);
+    assert.match(universal, /floor/i);
+    assert.match(universal, /surface (security )?check/i);
     assert.match(read("reviewer"), /floor, not a ceiling/i);
     assert.match(read("reviewer"), /surface (security )?check/i);
     assert.match(read("reviewer", "references/reviewer-prompt.md"), /a floor/i);
     assert.match(read("reviewer", "references/reviewer-prompt.md"), /surface (security )?check/i);
     assert.match(read("reviewer", "role.json"), /floor/i);
-    assert.ok(playbook.split("\n").length <= 180, "the audit playbook stays compact");
+    assert.ok(universal.split("\n").length <= 270, "the reviewer skill carries the universal floor");
+    assert.ok(product.split("\n").length <= 30, "the product floor stays compact");
+    assert.ok(development.split("\n").length <= 45, "the development floor stays compact");
+    assert.ok(testFloor.split("\n").length <= 25, "the test floor stays compact");
   });
 
   it("keeps project mechanics out of the specialist role files", () => {
@@ -1368,7 +1477,9 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
         "references/performance-workflow.md",
         "references/reviewer-prompt.md",
         "references/security-checklist.md",
-        "references/audit-playbook.md",
+        "references/audit-product.md",
+        "references/audit-development.md",
+        "references/audit-test.md",
       ]
         .filter((rel) => existsSync(join(roleDir(role), rel)))
         .map((rel) => [role, rel]),
@@ -1399,7 +1510,9 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
         "references/regression-workflow.md",
         "references/performance-workflow.md",
         "references/reviewer-prompt.md",
-        "references/audit-playbook.md",
+        "references/audit-product.md",
+        "references/audit-development.md",
+        "references/audit-test.md",
       ]
         .filter((rel) => existsSync(join(roleDir(role), rel)))
         .map((rel) => [role, rel]),
@@ -1418,7 +1531,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
   it("keeps every command the reviewer is told to run inside its lane allowlist", () => {
     // A rule the lane cannot execute is a rule the reviewer learns to skip.
     const allow = allowedToolsFor("reviewer");
-    for (const rel of ["SKILL.md", "references/reviewer-prompt.md", "references/audit-playbook.md"]) {
+    for (const rel of ["SKILL.md", "references/reviewer-prompt.md", "references/audit-product.md", "references/audit-development.md", "references/audit-test.md"]) {
       const text = read("reviewer", rel);
       for (const [kind, pattern] of [
         ["Bash(npm run *)", /\bnpm run\b/],
@@ -1444,7 +1557,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(worker, /references\/self-check\.md/);
     assert.match(worker, /Deliver with evidence/i);
     assert.match(worker, /acceptance_mode/, "the card's acceptance mode closes it");
-    assert.match(worker, /Do not merge, rebase or push/i);
+    assert.match(worker, /landing and cleanup belong to the supervisor's acceptance pass/i);
 
     const check = read("worker", "references/self-check.md");
     for (const item of ["met", "not_applicable", "partial", "not_met", "leftover"]) {
@@ -1511,7 +1624,7 @@ describe("security: Linus owns the toolchain, the reviewer owns the checklist", 
     assert.match(doc, /--check/);
     assert.match(doc, /--install/);
     assert.match(doc, /--upgrade/);
-    assert.match(doc, /never install/i, "the check never installs on its own");
+    assert.match(doc, /read-only and offline/i, "the check never installs on its own");
     assert.match(doc, /--ci-plan/);
     assert.match(doc, /--ci-write/);
     assert.match(doc, /assets\/security\/toolchain\.json/);
@@ -1523,7 +1636,7 @@ describe("security: Linus owns the toolchain, the reviewer owns the checklist", 
     assert.match(doc, /missing/i, "the question is limited to the missing arms");
     assert.match(doc, /no CI file at all is `absent`/i, "an absent pipeline is reported, not this skill's finding");
     assert.match(doc, /SBOM/, "the optional arm is named as optional");
-    assert.match(doc, /never overwritten|Nothing is ever overwritten/i, "an existing file is never overwritten");
+    assert.match(doc, /existing file is preserved/i, "an existing file is never overwritten");
     assert.match(doc, /everywhere else/i, "a non-GitHub pipeline is still served");
     assert.match(doc, /No per-provider template ships/i, "the addition is composed, not templated");
     assert.match(doc, /Change the fewest lines/i, "an in-place edit stays minimal");
@@ -1540,5 +1653,129 @@ describe("security: Linus owns the toolchain, the reviewer owns the checklist", 
     assert.ok(row, "the tech-spec table has a Security toolchain row");
     assert.match(row, /block threshold/i);
     assert.match(row, /exit-code/i);
+  });
+});
+
+describe("card-session system prompts: one static body per lane", () => {
+  const WORKER_LANE = ["jobs", "linus", "turing", "worker"];
+
+  it("ships a non-empty, bounded system_prompt in every role.json", () => {
+    for (const role of ROLES) {
+      const prompt = roleJson(role).system_prompt;
+      assert.ok(typeof prompt === "string" && prompt.trim() !== "", `${role}: system_prompt is required`);
+      assert.ok(Buffer.byteLength(prompt, "utf8") <= 8 * 1024, `${role}: system_prompt stays under 8 KiB`);
+    }
+  });
+
+  it("keeps the four worker-lane bodies identical and the reviewer's different", () => {
+    const bodies = WORKER_LANE.map((role) => roleJson(role).system_prompt);
+    assert.equal(new Set(bodies).size, 1, "a worker-lane drift guard: one static body");
+    assert.notEqual(roleJson("reviewer").system_prompt, bodies[0], "the reviewer has its own body");
+  });
+
+  it("states the board moves the session needs in the static body", () => {
+    const worker = roleJson("linus").system_prompt;
+    assert.match(worker, /heartbeat/i);
+    assert.match(worker, /10 minutes/);
+    assert.match(worker, /in_review/);
+    assert.match(worker, /issue wait/);
+    const reviewer = roleJson("reviewer").system_prompt;
+    assert.match(reviewer, /VERDICT: APPROVE/);
+    assert.match(reviewer, /VERDICT: REJECT/);
+    assert.match(reviewer, /Step 0/);
+  });
+});
+
+describe("role prompts: positive language", () => {
+  const NEGATIVE = /\b(?:do not|don't|never|must not|cannot|can't)\b/i;
+
+  /** The `Hard limits` / `Hard boundaries` / `Limits` section of a role skill. */
+  function limitsSection(skillMd) {
+    const lines = skillMd.split("\n");
+    const start = lines.findIndex((line) => /^## (?:Hard limits|Hard boundaries|Limits)\b/.test(line));
+    assert.notEqual(start, -1, "the role skill names its limits section");
+    let end = lines.length;
+    for (let index = start + 1; index < lines.length; index += 1) {
+      if (/^## /.test(lines[index])) {
+        end = index;
+        break;
+      }
+    }
+    return lines.slice(start + 1, end).join("\n");
+  }
+
+  it("keeps role.json responsibilities, boundaries and system_prompt positive", () => {
+    for (const role of ROLES) {
+      const identity = roleJson(role);
+      const fields = [
+        ...identity.responsibilities.map((line, index) => [`responsibilities[${index}]`, line]),
+        ...identity.boundaries.map((line, index) => [`boundaries[${index}]`, line]),
+        ["system_prompt", identity.system_prompt],
+      ];
+      for (const [field, text] of fields) {
+        assert.doesNotMatch(text, NEGATIVE, `${role}.${field}: ${text}`);
+      }
+    }
+  });
+
+  it("keeps the SKILL.md limits section positive", () => {
+    for (const role of ROLES) {
+      const section = limitsSection(read(role));
+      assert.doesNotMatch(section, NEGATIVE, `${role}: the limits section reads as positive actions`);
+    }
+  });
+
+  /**
+   * Uses of a negative word that carry no instruction: the plan's `Role skill` rewrite
+   * keeps a rhetorical principle ("X, never Y"), a capability limit and a stated failure
+   * mode out of the rewrite. Every entry names one of those reasons; anything else in a
+   * reference must read as a positive action, so a new `Do not …` cannot hide behind
+   * prose the role loads before it acts.
+   */
+  const REFERENCE_ALLOW = new Map([
+    [
+      "linus/references/architecture-workflow.md",
+      [
+        /never adds machinery/i, // rhetorical principle (CLAUDE.md conflict ordering)
+        /never a silent edit/i, // rhetorical: a rule changes by recorded decision
+      ],
+    ],
+    [
+      "linus/references/implementation-workflow.md",
+      [
+        /never adds machinery/i, // rhetorical principle (CLAUDE.md conflict ordering)
+        /never silent drift/i, // rhetorical: a departure is a recorded decision
+      ],
+    ],
+    [
+      "linus/references/refactor-workflow.md",
+      [
+        /never in what it does/i, // rhetorical: refactoring preserves behaviour
+        /cannot fail/i, // definitional: a pinning test proves it can fail
+      ],
+    ],
+  ]);
+
+  it("keeps every role reference positive, with the plan's rhetorical exceptions named", () => {
+    for (const role of ROLES) {
+      const references = join(roleDir(role), "references");
+      const files = readdirSync(references)
+        .filter((name) => name.endsWith(".md"))
+        .sort();
+      assert.ok(files.length > 0, `${role}: references/ has prose to scan`);
+      for (const name of files) {
+        const rel = `references/${name}`;
+        const allowed = REFERENCE_ALLOW.get(`${role}/${rel}`) ?? [];
+        const lines = read(role, rel).split("\n");
+        lines.forEach((line, index) => {
+          if (!NEGATIVE.test(line)) return;
+          assert.ok(
+            allowed.some((pattern) => pattern.test(line)),
+            `${role}/${rel}:${index + 1}: state the positive action, or name the rhetorical ` +
+              `exception in REFERENCE_ALLOW: ${line.trim()}`,
+          );
+        });
+      }
+    }
   });
 });

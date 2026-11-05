@@ -5,7 +5,9 @@ This page is complete for creating a card; do not read the other scenario pages.
 ## When this applies
 
 You are filing a new card with `issue create`. It is not the claim/deliver cycle
-(`execute.md`), and a card that is or becomes an epic also reads `epic.md` for the split.
+(`execute.md`), and a card that is or becomes an epic also reads `epic.md` for the split. A
+project's multi-role epic shape is its `docs/agents/epic-graphs.md`; the mechanics are
+`epic.md`.
 
 ## The create
 
@@ -29,8 +31,10 @@ Resolve the project's own selection rules in this order:
 3. An explicit instruction from the human wins over that document.
 4. If the file, the directory or the map is absent, use the three meanings above. Never invent a project default or store one on the project row.
 
-The same document records the project's epic sizing boundary; read it when the card is an
-epic or you are creating children.
+The board requires no classification meta at creation. A card inside a project epic graph
+carries `meta.epic_graph` and `meta.epic_stage`; the recipe is `epic.md`. A card outside a
+graph is classified by its description and frozen acceptance, and a role that cannot classify
+it asks and holds.
 
 ## Route the card at creation
 

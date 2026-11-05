@@ -326,6 +326,7 @@ describe("loop doctor — the report", () => {
           queue_kind: "handoff",
           status: "failed",
           attempts: 3,
+          timeouts: 2,
           retry_at: null,
           lastError: "session is closed",
         },
@@ -343,6 +344,7 @@ describe("loop doctor — the report", () => {
     assert.deepEqual(terminal.queue_row, {
       status: "failed",
       attempts: 3,
+      timeouts: 2,
       retry_at: null,
       last_error: "session is closed",
     });
@@ -353,6 +355,55 @@ describe("loop doctor — the report", () => {
     );
     assert.equal(report.stuck_cards.total, 2, "the stuck judgement itself is unchanged");
     assert.ok(report.attention_reasons.includes("undispatched_claims: 2"));
+  });
+
+  it("shows both the attempt and timeout counters on an undispatched row", async () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-1",
+          title: "Timed out",
+          status: "in_progress",
+          heartbeat_at: at(600 * MIN),
+        },
+      ],
+    });
+    seedState(dir, {
+      cards: [
+        {
+          card: "T-1",
+          queue_kind: "handoff",
+          status: "failed",
+          attempts: 0,
+          timeouts: 3,
+          retry_at: null,
+          lastError: "turn timed out after 3600000ms",
+        },
+      ],
+    });
+
+    let out = "";
+    const exit = await main(
+      [
+        "--state", join(dir, "state.json"),
+        "--log", join(dir, "supervisor.log"),
+        "--config", join(dir, "config.env"),
+        "--cli", script,
+        "--agent", "alice",
+        "--actor-kind", "claude",
+        "--home", dir,
+      ],
+      { HOME: dir },
+      deps(),
+      { out: (text) => (out += text) },
+    );
+    assert.equal(exit, 0);
+    assert.match(
+      out,
+      /queue failed after 0 attempt\(s\), 3 timeout\(s\)/,
+      "an operator can tell a timeout retry from a delivery retry",
+    );
   });
 
   it("does not report a stale claim that still has a dispatchable handoff row", () => {
@@ -408,15 +459,59 @@ describe("loop doctor — the report", () => {
     assert.equal(report.stuck_cards.total, 0, "a stray marker is not a stale claim");
   });
 
-  it("names a done card whose lane never landed, and only when git says it did not", () => {
+  it("does not classify open task cards: the generic layer carries no unclassified probe", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        { identifier: "T-500", title: "No marker", status: "todo", meta: { acceptance: ["a"] } },
+        { identifier: "T-501", title: "Old hint", status: "todo", meta: { product_change: "none" } },
+        {
+          identifier: "T-502",
+          title: "In progress",
+          status: "in_progress",
+          heartbeat_at: at(5 * MIN),
+          meta: {},
+        },
+      ],
+    });
+    seedState(dir);
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.equal(
+      report.unclassified,
+      undefined,
+      "a card with no classification meta is no longer a doctor finding",
+    );
+    assert.equal(
+      report.attention_reasons.some((reason) => reason.startsWith("unclassified")),
+      false,
+    );
+    assert.equal(report.stuck_cards.total, 0);
+  });
+
+  it("names a done card whose delivery-round lane never landed, and only when git says it did not", () => {
     const dir = tempDir();
     const projectDir = tempDir();
     const { script } = sentinel(dir, {
       tasks: [
         { identifier: "T-500", title: "Landed long ago", status: "done", project_id: "proj" },
-        { identifier: "T-501", title: "Worktree still out", status: "done", project_id: "proj" },
-        { identifier: "T-502", title: "Branch survived cleanup", status: "done", project_id: "proj" },
+        {
+          identifier: "T-501",
+          title: "Old round worktree still out",
+          status: "done",
+          project_id: "proj",
+          delivery_round: 2,
+        },
+        {
+          identifier: "T-502",
+          title: "Old round branch survived cleanup",
+          status: "done",
+          project_id: "proj",
+          delivery_round: 2,
+        },
         { identifier: "T-503", title: "Still being worked", status: "in_progress", project_id: "proj" },
+        { identifier: "T-504", title: "Delivery round still out", status: "done", project_id: "proj" },
       ],
     });
     seedState(dir);
@@ -424,6 +519,28 @@ describe("loop doctor — the report", () => {
     const opts = optsFor(dir, script);
     opts.projectsJson = join(dir, "projects.json");
     writeJson(opts.projectsJson, { projects: [{ project: "proj", local_path: projectDir }] });
+    // T-501/T-502 were rejected once: only the round-1 record survives, and its
+    // branch is still unmerged. The delivery round (2) has no record — it was
+    // cleaned after landing.
+    writeJson(join(dir, "workspaces.json"), {
+      version: 1,
+      workspaces: [
+        {
+          identifier: "T-501",
+          round: 1,
+          path: join(projectDir, ".worktrees", "T-501"),
+          branch: "lane/T-501",
+          project_dir: projectDir,
+        },
+        {
+          identifier: "T-502",
+          round: 1,
+          path: join(projectDir, ".worktrees", "T-502"),
+          branch: "lane/T-502",
+          project_dir: projectDir,
+        },
+      ],
+    });
 
     const report = doctorReport(opts, { HOME: dir }, deps({
       git: (cmd, argv) => {
@@ -437,14 +554,17 @@ describe("loop doctor — the report", () => {
               `worktree ${projectDir}/.worktrees/T-500`,
               "branch refs/heads/lane/T-500",
               "",
-              `worktree ${projectDir}/.worktrees/T-501-m8`,
-              "branch refs/heads/lane/T-501-prefix",
+              `worktree ${projectDir}/.worktrees/T-501`,
+              "branch refs/heads/lane/T-501",
+              "",
+              `worktree ${projectDir}/.worktrees/T-504`,
+              "branch refs/heads/lane/T-504",
               "",
             ].join("\n"),
           );
         }
         if (key.includes("branch --no-merged")) {
-          return ok("  lane/T-501-prefix\n  lane/T-502-docs\n");
+          return ok("  lane/T-501\n  lane/T-502\n  lane/T-504\n");
         }
         return ok("");
       },
@@ -452,15 +572,245 @@ describe("loop doctor — the report", () => {
 
     assert.deepEqual(
       report.unlanded.cards.map((card) => [card.ref, card.branch, card.path === null ? null : "worktree"]),
-      [
-        ["T-501", "lane/T-501-prefix", "worktree"],
-        ["T-502", "lane/T-502-docs", null],
-      ],
-      "T-500's lane is merged, and T-503 is not done at all",
+      [["T-504", "lane/T-504", "worktree"]],
+      "T-500's lane is merged, T-501/T-502's unmerged branches belong to a rejected round, " +
+        "and T-503 is not done at all",
     );
-    assert.equal(report.unlanded.total, 2);
-    assert.ok(report.attention_reasons.includes("unlanded: 2"));
+    assert.equal(report.unlanded.total, 1);
+    assert.ok(report.attention_reasons.includes("unlanded: 1"));
     assert.deepEqual(report.errors, [], "a plain finding is not an error");
+  });
+
+  it("does not report an unmerged old round when the delivery round's record was cleaned", () => {
+    const dir = tempDir();
+    const projectDir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-700",
+          title: "Old round record only",
+          status: "done",
+          project_id: "proj",
+          delivery_round: 2,
+        },
+        {
+          identifier: "T-701",
+          title: "Both rounds recorded",
+          status: "done",
+          project_id: "proj",
+          delivery_round: 2,
+        },
+      ],
+    });
+    seedState(dir);
+
+    const opts = optsFor(dir, script);
+    opts.projectsJson = join(dir, "projects.json");
+    writeJson(opts.projectsJson, { projects: [{ project: "proj", local_path: projectDir }] });
+    writeJson(join(dir, "workspaces.json"), {
+      version: 1,
+      workspaces: [
+        {
+          identifier: "T-700",
+          round: 1,
+          path: join(projectDir, ".worktrees", "T-700"),
+          branch: "lane/T-700",
+          project_dir: projectDir,
+        },
+        {
+          identifier: "T-701",
+          round: 1,
+          path: join(projectDir, ".worktrees", "T-701"),
+          branch: "lane/T-701",
+          project_dir: projectDir,
+        },
+        {
+          identifier: "T-701",
+          round: 2,
+          path: join(projectDir, ".worktrees", "T-701-r2"),
+          branch: "lane/T-701-r2",
+          project_dir: projectDir,
+        },
+      ],
+    });
+
+    const report = doctorReport(opts, { HOME: dir }, deps({
+      git: (cmd, argv) => {
+        const key = argv.join(" ");
+        if (key.includes("worktree list")) {
+          return ok(
+            [
+              `worktree ${projectDir}`,
+              "branch refs/heads/dev",
+              "",
+              `worktree ${projectDir}/.worktrees/T-700`,
+              "branch refs/heads/lane/T-700",
+              "",
+              `worktree ${projectDir}/.worktrees/T-701`,
+              "branch refs/heads/lane/T-701",
+              "",
+              `worktree ${projectDir}/.worktrees/T-701-r2`,
+              "branch refs/heads/lane/T-701-r2",
+              "",
+            ].join("\n"),
+          );
+        }
+        if (key.includes("branch --no-merged")) {
+          return ok("  lane/T-700\n  lane/T-701\n");
+        }
+        return ok("");
+      },
+    }));
+
+    assert.deepEqual(
+      report.unlanded.cards.map((card) => [card.ref, card.branch]),
+      [],
+      "T-700's delivery-round record is gone (landed); T-701's round-2 lane is merged",
+    );
+    assert.equal(report.unlanded.total, 0);
+    assert.equal(
+      report.attention_reasons.some((reason) => reason.startsWith("unlanded")),
+      false,
+    );
+  });
+
+  it("treats a landed_sha that is an ancestor of HEAD as landed", () => {
+    const dir = tempDir();
+    const projectDir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-710",
+          title: "Landed by cherry-pick",
+          status: "done",
+          project_id: "proj",
+          delivery_round: 1,
+          meta: { landed_sha: "aaaa1111" },
+        },
+        {
+          identifier: "T-711",
+          title: "Recorded sha is not in HEAD",
+          status: "done",
+          project_id: "proj",
+          delivery_round: 1,
+          meta: { landed_sha: "bbbb2222" },
+        },
+      ],
+    });
+    seedState(dir);
+
+    const opts = optsFor(dir, script);
+    opts.projectsJson = join(dir, "projects.json");
+    writeJson(opts.projectsJson, { projects: [{ project: "proj", local_path: projectDir }] });
+
+    const report = doctorReport(opts, { HOME: dir }, deps({
+      git: (cmd, argv) => {
+        const key = argv.join(" ");
+        if (key.includes("merge-base --is-ancestor")) {
+          return argv.includes("aaaa1111") ? ok("") : { status: 1, stdout: "", stderr: "" };
+        }
+        if (key.includes("worktree list")) {
+          return ok(
+            [
+              `worktree ${projectDir}`,
+              "branch refs/heads/dev",
+              "",
+              `worktree ${projectDir}/.worktrees/T-710`,
+              "branch refs/heads/lane/T-710",
+              "",
+              `worktree ${projectDir}/.worktrees/T-711`,
+              "branch refs/heads/lane/T-711",
+              "",
+            ].join("\n"),
+          );
+        }
+        if (key.includes("branch --no-merged")) {
+          return ok("  lane/T-710\n  lane/T-711\n");
+        }
+        return ok("");
+      },
+    }));
+
+    assert.deepEqual(
+      report.unlanded.cards.map((card) => [card.ref, card.branch, card.path === null ? null : "worktree"]),
+      [["T-711", "lane/T-711", "worktree"]],
+      "T-710's landed_sha is in HEAD; T-711's is not, so its lane is still judged",
+    );
+  });
+
+  it("reports the delivery round when its own lane is still unmerged", () => {
+    const dir = tempDir();
+    const projectDir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          identifier: "T-720",
+          title: "Third round still out",
+          status: "done",
+          project_id: "proj",
+          delivery_round: 3,
+        },
+      ],
+    });
+    seedState(dir);
+
+    const opts = optsFor(dir, script);
+    opts.projectsJson = join(dir, "projects.json");
+    writeJson(opts.projectsJson, { projects: [{ project: "proj", local_path: projectDir }] });
+    writeJson(join(dir, "workspaces.json"), {
+      version: 1,
+      workspaces: [
+        {
+          identifier: "T-720",
+          round: 2,
+          path: join(projectDir, ".worktrees", "T-720-r2"),
+          branch: "lane/T-720-r2",
+          project_dir: projectDir,
+        },
+        {
+          identifier: "T-720",
+          round: 3,
+          path: join(projectDir, ".worktrees", "T-720-r3"),
+          branch: "lane/T-720-r3",
+          project_dir: projectDir,
+        },
+      ],
+    });
+
+    const report = doctorReport(opts, { HOME: dir }, deps({
+      git: (cmd, argv) => {
+        const key = argv.join(" ");
+        if (key.includes("worktree list")) {
+          return ok(
+            [
+              `worktree ${projectDir}`,
+              "branch refs/heads/dev",
+              "",
+              `worktree ${projectDir}/.worktrees/T-720-r2`,
+              "branch refs/heads/lane/T-720-r2",
+              "",
+              `worktree ${projectDir}/.worktrees/T-720-r3`,
+              "branch refs/heads/lane/T-720-r3",
+              "",
+            ].join("\n"),
+          );
+        }
+        if (key.includes("branch --no-merged")) {
+          return ok("  lane/T-720-r2\n  lane/T-720-r3\n");
+        }
+        return ok("");
+      },
+    }));
+
+    assert.deepEqual(report.unlanded.cards, [
+      {
+        ref: "T-720",
+        title: "Third round still out",
+        branch: "lane/T-720-r3",
+        path: join(projectDir, ".worktrees", "T-720-r3"),
+      },
+    ]);
+    assert.equal(report.unlanded.total, 1);
   });
 
   it("skips a project the map cannot resolve instead of failing the report", () => {
@@ -1397,7 +1747,7 @@ describe("loop doctor — the human queue and the loop's dead ends", () => {
     const staleWorker = report.looping.orphaned.find((row) => row.ref === "T-402");
     assert.ok(staleWorker);
     assert.equal(staleWorker.pid, process.pid);
-    assert.equal(staleWorker.bound_ms, 2 * 30 * MIN);
+    assert.equal(staleWorker.bound_ms, 2 * 60 * MIN);
     assert.ok(
       report.looping.orphaned.some((row) => row.ref === "R-403"),
       "a stale review handoff is the same finding as a stale worker one",

@@ -105,6 +105,17 @@ describe("claude session args", () => {
     assert.match(args[args.indexOf("--allowedTools") + 1], /Edit/);
   });
 
+  it("appends the card system prompt when one is given, and leaves the argv alone otherwise", () => {
+    const args = sessionArgs({ opts: {}, role: "worker", systemPrompt: "CARD CONTEXT" });
+    const at = args.indexOf("--append-system-prompt");
+    assert.ok(at !== -1, "the system prompt reaches the CLI");
+    assert.equal(args[at + 1], "CARD CONTEXT");
+    assert.equal(
+      sessionArgs({ opts: {}, role: "worker" }).includes("--append-system-prompt"),
+      false,
+    );
+  });
+
   it("switches to bypassPermissions when all tools are authorized", () => {
     const args = sessionArgs({ opts: { allowAllTools: true }, role: "worker" });
     assert.equal(args[args.indexOf("--permission-mode") + 1], "bypassPermissions");
@@ -169,6 +180,18 @@ describe("claude resident session", () => {
     assert.ok(argv.includes("stream-json"));
     assert.equal(argv.includes("--bare"), false);
     assert.equal(realpathSync(readFileSync(f.cwdFile, "utf8").trim()), realpathSync(f.project));
+    await session.close();
+  });
+
+  it("passes the formatted card system prompt to the spawn at open time", async (t) => {
+    const f = fixture(t);
+    const pool = createClaudePool({ opts: {}, bin: f.bin, log: f.log });
+    t.after(() => pool.close());
+    const session = pool.openSession({ cwd: f.project, role: "worker", systemPrompt: "CARD CONTEXT" });
+    const outcome = await session.send("hello", { timeoutMs: 5000 });
+    assert.equal(outcome.ok, true, outcome.error);
+    const argv = JSON.parse(readFileSync(f.argvFile, "utf8").trim().split("\n")[0]);
+    assert.equal(argv[argv.indexOf("--append-system-prompt") + 1], "CARD CONTEXT");
     await session.close();
   });
 

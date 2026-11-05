@@ -118,12 +118,12 @@ attribution, attachments and the one-line outcome are in
 ## Stage markers
 
 A producer card that hands work on sets `meta.stage_handoff=required` and puts a `## Handoff`
-block in its **current-round report**. The director's triage copies that block into a
-downstream card's description and sets `meta.design_stage=yes` there. A small change or bug
-with no design input sets `meta.product_change=none`. The foundation records the one gate
-command the reviewer re-runs as the project's `meta.review_gate`. These keys are read by the
-role skills and the reviewer; write them with `issue meta` (its `--if-version` CAS form), not
-with a second local convention.
+block in its **current-round report**. The foundation records the one gate command the reviewer
+re-runs as the project's `meta.review_gate`. These keys are read by the role skills and the
+reviewer; write them with `issue meta` (its `--if-version` CAS form), not with a second local
+convention. A card's design and verification shape is not a board field: a project's
+`docs/agents/epic-graphs.md` and the role skills classify a card, and a role that cannot
+classify one asks and holds.
 
 ## The language of a card
 
@@ -151,6 +151,11 @@ character, because the gate matches by normalised text. Translate the `note`, `c
 as it is. Baseline and reviewer contract:
 [`references/lifecycle/delivery.md#4a-the-acceptance-baseline`](references/lifecycle/delivery.md#4a-the-acceptance-baseline),
 [`references/review-protocol.md#3-the-reviewers-protocol`](references/review-protocol.md#3-the-reviewers-protocol).
+
+**Prose fields are Markdown** — a comment's `body`, a report's conclusion/leftovers and an
+acceptance `note`; the item's `text` stays plain, and a review verdict stays exactly
+`VERDICT: APPROVE` or `VERDICT: REJECT`
+([`references/cli/files.md`](references/cli/files.md)).
 
 ## Claim one card, deliver it, stop
 
@@ -201,9 +206,7 @@ author's intent, not this delivery's evidence.
 ## Containers: when the card is an epic
 
 An epic exists only where someone named one; splitting is a scope decision that belongs to the
-`meerkat-director`. Promote the container **before** the card delivers its **current-round
-report**, and do **not** promote a card that already delivered — start a new container. The
-four sizing questions, the promotion table and the silent traps are in
+`meerkat-director`. The recipe, the promotion rule and the silent traps are in
 [`references/scenarios/epic.md`](references/scenarios/epic.md); the board's container rules are
 [`references/lifecycle/containers.md#6-containers-epic`](references/lifecycle/containers.md#6-containers-epic).
 
@@ -228,22 +231,16 @@ are in [`references/scenarios/wait.md`](references/scenarios/wait.md).
 ## Coordinating with other agents
 
 - **Never force a conflict** — the retry rule is in *Reading a refusal*.
-- **Stamp every write with your identity:** `--actor-kind <kind> --session-id <id>`.
-  `taskctl session id <ref> --seg <seg> --owner <name>` derives it; offline,
-  [`scripts/session-id.mjs`](scripts/session-id.mjs) computes the same value from the resolved
-  task UUID.
-- **A card you claimed yourself registers its session row** with `--seg manual` after the
-  claim and closes it on delivery
-  ([`references/scenarios/execute.md`](references/scenarios/execute.md#the-cards-session-row-manual-claim)).
-  A supervisor handoff already holds the claim and the loop owns its `worker`/`reviewer` row —
-  do not register a second one.
+- **Stamp every write with your identity:** `--actor-kind <kind> --session-id <id>`
+  ([derivation and the offline script](references/cli/core.md#session)).
+- **A self-claimed card registers its session row** with `--seg manual` and closes it on
+  delivery; a dispatched card's row is the loop's
+  ([`execute.md`](references/scenarios/execute.md#the-cards-session-row-manual-claim)).
 - **Metadata has two writers.** `issue meta` is a read-modify-write with `--if-version` that
   preserves value types; `issue update --meta` merges but stringifies and sends no CAS, so a
   concurrent write can be lost. Use `issue meta` for machine keys. Neither writes
   `acceptance[]`.
 - **The board runs no timer.** The supervisor owns the scheduler — add no second poller.
-
-Session identity: [`references/cli.md#session`](references/cli.md#session).
 
 ## Project directories and the brief
 

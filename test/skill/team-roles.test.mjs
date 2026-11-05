@@ -25,17 +25,28 @@ describe("team roles: the cross-file seams", () => {
       read("skills/meerkat/references/review-protocol.md"),
       /the loop already claimed it/i,
     );
-    assert.match(read("skills/reviewer/SKILL.md"), /do not re-claim/i);
+    assert.match(read("skills/reviewer/SKILL.md"), /heartbeat it; you claim only one you pick up/i);
     assert.match(read("skills/reviewer/SKILL.md"), /interactively from `issue candidates`/i);
   });
 
   it("keeps the producer/consumer handoff markers in one contract", () => {
     const meerkat = read("skills/meerkat/SKILL.md");
     assert.match(meerkat, /stage_handoff=required/);
-    assert.match(meerkat, /meta\.design_stage=yes/);
-    assert.match(meerkat, /meta\.product_change=none/);
     assert.match(meerkat, /meta\.review_gate/);
-    assert.match(read("skills/reviewer/references/audit-playbook.md"), /stage_handoff=required/);
+    assert.doesNotMatch(meerkat, /design_stage|product_change/, "the research markers left the generic layer");
+    assert.match(read("skills/reviewer/SKILL.md"), /stage_handoff=required/);
+  });
+
+  it("leaves a card's classification to the project graph and the role", () => {
+    for (const rel of [
+      "skills/linus/SKILL.md",
+      "skills/turing/SKILL.md",
+      "skills/reviewer/SKILL.md",
+    ]) {
+      const text = read(rel);
+      assert.match(text, /epic_graph|epic-graphs\.md/, `${rel}: the graph is the classification source`);
+      assert.doesNotMatch(text, /unclassified/i, `${rel}: no generic unclassified verdict`);
+    }
   });
 
   it("keeps the coverage floor at 80 or stricter in both roles", () => {
@@ -56,7 +67,7 @@ describe("team roles: the cross-file seams", () => {
 
   it("treats a missing plan.md as a fallback, not a REJECT", () => {
     assert.match(read("skills/reviewer/SKILL.md"), /missing `plan\.md` is not\s+itself a `REJECT`/i);
-    assert.match(read("skills/reviewer/references/audit-playbook.md"), /falls back/i);
+    assert.match(read("skills/reviewer/SKILL.md"), /falls back/i);
   });
 
   it("routes an out-of-scope defect to the director instead of fixing it unasked", () => {
@@ -83,8 +94,8 @@ describe("team roles: the cross-file seams", () => {
     assert.match(policy, /acceptance unchanged/i);
 
     assert.match(
-      read("skills/reviewer/references/audit-playbook.md"),
-      /do not suppress it/i,
+      read("skills/reviewer/SKILL.md"),
+      /surface a real problem even outside the list/i,
       "the read-only reviewer surfaces, never suppresses, an out-of-scope defect",
     );
   });

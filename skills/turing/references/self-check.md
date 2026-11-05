@@ -1,8 +1,10 @@
 # Turing — self-check before delivery
 
-This pre-delivery audit runs against the current `.meerkat/<id>/card.md` and `plan.md`; it is
-not the delivery and not the `## Handoff` block.
-Call the `meerkat` board skill to refresh the brief before you start.
+This pre-delivery audit runs against the current `.meerkat/<id>/card.md` and `plan.md` when a
+card is present, and against the handed task, plan or requirement otherwise; it is not the
+delivery and not the `## Handoff` block. Run this audit in both modes; a card-only item is
+`not_applicable — no card`, and the audit itself is mandatory before the report. Call the
+`meerkat` board skill to refresh the brief before you start.
 
 ## Every branch
 
@@ -14,7 +16,7 @@ Call the `meerkat` board skill to refresh the brief before you start.
    the test stops covering the item), **not_applicable** (`n/a — <reason>`; a bare `n/a` is an
    omission), or **partial/not_met** (a blocker: close it, or ask and hold).
 4. A leftover lies outside the frozen acceptance and names the item, its owner and the
-   follow-up card, or why none is needed. A failure is never a leftover — nor is a red gate, a
+   follow-up card, or why none is needed. A blocker, not a leftover: a failure, a red gate, a
    security finding, a missing acceptance item, a handoff gap, or a contract/schema/migration
    change.
 5. The decision round is closed; terms are canonical; no glossary or ADR was edited. A card
@@ -26,7 +28,7 @@ Call the `meerkat` board skill to refresh the brief before you start.
 |---|---|
 | Suites | unit, integration, API and browser: 100% pass |
 | Coverage | line, branch and function ≥80% (or the project's stricter floor) |
-| Mocks | only at http/websocket/db/redis and comparable external boundaries; never internal; none in integration |
+| Mocks | only at http/websocket/db/redis and comparable external boundaries; internal modules stay real; integration runs without mocks |
 | Security scan | dependency audit (default `osv-scanner`), secret scan and SAST run, or `n/a — <reason>`; no unaddressed high/critical |
 
 Branch deltas:
@@ -43,5 +45,5 @@ Branch deltas:
 The report names the branch, each acceptance status with falsifiable evidence, the coverage
 and every leftover's owner. The tree is committed on the card's branch and the report carries
 the `commit` anchor. The review card runs the project's declared gate; this file is only the
-pre-delivery audit. Nothing was merged, rebased or pushed. Deliver at `in_review`; do not
-issue a verdict.
+pre-delivery audit. Nothing was merged, rebased or pushed. Deliver at `in_review`; the
+reviewer issues the verdict.

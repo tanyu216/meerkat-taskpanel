@@ -84,6 +84,20 @@ describe("board skill: creating a card", () => {
     assert.match(create, /never invent a project default/i, "the document is not a board default");
   });
 
+  it("requires no classification meta and points at the project graph", () => {
+    // The generic layer must not carry the research vocabulary: a project's
+    // multi-role shape lives in its `docs/agents/epic-graphs.md`, and the board
+    // skill owns only the mechanics.
+    assert.doesNotMatch(create, /## Set the stage marker/, "the stage-marker section is gone");
+    assert.doesNotMatch(create, /design_stage|product_change/, "no classification meta at the create");
+    assert.doesNotMatch(create, /unclassified/i, "a card with no meta is not a defect");
+    assert.match(create, /docs\/agents\/epic-graphs\.md/, "the project graph is the content source");
+    assert.match(create, /epic\.md/, "the recipe is the mechanics source");
+    const doc = readFileSync(join(ROOT, "docs/agents/create-card.md"), "utf8");
+    assert.doesNotMatch(doc, /## When this project uses an epic/, "the epic section moved out");
+    assert.doesNotMatch(doc, /epic-splitting boundary|epic patterns/i);
+  });
+
   it("ships this project's card-creation guidance", () => {
     const doc = readFileSync(join(ROOT, "docs/agents/create-card.md"), "utf8");
     for (const word of ["off", "auto", "human"]) {

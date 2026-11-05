@@ -351,8 +351,11 @@ export function fixtureApi() {
     // agent too, and this is the one row that proves it.
     "TD-1": [
       { id: "cm-6", task_id: "td_TD_1", kind: "note", author_kind: "system", author_id: "system", body: "自动启动：子卡进入 in_progress。", refs: [], created_at: "2026-10-12T00:02:00Z" },
-      { id: "cm-4", task_id: "td_TD_1", kind: "note", author_kind: "claude", author_id: "jobs", body: "先起草第一段。", refs: [], created_at: "2026-10-12T00:03:00Z" },
-      { id: "cm-5", task_id: "td_TD_1", kind: "note", author_kind: "human", author_id: "Terry", body: "补上第二段，再走一遍。", refs: [], created_at: "2026-10-12T00:04:00Z" },
+      // TP-0123 — the drawer renders a comment body as Markdown. `cm-4` carries
+      // the emphasised / inline-code / list form the drawer must expose; `cm-5`
+      // is the adversarial string whose tags must stay text (no img / script).
+      { id: "cm-4", task_id: "td_TD_1", kind: "note", author_kind: "claude", author_id: "jobs", body: "**done**：第一段已写完，`taskctl check` 通过。\n\n- 核对渲染出口\n- 复跑浏览器腿", refs: [], created_at: "2026-10-12T00:03:00Z" },
+      { id: "cm-5", task_id: "td_TD_1", kind: "note", author_kind: "human", author_id: "Terry", body: "对抗串：<img src=x onerror=alert(1)> 与 <script>alert(2)</script> 只能显示为文字。", refs: [], created_at: "2026-10-12T00:04:00Z" },
     ],
     "TD-13": [
       { id: "cm-1", task_id: "TD-13", kind: "note", author_kind: "agent", author_id: "linus", body: "我先把迁移写完了。", refs: [], created_at: "2026-10-12T00:01:00Z" },
@@ -499,7 +502,7 @@ export function fixtureApi() {
         round: 1,
         seg: "1",
         session_id: null,
-        conclusion: "Audit complete; findings written up.",
+        conclusion: "Audit **complete**; findings written up.",
         acceptance: [
           { text: "Audit the token store end to end", status: "met", note: "evidence[7]" },
           { text: "Report the findings", status: "partial", note: "findings.md pending" },
@@ -524,7 +527,7 @@ export function fixtureApi() {
         acceptance: [{ text: "Criterion one", status: "met" }, { text: "Criterion two", status: "partial" }],
         evidence: [],
         evidence_truncated: false,
-        leftovers: "Finish the second criterion.",
+        leftovers: "Finish the second criterion.\n\n- check the **second** path\n- rerun the browser leg",
         author_kind: "agent",
         author_id: "a1",
         author: { id: "a1", display_name: "linus", kind: "agent" },
@@ -536,9 +539,9 @@ export function fixtureApi() {
         round: 2,
         seg: "3",
         session_id: "sess-2",
-        conclusion: "Second round closed the gap.",
+        conclusion: "## Round two\n\nSecond round **closed** the gap.\n\n- verified the strong path\n- `taskctl check` is green",
         acceptance: [
-          { text: "Criterion one", status: "met", note: "evidence[1]" },
+          { text: "Criterion one", status: "met", note: "`evidence[1]`" },
           { text: "Criterion two", status: "met" },
         ],
         evidence: [],
@@ -1916,6 +1919,28 @@ export async function run() {
     drawerTabsCheck(reportsRead.rows === 2, `Reports rows ${reportsRead.rows}, expected 2`);
     drawerTabsCheck(reportsRead.text.includes("Second round closed the gap."), "the latest report's conclusion is missing from Reports");
 
+    // TP-0123 — a report conclusion is Markdown: the heading, emphasis, inline
+    // code and both list items the fixture writes must reach the DOM as markup.
+    const reportsMarkdown = await page.evaluate(() => {
+      const row = [...document.querySelectorAll('[data-detail-panel="reports"] [data-dv-round]')].find(
+        (el) => el.getAttribute("data-dv-round") === "2",
+      );
+      const conclusion = row?.querySelector(".td-dv-conclusion");
+      return {
+        heading: conclusion?.querySelector("h4")?.textContent?.trim() ?? "",
+        strong: conclusion?.querySelector("strong")?.textContent?.trim() ?? "",
+        code: conclusion?.querySelector("code")?.textContent ?? "",
+        items: conclusion?.querySelectorAll("ul > li").length ?? 0,
+      };
+    });
+    drawerTabsCheck(
+      reportsMarkdown.heading === "Round two" &&
+        reportsMarkdown.strong === "closed" &&
+        reportsMarkdown.code === "taskctl check" &&
+        reportsMarkdown.items === 2,
+      `a report conclusion rendered ${JSON.stringify(reportsMarkdown)}, expected h4 / strong / code / 2 list items`,
+    );
+
     await page.click('[data-detail-tab="acceptance"]');
     await page.waitForTimeout(120);
     const acceptanceRead = await page.evaluate(() => ({
@@ -1939,6 +1964,39 @@ export async function run() {
       acceptanceRead.notes.join("|") === "evidence[1]",
       `Acceptance notes read ${JSON.stringify(acceptanceRead.notes)}, expected the round's own note`,
     );
+    // TP-0123 — the note is Markdown too, while the criterion text above it
+    // stays the frozen baseline's plain string (it is the matching key).
+    const noteCode = await page.evaluate(
+      () => document.querySelector('[data-detail-panel="acceptance"] [data-acceptance-note] code')?.textContent ?? "",
+    );
+    drawerTabsCheck(noteCode === "evidence[1]", `an acceptance note rendered code ${JSON.stringify(noteCode)}, expected evidence[1]`);
+
+    // The Activity panel keeps TD-1's comments while hidden: one Markdown body
+    // and one adversarial body whose tags must remain text.
+    const commentsMarkdown = await page.evaluate(() => {
+      const panel = document.querySelector('[data-detail-panel="activity"]');
+      const markdown = panel?.querySelector('[data-detail-comment-id="cm-4"] .td-comment-body');
+      const hostile = panel?.querySelector('[data-detail-comment-id="cm-5"] .td-comment-body');
+      return {
+        strong: markdown?.querySelector("strong")?.textContent?.trim() ?? "",
+        code: markdown?.querySelector("code")?.textContent ?? "",
+        items: markdown?.querySelectorAll("ul > li").length ?? 0,
+        imgs: hostile?.querySelectorAll("img").length ?? 0,
+        scripts: hostile?.querySelectorAll("script").length ?? 0,
+        text: hostile?.textContent ?? "",
+      };
+    });
+    drawerTabsCheck(
+      commentsMarkdown.strong === "done" && commentsMarkdown.code === "taskctl check" && commentsMarkdown.items === 2,
+      `a comment body rendered ${JSON.stringify(commentsMarkdown)}, expected strong / code / 2 list items`,
+    );
+    drawerTabsCheck(
+      commentsMarkdown.imgs === 0 &&
+        commentsMarkdown.scripts === 0 &&
+        commentsMarkdown.text.includes("<img src=x onerror=alert(1)>") &&
+        commentsMarkdown.text.includes("<script>"),
+      `an adversarial comment rendered ${JSON.stringify(commentsMarkdown)}, expected escaped text and no elements`,
+    );
 
     await page.click('[data-detail-tab="leftovers"]');
     await page.waitForTimeout(120);
@@ -1949,6 +2007,19 @@ export async function run() {
     drawerTabsCheck(
       leftoversRead.rows === 2 && leftoversRead.empty === 1,
       `Leftovers read ${leftoversRead.rows} row(s), ${leftoversRead.empty} empty round(s)`,
+    );
+    // TP-0123 — leftovers are Markdown: the fixture's two-item list and its
+    // emphasised word must reach the drawer as markup.
+    const leftoversMarkdown = await page.evaluate(() => {
+      const panel = document.querySelector('[data-detail-panel="leftovers"]');
+      return {
+        items: panel?.querySelectorAll(".td-dv-text ul > li").length ?? 0,
+        strong: panel?.querySelector(".td-dv-text strong")?.textContent?.trim() ?? "",
+      };
+    });
+    drawerTabsCheck(
+      leftoversMarkdown.items === 2 && leftoversMarkdown.strong === "second",
+      `leftovers rendered ${JSON.stringify(leftoversMarkdown)}, expected a 2-item list and the strong word`,
     );
 
     /* The pre-delivery half: a `todo` card with criteria and no report. The tab
@@ -8176,6 +8247,9 @@ export async function run() {
           round: text("[data-detail-acceptance-round]"),
           author: text("[data-detail-acceptance-author]"),
           conclusion: text("[data-detail-acceptance-conclusion]"),
+          // TP-0123 — the delivery conclusion renders as Markdown; the exact
+          // textContent assertion below still reads the same sentence.
+          conclusionStrong: text("[data-detail-acceptance-conclusion] strong"),
           // The card's own acceptance item: the summary sits **above** the
           // criteria list, not beside or after it.
           summaryBeforeList:
@@ -8196,6 +8270,10 @@ export async function run() {
       acceptanceActCheck(
         deliveredPanel.conclusion === "Audit complete; findings written up.",
         `the delivery summary's conclusion reads ${JSON.stringify(deliveredPanel.conclusion)}`,
+      );
+      acceptanceActCheck(
+        deliveredPanel.conclusionStrong === "complete",
+        `the delivery summary's conclusion strong reads ${JSON.stringify(deliveredPanel.conclusionStrong)}, expected complete`,
       );
       acceptanceActCheck(deliveredPanel.summaryBeforeList, "the delivery summary does not render above the criteria list");
       acceptanceActCheck(deliveredPanel.accept, "a waiting card offers no Accept-and-close control");

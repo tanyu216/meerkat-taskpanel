@@ -263,6 +263,10 @@ or edit loop state. Field-by-field map and the triage playbook:
   released but never claimed; its children are.
 - **Other edits** — reassign, re-prioritise, relabel, reopen, cancel, link relations — are the
   board skill's commands. Read the refusal rather than pre-checking from a document.
+- **Start a multi-role epic.** Use the `meerkat` skill's graph recipe
+  (`references/scenarios/epic.md`) as the human (`--as-human`), showing the whole graph before
+  any card is created. A project with no `docs/agents/epic-graphs.md` is pointed at
+  `setup-meerkat`; no graph is invented here.
 
 Every one is shown first, verbatim, and confirmed.
 

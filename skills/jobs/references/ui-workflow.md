@@ -4,8 +4,8 @@ The prototype flow answers the product flow's validation brief with evidence: it
 method, builds structurally different variants, tests them, and records a verdict. It is not a
 delivery. On the same card it returns to product step 5; on its own card it delivers its
 evidence. Board operations are the `meerkat` board skill's contract. Keep artifacts inside the
-project with relative `design/...` paths; a filename never carries the task id, and a prototype
-is not production code.
+project with relative `design/...` paths; a filename carries a content slug, and a prototype
+is evidence rather than production code.
 
 ## Steps at a glance
 
@@ -20,9 +20,11 @@ Prototype design and validation
 
 ## Before work — the plan
 
-Call the `meerkat` board skill to take the card's plan: an existing `.meerkat/<id>/plan.md` is
-this card's plan (extend it), an attached plan is adopted, and **no plan attached** writes one
-from the card. Audit it; the prototype plan links to the card index.
+With a card, call the `meerkat` board skill to take its plan: an existing `.meerkat/<id>/plan.md`
+is this card's plan (extend it), an attached plan is adopted, and **no plan attached** writes one
+from the card and its frozen acceptance. With no card, the handed task, plan or requirement is
+the plan source. Audit it with the three passes in `SKILL.md` §Before work — the plan; the
+prototype plan links to the card index.
 
 ## Decide before you build
 
@@ -49,7 +51,7 @@ one-page brief is `design/specs/<content-slug>.md`; evidence goes to
 `design/prototype/<content-slug>/`. Write `design/prds/<content-slug>.md` **only on demand** —
 new behaviour, an external contract, or a decision others build on. A pure visual or
 interaction revision ends with the spec, the prototype and the verdict. Standalone writes no
-board state and extends the project's design system; it never forks a second.
+board state and extends the project's one design system.
 
 ## Phase 1 — Prototype planning
 
@@ -108,7 +110,7 @@ and rejected variants, and the limitations.
 
 **Purpose.** Make the evidence credible before the verdict.
 
-**Watch for.** Run four gates in order; expensive ones do not replace cheap ones: accessibility
+**Watch for.** Run four gates in order; an expensive gate adds to the cheap ones: accessibility
 and responsive behaviour (WCAG target, assistive-technology spot check); browser geometry at 3
 widths plus dark and the longest realistic or Chinese content (0 overflow, 0 console/page
 errors, visible keyboard focus, `prefers-reduced-motion`); `screenshot` self-review (fix the
@@ -129,8 +131,9 @@ step 5. On its own card, commit, run this flow's checks in `self-check.md`, set
 `meta.stage_handoff=required`, and deliver at `in_review` with a `commit` anchor
 (`DELIVERY_NEEDS_COMMIT`) and the prototype Handoff: product card or brief, questions, verdict,
 chosen direction and tokens, path, evidence, rejected variants, commit, limitations, open
-questions; a missing field is `none — <reason>`. Do not merge, rebase or push, and do not accept
-your own work; the product flow reads that Handoff, not this card's plan. A scope or acceptance
-change goes back to the product flow, and the switcher and losing variants never ship.
+questions; a missing field is `none — <reason>`. Deliver the committed tree; the supervisor's
+acceptance pass lands it, and acceptance belongs to the reviewer. The product flow reads that
+Handoff rather than this card's plan. A scope or acceptance change goes back to the product
+flow, and the switcher and losing variants stay out of the delivery.
 
 **Essentials.** The verdict, the evidence and commit, and the return path.

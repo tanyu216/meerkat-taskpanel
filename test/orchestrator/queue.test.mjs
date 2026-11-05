@@ -22,6 +22,9 @@ import {
   questionDispatches,
   rowDispatches,
   retireLegacyDispatched,
+  timeoutCards,
+  TIMEOUT_BACKOFF_MS,
+  TIMEOUT_MAX_ATTEMPTS,
 } from "../../src/orchestrator/queue.mjs";
 
 function dirFor(t) {
@@ -540,5 +543,94 @@ describe("card queue", () => {
     assert.equal(retired.retired, 0);
     const statuses = readCards(dir).value.cards.map((row) => row.status).sort();
     assert.deepEqual(statuses, ["pending", "processing"]);
+  });
+});
+
+describe("card queue timeouts", () => {
+  const NOW = Date.parse("2026-01-01T00:00:00.000Z");
+  const MINUTE = 60_000;
+
+  function claimedCard(dir, ref = "T-1") {
+    enqueueCard(dir, { card: ref, role: "worker", agent: "alice", target_dir: "/work/app" });
+    const [row] = claimCards(dir, { claimedBy: "/work/app", pid: process.pid, limit: 1 }).cards;
+    return row;
+  }
+
+  it("counts a timeout separately from attempts and backs off 2/4/8 minutes", (t) => {
+    const dir = dirFor(t);
+    const row = claimedCard(dir);
+    assert.equal(row.attempts, 0);
+    assert.equal(row.timeouts, 0);
+
+    const first = timeoutCards(dir, [row.id], { now: NOW, error: "turn timed out after 60000ms" });
+    assert.equal(first.ok, true);
+    assert.equal(first.requeued, 1);
+    assert.equal(first.exhausted, 0);
+    assert.equal(first.timeouts[row.id], 1);
+    let [live] = readCards(dir).value.cards;
+    assert.equal(live.status, "pending");
+    assert.equal(live.timeouts, 1);
+    assert.equal(live.attempts, 0, "a timeout is not a delivery attempt");
+    assert.equal(live.claimedAt, null);
+    assert.equal(live.claimedBy, null);
+    assert.equal(live.retry_at, new Date(NOW + 2 * MINUTE).toISOString());
+    assert.equal(TIMEOUT_BACKOFF_MS[0], 2 * MINUTE);
+
+    claimCards(dir, { claimedBy: "/work/app", pid: process.pid, limit: 1, now: new Date(NOW).toISOString() });
+    const second = timeoutCards(dir, [row.id], { now: NOW + 2 * MINUTE });
+    [live] = readCards(dir).value.cards;
+    assert.equal(second.timeouts[row.id], 2);
+    assert.equal(live.timeouts, 2);
+    assert.equal(live.attempts, 0);
+    assert.equal(live.retry_at, new Date(NOW + 2 * MINUTE + 4 * MINUTE).toISOString());
+    assert.equal(TIMEOUT_BACKOFF_MS[1], 4 * MINUTE);
+  });
+
+  it("returns exhausted on the third timeout without touching attempts", (t) => {
+    const dir = dirFor(t);
+    const row = claimedCard(dir);
+    const file = join(dir, "cards.queue.json");
+    const value = JSON.parse(readFileSync(file, "utf8"));
+    value.cards[0].timeouts = 2;
+    writeFileSync(file, JSON.stringify(value), "utf8");
+
+    const result = timeoutCards(dir, [row.id], { now: NOW, error: "turn timed out after 60000ms" });
+    assert.equal(result.exhausted, 1);
+    assert.deepEqual(result.exhaustedIds, [row.id]);
+    assert.equal(result.timeouts[row.id], TIMEOUT_MAX_ATTEMPTS);
+    const [live] = readCards(dir).value.cards;
+    assert.equal(live.timeouts, 3);
+    assert.equal(live.attempts, 0);
+    assert.equal(live.retry_at, null, "the caller decides the release; the row stays pending");
+    assert.equal(live.status, "pending");
+  });
+
+  it("leaves pending and terminal rows alone", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, { card: "T-1", role: "worker", target_dir: "/work/app" });
+    const [pending] = readCards(dir).value.cards;
+    const result = timeoutCards(dir, [pending.id], { now: NOW });
+    assert.equal(result.requeued, 0);
+    assert.equal(result.exhausted, 0);
+    assert.equal(Number(readCards(dir).value.cards[0].timeouts), 0);
+
+    const claimed = claimedCard(dir, "T-2");
+    completeCards(dir, [claimed.id], { status: "done" });
+    const done = timeoutCards(dir, [claimed.id], { now: NOW });
+    assert.equal(done.requeued, 0);
+    assert.equal(done.exhausted, 0);
+    assert.equal(Number(readCards(dir).value.cards.find((row) => row.id === claimed.id).timeouts), 0);
+  });
+
+  it("refuses under the queue lock", (t) => {
+    const dir = dirFor(t);
+    const row = claimedCard(dir);
+    writeFileSync(
+      join(dir, "cards.queue.json.lock"),
+      JSON.stringify({ version: 1, pid: process.pid, token: "other-process" }),
+    );
+    const result = timeoutCards(dir, [row.id], { now: NOW });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /locked by another loop process/);
   });
 });

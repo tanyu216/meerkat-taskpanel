@@ -861,6 +861,18 @@ describe("buildQuestionPrompt (pure)", () => {
     assert.doesNotMatch(codex, /--actor-kind claude/);
   });
 
+  it("points a triage row at the project graph before the per-deliverable fallback", () => {
+    const triage = buildQuestionPrompt(
+      [{ triage: true, card: "P-1", project: "P", round: 1, title: "design" }],
+      { actorKind: "claude" },
+    );
+    assert.match(triage, /docs\/agents\/epic-graphs\.md/);
+    assert.match(triage, /taskctl project dir P --json/);
+    assert.match(triage, /--parent <epic> --target <stage-id>/);
+    assert.match(triage, /Epic mode/, "the graph's epic mode is honored");
+    assert.match(triage, /When no graph\s+matches/);
+  });
+
   it("signs a route row as the Director too", () => {
     const route = buildQuestionPrompt(
       [{ card: "T-4", project: "P", target_dir: "/work/app", agent: "alice", route: true, title: "wire it" }],
@@ -920,8 +932,8 @@ describe("buildHandoff (pure)", () => {
     });
     assert.match(text, /^You are the worker for the P1 project/);
     assert.match(text, /working directory is this card's workspace/);
-    assert.match(text, /never touch another project's paths/);
-    assert.match(text, /already claimed this card for you: do not claim it again/);
+    assert.match(text, /other projects' paths stay untouched/);
+    assert.match(text, /already claimed this card for you: keep the claim with a heartbeat/);
   });
 
   it("points the worker at the authoritative card brief and the process directory", () => {
@@ -932,7 +944,7 @@ describe("buildHandoff (pure)", () => {
     });
     assert.match(text, /Task brief: \.meerkat\/T-1\/card\.md/);
     assert.match(text, /read it first, it is authoritative/);
-    assert.match(text, /Never edit \.meerkat\/T-1\/card\.md/);
+    assert.match(text, /Read \.meerkat\/T-1\/card\.md as the loop's export/);
     assert.match(text, /Put your process files[^\n]*\.meerkat\/T-1\//);
     assert.match(text, /taskctl attachment download <attachment-id> --out \.meerkat\/T-1\//);
     assert.match(text, /On resume, re-read \.meerkat\/T-1\/card\.md/);
@@ -957,7 +969,7 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /Step 0/);
     // The decision ladder: a subagent does not decide a split (or a scope
     // expansion) itself; it asks the director, which may escalate E1.
-    assert.match(text, /Do not promote or split yourself/);
+    assert.match(text, /Let the director promote or split/);
     assert.match(text, /add an agent question/);
     assert.match(text, /keep the card in_progress/);
     assert.match(text, /scope expansion is E1/);
@@ -1001,12 +1013,12 @@ describe("buildHandoff (pure)", () => {
     // 0032 — the card's `acceptance` snapshot is the baseline; meta is its seed.
     assert.match(text, /FROZEN baseline/);
     assert.match(text, /meta\.acceptance is only/);
-    assert.match(text, /append, never replace or remove/i);
+    assert.match(text, /append new items; keep the existing ones/i);
     assert.match(text, /acceptance_derived=yes/);
     // The worker no longer enters awaiting itself: it asks the director,
     // which answers or escalates E1-E5 to the human.
     assert.match(text, /add an agent question comment/);
-    assert.match(text, /Do not enter awaiting/);
+    assert.match(text, /Route it to the director/);
     assert.match(text, /E1-E5/);
     assert.doesNotMatch(text, /--awaiting-reason/);
   });
@@ -1083,15 +1095,15 @@ describe("buildReviewHandoff (pure)", () => {
   it("points the reviewer at both briefs and the never-edit rule", () => {
     assert.match(text, /Review brief: \.meerkat\/T-2\/card\.md/);
     assert.match(text, /Original brief: \.meerkat\/T-1\/card\.md/);
-    assert.match(text, /Never edit a card\.md/);
-    assert.match(text, /This lane has no Write/);
+    assert.match(text, /Read a card\.md as the loop's export/);
+    assert.match(text, /This lane is read-only/);
     assert.doesNotMatch(text, /Put your process files|attachment download/);
     assert.match(text, /On resume, re-read \.meerkat\/T-2\/card\.md/);
   });
 
   it("is the reviewer for the project, with the claim already taken", () => {
     assert.match(text, /^You are the reviewer for the <project id> project/);
-    assert.match(text, /already claimed this review card for you: do not claim it again/);
+    assert.match(text, /already claimed this review card for you: keep the claim with a heartbeat/);
     assert.match(text, /heartbeat only this review card/);
   });
 
@@ -1099,7 +1111,7 @@ describe("buildReviewHandoff (pure)", () => {
     assert.match(text, /review_not_ready/);
     assert.match(text, /taskctl issue get T-1 --json/);
     assert.match(text, /no longer in_review \/ the round changed/);
-    assert.match(text, /Do not deliver a verdict/);
+    assert.match(text, /stop before a verdict/);
   });
 
   it("audits a worker-derived acceptance list for coverage", () => {
@@ -1119,8 +1131,8 @@ describe("buildReviewHandoff (pure)", () => {
   });
 
   it("moves nothing — the loop is the acceptor", () => {
-    assert.match(text, /Do not move\s+the card under review and do not move this review card/);
-    assert.match(text, /the loop applies the verdict and\s+closes this card/);
+    assert.match(text, /Leave both cards where they are/);
+    assert.match(text, /the loop applies the verdict and closes this card/);
   });
 
   it("does not carry the continue command prefix", () => {
@@ -3011,7 +3023,7 @@ describe("the resident session pool surface", () => {
     const opts = parseArgs(["--actor-kind", "claude", "--session"], ENV);
     assert.equal(opts.resident, "auto");
     assert.equal(opts.sessionMaxAgeMs, 24 * 60 * 60 * 1000);
-    assert.equal(opts.sessionTurnTimeoutMs, 30 * 60 * 1000);
+    assert.equal(opts.sessionTurnTimeoutMs, 60 * 60 * 1000);
     assert.equal(opts.sessionPollMs, 1_000);
     assert.equal(opts.sessionPoolMax, 8);
     assert.equal(opts.projectIdleMs, 30 * 60 * 1000);
