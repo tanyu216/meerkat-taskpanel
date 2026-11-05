@@ -39,6 +39,9 @@ Offer the rest as defaults and ask the user to confirm or edit:
 - **boundaries** — at most 16; what it must not do. Always include: do not accept your own
   work, do not merge/rebase/push from the card, and (for a reviewer) never claim an ordinary
   card / never enter `awaiting` / insufficient evidence is a REJECT.
+- **system_prompt** — optional; the static half of the card session's system prompt
+  (board operations and the read-the-card rule). The supervisor adds the runtime
+  agent/card/plan/flags context at open time. Omitted means the default board text.
 - **workflow** — the branches a session should read (plan, execute, self-check, deliver,
   plus any domain branch).
 - **self_check** — the checks before delivery.
@@ -63,6 +66,7 @@ Write the answers as one JSON object:
   "shapes": ["operations on a running system", "release execution after a human decision"],
   "responsibilities": ["..."],
   "boundaries": ["..."],
+  "system_prompt": "Read the task card first; it is authoritative for this card. …",
   "workflow": [{"title": "Prepare", "body": "..."}],
   "self_check": ["..."]
 }

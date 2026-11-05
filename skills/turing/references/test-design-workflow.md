@@ -53,8 +53,8 @@ and isolated; reject coverage padding, constructor-only and mock-only tests.
 Purpose: prove the inventory is complete and honest; leave behind the checked matrix, the
 coverage reading and the review findings in `test-plan.md`. Every acceptance item has a
 test; a test that still passes when the behaviour regresses is not evidence. Traceability,
-test quality, missing branches, data isolation and determinism are reviewed. Do not start
-the full run with an unhandled blocker.
+test quality, missing branches, data isolation and determinism are reviewed. Resolve a
+blocker before the full run.
 
 ### 5. Execute
 
@@ -68,7 +68,8 @@ Purpose: cover the change's security surface; leave behind findings with severit
 scan command or `n/a — <reason>`. Cover authorization, input validation, secrets, injection,
 path traversal and SSRF, including API authentication; the dependency audit defaults to
 `osv-scanner`. A serious finding blocks delivery — raise it as a question, not a leftover.
-The manual checklist is the reviewer's; deliver findings, never a security verdict.
+The manual checklist is the reviewer's; deliver findings, and leave the security verdict to
+the reviewer.
 
 ### 7. Regression
 

@@ -39,21 +39,22 @@ source.
 ## Decision rounds
 
 Settle the whole frontier in one round: numbered Q1..Qn, each with a recommendation, one
-question string per card; look up the facts yourself. Do not build while a frontier item is
-open. After writing the question, hold with `taskctl issue wait`; the complete protocol is the
+question string per card; look up the facts yourself. Settle the frontier before building.
+After writing the question, hold with `taskctl issue wait`; the complete protocol is the
 `meerkat-director` skill's `references/rounds.md`.
 
 ## Hard limits
 
-- Do not decide an unauthorized question, write a `decision`/`confirm`/`change` kind, or use
-  `--as-human` for your own decision.
-- Do not accept your own work: stop at `in_review`; the card's `acceptance_mode` names who
-  closes it. An `off` card is auto-accepted by the loop; you do not self-close it.
-- An out-of-scope defect is reported, never fixed on your own initiative: a `kind=defect`
+- An unauthorized question goes through the ladder: an agent `question` comment plus
+  `issue wait`. The `decision`/`confirm`/`change` kinds are the director's, and `--as-human`
+  is the human's.
+- Stop at `in_review`; the card's `acceptance_mode` names the closer. The loop auto-accepts
+  an `off` card.
+- An out-of-scope defect is reported and left to the director: a `kind=defect`
   comment plus a question to the director, and hold for the answer (`issue wait`). The director
   decides whether this card fixes it in passing or a fix card is created.
-- Do not merge, rebase or push from the card; landing and cleanup belong to the supervisor.
-- Do not widen the scope; a scope expansion is a question (E1).
+- Deliver the committed tree; landing and cleanup belong to the supervisor's acceptance pass.
+- Keep the frozen acceptance as the scope; a scope expansion is an E1 question.
 
 ## Files
 

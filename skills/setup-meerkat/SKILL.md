@@ -245,10 +245,10 @@ be independent of the producer.
 
 Ask only the fields that cannot be defaulted: id, board agent, title, summary and shapes.
 Offer defaults for the rest — `native_agent` (the id), lane (`worker`), responsibilities,
-boundaries, workflow branches and self-check — and ask the user to confirm or edit. Say what
-the lane changes: **worker** claims ordinary work; **reviewer** takes only review cards and
-never an ordinary card. Write the answers as the spec JSON the reference documents, then
-render and validate:
+boundaries, `system_prompt` (the static card-session board text), workflow branches and
+self-check — and ask the user to confirm or edit. Say what the lane changes: **worker** claims
+ordinary work; **reviewer** takes only review cards. Write the answers as the spec JSON the
+reference documents, then render and validate:
 
 ```bash
 node <skill-dir>/scripts/scaffold-role.mjs --spec <spec> --skills-dir <home>/<agent-dir>/skills --dry-run --json

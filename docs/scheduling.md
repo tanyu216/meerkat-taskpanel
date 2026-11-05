@@ -493,21 +493,31 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   same `resolveWakeDir` the glue uses). A card whose project is unmapped or names no
   directory is **deferred before the claim**, so the board never shows a claim that has
   nowhere to run. The handoff tells the session it is the card's own worker — not a
-  subagent of a shared conversation — and that the supervisor holds the claim. The role
-  skill loads once, when the session opens: Claude receives a `/<role>` message with a
-  `Flags:` line; Codex receives the skill entry as `developerInstructions` on
+  subagent of a shared conversation — and that the supervisor holds the claim. The
+  **card context is a system prompt injected when the native session opens**: the
+  supervisor formats the runtime half (agent, project, card ref, absolute `card.md` and
+  `plan.md` paths, process directory and the `--agent … --actor-kind=…` flags) and appends
+  the role's static `system_prompt` (or the lane's built-in board text). Claude receives it
+  as `--append-system-prompt`, Codex as `developerInstructions`, Pi as one more
+  `--append-system-prompt`. It is in place before the first turn, so a timed-out opener or
+  a lost handoff cannot leave the agent without the card, plan, flags or board moves. The
+  role skill still loads once at open: Claude receives a `/<role>` message with a `Flags:`
+  line; Codex receives the skill entry as `developerInstructions` on
   `thread/start`/`thread/resume`; Pi receives it as an appended system-prompt file. The
-  handoff is then a thin task envelope (brief, plan, board moves, no role layer). On an
-  inline kind the envelope carries the `Flags:` line itself, because no opener message
-  exists to carry it. The session's cwd is the card's admitted worktree, and its id is
-  persisted **before** the turn so a crash can resume it. The key includes the actor kind: a
-  role migrated between platforms never resumes the old platform's native session. A changed
-  installed skill reopens the lane the same way on every kind.
-- **Reviewer sessions** — keyed `(actor_kind, reviewer:<dir>)`, opened only when a review
-  card is queued and evicted by the same idle clock. The reviewer skill loads at open by the
-  kind's mechanism (`/reviewer` on Claude, developer instructions on Codex, an appended
-  system prompt on Pi). The batch prompt is the reviewer variant: no question ladder,
-  verdict-only. Each review card is one subagent with its **full** review handoff — a
+  handoff is then a thin task envelope (brief, plan, round details, board moves, no role
+  layer). On an inline kind the envelope carries the `Flags:` line itself, because no
+  opener message exists to carry it. The session's cwd is the card's admitted worktree, and
+  its id is persisted **before** the turn so a crash can resume it. The key includes the
+  actor kind: a role migrated between platforms never resumes the old platform's native
+  session. A changed installed skill reopens the lane the same way on every kind.
+- **Reviewer sessions** — keyed per review card, exactly like a worker
+  (`worker:<card>:r<round>`), opened only when a review card is queued and evicted by the
+  same idle clock. The reviewer skill loads at open by the kind's mechanism (`/reviewer` on
+  Claude, developer instructions on Codex, an appended system prompt on Pi), and the
+  system prompt carries the review card ref and brief, the card under review with its round,
+  the original's brief and plan, and the `Flags:` line — so Step 0 and the verdict rules
+  survive a lost handoff. The batch prompt is the reviewer variant: no question ladder,
+  verdict-only. Each review card is one session with its **full** review handoff — a
   subagent does not inherit the parent's loaded skill, so the review protocol and the role
   path must be in that first context. The allowlist is real for Claude and Pi; Codex and
   other adapters have no per-role tool surface, and the pool logs a one-time warning for
@@ -1030,8 +1040,9 @@ skills/<role>/
 ```
 
 `role.json` carries `id`, `agent`, `native_agent`, `lanes`, `title`, `summary`,
-`responsibilities`, `boundaries`, `shapes` (the work shapes it owns), `self_check` and
-`reviewer_prompt`. It must carry `"schema": "meerkat-role"`; a skill without that marker is
+`responsibilities`, `boundaries`, `shapes` (the work shapes it owns), `system_prompt`
+(static text only), `self_check` and `reviewer_prompt`. It must carry
+`"schema": "meerkat-role"`; a skill without that marker is
 not a role, so a third-party skill cannot register itself as a board agent. Every referenced
 path must stay inside the skill directory, including through symlinks.
 
@@ -1050,10 +1061,20 @@ responsibilities and boundaries into the full handoff (layer 1); a resident work
 has the role's `SKILL.md` loaded from the **selected kind's** skill directory at session
 open, and reads `self_check` from the same directory before acting (layer 2). The inline
 forms are verified against codex-cli 0.161.0 (`developerInstructions`) and pi 1.4.0
-(`--append-system-prompt` reads an existing file path). The reviewer's
-prompt is inlined at the start of the review handoff,
-bounded at 2,400 characters. Every role is told to write and maintain
+(`--append-system-prompt` reads an existing file path); Claude's `--append-system-prompt`
+needs 2.1.292 or newer. The reviewer's prompt is inlined at the start of the review
+handoff, bounded at 2,400 characters. Every role is told to write and maintain
 `.meerkat/<identifier>/plan.md`, which the reviewer reads.
+
+**The system prompt is a third, earlier layer.** `role.json`'s `system_prompt` is static
+board text (read the card, heartbeat, deliver, ask the director); the supervisor formats
+the runtime values — agent, project, card ref, absolute paths, flags, and for a reviewer
+the original card and round — and appends the static text verbatim at session open. The
+static body is capped at 8 KiB (`ROLES_LIMITS.systemPromptBytes`) and is never templated,
+so a role file cannot rewrite the card's paths. An older `role.json` without the field
+falls back to the lane's built-in board text. A resumed native session already carries the
+prompt; a fresh or replayed native session is injected again. The director lane and other
+non-card sessions receive no card system prompt.
 
 **Routing.** The routing table is generated from each **worker-capable** role's `shapes`; there
 is no separate `ownership.md`. The Reviewer is never routed: review cards are created and
@@ -1265,20 +1286,26 @@ model.
 A **same-round** re-dispatch does not build that handoff again. It opens the stored
 session id and sends a bounded **resume** prompt carrying what changed — the human's
 answer, the rework reason, or "the previous turn was interrupted" — and tells the worker to
-re-read `card.md` and the comments before continuing, not to start over. When the native
-session cannot be restored, a **replay** prompt carries the supervisor-owned transcript instead
-(bounded at 12 turns / 8 000 characters) and the record is marked `resumed_by_replay`. A
-**new round** is a new generation: it gets the full handoff and a fresh session.
+re-read `card.md` and the comments before continuing from the last completed step. A resume
+does **not** re-inject the system prompt: the native session already holds it from the turn
+that opened it. When the native session cannot be restored, a **replay** prompt carries the
+supervisor-owned transcript instead (bounded at 12 turns / 8 000 characters) and the record
+is marked `resumed_by_replay`; a replay opens a fresh native session, so the system prompt is
+injected again. A **new round** is a new generation: it gets the full handoff, a fresh
+session and the system prompt.
 
 The handoff names the task's **process directory**, relative to the session's cwd:
 `.meerkat/<identifier>/`. `card.md` inside it is the supervisor's authoritative export of the
 card: poll registers it with the local event hub before the claim, the hub writes the first
 snapshot synchronously (a temp file plus an atomic rename), and the registration keeps it
 fresh until the card is `done` or `canceled`. The handoff tells the worker to read it
-first, to re-read it on resume, and never to edit it. Every other process file — notes, logs, evidence, report drafts, downloaded
-attachments — belongs in the same directory. The board still holds no directory (O3): the
-worker session's cwd **is** the directory, and `.meerkat/` is the supervisor's convention
-under it — see [Where a worker runs](#where-a-worker-runs).
+first, to re-read it on resume, and to leave it to the supervisor. The **system prompt**
+names the same `card.md` and `plan.md` as absolute paths (the handoff keeps the relative
+`.meerkat/<identifier>/` form); both resolve to one file under the session's cwd. Every other
+process file — notes, logs, evidence, report drafts, downloaded attachments — belongs in the
+same directory. The board still holds no directory (O3): the worker session's cwd **is** the
+directory, and `.meerkat/` is the supervisor's convention under it — see
+[Where a worker runs](#where-a-worker-runs).
 
 The hub owns the refresh for every registration: a debounced batch updates each watched file
 (and a review card's original, because the supervisor registers both), independent of

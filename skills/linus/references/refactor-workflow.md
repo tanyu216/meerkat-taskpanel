@@ -38,13 +38,13 @@ migrations; `.env.example`; the tests that pin the current behaviour and the cal
 **Watch for.** Read the standard (`docs/tech-spec.md`, or the path the project's README or
 architecture document names), the architecture document, the ADRs in the area, the root
 `GLOSSARY.md`, the contract, the schema and migrations, and `.env.example`. When any is missing
-or partial, that is a **foundation gap**, not a blank input: do not start Step 1; ask through the
-board, and the director proposes an `architecture-workflow.md` card — Reconstruct when the
+or partial, that is a **foundation gap**, not a blank input: stop before Step 1 and ask through
+the board, and the director proposes an `architecture-workflow.md` card — Reconstruct when the
 tree is the only record, Extend when a recorded decision changes. Resume only after it is
 recorded and accepted. The dispositions bind: `inherited — <path>`,
 `reconstructed — <evidence>`, `not recorded — review question`, `n/a — <reason>`; a
-reconstruction is `E5 pending`. Do not record or re-choose the foundation here; characterisation
-tests pin behaviour but do not stand in for the missing record.
+reconstruction is `E5 pending`. The foundation record and its re-choice belong to the
+architecture card; characterisation tests pin behaviour while the missing record is restored.
 
 **Essentials.** The resolved foundation inputs, or the recorded gap and the architecture card
 that resolves it.
@@ -56,7 +56,7 @@ that resolves it.
 **Watch for.** Name the cost in understanding, changing or testing the area. Scope with YAGNI:
 weight the area that changes most; take the area the card names, and when it names none, read the
 recent history for hot spots and widen only when the changes are scattered. List the modules and
-their callers. Do not propose an interface yet — the friction comes first.
+their callers. Propose the interface after the friction is observed.
 
 **Essentials.** The friction, its cost and the bounded area in `plan.md`.
 
@@ -107,7 +107,7 @@ acceptance restated as evidence: which test or fixture proves each item still ho
 **Purpose.** Change the shape without changing what a caller can observe.
 
 **Watch for.** Move one seam and verify the full suite green before the next; a batch makes a
-regression hard to localize. Move code; do not rewrite it on the way. Keep the published
+regression hard to localize. Move code; keep the behaviour identical. Keep the published
 contract, the schema and the migrations as they are. Update `GLOSSARY.md` and an ADR inline as
 terms and durable decisions settle. A bug found on the way is a new card, not a drive-by fix; a
 behaviour change is a new card too. Delete only what the deletion test proved empty, and only
@@ -130,7 +130,7 @@ and the gates are green.
 
 **Purpose.** Make the refactor reviewable and auditable.
 
-**Watch for.** The tree is committed and the report carries the `commit` anchor; the board's delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses a report that does not. Do not merge, rebase or push from this card; the supervisor's acceptance pass lands it and cleans up.
+**Watch for.** The tree is committed and the report carries the `commit` anchor; the board's delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses a report that does not. Deliver the committed tree; the supervisor's acceptance pass merges, rebases, pushes and cleans up.
 
 **Essentials.** Commit the delivered tree; call the `meerkat` board skill to deliver at
 `in_review` with the before/after map, the pinning tests, the gates, the acceptance mapping, the
@@ -140,9 +140,10 @@ claim being reviewed.
 ## Boundaries
 
 - No observable behaviour change on a refactor card.
-- Do not start a refactor on a missing foundation: Step 0 stops the card until
-  `architecture-workflow.md` records it; this card never records or re-chooses the foundation.
-- Do not restructure working code as part of a feature or a bug fix.
+- A refactor starts on a recorded foundation: Step 0 stops the card until
+  `architecture-workflow.md` records it; this card leaves the foundation record to the
+  architecture card.
+- A restructure of working code is its own refactor card.
 - A published contract, schema or migration change needs the human.
-- Do not reopen a recorded ADR silently.
-- Do not accept your own work; the reviewer is independent.
+- Reopening a recorded ADR is a recorded decision.
+- Stop at `in_review`; the reviewer is independent.

@@ -4,7 +4,7 @@ Read this beside `SKILL.md`. Every row gets one disposition and an anchor:
 `met` (and how you checked), `not_met`, or `n/a — <reason>`. A blank row is an omission.
 Tier 1 is answered on every code-changing card; Tiers 2 and 3 are answered for the surface
 the card changes. A documentation-only card records one `n/a — <reason>` per tier.
-An automated scanner never answers a row for you: its finding is evidence you classify.
+The scanner supplies evidence; you classify the row.
 
 The list is a floor, not a ceiling. A security check this card's surface calls for and no
 row above names is still yours: run it with any available read-only method, and record it the
@@ -14,12 +14,12 @@ same way. An extra security finding can block APPROVE.
 
 | # | Topic | What proves it |
 |---|---|---|
-| C1 | Authorization and ownership | every read and write checks the caller's role and the object's owner; no id from the request is trusted; a list cannot leak another tenant's row |
-| C2 | Input validation and output encoding | one validation at the boundary; parameterised queries; no raw-HTML sink on unescaped input; no user value in a template expression |
-| C3 | Secrets and configuration | no secret in the change, a fixture, a log or an error; the value comes from configuration; environment files are untracked |
-| C4 | Injection and dangerous sinks | SQL, shell, `eval`, `Function`, template compilation; child processes take argument arrays, never an interpolated string |
-| C5 | Path traversal and file access | a user-supplied path is resolved and proven under one root; uploads carry size and type limits; static serving cannot escape its directory |
-| C6 | SSRF and outbound calls | user input cannot choose the host; an allowlist, a redirect limit and a timeout; no metadata endpoint |
+| C1 | Authorization and ownership | every read and write checks the caller's role and the object's owner; every request id is validated; a list returns only the caller's tenant rows |
+| C2 | Input validation and output encoding | one validation at the boundary; parameterised queries; raw-HTML sinks take escaped input; template expressions use trusted values |
+| C3 | Secrets and configuration | secrets stay out of the change, fixtures, logs and errors; the value comes from configuration; environment files are untracked |
+| C4 | Injection and dangerous sinks | SQL, shell, `eval`, `Function`, template compilation; child processes take argument arrays |
+| C5 | Path traversal and file access | a user-supplied path is resolved and proven under one root; uploads carry size and type limits; static serving stays inside its directory |
+| C6 | SSRF and outbound calls | the host comes from an allowlist rather than user input; a redirect limit and a timeout; the metadata endpoint stays out of the allowlist |
 
 ## Tier 2 — OWASP Top 10 (2025)
 
@@ -71,6 +71,6 @@ rank in the finding. It is not a second pass.
 `<source: checklist row / standard / advisory id or rule id> · <severity> · <disposition> · <anchor>`
 
 An unwaived high or critical, an unresolved ASVS row at the target level, or a committed
-secret is a REJECT unless a human accepts the risk under E4. A secret is never waivered:
-rotate and purge. A `.vue` or Svelte single-file component has no SAST extractor — answer
+secret is a REJECT unless a human accepts the risk under E4. A committed secret is rotated
+and purged rather than waivered. A `.vue` or Svelte single-file component has no SAST extractor — answer
 C2 and C4 here, by hand, and record the scanner gap as `n/a — no extractor`.

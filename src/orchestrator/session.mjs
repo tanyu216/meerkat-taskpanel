@@ -16,7 +16,7 @@ import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-import { cardFileRel } from "../foundation/card-brief.mjs";
+import { cardDirRel, cardFileRel } from "../foundation/card-brief.mjs";
 import { DIRECTOR_ACTOR_ID, ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { processStartToken } from "../foundation/daemon-state.mjs";
 import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
@@ -29,7 +29,12 @@ import {
   skillFingerprint,
   skillLoadMode,
 } from "../foundation/roles.mjs";
-import { buildQuestionPrompt } from "../foundation/scheduling.mjs";
+import {
+  buildQuestionPrompt,
+  buildSessionSystemPrompt,
+  REVIEWER_SYSTEM_PROMPT_FALLBACK,
+  WORKER_SYSTEM_PROMPT_FALLBACK,
+} from "../foundation/scheduling.mjs";
 import { holdCard } from "./holds.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
@@ -662,7 +667,8 @@ export function createSessionPool(input = {}) {
    * Open (or resume/replay) a card's own worker session.
    *
    * @param {string} key
-   * @param {{cwd: string, role: string, worker?: {row?: object, workspace?: object|null, forceReplay?: boolean}}} options
+   * @param {{cwd: string, role: string, skillPath?: string|null, systemPrompt?: string|null,
+   *   worker?: {row?: object, workspace?: object|null, forceReplay?: boolean}}} options
    */
   function openWorkerSession(key, options) {
     const stored = storedSession(key);
@@ -714,11 +720,15 @@ export function createSessionPool(input = {}) {
     }
     const resumeId = plan.mode === "resume" ? plan.sessionId ?? null : null;
     const laneRole = options.role === "reviewer" ? "reviewer" : "worker";
+    // A resumed native session already carries the system prompt from the turn
+    // that opened it; only a fresh or replayed native session is injected.
+    const systemPrompt = plan.mode === "resume" ? null : options.systemPrompt ?? null;
     const handle = getKindPool(actorKind).openSession({
       cwd: options.cwd,
       sessionId: resumeId,
       role: laneRole,
       skillPath: options.skillPath ?? null,
+      systemPrompt,
     });
     const entry = {
       key,
@@ -1410,6 +1420,10 @@ export function createSessionPool(input = {}) {
       const skillReady = typeof files?.workflow === "string";
       const roleSkillPath = files?.skillDir ? join(files.skillDir, "SKILL.md") : null;
       const fingerprint = files?.skillDir ? skillFingerprint(files.skillDir) : null;
+      // The attribution every write carries; the opener and the system prompt
+      // are built from this one value so they cannot drift.
+      const flags =
+        `${row.agent ? `--agent ${row.agent} ` : ""}` + `--actor-kind=${sessionKind}`;
       const skill =
         role === null || !skillReady
           ? null
@@ -1420,9 +1434,7 @@ export function createSessionPool(input = {}) {
                 skillMode === "opener"
                   ? {
                       command: `/${basename(files.skillDir)}`,
-                      flags:
-                        `${row.agent ? `--agent ${row.agent} ` : ""}` +
-                        `--actor-kind=${sessionKind}`,
+                      flags,
                       fingerprint,
                       skillPath: roleSkillPath,
                     }
@@ -1430,11 +1442,34 @@ export function createSessionPool(input = {}) {
               // The adapter receives this only when it loads the skill itself.
               skillPath: skillMode === "inline" ? roleSkillPath : null,
             };
+      // The card context rides the system prompt, so it reaches the agent at
+      // `openSession` time — before, and independent of, the opener's turn.
+      const systemPrompt = buildSessionSystemPrompt({
+        staticPrompt: role?.systemPrompt ?? null,
+        fallbackPrompt:
+          lane === "reviewer" ? REVIEWER_SYSTEM_PROMPT_FALLBACK : WORKER_SYSTEM_PROMPT_FALLBACK,
+        lane: lane === "reviewer" ? "reviewer" : "worker",
+        agent: row.agent ?? null,
+        project: row.project ?? null,
+        cardRef: String(row.card),
+        cardPath: join(dir, cardFileRel(row.card)),
+        planPath: join(dir, cardDirRel(row.card), "plan.md"),
+        processDir: join(dir, cardDirRel(row.card)),
+        flags,
+        reviewRef: row.review_of ?? null,
+        reviewPath: row.review_of ? join(dir, cardFileRel(row.review_of)) : null,
+        reviewPlanPath: row.review_of ? join(dir, cardDirRel(row.review_of), "plan.md") : null,
+        // A review row's `round` is the review card's own delivery round (1 for
+        // a fresh review card); the audited round is `review_round`, and a
+        // missing one stays null so the prompt omits `(round N)`.
+        round: lane === "reviewer" ? (row.review_round ?? null) : (row.round ?? 1),
+      });
       const openOptions = {
         cwd: dir,
         role: lane === "reviewer" ? "reviewer" : "worker",
         actorKind: cards[0].actor_kind ?? null,
         skillPath: skill?.skillPath ?? null,
+        systemPrompt,
         worker: { row: cards[0], workspace: cards[0].workspace ?? null },
       };
       let entry;
@@ -1608,6 +1643,8 @@ export function createSessionPool(input = {}) {
           cwd: job.dir,
           role: job.lane === "reviewer" ? "reviewer" : "worker",
           skillPath: job.skill?.skillPath ?? null,
+          // A replay opens a fresh native session; it needs the context again.
+          systemPrompt: job.openOptions.systemPrompt ?? null,
           worker: { row, workspace: row.workspace ?? null, forceReplay: true },
         });
         job.entry = entry;
