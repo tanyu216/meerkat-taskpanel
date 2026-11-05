@@ -118,12 +118,12 @@ attribution, attachments and the one-line outcome are in
 ## Stage markers
 
 A producer card that hands work on sets `meta.stage_handoff=required` and puts a `## Handoff`
-block in its **current-round report**. The director's triage copies that block into a
-downstream card's description and sets `meta.design_stage=yes` there. A small change or bug
-with no design input sets `meta.product_change=none`. The foundation records the one gate
-command the reviewer re-runs as the project's `meta.review_gate`. These keys are read by the
-role skills and the reviewer; write them with `issue meta` (its `--if-version` CAS form), not
-with a second local convention.
+block in its **current-round report**. The foundation records the one gate command the reviewer
+re-runs as the project's `meta.review_gate`. These keys are read by the role skills and the
+reviewer; write them with `issue meta` (its `--if-version` CAS form), not with a second local
+convention. A card's design and verification shape is not a board field: a project's
+`docs/agents/epic-graphs.md` and the role skills classify a card, and a role that cannot
+classify one asks and holds.
 
 ## The language of a card
 
@@ -201,9 +201,7 @@ author's intent, not this delivery's evidence.
 ## Containers: when the card is an epic
 
 An epic exists only where someone named one; splitting is a scope decision that belongs to the
-`meerkat-director`. Promote the container **before** the card delivers its **current-round
-report**, and do **not** promote a card that already delivered — start a new container. The
-four sizing questions, the promotion table and the silent traps are in
+`meerkat-director`. The recipe, the promotion rule and the silent traps are in
 [`references/scenarios/epic.md`](references/scenarios/epic.md); the board's container rules are
 [`references/lifecycle/containers.md#6-containers-epic`](references/lifecycle/containers.md#6-containers-epic).
 

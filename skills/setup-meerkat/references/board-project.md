@@ -4,8 +4,9 @@ Step 4. The `meerkat` skill reads a project's own rules from `docs/agents/`. Wri
 once there; they are project content, shared by every agent platform that works in this
 project.
 
-Work in this order: **create-card and trackers → project map → instruction entry →
-worktrees.md → worktree guard**. The order matters: once `docs/agents/worktrees.md` exists
+Work in this order: **create-card and trackers → epic graph (on request) → project map →
+instruction entry → worktrees.md → worktree guard**. The order matters: once
+`docs/agents/worktrees.md` exists
 and a guard is active, writes to the primary checkout are denied, including the entry write.
 If a guard is already active, finish the remaining writes from a session worktree under
 `.worktrees/<slug>`.
@@ -17,12 +18,11 @@ before writing, and never replace a user's rule wholesale.
 
 ### `docs/agents/create-card.md`
 
-The project's three choices, in one page: **what work becomes a card**, **how its creators
-choose an acceptance mode**, and **where the epic-splitting boundary is**. Read the installed
-`meerkat` skill's `references/scenarios/create.md` first — it holds the create runbook and is what this
-page overrides. The installed copy is
+The project's two choices, in one page: **what work becomes a card** and **how its creators
+choose an acceptance mode**. Read the installed `meerkat` skill's `references/scenarios/create.md`
+first — it holds the create runbook and is what this page overrides. The installed copy is
 `<home>/<agent-dir>/skills/meerkat/references/scenarios/create.md`; when several kinds are installed
-and their copies differ, say so before choosing one. Then ask the user the three questions and
+and their copies differ, say so before choosing one. Then ask the user the questions and
 write **only their answers**. Do not copy the manual, its commands or its epic patterns; a page
 that restates them drifts from them.
 
@@ -40,13 +40,18 @@ that restates them drifts from them.
   person at each delivery; **`off`** may close without a review. Record the project's reasons
   for choosing `off` or `human` where it does. Do not invent a default and do not claim the
   board reads this page.
-- **Epic boundary.** The general epic mechanics stay in the `meerkat` skill; this page records
-  only the project's splitting choice. Say it plainly: one card through delivery, versus
-  children that can each land alone as deliverables. The worker never splits; the director
-  owns the scope decision.
-
 Link only to installed material (the `meerkat` skill) or project pages the user has. Do not
 link to a repository-only design page.
+
+### `docs/agents/epic-graphs.md` (optional)
+
+The project's multi-role epic shapes. The board and the `meerkat` skill carry no graph: a
+project gets one only by choosing it. Show the installed `setup-meerkat` skill's
+`assets/epic-graphs.md` — the default template with `dev-verify` and `requirement` — and ask
+which graphs to keep or change. **Write only on an explicit yes**; the file is absent by
+default. A re-run reports `written` / `unchanged` / `conflict`, and never creates the default
+silently. The `meerkat` skill's `references/scenarios/epic.md` reads this file at creation
+time; `setup-meerkat` only installs it.
 
 ### `docs/agents/issue-tracker.md`, `triage-labels.md`, `domain.md`
 
@@ -98,8 +103,8 @@ never hand-edit `projects.json`.
 
 Call the `init` skill for the project's agent-instruction entry, and require it to point card
 work at the `/meerkat` skill and board rules at `docs/agents/` (`create-card.md`,
-`worktrees.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, and
-`decision-policy.md` when present),
+`worktrees.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, `epic-graphs.md` when
+present, and `decision-policy.md` when present),
 and to state this step's card scope. The entry and the
 rules are project content shared by every platform: call `init` once, write the rules once
 under `docs/agents/`, never copy them per platform, and never write an entry yourself.

@@ -861,6 +861,17 @@ describe("buildQuestionPrompt (pure)", () => {
     assert.doesNotMatch(codex, /--actor-kind claude/);
   });
 
+  it("points a triage row at the project graph before the per-deliverable fallback", () => {
+    const triage = buildQuestionPrompt(
+      [{ triage: true, card: "P-1", project: "P", round: 1, title: "design" }],
+      { actorKind: "claude" },
+    );
+    assert.match(triage, /docs\/agents\/epic-graphs\.md/);
+    assert.match(triage, /taskctl project dir P --json/);
+    assert.match(triage, /--parent <epic> --target <stage-id>/);
+    assert.match(triage, /When no graph\s+matches/);
+  });
+
   it("signs a route row as the Director too", () => {
     const route = buildQuestionPrompt(
       [{ card: "T-4", project: "P", target_dir: "/work/app", agent: "alice", route: true, title: "wire it" }],

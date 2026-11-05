@@ -32,10 +32,21 @@ describe("team roles: the cross-file seams", () => {
   it("keeps the producer/consumer handoff markers in one contract", () => {
     const meerkat = read("skills/meerkat/SKILL.md");
     assert.match(meerkat, /stage_handoff=required/);
-    assert.match(meerkat, /meta\.design_stage=yes/);
-    assert.match(meerkat, /meta\.product_change=none/);
     assert.match(meerkat, /meta\.review_gate/);
+    assert.doesNotMatch(meerkat, /design_stage|product_change/, "the research markers left the generic layer");
     assert.match(read("skills/reviewer/references/audit-playbook.md"), /stage_handoff=required/);
+  });
+
+  it("leaves a card's classification to the project graph and the role", () => {
+    for (const rel of [
+      "skills/linus/SKILL.md",
+      "skills/turing/SKILL.md",
+      "skills/reviewer/SKILL.md",
+    ]) {
+      const text = read(rel);
+      assert.match(text, /epic_graph|epic-graphs\.md/, `${rel}: the graph is the classification source`);
+      assert.doesNotMatch(text, /unclassified/i, `${rel}: no generic unclassified verdict`);
+    }
   });
 
   it("keeps the coverage floor at 80 or stricter in both roles", () => {

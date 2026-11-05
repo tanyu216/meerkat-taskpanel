@@ -159,6 +159,15 @@ describe("director skill: references", () => {
     assert.match(triage, /create it only if the map gives E1 to the[\s\S]*director/i);
   });
 
+  it("reads the project graph, adopts a producer and only fills what is missing", () => {
+    const triage = ref("triage.md");
+    assert.match(triage, /docs\/agents\/epic-graphs\.md/, "the project graph is the content source");
+    assert.match(triage, /adopt the delivered producer\s+as its matching stage/i);
+    assert.match(triage, /fill only what is missing/i);
+    assert.match(triage, /--parent <epic> --target <stage-id>/, "the recipe's idempotency convention");
+    assert.doesNotMatch(triage, /--idem/, "no second, loop-handoff idempotency for a graph stage");
+  });
+
   it("puts the E1-E5 map and the project refinement in escalation.md", () => {
     const policy = ref("escalation.md");
     assert.match(policy, /E1/);

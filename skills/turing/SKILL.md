@@ -24,11 +24,11 @@ The card's shape selects the branch. Open the one it names:
 `## Steps` list and carries that branch's complete steps. This card's plan is `plan.md`;
 the branch's first step takes it.
 
-A `## Handoff` block (`meta.design_stage`) names the archived spec/PRD, the acceptance
-source and the implementation/fix card or **named report**; read through the branch.
-`meta.product_change=none` means a small change or bug: no design artifacts. Neither
-marker means the card is unclassified — ask and hold. `test-plan.md` belongs to the
-test-design branch.
+A card inside a project epic graph (`meta.epic_graph`) reads its stage row in
+`docs/agents/epic-graphs.md` and the upstream cards' `## Handoff` blocks or current-round
+reports; a card outside a graph is judged from its description and frozen acceptance, and
+`meta.design_stage` / `meta.product_change` are optional hints only. If the card cannot be
+classified, ask and hold. `test-plan.md` belongs to the test-design branch.
 
 ## Decide before you build
 

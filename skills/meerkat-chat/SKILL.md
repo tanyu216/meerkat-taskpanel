@@ -242,7 +242,6 @@ announces waiting cards only; health stays a one-shot read or an answer to a dir
 | `handoff_unconsumed` | an accepted producer's required handoff has no decision for its round | report; the director creates the proposed card, or the human records that none is needed |
 | `looping` | rework rounds, review reopens, dispatch retries, failed subagents, and `held` cards the loop already parked | explain the loop; the fix is a decision (reject, cut scope, reassign), not a retry — a held card is released only by an explicit human move |
 | `unlanded` | a `done` card whose lane branch is not in the project's current branch | report it; the fix is a git merge, not a board write |
-| `unclassified` | an open task card with no stage marker (`meta.design_stage` / `meta.product_change`) | report it; the creator or the director's triage sets the marker — a worker never writes its own, and the reviewer rejects an unclassified card |
 | `workers` | blocked, stale or missing-worktree worker records | report; do not restart daemons |
 | `queue` | failed dispatch rows | report; the loop retries within its own budget |
 | `waiting.in_review` | delivered cards awaiting acceptance | feed the waiting register |
@@ -264,6 +263,10 @@ or edit loop state. Field-by-field map and the triage playbook:
   released but never claimed; its children are.
 - **Other edits** — reassign, re-prioritise, relabel, reopen, cancel, link relations — are the
   board skill's commands. Read the refusal rather than pre-checking from a document.
+- **Start a multi-role epic.** Use the `meerkat` skill's graph recipe
+  (`references/scenarios/epic.md`) as the human (`--as-human`), showing the whole graph before
+  any card is created. A project with no `docs/agents/epic-graphs.md` is pointed at
+  `setup-meerkat`; no graph is invented here.
 
 Every one is shown first, verbatim, and confirmed.
 

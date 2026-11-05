@@ -1,10 +1,10 @@
 # Creating a card in this project
 
-The full rules — scope, the epic decision and its patterns, the acceptance modes, routing and
-attachments — are the installed `meerkat` skill's `references/scenarios/create.md` (and `references/scenarios/epic.md` for the epic patterns). This page records
-**only this project's choices**. What it states wins over that manual; a topic it does not state
-falls back to the manual. It is guidance, not board data: nothing stores it, `taskd` never reads
-it, and no card inherits it. An explicit instruction from the human wins over this page.
+The full rules — scope, the acceptance modes, routing and attachments — are the installed
+`meerkat` skill's `references/scenarios/create.md`. This page records **only this project's
+choices**. What it states wins over that manual; a topic it does not state falls back to the
+manual. It is guidance, not board data: nothing stores it, `taskd` never reads it, and no card
+inherits it. An explicit instruction from the human wins over this page.
 
 ## What becomes a card here
 
@@ -14,16 +14,6 @@ fixes and refactors, test design, regression, performance, independent review.
 **Outside the roles is outside the board**: a question, a lookup, a one-off command, a scratch
 experiment, the change being made in this conversation, or work the human is doing themselves.
 This project adds neither a wider scope nor a narrower one.
-
-## When this project uses an epic
-
-Adopt the default boundary: an epic holds **several deliverables that can each land alone**; a
-single change is not an epic however many layers it touches, and the layers of one change are the
-card's scope, not children.
-
-The four child questions and the three epic patterns are the manual's. This project adds no
-splitting rule of its own: when the pieces are uncertain, the `meerkat-director` owns the split
-and a worker holds with a question.
 
 ## Choosing the acceptance mode here
 

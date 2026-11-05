@@ -73,10 +73,10 @@ workflows — is:
 - who lands and cleans up: the supervisor's acceptance pass merges the lane and removes the
   worktree; the card's `acceptance_mode` names who may close it; no role creates a downstream
   or fix card — the director does;
-- the handoff markers and their writers: `stage_handoff=required` (the producer role),
-  `design_stage` and `product_change=none` (the creator or the director's triage), the
+- the handoff markers and their writers: `stage_handoff=required` (the producer role), the
   project's `review_gate` (Linus), and `handoff_consumed_round` / `handoff_declined_round`
-  (the director's triage).
+  (the director's triage). A card's design/verification shape comes from the project's
+  `docs/agents/epic-graphs.md` and the role skills, never from a classification meta.
 
 Point at the installed role skills and the director's `references/decision-policy.md` for the
 detail. This index is not a second copy of their prose.

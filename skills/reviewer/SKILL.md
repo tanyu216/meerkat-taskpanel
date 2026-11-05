@@ -37,14 +37,14 @@ rewrote the evidence.
 
 ### 2. Read the handoff and the sources
 **Purpose.** Judge from the sources, not from the report's summary of them.
-**Watch for.** The `## Handoff` block sits in the original's description when
-`meta.design_stage` is set, and in this round's report when `meta.stage_handoff=required`;
-take its paths from the block, never the task id. `meta.product_change=none` means no design
-artifacts; neither marker means unclassified. A loop-created rework/fix child
-(`meta.rework_of`) inherits its parent epic's handoff.
+**Watch for.** The `## Handoff` block sits in the original's description when a design stage
+adopted it, and in this round's report when `meta.stage_handoff=required`; take its paths from
+the block, never the task id. A card inside a graph (`meta.epic_graph`) is classified by its
+stage row in `docs/agents/epic-graphs.md`; a card outside one by the frozen acceptance and the
+report. A loop-created rework/fix child (`meta.rework_of`) inherits its parent epic's handoff.
 **Essentials.** Description, every comment, the frozen acceptance, the brief and `plan.md`,
-this round's report and evidence, and the open decision/defect/change entries. A missing
-block, field or path — or an unclassified card — is a `REJECT`. A missing `plan.md` is not
+this round's report and evidence, and the open decision/defect/change entries. A missing block,
+field or path, or a graph stage's required design input, is a `REJECT`. A missing `plan.md` is not
 itself a `REJECT`: fall back to the description and the frozen acceptance.
 
 ### 3. Build the requirement ledger
@@ -99,7 +99,7 @@ unresolved ASVS row is a `REJECT` unless a human accepts the risk (E4).
 
 ### 8. Apply the shape refinement
 **Purpose.** Start from the universal floor, then apply the matching refinement and add what the surface calls for.
-**Watch for.** Stopping at the listed items; treating a named shape as the only reviewable type; a PRD Must with no testable acceptance; a test that still passes with the change reverted; a stale `rollup` or a dropped `epic` child.
+**Watch for.** Stopping at the listed items; treating a named shape as the only reviewable type; a PRD Must with no testable acceptance; a `product-acceptance` ledger that does not trace every Must; a test that still passes with the change reverted; a stale `rollup` or a dropped `epic` child.
 **Essentials.** `references/audit-playbook.md` gives every step's must-do, the shape floors and the default for a type no floor names. Walk the universal floor first, then the refinements the card's
 shapes match; a type no shape names, or a mixed one, follows the floor and the project's own
 standards — never a skip. A floor is a minimum: use any read-only method, record extra checks/skips,

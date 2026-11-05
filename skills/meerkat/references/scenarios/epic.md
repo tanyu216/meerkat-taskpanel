@@ -96,6 +96,87 @@ and "docs". Each child carries its own core, CLI, web, docs and fixtures for its
 usually has no `blocks` edge. Add one only when a later slice genuinely needs an earlier one
 merged. The failure mode is splitting by layer, which produces children that cannot land alone.
 
+## Instantiate the project's epic graph
+
+A project may carry `docs/agents/epic-graphs.md`: the named stages, roles, modes and
+dependencies its multi-role epics use. This skill defines the format and the mechanics; the
+graph's *content* belongs to the project. No graph is built in here.
+
+**Pre-flight — write nothing yet.** Resolve the project directory with
+`taskctl project dir <p> --json` and read `<dir>/docs/agents/epic-graphs.md`.
+
+- File missing: **stop**. Say the project has no epic graph, that it is the only source for
+  multi-role epics, and point at `setup-meerkat` to install one from its default template
+  after the user confirms. Never fall back to a built-in graph.
+- Named graph missing: stop and list the graph names the file does carry.
+- Validate the generic structure: unique stage ids; every `depends_on` names a stage in this
+  graph; the graph is acyclic and has at most 8 stages; every stage has a role, mode and at
+  least one acceptance item; every role is in `taskctl role list --json` on a worker lane.
+  Do not validate a project column — the project's role skills interpret it. Stop on any
+  failure; create nothing.
+- Look for an existing instance:
+  `taskctl issue list --project <p> --meta epic_graph=<name> --meta epic_instance=<slug> --json`.
+  If one exists, continue it; never create a second epic.
+- Show the whole graph in the conversation — the epic, every card's role/mode/dependencies
+  and acceptance, and which cards are immediately claimable — and get an explicit OK.
+  Use `--as-human` only in a human-started session.
+
+**Create the epic.**
+
+```bash
+taskctl --as-human issue create --project <p> --title "<title>" --kind epic \
+  --acceptance-mode human --acceptance "<epic acceptance>" \
+  --meta epic_graph=<name> --meta epic_instance=<slug> \
+  --target epic:<slug> --json
+```
+
+`<slug>` defaults to the title's kebab-case; the same title returns the same epic.
+
+**Create the children in topological order, in `backlog`.** A `backlog` card is not claimable
+before its edges exist.
+
+```bash
+taskctl --as-human issue create --project <p> --title "<stage title>" \
+  --assignee <Role> --assignee-kind agent --acceptance-mode <mode> \
+  --acceptance "<item>" --acceptance "<item>" \
+  --status backlog --parent <epic-identifier> --target <stage-id> \
+  --meta epic_graph=<name> --meta epic_stage=<stage-id> --json
+```
+
+`--parent` **only fills the idempotency key's source slot; it creates no edge.** The pair
+`--parent <epic-identifier> --target <stage-id>` derives the key
+`task | <Role> | <epic-id> | <stage-id>`, so a re-run returns the same card. Reuse both
+values verbatim on a re-run.
+
+**Create the edges.** Read first; skip one that already exists.
+
+```bash
+taskctl --as-human relation add <epic-identifier> --type parent --target <child-identifier>
+taskctl --as-human relation add <dependency-identifier> --type blocks --target <child-identifier>
+```
+
+`depends_on` is the reverse of `blocks`: the **source** is the predecessor.
+
+**Release to `todo` after every edge exists.**
+
+```bash
+taskctl --as-human issue move <child-identifier> todo
+```
+
+**Read back the whole graph.** `taskctl issue get <epic-identifier> --include relations --json`
+and `taskctl issue list --parent <epic-identifier> --json`. Check: the child count equals the
+stage count; every child's parent is the epic; `blocked_by` equals the graph's `depends_on`;
+role, mode and frozen acceptance match. Report and stop on any mismatch — never "create one
+more" to patch it.
+
+**Deleting a stage.** Remove every `blocks` edge that names it **before**
+`taskctl issue move <child-identifier> canceled`: a canceled predecessor withholds its
+dependents forever.
+
+Hand back one map: the epic identifier, the stage → identifier table, the cards claimable now,
+and each gate's closer. Normal flow then needs no director: a predecessor's `done` puts its
+dependents in the owning role's `issue candidates`.
+
 ## Promote before delivery
 
 Promote before the card delivers its current-round report. The rollup collects the
