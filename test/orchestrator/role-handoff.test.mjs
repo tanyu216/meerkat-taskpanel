@@ -219,9 +219,11 @@ describe("handoffs without a role stay byte-identical", () => {
     // for the answer in the same turn (and re-claims if the director released
     // the card) instead of ending the turn immediately.
     // Re-pinned for 0002: the card vocabulary is `off | auto | human`.
+    // Re-pinned for TP-0109: the card-session prompts read as positive actions
+    // (the same rules, stated as what to do and who owns the boundary).
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "2a6747c66416aca8f7b44faee07e5820c44b0c67fbe575c9eb8851a8999547e8",
+      "435d6fc814532aeafe8b71666c4dd17d73f81fb25a2f90fb127bdc996fff1244",
     );
   });
 
@@ -232,9 +234,10 @@ describe("handoffs without a role stay byte-identical", () => {
     // Re-pinned again for the delivered-commit check and the carried findings:
     // a reviewer that judges the live tree can pass code nobody delivered.
     // Re-pinned for the director vocabulary (no project session exists now).
+    // Re-pinned for TP-0109: the positive-language rewrite of the review handoff.
     assert.equal(
       hash(buildReviewHandoff(REVIEW_INPUT)),
-      "887ab86a4b4b377d9326bc62ff969073f335f651cadd3a4aaded9c33d349d894",
+      "594868afb0cfecac7850097632a01baa843b9d335d6e48001ef67da661f1f4c1",
     );
   });
 });
@@ -278,7 +281,7 @@ describe("worker handoff with a role", () => {
     assert.match(text, /taskctl issue wait/);
     assert.match(text, /hold for the answer/);
     assert.match(text, /re-claim if the card is `todo`/);
-    assert.match(text, /Do not enter awaiting yourself/);
+    assert.match(text, /Route it to the director/);
     assert.match(text, /\/roles\/decision-policy\.md/);
   });
 
@@ -291,7 +294,6 @@ describe("worker handoff with a role", () => {
     assert.match(text, /worded so "yes" accepts/);
     assert.match(text, /Facts are the asker's job/i);
     assert.match(text, /one round is one question comment/i);
-    assert.match(text, /do not drip one comment per question/i);
     assert.match(text, /incomplete answer is not consent/i);
     assert.doesNotMatch(text, /\[truncated — see the role files\]/);
   });
@@ -338,7 +340,7 @@ describe("reviewer handoff with a role", () => {
   });
 
   it("keeps the reviewer out of awaiting", () => {
-    assert.match(text, /You cannot enter awaiting/);
+    assert.match(text, /Stay in the review turn/);
     assert.doesNotMatch(text, /agent question comment/);
   });
 

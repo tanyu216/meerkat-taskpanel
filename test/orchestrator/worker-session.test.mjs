@@ -165,7 +165,7 @@ describe("worker prompts", () => {
     assert.match(prompt, /TP-1/);
   });
 
-  it("resumes with the answer and forbids starting over", () => {
+  it("resumes with the answer and continues from the last completed step", () => {
     const prompt = buildWorkerResumePrompt({
       row,
       handoff,
@@ -176,7 +176,7 @@ describe("worker prompts", () => {
     assert.match(prompt, /same-round/);
     assert.match(prompt, /keep the API stable/);
     assert.match(prompt, /re-read/i);
-    assert.match(prompt, /do not start over/i);
+    assert.match(prompt, /continue the work you already started/i);
     assert.match(prompt, /heartbeat/i);
   });
 
@@ -192,7 +192,7 @@ describe("worker prompts", () => {
     assert.match(prompt, /could not be resumed/i);
     assert.match(prompt, /session not found/);
     assert.match(prompt, /did A/);
-    assert.match(prompt, /do not repeat/i);
+    assert.match(prompt, /resume from the last completed step/i);
     assert.ok(prompt.length < 20_000);
   });
 });
