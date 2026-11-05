@@ -110,21 +110,41 @@ describe("director triage: the marker is the completion", () => {
     }
   });
 
-  it("accepts a declined handoff as a decision", () => {
+  it("settles when the marker carries the created refs after its round", () => {
     const dir = tempDir();
     const result = readTriageOutcome(
       optsFor(sentinel(dir, {
         identifier: "P-1",
         status: "done",
         delivery_round: 2,
-        meta: { handoff_declined_round: "2" },
+        meta: { handoff_consumed_round: "2 (TP-0082)" },
       })),
       "P-1",
       2,
       noopLog,
     );
-    assert.equal(result.settled, true);
-    assert.equal(result.declined, true);
+    assert.equal(result.ok, true);
+    assert.equal(result.settled, true, "the prompt tells the director to record the refs in the value");
+    assert.equal(result.consumed, true);
+  });
+
+  it("accepts a declined handoff as a decision", () => {
+    for (const meta of [{ handoff_declined_round: "2" }, { handoff_declined_round: "2 — no follow-up" }]) {
+      const dir = tempDir();
+      const result = readTriageOutcome(
+        optsFor(sentinel(dir, {
+          identifier: "P-1",
+          status: "done",
+          delivery_round: 2,
+          meta,
+        })),
+        "P-1",
+        2,
+        noopLog,
+      );
+      assert.equal(result.settled, true, JSON.stringify(meta));
+      assert.equal(result.declined, true);
+    }
   });
 
   it("does not settle without a marker, and does not count a child as proof", () => {

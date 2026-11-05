@@ -9,6 +9,7 @@
 import { dirname } from "node:path";
 
 import { ORCHESTRATOR_ACTOR_ID, ROUTE_UNASSIGNED_MS, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { markerMatches } from "../foundation/handoff-round.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { loadRoles } from "../foundation/roles.mjs";
 import { planStrandedTodoAlerts } from "../foundation/scheduling.mjs";
@@ -249,8 +250,8 @@ export function readHandoffTriage(opts, log, run = runCli, now = Date.now) {
     if (textOf(meta.stage_handoff) !== "required") continue;
     const round = Number(task?.delivery_round);
     if (!Number.isFinite(round)) continue;
-    if (Number(meta.handoff_consumed_round) === round) continue;
-    if (Number(meta.handoff_declined_round) === round) continue;
+    if (markerMatches(meta.handoff_consumed_round, round)) continue;
+    if (markerMatches(meta.handoff_declined_round, round)) continue;
     const project = textOf(task?.project_id ?? task?.project);
     const ref = textOf(task?.identifier);
     if (project === null || ref === null) continue;

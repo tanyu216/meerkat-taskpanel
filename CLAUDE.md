@@ -154,6 +154,9 @@ A fresh clone has none: `git config core.hooksPath .githooks` (do not run `npm i
   `src/core/storage/migrations/`, mirrored by a domain check and tested in `test/contract/`.
 - **One reader for a review card's identity.** `review_of_id` / `review_round` are authority and
   `meta.review_of` a mirror; every layer reads them through `src/foundation/review-identity.mjs`.
+- **One reader for a handoff round marker.** `meta.handoff_consumed_round` /
+  `meta.handoff_declined_round` may carry the created refs after the round, so every layer reads
+  them through `src/foundation/handoff-round.mjs`; a direct `Number(value)` read is a regression.
 - **The supervisor speaks only `taskctl`.** `src/orchestrator/**` never calls the HTTP API; the
   live stream is `taskctl events follow`, and the supervisor carries no board discovery or token
   code.

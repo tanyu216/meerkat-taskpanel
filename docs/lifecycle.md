@@ -39,6 +39,7 @@ The design stance, in four sentences:
 | **acceptance snapshot** | `src/core/domain/acceptance.mjs`, the acceptance triggers | append-only, locked in review, checked on `done` |
 | **claim** | `CLAIM_HOLDING_STATUSES`, `repositories/tasks.mjs#moveCas` | the execution lock lives with the attempt, not the column |
 | **review identity** | `src/foundation/review-identity.mjs`, `review_of_id` / `review_round`, the review triggers | one reader, immutable columns, no review of a review |
+| **handoff round marker** | `src/foundation/handoff-round.mjs`, `meta.handoff_consumed_round` / `handoff_declined_round` | one reader; the round leads the value and the created refs may follow it |
 | **workflow plan** | `src/core/domain/workflow.mjs` | decisions only: reconcile, outcomes, auto-accept, dispatch |
 | **workflow executor** | `src/orchestrator/runners.mjs` | bounded writes; the review card closes last |
 | **container rules** | `src/core/commands/rollup.mjs` | the board starts and closes an epic; a container is never claimed |
