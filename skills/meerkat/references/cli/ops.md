@@ -65,20 +65,18 @@ fail-safe rules behind them, are in
 ### `role`
 
 The **local role catalog** — a host-local projection of the roles the supervisor discovered
-(`<config root>/roles.json`), never board state. Both verbs are local: no board, no token, no
+(`<config root>/roles.json`), never board state. Both verbs are local: no board, token or
 `--actor-kind`.
 
 | Command | What it does |
 |---|---|
-| `role list [--json]` | Print `data.roles[].agent`, `id`, `title`, `lanes` and `installed_on`. This is the valid `--assignee` range for `issue create`/`issue assign`. The JSON role shape carries only `agent`, `id`, `native_agent`, `title`, `summary`, `lanes`, `shapes`, `installed_on` and `default_reviewer`; the role's contract prose stays in its `skills/<id>/role.json` — read that skill when you need it. An absent or malformed file reads as no roles (with a warning), never as a partial range. |
-| `role sync --file <path\|->` | **Supervisor-only.** Replace the catalog with a discovered set (stdin with `-`). Identical content is a no-op: prose keys on a legacy file are ignored, and the file is **not rewritten** while its content is unchanged. A removed role disappears. |
+| `role list [--json]` | Print `data.roles[]` (`agent`, `id`, `title`, `lanes`, `installed_on`) — the valid `--assignee` range for `issue create`/`issue assign`. JSON is the routing projection only (`docs/roles.md`); the prose stays in `skills/<id>/role.json`. An absent or malformed file reads as no roles (warned), never partial. |
+| `role sync --file <path\|->` | **Supervisor-only.** Replace the catalog with a discovered set (stdin `-`). Identical content is a no-op; a legacy file is not rewritten while unchanged. A removed role disappears. |
 
-A card's assignee is checked against this catalog when it is non-empty (`ASSIGNEE_NOT_IN_CATALOG`,
-exit 1). The check is a **CLI guard**, not a board invariant: a direct HTTP write bypasses it.
-The writer identity (`system`/`Orchestrator`) is never exempt — the guard looks at the
-assignee. A review card is stricter still: its assignee must name a **reviewer-lane** role
-(`ASSIGNEE_NOT_REVIEWER`), so the loop creates it with the catalog's `default_reviewer` and
-never needs `--force-create`.
+A non-empty catalog checks a card's assignee (`ASSIGNEE_NOT_IN_CATALOG`, exit 1) — a **CLI
+guard**, not a board invariant: an HTTP write bypasses it; the writer (`system`/`Orchestrator`)
+is never exempt. A review card must name a **reviewer-lane** role (`ASSIGNEE_NOT_REVIEWER`); the
+loop creates it with the catalog's `default_reviewer`, never `--force-create`.
 
 ### `worktree`
 
