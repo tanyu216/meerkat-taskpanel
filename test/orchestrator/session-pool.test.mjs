@@ -2430,6 +2430,62 @@ describe("worker session resume", () => {
     );
   });
 
+  // TP-0146 P3.3: fan-out completes in any order, but the results are applied
+  // in source order. The ledger's per-turn records are the observable proof.
+  it("applies fan-out results in source order regardless of completion order", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool({
+      behavior: ({ handle }) =>
+        new Promise((resolve) => {
+          // The second job finishes first; the apply loop must still be in
+          // source order.
+          const delay = handle.cwd === f.app ? 60 : 5;
+          setTimeout(() => resolve({ ids: [`a-${handle.cwd}`] }), delay);
+        }),
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    enqueueCard(join(f.dir), card(f, "T-2", f.api));
+
+    await pool.tick();
+
+    assert.deepEqual(
+      readCards(f.dir).value.cards.map((row) => [row.card, row.status]),
+      [
+        ["T-1", "done"],
+        ["T-2", "done"],
+      ],
+    );
+    assert.deepEqual(
+      readLedger(f.dir).value.subagents.map((row) => row.card),
+      ["T-1", "T-2"],
+      "results are recorded in source order, not completion order",
+    );
+  });
+
+  // TP-0146 P3.3: a bounded stop drains work, it does not consume the queue.
+  it("leaves pending handoffs intact across a bounded stop", async (t) => {
+    const f = fixture(t);
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+
+    await pool.stop();
+
+    const rows = readCards(f.dir).value.cards;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, "pending", "stop must not drop a handoff nobody ran");
+
+    // The next pool is the evidence that the row is still deliverable.
+    const next = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    t.after(() => next.stop());
+    await next.start();
+    await next.tick();
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+  });
+
   it("starts a fresh generation on a round bump and closes the old one", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
