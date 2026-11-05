@@ -231,6 +231,7 @@ function prepareDispatchTarget({
     project: target.project ?? card?.project ?? null,
     identifier,
     round,
+    title: card?.title ?? null,
     previousBranch,
     reuseExistingBranch,
     run: runGit,

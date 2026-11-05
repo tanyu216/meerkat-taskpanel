@@ -1,7 +1,8 @@
 /**
  * `taskctl worktree` — the local lifecycle for a **session** worktree.
  *
- * The loop owns card worktrees (`lane/<ref>`, registered in `workspaces.json`).
+ * The loop owns card worktrees (`lane/<ref>[-r<round>][-<slug>]`, registered in
+ * `workspaces.json`).
  * This command owns the other half: `.worktrees/<slug>` on a session branch,
  * with `git worktree list` as the only registry. It is local by construction —
  * no identity, no token, no board — exactly like `project map`.
