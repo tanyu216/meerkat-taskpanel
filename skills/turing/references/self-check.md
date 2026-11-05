@@ -1,8 +1,10 @@
 # Turing — self-check before delivery
 
-This pre-delivery audit runs against the current `.meerkat/<id>/card.md` and `plan.md`; it is
-not the delivery and not the `## Handoff` block.
-Call the `meerkat` board skill to refresh the brief before you start.
+This pre-delivery audit runs against the current `.meerkat/<id>/card.md` and `plan.md` when a
+card is present, and against the handed task, plan or requirement otherwise; it is not the
+delivery and not the `## Handoff` block. Run this audit in both modes; a card-only item is
+`not_applicable — no card`, and the audit itself is mandatory before the report. Call the
+`meerkat` board skill to refresh the brief before you start.
 
 ## Every branch
 

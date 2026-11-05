@@ -14,17 +14,18 @@ Verifies a development fix, including a **production bug**: does the fix remove 
 without breaking what surrounds it? Board operations are the `meerkat` board skill's contract;
 the shared contract in `SKILL.md` (Delivery and Hard boundaries) applies.
 
-Inputs: the bug card and the fix card/report, the commit under test, the original reproduction,
-logs or production evidence, and the previous passing baseline. The archived spec, PRD and
-prototype are not inputs here: verify against the defect, reproduction, frozen acceptance and
-baseline.
+Verify against the defect, the reproduction, the frozen acceptance and the baseline, not the
+design artifacts; read the bug card and the fix card/report, the commit under test, logs or
+production evidence and the previous passing baseline.
 
 ### 1. Plan (adopt and audit)
 
 Purpose: make this card's verification plan cover the defect. Leave behind `plan.md`. This
-card's plan is the one written or adopted by you, not the fix card's plan; adopt an attached
-plan before writing. Audit it: the baseline, the before/after reproduction and the blast
-radius cover the frozen acceptance.
+card's plan is the one **written or adopted by you**, not the fix card's plan; adopt an attached
+plan before writing. With a card and no plan attached, write it from the card and its frozen
+acceptance. Audit the plan in the three passes of `SKILL.md` §Plan audit — logic, blast radius
+and simplest reliable: the baseline, the before/after reproduction and the blast radius cover
+the frozen acceptance.
 
 ### 2. Establish the baseline
 

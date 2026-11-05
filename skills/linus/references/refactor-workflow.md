@@ -21,15 +21,9 @@ human.**
 ## Decision frontier
 
 The round settles the chosen candidate, the target seam and interface, the behaviour to pin and
-the rejected candidates. Record the answers in `plan.md`; Linus recommends, the director
-decides.
-
-## Inputs
-
-The card, its brief and frozen acceptance; this card's `plan.md`, **written or adopted by you**
-and audited before starting — the candidate report lives here and is the reviewer's evidence;
-the standard, architecture document, ADRs and `GLOSSARY.md` in the area; the contract, schema and
-migrations; `.env.example`; the tests that pin the current behaviour and the callers.
+the rejected candidates; this card's plan is the one **written or adopted by you**, and the
+candidate report lives there as the reviewer's evidence. Record the answers in `plan.md`; Linus
+recommends, the director decides.
 
 ### 0. Confirm the recorded foundation
 

@@ -5,7 +5,8 @@ refresh the card brief, then audit against the current card. The Shared checks a
 gates apply to **every branch**; then run the section for the branch you took. The evidence
 table lives in `plan.md` and grows while you work — this check audits it, it does not write it
 from memory. A no-card run skips the brief and board state: its evidence lives in the artifacts
-it produces.
+it produces. Run this audit in both modes; a card-only item is `not_applicable — no card`, and
+the audit itself is mandatory before delivery.
 
 This is the role's **pre-delivery audit**, not the delivery itself. It is not the `## Handoff` block: that block is a producer card's cross-card transfer (Jobs design, Linus
 architecture only).

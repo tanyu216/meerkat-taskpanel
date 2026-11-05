@@ -182,7 +182,7 @@ describe("role skills: identity, discovery and model invocation", () => {
 });
 
 describe("role workflows: plan, audit, execute, self-check and deliver", () => {
-  it("takes the card's plan before work — adopted first, then audited", () => {
+  it("takes the plan it is handed before work — adopted first, then audited", () => {
     for (const role of ["jobs", "linus"]) {
       const text = read(role);
       const start = text.indexOf("## Before work — the plan");
@@ -205,7 +205,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     }
   });
 
-  it("takes the card's plan before work in every Turing branch", () => {
+  it("takes the plan it is handed in every Turing branch", () => {
     for (const rel of [
       "references/test-design-workflow.md",
       "references/regression-workflow.md",
@@ -234,7 +234,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     );
   });
 
-  it("names an adopted plan in every branch input", () => {
+  it("names an adopted plan in every branch's first step", () => {
     for (const [role, rel] of [
       ["linus", "references/implementation-workflow.md"],
       ["linus", "references/refactor-workflow.md"],
@@ -242,6 +242,72 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     ]) {
       assert.match(read(role, rel), /written or adopted by you/, `${role}/${rel} accepts an adopted plan`);
     }
+  });
+
+  describe("role workflows: any input, not a prescribed card", () => {
+    const PLAIN = /task,\s*plan(?:,|\s+or)\s+(?:a\s+)?requirement/i;
+
+    it("describes the role for a plain task, plan or requirement", () => {
+      for (const role of ["jobs", "linus", "turing", "worker"]) {
+        const text = read(role);
+        const frontmatter = text.slice(0, text.indexOf("\n---", 4));
+        const description = frontmatter.match(/\ndescription: ([^\n]+)/)?.[1] ?? "";
+        assert.match(description, PLAIN, `${role}: the description invites a task, plan or requirement`);
+      }
+    });
+
+    it("ships no prescribed input section", () => {
+      for (const role of ["jobs", "linus", "turing", "worker"]) {
+        const refs = readdirSync(join(roleDir(role), "references"))
+          .filter((name) => name.endsWith(".md"))
+          .map((name) => `references/${name}`);
+        for (const rel of ["SKILL.md", ...refs]) {
+          const text = read(role, rel);
+          assert.doesNotMatch(text, /^## Inputs\b/m, `${role}/${rel} has no Inputs section`);
+          assert.doesNotMatch(text, /^Inputs:/m, `${role}/${rel} has no Inputs line`);
+        }
+      }
+    });
+
+    it("audits a plan through logic, blast radius and the simplest reliable option", () => {
+      for (const role of ["jobs", "linus", "turing", "worker"]) {
+        const text = read(role);
+        assert.match(text, /logic/i, `${role}: the audit names logic`);
+        assert.match(text, /blast radius/i, `${role}: checks the blast radius`);
+        assert.match(text, /simplest reliable/i, `${role}: chooses the simplest reliable option`);
+        assert.doesNotMatch(text, /impact scope/i, `${role}: uses the repo's blast-radius term`);
+      }
+      for (const rel of ["test-design-workflow.md", "regression-workflow.md", "performance-workflow.md"]) {
+        const text = read("turing", `references/${rel}`);
+        const plan = text.slice(text.indexOf("### 1. Plan"), text.indexOf("### 2."));
+        assert.match(plan, /logic/i, `${rel}: its plan step names logic`);
+        assert.match(plan, /blast radius/i, `${rel}: its plan step names the blast radius`);
+        assert.match(plan, /simplest reliable/i, `${rel}: its plan step names the simplest reliable option`);
+        assert.match(plan, /SKILL\.md/, `${rel}: the canonical wording lives once in SKILL.md`);
+      }
+    });
+
+    it("runs the pre-delivery self-check in both modes", () => {
+      for (const role of ["jobs", "linus", "turing", "worker"]) {
+        const skill = read(role);
+        assert.match(skill, /self-check\.md/, `${role}: delivery names the pre-delivery audit`);
+        const check = read(role, "references/self-check.md");
+        assert.match(check, /both modes/i, `${role}: the audit covers both modes`);
+        assert.match(check, /not_applicable — no card/, `${role}: card-only items are dispositioned`);
+      }
+    });
+
+    it("writes the plan from the card when the card carries none", () => {
+      for (const role of ["jobs", "linus", "turing", "worker"]) {
+        const text = read(role);
+        assert.match(text, /no plan attached/i, `${role}: names the card-without-plan path`);
+        assert.match(
+          text,
+          /no plan attached[\s\S]{0,200}(frozen acceptance|acceptance)/i,
+          `${role}: writes the plan from the card and its acceptance`,
+        );
+      }
+    });
   });
 
   it("runs a product card as frame → define → decide → validate → converge → deliver", () => {
@@ -863,7 +929,11 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(impl, /for a feature or behaviour change,[\s\S]*archived spec/, "a feature reads the design artifacts");
     assert.match(impl, /bug fix does not\s+need the design artifacts/, "a bug does not need them");
     assert.match(testDesign, /for a feature or behaviour change,[\s\S]*archived spec/, "test design reads them for a feature");
-    assert.match(regression, /are not inputs here/, "regression verifies the defect, not the design");
+    assert.match(
+      regression,
+      /verify against the defect, the reproduction, the frozen acceptance and the baseline/i,
+      "regression verifies the defect, not the design",
+    );
   });
 
   it("triages the card shape and hands off design outputs explicitly", () => {
@@ -927,7 +997,11 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(impl, /does not\s+need the design artifacts/i);
     assert.match(testDesign, /## Handoff/);
     assert.match(testDesign, /named report/i);
-    assert.match(regression, /not inputs here/);
+    assert.match(
+      regression,
+      /verify against the defect, the reproduction, the frozen acceptance and the baseline/i,
+    );
+    assert.doesNotMatch(regression, /^Inputs:/m, "the branch names no input contract");
     assert.match(testDesign, /test-plan\.md/);
     assert.match(turing, /API/i);
     assert.match(turing, /browser/i);

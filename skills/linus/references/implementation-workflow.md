@@ -21,15 +21,12 @@ Board operations are the `meerkat` board skill's contract; decisions follow the 
 The round settles the smallest design, files and contracts, test selection and any dependency.
 Record the answers in `plan.md`; Linus recommends, the director decides.
 
-## Inputs
-
-The card, its brief and frozen acceptance; this card's `plan.md`, **written or adopted by you**
-and audited before starting; for a feature or behaviour change, the `## Handoff` block names the
-archived spec, PRD and prototype and the acceptance source; a design artifact that disagrees
-with the card is a question, not a choice. **A bug fix does not need the design artifacts**: use
-the report, the reproduction and any production evidence. Read only this card's `plan.md`;
-the design card's plan is a different card's input. Read `docs/tech-spec.md`, the architecture document and the ADRs
-when present; a missing handoff path is a question, not a guessed slug.
+This card's plan is the one **written or adopted by you** and audited before starting.
+**A bug fix does not need the design artifacts**: use the report, the reproduction and any
+production evidence; for a feature or behaviour change, the `## Handoff` block names the
+archived spec, PRD and prototype and the acceptance source. A design artifact that disagrees
+with the card is a question, not a choice. Read `docs/tech-spec.md`, the architecture document
+and the ADRs when present; a missing handoff path is a question, not a guessed slug.
 
 ### 1. Understand and reproduce
 

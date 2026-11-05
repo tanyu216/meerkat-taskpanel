@@ -77,15 +77,6 @@ cards in its `## Handoff`. If the classification is genuinely unclear, ask throu
 and hold for the ladder's answer (`issue wait`); an escalation to `awaiting` or a bounded
 timeout parks the turn.
 
-## Inputs
-
-The card, its brief and frozen acceptance; this card's `plan.md`; the `## Handoff` when the
-director created this card from a design card; the existing repository's manifests, its
-standard, architecture document, ADRs, contract, `.env.example`, directory tree and
-`GLOSSARY.md`. On a reconstruction, the evidence the tree carries — manifests, lockfiles,
-container files, entry points, tests, hooks, CI and the code that enforces an invariant — is
-the input; a card is optional and `file:line` replaces it.
-
 ### 1. Frame the system
 
 **Purpose.** State what the system is for, who consumes it, what is in and out of scope, the

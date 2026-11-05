@@ -13,10 +13,11 @@ operations are the `meerkat` board skill's contract.
 
 ## 1. Read the accepted PRD and the upstream reports
 
-Inputs: the card, its frozen acceptance, this card's plan, the upstream design card's
-`## Handoff` and the delivered reports of the implementation and test cards. A graph stage's
-`design input: yes` means the PRD is the contract; a missing or unresolvable archived path is
-a question, not a guess.
+With a card, call the `meerkat` board skill to read the card and its brief. Work from the
+frozen acceptance and this card's plan, the upstream design card's `## Handoff`
+and the delivered reports of the implementation and test cards. A graph stage's `design input:
+yes` means the PRD is the contract; a missing or unresolvable archived path is a question, not a
+guess.
 
 ## 2. Build the Must ledger
 
