@@ -1166,6 +1166,107 @@ export function buildReviewEnvelope(input) {
   ].join("\n");
 }
 
+/** A non-empty trimmed string, or null. */
+function promptText(value) {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+/** Path text without trailing separators, so a joined line never doubles one. */
+function promptPath(value) {
+  const text = promptText(value);
+  return text === null ? null : text.replace(/[\\/]+$/, "");
+}
+
+/**
+ * The static board text a worker-lane card session receives when its role.json
+ * carries no `system_prompt` (an older install, or a role-less card).
+ */
+export const WORKER_SYSTEM_PROMPT_FALLBACK = [
+  "Read the task card first; it is authoritative for this card. Write and maintain the plan in the process directory.",
+  "The supervisor owns card.md and refreshes it from the board.",
+  "Carry the Flags above on every write.",
+  "Board: heartbeat this card at least every 10 minutes and deliver at in_review with a report;",
+  "the loop holds the claim and closes the card at done.",
+  "  taskctl issue heartbeat <ref> <flags>",
+  "  taskctl issue deliver <ref> --report-file - <flags>",
+  "For a question, route it to the director: leave a `question` comment and hold the card with `issue wait`.",
+  '  taskctl comment add <ref> --kind question --body "..." <flags>',
+  "  taskctl issue wait <ref> --question <id> <flags>",
+].join("\n");
+
+/** The reviewer-lane counterpart: the Step 0 validity check and the verdict form. */
+export const REVIEWER_SYSTEM_PROMPT_FALLBACK = [
+  "Read the task card first; it is authoritative. The supervisor owns card.md and keeps it fresh from the board.",
+  "Carry the Flags above on every write.",
+  "Board: heartbeat this review card; the card under review keeps its own holder. Deliver one",
+  "verdict on this review card with a report; the loop applies the verdict and closes the card.",
+  "Step 0 — before anything else: if the card under review is not in_review, or its delivery_round",
+  "is not the round above, leave a note on the review card and stop; the loop closes the review card.",
+  "  taskctl issue get <review-ref> --json <flags>",
+  "  taskctl issue heartbeat <review-ref> <flags>",
+  "  taskctl issue deliver <review-ref> --report-file - <flags>",
+  "The report's first line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.",
+  "A review ends in a verdict; insufficient evidence is REJECT with the findings.",
+].join("\n");
+
+/**
+ * The system prompt a card session is opened with.
+ *
+ * The runtime half — who the agent is, the card, the plan, the flags, and for a
+ * reviewer the card under review and its round — is formatted here from the
+ * supervisor's row. The static half is `role.json`'s `system_prompt` verbatim
+ * (or the lane fallback when the role carries none): it is never templated, so
+ * a role file cannot silently rewrite the card's paths.
+ *
+ * Pure: paths arrive already resolved and this only joins text.
+ *
+ * @param {{staticPrompt?: string|null, fallbackPrompt?: string|null, lane?: string|null,
+ *   agent?: string|null, project?: string|null, cardRef?: string|null,
+ *   cardPath?: string|null, planPath?: string|null, processDir?: string|null,
+ *   flags?: string|null, reviewRef?: string|null, reviewPath?: string|null,
+ *   reviewPlanPath?: string|null, round?: number|string|null}} input
+ * @returns {string}
+ */
+export function buildSessionSystemPrompt(input = {}) {
+  const reviewer = String(input.lane ?? "worker") === "reviewer";
+  const ref = promptText(input.cardRef) ?? "<card>";
+  const project = promptText(input.project) ?? "<project id>";
+  const lines = [];
+  if (reviewer) {
+    const original = promptText(input.reviewRef);
+    const round =
+      original !== null && promptText(input.round === null || input.round === undefined ? null : String(input.round)) !== null
+        ? ` (round ${input.round})`
+        : "";
+    lines.push(`You are the reviewer for the ${project} project — one delivered card.`);
+    lines.push(`Review card: ${ref}`);
+    const brief = promptPath(input.cardPath);
+    if (brief !== null) lines.push(`Review card brief: ${brief}`);
+    lines.push(`Card under review: ${original ?? "not recorded"}${round}`);
+    if (original !== null) {
+      const originalBrief = promptPath(input.reviewPath);
+      const originalPlan = promptPath(input.reviewPlanPath);
+      if (originalBrief !== null) lines.push(`Original brief: ${originalBrief}`);
+      if (originalPlan !== null) lines.push(`Original plan: ${originalPlan}`);
+    }
+  } else {
+    lines.push(
+      `You are ${promptText(input.agent) ?? "<agent>"} for the ${project} project — one card: ${ref}.`,
+    );
+    const card = promptPath(input.cardPath);
+    const plan = promptPath(input.planPath);
+    const processDir = promptPath(input.processDir);
+    if (card !== null) lines.push(`Task card: ${card}`);
+    if (plan !== null) lines.push(`Task plan: ${plan}`);
+    if (processDir !== null) lines.push(`Process directory: ${processDir}`);
+  }
+  lines.push(`Flags: ${promptText(input.flags) ?? "<flags>"}`);
+  const staticPrompt =
+    promptText(input.staticPrompt) ?? promptText(input.fallbackPrompt) ?? "";
+  if (staticPrompt !== "") lines.push("", staticPrompt);
+  return lines.join("\n");
+}
+
 /**
  * The prompt the Director lane gets for the **question lane**.
  *

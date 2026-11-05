@@ -21,7 +21,10 @@ install target, not a loop kind. The supervisor scans each installed kind's skil
 
 `role.json` is validated with bounded sizes, an id grammar, a lane vocabulary
 (`worker|reviewer`), and count caps. A malformed file is reported and skipped; it never wedges
-a poll.
+a poll. Its optional `system_prompt` is static board text (capped at 8 KiB); the supervisor
+formats the card's runtime values — agent, project, card and plan paths, flags — itself and
+appends the static text at session open. The local role catalog projection does not carry
+`system_prompt`: the catalog is the board-facing view, not the session prompt.
 
 ## The kind order
 

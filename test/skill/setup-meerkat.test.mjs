@@ -241,6 +241,10 @@ describe("skill frontmatter and the six-step shape", () => {
     assert.ok(Array.isArray(roleJson.shapes) && roleJson.shapes.length > 0);
     assert.match(roleJson.self_check, /^references\/.+\.md$/);
     assert.ok(existsSync(join(template, roleJson.self_check)), "the template's self-check resolves");
+    assert.ok(
+      typeof roleJson.system_prompt === "string" && roleJson.system_prompt.trim() !== "",
+      "the template ships the static card-session board text",
+    );
     assert.ok(existsSync(join(template, "references", "reviewer-prompt.md")), "the reviewer sample exists");
     const templateSkill = readFileSync(join(template, "SKILL.md"), "utf8");
     assert.match(templateSkill, /\nname: example\n/);
@@ -917,7 +921,7 @@ describe("scaffold-role.mjs — render and validate a role skill", () => {
     summary: "Owns operations on a running system.",
     shapes: ["operations on a running system", "release execution after a human decision"],
     responsibilities: ["Run the deployment", "Report the outcome"],
-    boundaries: ["Do not accept your own work", "Do not merge"],
+    boundaries: ["Stop at in_review; the acceptance_mode names the closer", "Deliver the committed tree"],
     workflow: [{ title: "Prepare", body: "Read the card." }],
     self_check: ["The gate is green"],
     ...overrides,
@@ -955,6 +959,49 @@ describe("scaffold-role.mjs — render and validate a role skill", () => {
     const second = runJson(t, SCAFFOLD, ["--spec", file, "--skills-dir", skills, "--json"], { cwd: temp(t), env: { HOME: home } });
     assert.equal(second.status, 0);
     assert.equal(second.body.status, "unchanged");
+  });
+
+  it("carries system_prompt, with a default when the spec omits it", (t) => {
+    const home = temp(t);
+    const skills = join(home, ".claude", "skills");
+    mkdirSync(skills, { recursive: true });
+
+    const explicit = "Read the card first.\nHeartbeat and deliver.";
+    const file = writeSpec(t, spec({ system_prompt: explicit }));
+    const result = runJson(t, SCAFFOLD, ["--spec", file, "--skills-dir", skills, "--json"], {
+      cwd: temp(t),
+      env: { HOME: home },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const identity = JSON.parse(readFileSync(join(skills, "ops", "role.json"), "utf8"));
+    assert.equal(identity.system_prompt, explicit, "the spec's system_prompt round-trips");
+
+    // The field is optional: a spec without one gets the default board text.
+    const bare = writeSpec(t, spec({ id: "bare", agent: "Bare" }));
+    const bareResult = runJson(t, SCAFFOLD, ["--spec", bare, "--skills-dir", skills, "--json"], {
+      cwd: temp(t),
+      env: { HOME: home },
+    });
+    assert.equal(bareResult.status, 0, bareResult.stderr);
+    const bareIdentity = JSON.parse(readFileSync(join(skills, "bare", "role.json"), "utf8"));
+    assert.ok(typeof bareIdentity.system_prompt === "string", "the default is written");
+    assert.match(bareIdentity.system_prompt, /heartbeat/i);
+    assert.match(bareIdentity.system_prompt, /in_review/);
+  });
+
+  it("renders the generated Hard limits as positive actions", (t) => {
+    const home = temp(t);
+    const skills = join(home, ".claude", "skills");
+    mkdirSync(skills, { recursive: true });
+    const result = runJson(t, SCAFFOLD, ["--spec", writeSpec(t, spec()), "--skills-dir", skills, "--json"], {
+      cwd: temp(t),
+      env: { HOME: home },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const generated = readFileSync(join(skills, "ops", "SKILL.md"), "utf8");
+    const limits = generated.slice(generated.indexOf("## Hard limits"));
+    assert.doesNotMatch(limits, /\b(?:do not|don't|never|must not|cannot|can't)\b/i);
+    assert.match(limits, /in_review/);
   });
 
   it("refuses different content without --force and replaces with it", (t) => {

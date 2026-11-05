@@ -81,11 +81,12 @@ function fakePool({ behavior, idPrefix = "sid" } = {}) {
   let next = 1;
   return {
     opened,
-    openSession({ cwd, sessionId, role, skillPath }) {
+    openSession({ cwd, sessionId, role, skillPath, systemPrompt }) {
       const handle = {
         cwd,
         role,
         skillPath: skillPath ?? null,
+        systemPrompt: systemPrompt ?? null,
         sessionId: sessionId ?? `${idPrefix}-${next++}`,
         closed: false,
         prompts: [],
@@ -132,7 +133,7 @@ const card = (f, ref, dir, role = "worker") => ({
 });
 
 /** Install one minimal role skill under the fixture's primary-kind home. */
-function installRole(dir, { id, agent, lanes, kind = "claude" }) {
+function installRole(dir, { id, agent, lanes, kind = "claude", systemPrompt = null }) {
   const skill = join(dir, `.${kind}`, "skills", id);
   mkdirSync(join(skill, "references"), { recursive: true });
   writeFileSync(
@@ -148,6 +149,7 @@ function installRole(dir, { id, agent, lanes, kind = "claude" }) {
       shapes: ["work"],
       responsibilities: [],
       boundaries: [],
+      ...(systemPrompt === null ? {} : { system_prompt: systemPrompt }),
       self_check: "references/self-check.md",
       reviewer_prompt: null,
     }),
@@ -436,6 +438,75 @@ describe("session pool", () => {
     );
     assert.match(worker.prompts[1], /work T-1/);
     assert.equal(reviewer.prompts[1], "work R-1");
+    await pool.stop();
+  });
+
+  it("opens the worker session with the formatted card context before any turn", async (t) => {
+    const f = fixture(t);
+    installRole(f.dir, {
+      id: "linus",
+      agent: "Linus",
+      lanes: ["worker"],
+      systemPrompt: "STATIC LINUS\nHeartbeat and deliver.",
+    });
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), { ...card(f, "T-1", f.app, "worker"), agent: "Linus" });
+    await pool.tick();
+
+    const worker = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
+    assert.ok(worker, "the worker session opens");
+    assert.equal(
+      worker.prompts[0],
+      "/linus\nFlags: --agent Linus --actor-kind=claude",
+      "the opener stays the bare skill load — the context rides the system prompt",
+    );
+    const cardPath = join(f.app, ".meerkat", "T-1", "card.md");
+    const planPath = join(f.app, ".meerkat", "T-1", "plan.md");
+    assert.match(worker.systemPrompt, /^You are Linus for the P project — one card: T-1\.$/m);
+    assert.ok(worker.systemPrompt.includes(`Task card: ${cardPath}`));
+    assert.ok(worker.systemPrompt.includes(`Task plan: ${planPath}`));
+    assert.match(worker.systemPrompt, /Flags: --agent Linus --actor-kind=claude/);
+    assert.match(worker.systemPrompt, /STATIC LINUS/);
+    await pool.stop();
+  });
+
+  it("opens the reviewer session with the review card, original and round", async (t) => {
+    const f = fixture(t);
+    installRole(f.dir, {
+      id: "reviewer",
+      agent: "Reviewer",
+      lanes: ["reviewer"],
+      systemPrompt: "REVIEW STATIC",
+    });
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "R-1", f.app, "reviewer"),
+      agent: "Reviewer",
+      review_of: "T-1",
+      review_round: 2,
+    });
+    await pool.tick();
+
+    const reviewer = fake.opened.find((handle) => handle.role === "reviewer" && handle.cwd === f.app);
+    assert.ok(reviewer, "the reviewer session opens");
+    assert.match(reviewer.systemPrompt, /^You are the reviewer for the P project — one delivered card\.$/m);
+    assert.ok(
+      reviewer.systemPrompt.includes(`Review card brief: ${join(f.app, ".meerkat", "R-1", "card.md")}`),
+    );
+    assert.match(reviewer.systemPrompt, /Card under review: T-1 \(round 2\)/);
+    assert.ok(
+      reviewer.systemPrompt.includes(`Original brief: ${join(f.app, ".meerkat", "T-1", "card.md")}`),
+    );
+    assert.ok(
+      reviewer.systemPrompt.includes(`Original plan: ${join(f.app, ".meerkat", "T-1", "plan.md")}`),
+    );
+    assert.match(reviewer.systemPrompt, /REVIEW STATIC/);
     await pool.stop();
   });
 
@@ -1536,6 +1607,12 @@ describe("session pool", () => {
     const worker = fake.opened.find((handle) => handle.role === "worker" && handle.cwd === f.app);
     assert.equal(worker.prompts.length, 1, "the card prompt is not sent into the dead handle");
     assert.match(worker.prompts[0], /^\/jobs/);
+    // The regression this card exists for: the opener died, but the card, plan,
+    // flags and board rules were already in the system prompt at open time.
+    assert.match(worker.systemPrompt, /Task card: .*T-1\/card\.md/);
+    assert.match(worker.systemPrompt, /Task plan: .*T-1\/plan\.md/);
+    assert.match(worker.systemPrompt, /Flags: --agent Jobs --actor-kind=claude/);
+    assert.match(worker.systemPrompt, /heartbeat this card at least every 10 minutes/);
     await pool.stop();
   });
 
@@ -1618,6 +1695,12 @@ describe("session pool", () => {
       .at(-1);
     assert.notEqual(second, first);
     assert.equal(second.sessionId, first.sessionId, "the reopened worker resumed the stored id");
+    assert.ok(first.systemPrompt, "a fresh session is opened with the card context");
+    assert.equal(
+      second.systemPrompt,
+      null,
+      "a resume reuses the native session that already carries the context",
+    );
     await pool.stop();
   });
 
@@ -2102,6 +2185,11 @@ describe("worker session resume", () => {
     const workers = fake.opened.filter((handle) => handle.role === "worker");
     assert.equal(workers.length, 2, "a new handle was opened for the replay");
     assert.match(workers[1].prompts[0], /could not be resumed/i);
+    assert.ok(workers[0].systemPrompt, "the fresh session carries the card context");
+    assert.ok(
+      workers[1].systemPrompt,
+      "a replay opens a fresh native session, so it re-injects the context",
+    );
     const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
     assert.equal(state.projects[workerKey("T-1", 1)].resumeState, "resumed_by_replay");
     const row = readCards(f.dir).value.cards.find((entry) => entry.id === "T-1-worker-resume");

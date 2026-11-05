@@ -445,6 +445,46 @@ describe("skill loading support", () => {
   });
 });
 
+describe("role.json — static system prompt", () => {
+  it("reads system_prompt as a role-level field", () => {
+    const f = fixture();
+    try {
+      writeRole(f, "claude", "linus", {
+        system_prompt: "Read the card first.\nHeartbeat and deliver.",
+      });
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.roles[0].systemPrompt, "Read the card first.\nHeartbeat and deliver.");
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("reads a missing system_prompt as an empty string so an old role.json still loads", () => {
+    const f = fixture();
+    try {
+      writeRole(f, "claude", "linus");
+      const result = loadRoles({ home: f.home, primaryKind: "claude" });
+      assert.equal(result.roles.length, 1);
+      assert.equal(result.roles[0].systemPrompt, "");
+      assert.deepEqual(result.warnings, []);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it("caps system_prompt at the byte limit", () => {
+    const f = fixture();
+    try {
+      writeRole(f, "claude", "linus", { system_prompt: "x".repeat(9000) });
+      const role = loadRoles({ home: f.home, primaryKind: "claude" }).roles[0];
+      assert.ok(Buffer.byteLength(role.systemPrompt, "utf8") <= 8 * 1024);
+      assert.equal(role.systemPrompt.length, 8 * 1024);
+    } finally {
+      f.cleanup();
+    }
+  });
+});
+
 describe("skill fingerprint", () => {
   it("changes when any installed skill file changes, and is null for a missing directory", () => {
     const f = fixture();

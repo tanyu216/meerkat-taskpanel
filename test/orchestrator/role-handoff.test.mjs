@@ -20,7 +20,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { buildHandoff, buildReviewHandoff } from "../../src/foundation/scheduling.mjs";
+import {
+  buildHandoff,
+  buildReviewHandoff,
+  buildSessionSystemPrompt,
+  REVIEWER_SYSTEM_PROMPT_FALLBACK,
+  WORKER_SYSTEM_PROMPT_FALLBACK,
+} from "../../src/foundation/scheduling.mjs";
 import { wakeHandoff } from "../../src/orchestrator/runners.mjs";
 
 const hash = (text) => createHash("sha256").update(text).digest("hex");
@@ -72,6 +78,119 @@ const REVIEW_INPUT = {
   agent: "bob",
   actorKind: "claude",
 };
+
+describe("buildSessionSystemPrompt — the card context loaded at session open", () => {
+  const WORKER_PROMPT_INPUT = {
+    staticPrompt: "STATIC BODY",
+    fallbackPrompt: "FALLBACK BODY",
+    lane: "worker",
+    agent: "Linus",
+    project: "P1",
+    cardRef: "TP-1",
+    cardPath: "/work/app/.meerkat/TP-1/card.md",
+    planPath: "/work/app/.meerkat/TP-1/plan.md",
+    processDir: "/work/app/.meerkat/TP-1",
+    flags: "--agent Linus --actor-kind=claude",
+  };
+
+  const REVIEW_PROMPT_INPUT = {
+    staticPrompt: "REVIEW STATIC",
+    fallbackPrompt: "REVIEW FALLBACK",
+    lane: "reviewer",
+    agent: "Reviewer",
+    project: "P2",
+    cardRef: "R-9",
+    cardPath: "/work/app/.meerkat/R-9/card.md",
+    planPath: "/work/app/.meerkat/R-9/plan.md",
+    processDir: "/work/app/.meerkat/R-9",
+    flags: "--agent Reviewer --actor-kind=claude",
+    reviewRef: "T-1",
+    reviewPath: "/work/app/.meerkat/T-1/card.md",
+    reviewPlanPath: "/work/app/.meerkat/T-1/plan.md",
+    round: 2,
+  };
+
+  it("formats the worker runtime context, then appends the static prompt verbatim", () => {
+    assert.equal(
+      buildSessionSystemPrompt(WORKER_PROMPT_INPUT),
+      [
+        "You are Linus for the P1 project — one card: TP-1.",
+        "Task card: /work/app/.meerkat/TP-1/card.md",
+        "Task plan: /work/app/.meerkat/TP-1/plan.md",
+        "Process directory: /work/app/.meerkat/TP-1",
+        "Flags: --agent Linus --actor-kind=claude",
+        "",
+        "STATIC BODY",
+      ].join("\n"),
+    );
+  });
+
+  it("formats the reviewer runtime context with the original card, plan and round", () => {
+    assert.equal(
+      buildSessionSystemPrompt(REVIEW_PROMPT_INPUT),
+      [
+        "You are the reviewer for the P2 project — one delivered card.",
+        "Review card: R-9",
+        "Review card brief: /work/app/.meerkat/R-9/card.md",
+        "Card under review: T-1 (round 2)",
+        "Original brief: /work/app/.meerkat/T-1/card.md",
+        "Original plan: /work/app/.meerkat/T-1/plan.md",
+        "Flags: --agent Reviewer --actor-kind=claude",
+        "",
+        "REVIEW STATIC",
+      ].join("\n"),
+    );
+  });
+
+  it("records a missing review target instead of inventing one", () => {
+    const text = buildSessionSystemPrompt({
+      ...REVIEW_PROMPT_INPUT,
+      reviewRef: null,
+      reviewPath: null,
+      reviewPlanPath: null,
+      round: null,
+    });
+    assert.match(text, /^Card under review: not recorded$/m);
+    assert.doesNotMatch(text, /Original brief:/);
+    assert.doesNotMatch(text, /Original plan:/);
+    assert.match(text, /REVIEW STATIC/);
+  });
+
+  it("omits the round when the review card records none", () => {
+    const text = buildSessionSystemPrompt({ ...REVIEW_PROMPT_INPUT, round: null });
+    assert.match(text, /^Card under review: T-1$/m);
+  });
+
+  it("falls back to the lane's built-in text when the role carries no static prompt", () => {
+    const worker = buildSessionSystemPrompt({
+      ...WORKER_PROMPT_INPUT,
+      staticPrompt: "",
+      fallbackPrompt: WORKER_SYSTEM_PROMPT_FALLBACK,
+    });
+    assert.match(worker, /heartbeat this card at least every 10 minutes/);
+    assert.match(worker, /deliver at in_review with a report/);
+    assert.match(worker, /issue wait/);
+    assert.ok(worker.endsWith(WORKER_SYSTEM_PROMPT_FALLBACK), "the worker fallback is appended");
+
+    const reviewer = buildSessionSystemPrompt({
+      ...REVIEW_PROMPT_INPUT,
+      staticPrompt: "",
+      fallbackPrompt: REVIEWER_SYSTEM_PROMPT_FALLBACK,
+    });
+    assert.match(reviewer, /VERDICT: APPROVE/);
+    assert.match(reviewer, /Step 0/);
+    assert.ok(reviewer.endsWith(REVIEWER_SYSTEM_PROMPT_FALLBACK), "the reviewer fallback is appended");
+  });
+
+  it("never emits a doubled separator for a trailing-slash process directory", () => {
+    const text = buildSessionSystemPrompt({
+      ...WORKER_PROMPT_INPUT,
+      processDir: "/work/app/.meerkat/TP-1/",
+    });
+    assert.match(text, /^Process directory: \/work\/app\/\.meerkat\/TP-1$/m);
+    assert.doesNotMatch(text, /\/\/\.meerkat/);
+  });
+});
 
 describe("handoffs without a role stay byte-identical", () => {
   it("keeps the worker handoff unchanged by the role layer", () => {
