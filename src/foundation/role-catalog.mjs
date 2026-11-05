@@ -10,8 +10,11 @@
  * carries this document.
  *
  * The shape is deliberately narrower than a role skill: only the fields a caller
- * can act on (`agent`, `id`, lanes, shapes, text). Host paths (`skillDir`, the
- * workflow/self-check files) stay on the machine that discovered them.
+ * can act on (`agent`, `id`, lanes, shapes, `summary`). The role contract's prose
+ * (`responsibilities`, `boundaries`, `system_prompt`) stays in each
+ * `skills/<id>/role.json` — the catalog is a routing projection and never carries
+ * it. Host paths (`skillDir`, the workflow/self-check files) stay on the machine
+ * that discovered them.
  *
  * Validation reuses `roles.mjs`'s limits so the reader of `role.json` and the
  * reader of `roles.json` cannot drift. A malformed or newer-schema file is
@@ -145,18 +148,6 @@ function normalizeCatalogRole(raw, index, errors) {
   }
 
   const shapes = catalogStringList(raw.shapes, ROLES_LIMITS.shapes, `roles[${index}].shapes`, errors);
-  const responsibilities = catalogStringList(
-    raw.responsibilities,
-    ROLES_LIMITS.responsibilities,
-    `roles[${index}].responsibilities`,
-    errors,
-  );
-  const boundaries = catalogStringList(
-    raw.boundaries,
-    ROLES_LIMITS.boundaries,
-    `roles[${index}].boundaries`,
-    errors,
-  );
 
   let defaultReviewer = false;
   if (raw.default_reviewer !== undefined) {
@@ -177,8 +168,6 @@ function normalizeCatalogRole(raw, index, errors) {
     summary,
     lanes,
     shapes: shapes ?? [],
-    responsibilities: responsibilities ?? [],
-    boundaries: boundaries ?? [],
     installed_on: installedOn,
     default_reviewer: defaultReviewer,
   };
@@ -285,8 +274,6 @@ export function projectRole(role) {
     summary: role.summary,
     lanes: [...(role.lanes ?? [])],
     shapes: [...(role.shapes ?? [])],
-    responsibilities: [...(role.responsibilities ?? [])],
-    boundaries: [...(role.boundaries ?? [])],
     installed_on: [...(role.installedOn ?? [])],
     default_reviewer: role.defaultReviewer === true,
   };

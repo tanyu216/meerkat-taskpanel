@@ -45,8 +45,6 @@ const catalog = {
       summary: "",
       lanes: ["worker"],
       shapes: ["product brief"],
-      responsibilities: [],
-      boundaries: [],
       installed_on: ["claude"],
       default_reviewer: false,
     },

@@ -36,8 +36,6 @@ const role = (id, agent, extra = {}) => ({
   summary: "",
   lanes: ["worker"],
   shapes: [],
-  responsibilities: [],
-  boundaries: [],
   installed_on: ["claude"],
   default_reviewer: false,
   ...extra,
@@ -87,6 +85,29 @@ describe("cli/role — list", () => {
     assert.match(human.stdout, /role catalog: .*roles\.json \(source: skills/);
     assert.match(human.stdout, /^agent +id +title +lanes +installed_on$/m);
     assert.match(human.stdout, /^Jobs +jobs +Product design +worker +claude$/m);
+  });
+
+  it("projects a legacy catalog on read and never rewrites the file", () => {
+    const dir = configDir();
+    const file = join(dir, "roles.json");
+    // A file written before the projection shrank: it still carries the prose.
+    const body = JSON.stringify(payload([{
+      ...role("jobs", "Jobs", { title: "Product design" }),
+      responsibilities: ["write the product brief"],
+      boundaries: ["no implementation"],
+    }]));
+    writeFileSync(file, body, "utf8");
+
+    const listed = run(dir, ["role", "list", "--json"]);
+    assert.equal(listed.status, 0, listed.stderr);
+    const data = dataOf(listed);
+    assert.deepEqual(data.roles.map((entry) => entry.id), ["jobs"]);
+    assert.equal(Object.hasOwn(data.roles[0], "responsibilities"), false);
+    assert.equal(Object.hasOwn(data.roles[0], "boundaries"), false);
+    assert.equal(JSON.stringify(data).includes("write the product brief"), false);
+
+    // Confirmed decision: a legacy file is projected on read, never healed in place.
+    assert.equal(readFileSync(file, "utf8"), body, "an unchanged catalog is not rewritten");
   });
 
   it("shows its help", () => {
@@ -145,6 +166,43 @@ describe("cli/role — sync", () => {
     });
     assert.equal(shrunk.status, 0, shrunk.stderr);
     assert.deepEqual(dataOf(run(dir, ["role", "list", "--json"])).roles.map((r) => r.id), ["worker"]);
+  });
+
+  it("stores only the projection when the payload carries the long-form text", () => {
+    const dir = configDir();
+    const result = run(dir, ["role", "sync", "--file", "-", "--json"], {
+      input: JSON.stringify(payload([{
+        ...role("jobs", "Jobs"),
+        responsibilities: ["write the product brief", "define acceptance"],
+        boundaries: ["no implementation"],
+      }])),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(dataOf(result).changed, true);
+
+    const stored = JSON.parse(readFileSync(join(dir, "roles.json"), "utf8"));
+    assert.equal(stored.roles.length, 1);
+    assert.equal(Object.hasOwn(stored.roles[0], "responsibilities"), false);
+    assert.equal(Object.hasOwn(stored.roles[0], "boundaries"), false);
+    assert.equal(readFileSync(join(dir, "roles.json"), "utf8").includes("write the product brief"), false);
+  });
+
+  it("leaves a legacy file byte-identical when its content has not changed", () => {
+    const dir = configDir();
+    const file = join(dir, "roles.json");
+    const body = JSON.stringify(payload([{
+      ...role("jobs", "Jobs"),
+      responsibilities: ["write the product brief"],
+      boundaries: ["no implementation"],
+    }]));
+    writeFileSync(file, body, "utf8");
+
+    const same = run(dir, ["role", "sync", "--file", "-", "--json"], {
+      input: JSON.stringify(payload([role("jobs", "Jobs")])),
+    });
+    assert.equal(same.status, 0, same.stderr);
+    assert.equal(dataOf(same).changed, false, "the dropped prose is not a content change");
+    assert.equal(readFileSync(file, "utf8"), body, "the legacy file is not healed in place");
   });
 
   it("reads a file path as well as stdin", () => {
