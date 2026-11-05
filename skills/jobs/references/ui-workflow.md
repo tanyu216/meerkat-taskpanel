@@ -20,9 +20,11 @@ Prototype design and validation
 
 ## Before work — the plan
 
-Call the `meerkat` board skill to take the card's plan: an existing `.meerkat/<id>/plan.md` is
-this card's plan (extend it), an attached plan is adopted, and **no plan attached** writes one
-from the card. Audit it; the prototype plan links to the card index.
+With a card, call the `meerkat` board skill to take its plan: an existing `.meerkat/<id>/plan.md`
+is this card's plan (extend it), an attached plan is adopted, and **no plan attached** writes one
+from the card and its frozen acceptance. With no card, the handed task, plan or requirement is
+the plan source. Audit it with the three passes in `SKILL.md` §Before work — the plan; the
+prototype plan links to the card index.
 
 ## Decide before you build
 

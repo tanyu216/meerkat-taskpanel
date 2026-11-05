@@ -15,9 +15,11 @@ correctness gate.
 
 ### 1. Plan (adopt and audit)
 
-This card's plan is the one written or adopted by you; adopt an attached plan before writing.
-Audit it: metric, load, baseline, threshold and a reproducible environment. Leave behind
-`plan.md`.
+This card's plan is the one **written or adopted by you**; adopt an attached plan before
+writing. With a card and no plan attached, write it from the card and its frozen acceptance.
+Audit the plan in the three passes of `SKILL.md` §Plan audit — logic, blast radius and
+simplest reliable: metric, load, baseline, threshold and a reproducible environment. Leave
+behind `plan.md`.
 
 ### 2. Question, environment and workload
 

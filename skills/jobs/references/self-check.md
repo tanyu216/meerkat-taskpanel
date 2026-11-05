@@ -1,9 +1,11 @@
 # Jobs — self-check before delivery
 
 This is the role's **pre-delivery audit**, not the delivery itself; it is not the `## Handoff` block.
-Call the `meerkat` board skill to refresh the card brief first. Name the mode: product flow only,
-product plus prototype on one card, prototype card, or standalone. The requirement → evidence
-table lives in `plan.md`; this check audits it, it does not write it from memory.
+Run this audit in both modes — a card delivery or a standalone run; it is mandatory before the
+report. With a card, call the `meerkat` board skill to refresh the card brief first. Name the mode:
+product flow only, product plus prototype on one card, prototype card, or standalone. The
+requirement → evidence table lives in `plan.md`; this check audits it, it does not write it from
+memory. A card-only item is recorded `not_applicable — no card`.
 
 ## Direction check (product flow)
 
