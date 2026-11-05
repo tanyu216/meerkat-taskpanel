@@ -485,9 +485,12 @@ describe("session pool", () => {
     const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
     t.after(() => pool.stop());
     await pool.start();
+    // The dispatcher always writes `round` (the review card's own delivery
+    // round, 1 here); the audited round lives in `review_round`.
     enqueueCard(join(f.dir), {
       ...card(f, "R-1", f.app, "reviewer"),
       agent: "Reviewer",
+      round: 1,
       review_of: "T-1",
       review_round: 2,
     });
@@ -507,6 +510,35 @@ describe("session pool", () => {
       reviewer.systemPrompt.includes(`Original plan: ${join(f.app, ".meerkat", "T-1", "plan.md")}`),
     );
     assert.match(reviewer.systemPrompt, /REVIEW STATIC/);
+    await pool.stop();
+  });
+
+  it("omits the reviewed round when the review card records none", async (t) => {
+    const f = fixture(t);
+    installRole(f.dir, {
+      id: "reviewer",
+      agent: "Reviewer",
+      lanes: ["reviewer"],
+      systemPrompt: "REVIEW STATIC",
+    });
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    // `round` is the review card's own delivery round; it must not stand in for
+    // a missing audited round.
+    enqueueCard(join(f.dir), {
+      ...card(f, "R-1", f.app, "reviewer"),
+      agent: "Reviewer",
+      round: 1,
+      review_of: "T-1",
+    });
+    await pool.tick();
+
+    const reviewer = fake.opened.find((handle) => handle.role === "reviewer" && handle.cwd === f.app);
+    assert.ok(reviewer, "the reviewer session opens");
+    assert.match(reviewer.systemPrompt, /^Card under review: T-1$/m);
+    assert.doesNotMatch(reviewer.systemPrompt, /\(round /);
     await pool.stop();
   });
 

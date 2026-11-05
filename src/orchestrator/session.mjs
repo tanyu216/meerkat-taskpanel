@@ -1459,7 +1459,10 @@ export function createSessionPool(input = {}) {
         reviewRef: row.review_of ?? null,
         reviewPath: row.review_of ? join(dir, cardFileRel(row.review_of)) : null,
         reviewPlanPath: row.review_of ? join(dir, cardDirRel(row.review_of), "plan.md") : null,
-        round: row.round ?? row.review_round ?? 1,
+        // A review row's `round` is the review card's own delivery round (1 for
+        // a fresh review card); the audited round is `review_round`, and a
+        // missing one stays null so the prompt omits `(round N)`.
+        round: lane === "reviewer" ? (row.review_round ?? null) : (row.round ?? 1),
       });
       const openOptions = {
         cwd: dir,
