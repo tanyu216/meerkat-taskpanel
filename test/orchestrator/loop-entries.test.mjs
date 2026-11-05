@@ -38,8 +38,12 @@ import {
   createProjectAdmission,
   createQueueDispatch,
   isGitCheckout,
+  recordPatrolAdmissionFailure,
   reassignCard,
+  settlePatrolDispatchFailure,
 } from "../../src/orchestrator/passes.mjs";
+import { createDeferralRecorder, readDeferralLedger } from "../../src/orchestrator/deferrals.mjs";
+import { holdCard, releaseCard } from "../../src/orchestrator/holds.mjs";
 import { QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
 import { findWorkspace, upsertWorkspaceRecord } from "../../src/orchestrator/workspace.mjs";
 import { runContinue, runPollTick, runQuestionTick } from "../../src/orchestrator/runners.mjs";
@@ -2496,5 +2500,134 @@ describe("poll deferral accounting", () => {
     );
     assert.equal(result.failed, 1);
     assert.deepEqual(released, ["T-1"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Patrol — the second admission site
+// ---------------------------------------------------------------------------
+
+describe("patrol admission settlement", () => {
+  /**
+   * A real deferral recorder plus the real board writes against a sentinel CLI:
+   * the argv sequence is the evidence, the ledger is the count.
+   */
+  function settlementFixture() {
+    const dir = tempDir("tp-patrol-settle-");
+    const { script, record } = sentinelCli(dir);
+    const opts = { cli: script, actorKind: "system", dryRun: false, cliEnv: { TP_SENTINEL: record } };
+    const log = () => {};
+    const stopped = [];
+    const discarded = [];
+    const deferrals = createDeferralRecorder({
+      stateDir: dir,
+      postComment: () => ({ ok: true }),
+      log,
+    });
+    const input = {
+      stateDir: dir,
+      log,
+      deferrals,
+      hold: (id, payload) => holdCard(opts, log, id, payload),
+      release: (id, payload) => releaseCard(opts, log, id, payload),
+      stopWatch: async (owned) => { stopped.push(owned); },
+      discard: (workspace) => { discarded.push(workspace); },
+    };
+    return { dir, record, input, stopped, discarded };
+  }
+
+  /** The board moves this fixture made, as the argv tail from `issue`. */
+  function moves(record) {
+    return calls(record)
+      .filter((call) => call.includes("issue") && call.includes("move"))
+      .map((call) => call.slice(call.indexOf("issue")));
+  }
+
+  it("hands the claim back when a patrol dispatch is refused after the claim", async () => {
+    const f = settlementFixture();
+    const result = await settlePatrolDispatchFailure(f.input, {
+      identifier: "T-1",
+      reason: "no reviewer-lane executor",
+      round: 1,
+      owned: { ref: "T-1", out: "/tmp/T-1.md" },
+      workspace: { identifier: "T-1", round: 1 },
+      workspaceCreated: true,
+    });
+    assert.deepEqual(result, { ok: false });
+    assert.deepEqual(moves(f.record), [
+      ["issue", "move", "T-1", "todo", "--reason", "no reviewer-lane executor"],
+    ]);
+    assert.equal(readDeferralLedger(f.dir).value.cards["T-1"].count, 1);
+    assert.deepEqual(f.stopped, [{ ref: "T-1", out: "/tmp/T-1.md" }], "the watch is released");
+    assert.deepEqual(f.discarded, [{ identifier: "T-1", round: 1 }], "the workspace is released");
+  });
+
+  it("parks a patrol card at the third post-claim dispatch failure", async () => {
+    const f = settlementFixture();
+    const settle = () =>
+      settlePatrolDispatchFailure(f.input, { identifier: "T-1", reason: "still refused", round: 2 });
+    await settle();
+    await settle();
+    assert.deepEqual(
+      moves(f.record).map((call) => call[3]),
+      ["todo", "todo"],
+      "the first two failures hand the claim back",
+    );
+    await settle();
+    const held = moves(f.record).at(-1);
+    assert.deepEqual(held.slice(0, 6), [
+      "issue", "move", "T-1", "blocked", "--blocked-reason", "resource",
+    ]);
+    assert.equal(
+      readDeferralLedger(f.dir).value.cards["T-1"],
+      undefined,
+      "a successful hold clears the streak",
+    );
+  });
+
+  it("keeps the streak when the claim cannot be released and the hold also fails", async () => {
+    const f = settlementFixture();
+    const errors = [];
+    const input = {
+      ...f.input,
+      log: (line, meta) => { if (meta?.level === "error") errors.push(line); },
+      hold: async () => ({ ok: false, error: "move refused" }),
+      release: async () => ({ ok: false, error: "board unavailable" }),
+    };
+    await settlePatrolDispatchFailure(input, {
+      identifier: "T-1",
+      reason: "denied",
+      round: 1,
+    });
+    assert.match(errors.at(-1), /release and hold both failed for T-1/);
+    // The release failure itself is a dispatch failure: the streak survives so
+    // the next pass tries the hold again instead of restarting at one.
+    const entry = readDeferralLedger(f.dir).value.cards["T-1"];
+    assert.equal(entry.count, 1);
+    assert.equal(entry.code, "DISPATCH_FAILED");
+  });
+
+  it("parks a patrol admission failure at five, not five hundred", async () => {
+    const f = settlementFixture();
+    const record = (n) =>
+      recordPatrolAdmissionFailure(f.input, {
+        identifier: "T-2",
+        code: "ADMISSION_FAILED",
+        reason: "workspace create failed",
+        round: 1,
+        version: 7,
+        blockedReason: "external",
+      });
+    for (let n = 1; n <= 4; n += 1) {
+      const result = await record(n);
+      assert.equal(result.held, false, `attempt ${n} keeps retrying`);
+    }
+    assert.deepEqual(moves(f.record), [], "an admission failure never moves the card");
+    const fifth = await record(5);
+    assert.equal(fifth.held, true);
+    assert.deepEqual(moves(f.record).at(-1).slice(0, 6), [
+      "issue", "move", "T-2", "blocked", "--blocked-reason", "external",
+    ]);
+    assert.equal(readDeferralLedger(f.dir).value.cards["T-2"], undefined);
   });
 });

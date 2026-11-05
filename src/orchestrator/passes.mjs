@@ -33,12 +33,13 @@ import {
   runWorkflowPass,
 } from "./board.mjs";
 import { briefCards, openCardWatch, registerCardWatch, stopCardWatch } from "./card-watch.mjs";
-import { holdCard as holdOnBoard } from "./holds.mjs";
+import { holdCard as holdOnBoard, releaseCard as releaseOnBoard } from "./holds.mjs";
 import {
   createDeferralRecorder,
   deferralGate,
   pruneDeferrals,
   readDeferralLedger,
+  shouldHoldDeferral,
   writeDeferralLedger,
 } from "./deferrals.mjs";
 import { effectiveScanAgents, parseArgs, resolveLoopConfig, roleIsReviewer, roleIsWorker, USAGE } from "./options.mjs";
@@ -279,6 +280,111 @@ function deferralRecorderFor(opts, stateDir, log) {
       return posted.ok ? { ok: true } : { ok: false, error: posted.error };
     },
   });
+}
+
+/**
+ * Record one patrol **admission** failure and park the card at its bound.
+ *
+ * The patrol is the second admission site: it must count the same card-scoped
+ * failure the poll counts, or the lane retries silently forever. The hold bound
+ * and the ledger are the shared ones; only the board write differs (patrol is
+ * pre-claim here, so nothing is handed back).
+ *
+ * Exported with injected side effects so the bound is testable without a hub
+ * or a resident pool — the closure that calls it cannot be reached otherwise.
+ *
+ * @param {{deferrals: object, hold: Function, log?: Function}} input
+ * @param {{identifier: string, code?: string, reason: string, round: number,
+ *   version?: number|null, blockedReason?: string}} failure
+ * @returns {Promise<{held: boolean, entry: object|null}>}
+ */
+export async function recordPatrolAdmissionFailure(input, failure) {
+  const {
+    identifier,
+    code = "ADMISSION_FAILED",
+    reason,
+    round,
+    version = null,
+    blockedReason = "external",
+  } = failure;
+  const { deferrals, hold, log = () => {} } = input;
+  const entry = deferrals.record(identifier, { code, reason, round, version });
+  if (!shouldHoldDeferral(entry)) return { held: false, entry };
+  const held = await hold(identifier, {
+    code: entry.code ?? code,
+    reason: entry.reason ?? reason,
+    blockedReason,
+  });
+  if (held?.ok === true) {
+    deferrals.clear(identifier);
+    log(
+      `patrol: ${identifier} parked after ${entry.count} consecutive ${entry.code ?? code} failures`,
+      { level: "warn" },
+    );
+    return { held: true, entry };
+  }
+  log(`patrol: hold ${identifier} failed (${held?.error ?? "unknown error"})`, { level: "error" });
+  return { held: false, entry };
+}
+
+/**
+ * Settle a patrol turn whose **claim succeeded** but whose dispatch cannot
+ * start: hand the claim back, or park the card at the dispatch bound.
+ *
+ * A card left `in_progress` with no process is a silent lock; this is the one
+ * place that ends it. The claim itself bumps the board version, so the streak
+ * is recorded version-less — a version-keyed entry would reset on every pass
+ * and never reach the bound. The watch and any workspace this pass created are
+ * released either way.
+ *
+ * @param {{stateDir: string, log: Function, deferrals: object, hold: Function,
+ *   release: Function, stopWatch?: Function, discard?: Function}} input
+ * @param {{identifier: string, reason: string, round: number,
+ *   owned?: object|null, workspace?: object|null, workspaceCreated?: boolean}} failure
+ * @returns {Promise<{ok: false}>}
+ */
+export async function settlePatrolDispatchFailure(input, failure) {
+  const {
+    identifier,
+    reason,
+    round,
+    owned = null,
+    workspace = null,
+    workspaceCreated = false,
+  } = failure;
+  const { log, deferrals, hold, release, stopWatch = async () => {}, discard = () => {} } = input;
+  const entry = deferrals.record(identifier, {
+    code: "DISPATCH_FAILED",
+    reason,
+    round,
+    version: null,
+  });
+  if (shouldHoldDeferral(entry)) {
+    const held = await hold(identifier, {
+      code: "DISPATCH_FAILED",
+      reason,
+      blockedReason: "resource",
+    });
+    if (held?.ok === true) deferrals.clear(identifier);
+    else log(`patrol: could not park ${identifier} (${held?.error ?? "unknown error"})`, { level: "error" });
+  } else {
+    const released = await release(identifier, { reason });
+    if (released?.ok !== true) {
+      // The claim is still held: fall through to the hard stop rather than
+      // leaving an in_progress card with no owner.
+      const held = await hold(identifier, {
+        code: "CLAIM_RELEASE_FAILED",
+        reason,
+        blockedReason: "resource",
+      });
+      if (held?.ok !== true) {
+        log(`patrol: release and hold both failed for ${identifier}`, { level: "error" });
+      }
+    }
+  }
+  if (owned !== null) await stopWatch(owned);
+  if (workspaceCreated === true) discard(workspace);
+  return { ok: false };
 }
 
 export function createProjectAdmission(input) {
@@ -1141,13 +1247,25 @@ export async function runPatrolOnce(opts, env = process.env) {
         identifier: alert.identifier,
         log,
       });
+      // The patrol is the second admission site. A card-scoped failure counts
+      // the same streak the poll counts, and parks at the same bound.
+      const settlement = {
+        stateDir,
+        log,
+        deferrals,
+        hold: (identifier, payload) => holdOnBoard(opts, log, identifier, payload),
+        release: (identifier, payload) => releaseOnBoard(opts, log, identifier, payload),
+        stopWatch: (target) => stopCardWatch(opts, target),
+        discard: (workspace) => discardWorkspace({ stateDir, workspace }),
+      };
       if (prepared.ok !== true) {
-        // The patrol is the second admission site: count the same card-scoped
-        // failure poll counts, or this lane retries silently forever.
-        deferrals.record(alert.identifier, {
+        await recordPatrolAdmissionFailure(settlement, {
+          identifier: alert.identifier,
           code: prepared.code ?? "ADMISSION_FAILED",
           reason: prepared.why,
           round: Number(task?.delivery_round ?? 1),
+          version: Number.isInteger(task?.version) ? task.version : null,
+          blockedReason: "external",
         });
         log(`patrol: ${alert.identifier} — ${prepared.why}; notify-only, no LLM turn`);
         return { ok: false };
@@ -1167,14 +1285,19 @@ export async function runPatrolOnce(opts, env = process.env) {
           owner: `${opts.actorKind}:${action.agent}`,
         });
         if (watched.ok !== true) {
-          if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace });
           const reason =
             `card brief watch failed: ${watched.error ?? "unknown error"}`;
-          deferrals.record(alert.identifier, {
+          await recordPatrolAdmissionFailure(settlement, {
+            identifier: alert.identifier,
             code: "ADMISSION_BRIEF_WATCH_FAILED",
             reason,
             round: Number(task?.delivery_round ?? 1),
+            version: Number.isInteger(task?.version) ? task.version : null,
+            blockedReason: "external",
           });
+          // The admission is what failed; the reservation this pass made goes
+          // with it.
+          if (prepared.created) discardWorkspace({ stateDir, workspace: prepared.workspace });
           log(`patrol: ${alert.identifier} — ${reason}; notify-only, no LLM turn`);
           return { ok: false };
         }
@@ -1212,8 +1335,10 @@ export async function runPatrolOnce(opts, env = process.env) {
         if (owned !== null) await stopCardWatch(opts, owned);
         return { ok: false };
       }
-      // Admission is proven: the card is no longer deferred.
-      deferrals.clear(alert.identifier);
+      // The claim is taken, but the card is not dispatched yet: the streak is
+      // cleared only after `enqueueCard` succeeds. Clearing here would reset a
+      // post-claim dispatch failure to one on every pass (the early returns
+      // below re-record), so the card would retry forever instead of parking.
       const round = task?.delivery_round ?? 1;
       const { role, agentRole, handoff, worker_key, actorKind, executorReady } = buildHandoffRow({
         opts,
@@ -1231,11 +1356,25 @@ export async function runPatrolOnce(opts, env = process.env) {
       });
       if (!executorReady) {
         log(`patrol: ${alert.identifier} needs a reviewer-lane assignee; ${action.agent} is not one — not dispatching`);
-        return { ok: false };
+        return settlePatrolDispatchFailure(settlement, {
+          identifier: alert.identifier,
+          reason: `${action.agent} is not a reviewer-lane assignee`,
+          round,
+          owned,
+          workspace: prepared.workspace,
+          workspaceCreated: prepared.created,
+        });
       }
       if (actorKind === null) {
         log(`patrol: no available platform carries ${action.agent}'s role — not dispatching ${alert.identifier}`);
-        return { ok: false };
+        return settlePatrolDispatchFailure(settlement, {
+          identifier: alert.identifier,
+          reason: `no available platform carries ${action.agent}'s role`,
+          round,
+          owned,
+          workspace: prepared.workspace,
+          workspaceCreated: prepared.created,
+        });
       }
       const identity = reviewIdentityOf(task);
       const queued = enqueueCard(stateDir, {
@@ -1257,8 +1396,17 @@ export async function runPatrolOnce(opts, env = process.env) {
       });
       if (!queued.ok) {
         log(`patrol: could not enqueue ${alert.identifier}: ${queued.error}`);
-        return { ok: false };
+        return settlePatrolDispatchFailure(settlement, {
+          identifier: alert.identifier,
+          reason: `could not enqueue the handoff: ${queued.error ?? "unknown error"}`,
+          round,
+          owned,
+          workspace: prepared.workspace,
+          workspaceCreated: prepared.created,
+        });
       }
+      // Admission is proven: the card is no longer deferred.
+      deferrals.clear(alert.identifier);
       log(`patrol: enqueued ${alert.identifier} for ${action.agent} in ${targetDir}`);
       return { ok: true };
     },
