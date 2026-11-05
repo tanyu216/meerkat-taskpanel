@@ -109,11 +109,11 @@ graph's *content* belongs to the project. No graph is built in here.
   multi-role epics, and point at `setup-meerkat` to install one from its default template
   after the user confirms. Never fall back to a built-in graph.
 - Named graph missing: stop and list the graph names the file does carry.
-- Validate the generic structure: unique stage ids; every `depends_on` names a stage in this
-  graph; the graph is acyclic and has at most 8 stages; every stage has a role, mode and at
-  least one acceptance item; every role is in `taskctl role list --json` on a worker lane.
-  Do not validate a project column — the project's role skills interpret it. Stop on any
-  failure; create nothing.
+- Validate the generic structure: one `Epic mode: <auto|human|off>` line (the epic's
+  `acceptance_mode`); unique stage ids; every `depends_on` names a stage in this graph; acyclic
+  and at most 8 stages; every stage has a role, mode and at least one acceptance item; every
+  role is in `taskctl role list --json` on a worker lane. Do not validate a project column —
+  the project's role skills interpret it. Stop on any failure; create nothing.
 - Look for an existing instance:
   `taskctl issue list --project <p> --meta epic_graph=<name> --meta epic_instance=<slug> --json`.
   If one exists, continue it; never create a second epic.
@@ -125,12 +125,13 @@ graph's *content* belongs to the project. No graph is built in here.
 
 ```bash
 taskctl --as-human issue create --project <p> --title "<title>" --kind epic \
-  --acceptance-mode human --acceptance "<epic acceptance>" \
+  --acceptance-mode <epic-mode> --acceptance "<epic acceptance>" \
   --meta epic_graph=<name> --meta epic_instance=<slug> \
   --target epic:<slug> --json
 ```
 
-`<slug>` defaults to the title's kebab-case; the same title returns the same epic.
+`<epic-mode>` is the graph's `Epic mode`; `<slug>` defaults to the title's kebab-case; the
+same title returns the same epic.
 
 **Create the children in topological order, in `backlog`.** A `backlog` card is not claimable
 before its edges exist.
@@ -166,8 +167,8 @@ taskctl --as-human issue move <child-identifier> todo
 **Read back the whole graph.** `taskctl issue get <epic-identifier> --include relations --json`
 and `taskctl issue list --parent <epic-identifier> --json`. Check: the child count equals the
 stage count; every child's parent is the epic; `blocked_by` equals the graph's `depends_on`;
-role, mode and frozen acceptance match. Report and stop on any mismatch — never "create one
-more" to patch it.
+role, mode and frozen acceptance match; the epic's `acceptance_mode` equals the graph's
+`Epic mode`. Report and stop on any mismatch — never "create one more" to patch it.
 
 **Deleting a stage.** Remove every `blocks` edge that names it **before**
 `taskctl issue move <child-identifier> canceled`: a canceled predecessor withholds its

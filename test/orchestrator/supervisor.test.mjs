@@ -869,6 +869,7 @@ describe("buildQuestionPrompt (pure)", () => {
     assert.match(triage, /docs\/agents\/epic-graphs\.md/);
     assert.match(triage, /taskctl project dir P --json/);
     assert.match(triage, /--parent <epic> --target <stage-id>/);
+    assert.match(triage, /Epic mode/, "the graph's epic mode is honored");
     assert.match(triage, /When no graph\s+matches/);
   });
 

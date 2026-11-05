@@ -16,9 +16,10 @@ nothing stores it.
    delivered Jobs design card is `requirement`'s `design`.
 2. Find an existing instance from the producer's parent or from its graph and instance metadata
    — the recipe's lookup. Reuse it; fill only what is missing.
-3. With no instance, create the epic with the graph's settings. **Adopt the delivered producer
-   as its matching stage**: link it with the recipe's parent edge and set `meta.epic_stage=<id>`
-   on it so a later recipe re-run does not recreate it.
+3. With no instance, create the epic with the graph's settings; honor the graph's `Epic mode`
+   as the epic's `acceptance_mode`. **Adopt the delivered producer as its matching stage**:
+   link it with the recipe's parent edge and set `meta.epic_stage=<id>` on it so a later
+   recipe re-run does not recreate it.
 4. Create every missing stage with the recipe's idempotency convention: the same
    `--parent <epic> --target <stage-id>` pair and `meta.epic_graph` / `meta.epic_stage`. Do not
    write design/verification classification meta, and do not use the `loop-handoff|...` idem

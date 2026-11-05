@@ -165,6 +165,7 @@ describe("director skill: references", () => {
     assert.match(triage, /adopt the delivered producer\s+as its matching stage/i);
     assert.match(triage, /fill only what is missing/i);
     assert.match(triage, /--parent <epic> --target <stage-id>/, "the recipe's idempotency convention");
+    assert.match(triage, /Epic mode/, "the graph's epic mode is honored");
     assert.doesNotMatch(triage, /--idem/, "no second, loop-handoff idempotency for a graph stage");
   });
 

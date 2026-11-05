@@ -12,6 +12,9 @@ A graph is one `##` section named by its graph id. Its table has these required 
 |---|---|---|---|---|
 | <stage-id> | <Role> | <auto\|human\|off> | <stage ids, or —> | ... |
 
+- Each graph declares `Epic mode: <auto|human|off>` on its own line between the description
+  and the table — the epic card's `acceptance_mode`; the recipe passes it to the epic create.
+  A graph without one is invalid.
 - `stage` ids are stable and unique inside the graph; `depends_on` names stages in the same
   graph and must be acyclic; a graph has at most 8 stages.
 - `role` is an installed worker-lane role; `mode` is that card's `acceptance_mode`.
@@ -24,6 +27,8 @@ A graph is one `##` section named by its graph id. Its table has these required 
 ## dev-verify
 
 A single change that needs independent verification: development, then a verification card.
+
+Epic mode: auto
 
 | stage | role | mode | depends_on | design input |
 |---|---|---|---|---|
@@ -48,6 +53,8 @@ A single change that needs independent verification: development, then a verific
 ## requirement
 
 A product requirement carried from design through development, testing and product acceptance.
+
+Epic mode: human
 
 | stage | role | mode | depends_on | design input |
 |---|---|---|---|---|

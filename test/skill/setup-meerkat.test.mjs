@@ -212,6 +212,7 @@ describe("skill frontmatter and the six-step shape", () => {
     for (const stage of ["design", "test-design", "test-exec", "product-acceptance"]) {
       assert.match(asset, new RegExp(`### stage ${stage}`), `requirement carries the ${stage} stage`);
     }
+    assert.match(asset, /^Epic mode: auto$/m, "the default template carries the epic mode");
   });
 
   it("keeps the director policy a pointer, never a copy", () => {

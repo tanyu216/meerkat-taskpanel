@@ -70,6 +70,7 @@ describe("director triage: the prompt", () => {
     assert.match(prompt, /docs\/agents\/epic-graphs\.md/, "the graph is read before card creation");
     assert.match(prompt, /adopt this producer as its matching stage/);
     assert.match(prompt, /--parent <epic> --target <stage-id>/, "the recipe's idempotency convention");
+    assert.match(prompt, /Epic mode/, "the graph's epic mode is honored");
     assert.match(prompt, /When no graph\s+matches, keep the per-deliverable behavior below/);
     assert.equal(
       (prompt.match(/taskctl relation add/g) ?? []).length,

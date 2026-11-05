@@ -68,6 +68,18 @@ describe("epic graph: one source, absent by default", () => {
     }
   });
 
+  it("carries each graph's epic-level acceptance mode", () => {
+    for (const [graph, mode] of [["dev-verify", "auto"], ["requirement", "human"]]) {
+      for (const [label, text] of [["the project graph", DOC], ["the setup asset", ASSET]]) {
+        assert.match(
+          text,
+          new RegExp(`^## ${graph}$[\\s\\S]*?^Epic mode: ${mode}$`, "m"),
+          `${label} carries ${graph}'s epic mode ${mode}`,
+        );
+      }
+    }
+  });
+
   it("maps graph B's stages to the right role and mode", () => {
     for (const row of [
       "| design | Jobs | human | — | none |",
@@ -105,6 +117,7 @@ describe("epic graph recipe", () => {
   it("validates the generic structure and reuses an existing instance", () => {
     assert.match(EPIC, /unique stage ids/);
     assert.match(EPIC, /at most 8 stages/);
+    assert.match(EPIC, /Epic mode: <auto\|human\|off>/);
     assert.match(EPIC, /acyclic/);
     assert.match(EPIC, /taskctl role list --json/);
     assert.match(EPIC, /epic_instance/);
@@ -121,6 +134,12 @@ describe("epic graph recipe", () => {
       EPIC.indexOf("Create the epic") < EPIC.indexOf("Create the children"),
       "the epic is the container the children point at",
     );
+    assert.match(
+      EPIC,
+      /--acceptance-mode <epic-mode>/,
+      "the epic's mode is the graph's, never a built-in default",
+    );
+    assert.doesNotMatch(EPIC, /--acceptance-mode human/);
     assert.match(EPIC, /--status backlog/);
     assert.match(EPIC, /--parent <epic-identifier> --target <stage-id>/);
     assert.match(EPIC, /`--parent` \*\*only fills the idempotency key's source slot/);
@@ -139,6 +158,7 @@ describe("epic graph recipe", () => {
     assert.match(EPIC, /Read back the whole graph/);
     assert.match(EPIC, /taskctl issue get <epic-identifier> --include relations --json/);
     assert.match(EPIC, /child count equals the\s+stage count/);
+    assert.match(EPIC, /epic's `acceptance_mode` equals the graph's\s+`Epic mode`/);
     assert.match(EPIC, /never "create one\s+more" to patch it/);
   });
 
@@ -154,6 +174,7 @@ describe("epic graph recipe", () => {
 describe("director triage: the same convention", () => {
   it("reads the graph, adopts a delivered producer and only fills the missing stages", () => {
     assert.match(TRIAGE, /docs\/agents\/epic-graphs\.md/);
+    assert.match(TRIAGE, /graph's `Epic mode`/, "the epic's mode is the graph's");
     assert.match(TRIAGE, /Adopt the delivered producer\s+as its matching stage/i);
     assert.match(TRIAGE, /fill only what is missing/i);
     assert.match(TRIAGE, /--parent <epic> --target <stage-id>/);

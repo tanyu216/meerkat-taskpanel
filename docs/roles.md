@@ -42,12 +42,12 @@ unit's `--actor-kind` and needs `install.sh … --supervisor=enable` re-run.
 ## How the roles sequence
 
 The board stores an assignee and the `parent`/`blocks` edges; it does not schedule roles.
-Order comes from two places: a project's `docs/agents/epic-graphs.md` names the stages, roles
-and dependencies of a multi-role epic, and the `blocks` edges built from it withhold a card
-until its predecessors are `done`. The supervisor never sequences roles. The director reads
-the graph during triage to fill a missing stage, but it does not own the graph: the project
-does. Outside a graph, a role's classification of its card is the role's own judgement
-(description plus frozen acceptance), not a generic contract.
+Order comes from two places: a project's `docs/agents/epic-graphs.md` names the epic's
+acceptance mode and the stages, roles and dependencies of a multi-role epic, and the `blocks`
+edges built from it withhold a card until its predecessors are `done`. The supervisor never
+sequences roles. The director reads the graph during triage to fill a missing stage, but it
+does not own the graph: the project does. Outside a graph, a role's classification of its
+card is the role's own judgement (description plus frozen acceptance), not a generic contract.
 
 ## The claim set and the writer identity
 

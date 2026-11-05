@@ -319,10 +319,10 @@ _中文_: epic（中文镜像沿用英文）
 _Avoid_: 史诗, milestone, theme, umbrella
 
 **Epic graph**:
-A project's optional `docs/agents/epic-graphs.md`: named stages with their role, acceptance
-mode, dependencies and acceptance items for a multi-role epic. It is guidance, not board data —
-`taskd` never reads it and nothing is stored or inherited; the `meerkat` skill's epic recipe
-instantiates it.
+A project's optional `docs/agents/epic-graphs.md`: an epic-level acceptance mode and named
+stages with their role, mode, dependencies and acceptance items for a multi-role epic. It is
+guidance, not board data — `taskd` never reads it and nothing is stored or inherited; the
+`meerkat` skill's epic recipe instantiates it.
 _中文_: epic 图
 _Avoid_: template, workflow, pipeline, DAG
 

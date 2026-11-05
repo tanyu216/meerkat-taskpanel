@@ -1140,9 +1140,9 @@ never moves a card to `done`. A question row is capped at two attempts; a route 
 A triage row first resolves the project directory and reads `docs/agents/epic-graphs.md`; the
 project's canonical multi-role shape is guidance, not board data. The director adopts an
 accepted producer as its matching stage, reuses an existing epic instance, and creates only
-the missing stages and edges with the `meerkat` skill's recipe (`--parent <epic> --target
-<stage-id>`); when no graph matches, the per-deliverable behavior applies. The supervisor never
-sequences roles.
+the missing epic, stages and edges with the graph's `Epic mode` and the `meerkat` skill's
+recipe (`--parent <epic> --target <stage-id>`); when no graph matches, the per-deliverable
+behavior applies. The supervisor never sequences roles.
 A triage row is enqueued **after** the question and route rows: it is post-acceptance work
 and never displaces a held worker. Its completion is the marker on the producer, not a linked
 child; a producer that moved off `done` makes the row stale. A triage that exhausts its two
