@@ -11,8 +11,9 @@ code.
 inputs as arguments (no file, no child process, no board call) and its result is
 a value the caller can assert on:
 
-- `src/foundation/scheduling.mjs` — `planTick`, `planPatrol`, `planClaimIdentity`,
-  `planWorkflowTick`, `planReviewDispatch`, `planReviewOutcomes`.
+- `src/foundation/scheduling.mjs` — `planTick`, `planPatrol`, `planClaimIdentity`.
+- `src/core/domain/workflow.mjs` — `planReviewDispatch`, `planReviewOutcomes`,
+  `planWorkflowTick` (the domain's own pure plans).
 - `src/foundation/role-platforms.mjs`, `role-prompt.mjs`, `role-catalog.mjs` — role
   resolution and prompt assembly.
 - `src/foundation/loop-state.mjs` — `poolVerdict`, `wedgeKillAction`.
