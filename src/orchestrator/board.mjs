@@ -8,7 +8,7 @@
 
 import { dirname } from "node:path";
 
-import { ORCHESTRATOR_ACTOR_ID, ROUTE_UNASSIGNED_MS, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { BOARD_ACTOR_ID, ROUTE_UNASSIGNED_MS, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { loadRoles } from "../foundation/roles.mjs";
 import { planStrandedTodoAlerts } from "../foundation/scheduling.mjs";
@@ -419,10 +419,10 @@ export async function runSlaPass(opts, log, periodSeconds = opts.patrolInterval)
 
 /**
  * The real-I/O half of the workflow pass. Every write goes through `taskctl`
- * as the board's own kind (`system`), under the automation identity
- * `Orchestrator`: an automated acceptance is the board's act, not a human's and
- * not the first worker's — and not the reviewer's either, which matters because
- * the actor who wrote a verdict may not close the card it reviewed.
+ * as the board's own kind (`system`), under the one automation identity
+ * `Board`: an automated acceptance is the board's act, not a human's and not the
+ * first worker's — and not the reviewer's either, which matters because the
+ * actor who wrote a verdict may not close the card it reviewed.
  */
 /**
  * The `todo` cards no scan can claim, read from the board and turned into
@@ -494,7 +494,7 @@ function strandedTodoAlerts(opts, config, invoke, log) {
 export async function runWorkflowPass(opts, config, log) {
   if (config.workflow !== true) return null;
   const automation = { actorKind: SYSTEM_KIND };
-  const invoke = (args) => runCli(opts, ORCHESTRATOR_ACTOR_ID, args, automation);
+  const invoke = (args) => runCli(opts, BOARD_ACTOR_ID, args, automation);
 
   // One call does the board's container reconcile and returns the plan.
   const args = ["issue", "reconcile", "--workflow"];
@@ -567,7 +567,7 @@ export async function runWorkflowPass(opts, config, log) {
       return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : boardRefusal(read);
     },
     linkFixChild: (epicRef, childRef) => {
-      const listed = runCli(opts, ORCHESTRATOR_ACTOR_ID, ["relation", "list", epicRef]);
+      const listed = runCli(opts, BOARD_ACTOR_ID, ["relation", "list", epicRef]);
       if (listed.ok && Array.isArray(listed.data.children) && listed.data.children.some((edge) => edge.target === childRef)) {
         return { ok: true };
       }

@@ -801,16 +801,17 @@ export const HUMAN_KIND = "human";
 export const SYSTEM_KIND = "system";
 
 /**
- * The loop's automation identity — an **actor id, never a kind**.
+ * The board's one automation identity — an **actor id, never a kind**.
  *
- * The workflow pass (create the review card, apply the verdict, close the
- * review card) runs inside the loop process, but it is not any one worker's act:
- * it applies a decision the board planned. Naming it `Orchestrator` keeps those
- * writes out of the first worker's record and keeps the automation distinct from
- * the reviewer, which matters because a review's verdict author may not close
- * the card it reviewed.
+ * It covers every automated write, whichever actor triggered it: core board
+ * events (rollup, the label GC, agent sessions) and the loop's workflow pass
+ * (create the review card, apply the verdict, close the review card). The kind
+ * those writes carry is `SYSTEM_KIND`; the *identity* is `Board`, so a reader
+ * sees one automation author and `system`/`Orchestrator` are identities no
+ * longer (ADR 0017). Keeping the loop's writes out of the first worker's record
+ * still matters: a review's verdict author may not close the card it reviewed.
  */
-export const ORCHESTRATOR_ACTOR_ID = "Orchestrator";
+export const BOARD_ACTOR_ID = "Board";
 
 /**
  * The Director lane's board identity — an **actor id, never a kind**.

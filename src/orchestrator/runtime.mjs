@@ -153,16 +153,16 @@ export function saveSubscribeState(path, state) {
  * Run the taskctl CLI and parse its `--json` envelope. Returns `{ok, data|error}`.
  *
  * The CLI requires an identity on every call: reads and claims use the agent kind
- * (`claude`/`codex`/`pi`), workflow writes pass `system` so an automated
- * acceptance is attributable. `--env-file` and `--url` are forwarded; the token
- * rides in the child environment, never argv.
+ * (`claude`/`codex`/`pi`), workflow writes pass the board's kind `system` (and
+ * the id `Board`) so an automated acceptance is attributable. `--env-file` and
+ * `--url` are forwarded; the token rides in the child environment, never argv.
  */
 /**
  * The argv and environment for one `taskctl` call.
  *
  * Identity is required on every CLI call: the loop's actor kind (claude/codex/pi) is
- * the platform for its agent actions; the board's own workflow pass names
- * `system` explicitly. A caller that forgot gets the agent kind, never `human`.
+ * the platform for its agent actions; the board's own workflow pass names its
+ * kind `system` explicitly. A caller that forgot gets the `system` kind, never `human`.
  * A token never goes on argv (it would be visible in `ps`).
  */
 export function cliInvocation(opts, agent, args, { actorKind = null } = {}) {

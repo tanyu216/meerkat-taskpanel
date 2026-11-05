@@ -26,17 +26,16 @@ import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
 import { processStartToken } from "../foundation/daemon-state.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import {
+  BOARD_ACTOR_ID,
   DIRECTOR_ACTOR_ID,
   EVENT_CONTINUE_MIN_MS,
   EVENT_DEBOUNCE_MAX_MS,
   EVENT_DEBOUNCE_MS,
   HUMAN_KIND,
-  ORCHESTRATOR_ACTOR_ID,
   SSE_SUBSCRIBE_IDLE_MS,
   SUBSCRIBE_BACKOFF_MAX_MS,
   SUBSCRIBE_RETRY_MS,
   SUBSCRIBE_STATE_WRITE_MIN_MS,
-  SYSTEM_KIND,
   VERSION,
 } from "../foundation/constants.mjs";
 import { statePathsForDir } from "../foundation/loop-state.mjs";
@@ -91,7 +90,7 @@ export const CONDITIONAL_EVENTS = Object.freeze(["task_updated", "comment_added"
 /**
  * The declared events that deliberately do not wake a turn.
  *
- * `epic_auto_start` is board-authored (`taskd`), which `isOwnWrite` already
+ * `epic_auto_start` is board-authored (`Board`), which `isOwnWrite` already
  * suppresses; listing it as a dispatch was a contradiction, not a behaviour.
  */
 export const IGNORED_EVENTS = Object.freeze([
@@ -132,31 +131,31 @@ const UPDATED_FIELDS = new Set(TASK_UPDATED_DISPATCH_FIELDS);
  * Did this loop (or the board itself) write the activity?
  *
  * Suppression is by author **id**, not by kind: a human's event is never
- * suppressed; the board's own housekeeping (`system`) and the workflow pass's
- * automation (`Orchestrator`) are our echo; an event authored by one of
- * `opts.agents` is ours too. `import_completed` is authored under `md-import`, so
- * it survives — an import is work to discover. That is why the rule stays on ids
- * rather than "any `system` write": a historical importer's rows are `system`
- * too, and suppressing them would hide the import.
+ * suppressed; the board's own housekeeping, the workflow pass and every other
+ * automated write carry the one identity `Board` (ADR 0017) and are our echo; an
+ * event authored by one of `opts.agents` is ours too. `import_completed` is
+ * authored under `md-import`, so it survives — an import is work to discover.
+ * That is why the rule stays on ids rather than "any `system` write": a
+ * historical importer's rows are `system` too, and suppressing them would hide
+ * the import.
  *
  * @param {object} activity an `activityToWire` payload
  * @param {{agents: string[]}} context
  * @returns {boolean}
  */
 /**
- * The ids the loop writes under: the board's own housekeeping, the workflow
- * pass's automation, the decision lane's `Director`, and — for rows recorded
- * before 2026-10-30 — the retired `taskd` id. History is never rewritten, so a
- * replay from a lost cursor still sees it, and the loop's own deliveries must
- * not wake it.
+ * The ids the loop writes under: the board's one automation identity `Board`,
+ * the decision lane's `Director`, and — for rows recorded before 2026-10-30 — the
+ * retired `taskd` id. History is never rewritten, so a replay from a lost cursor
+ * still sees it, and the loop's own deliveries must not wake it.
  *
- * The *kind* is deliberately not consulted: `md-import` also wrote `system`, and
- * an import is work to discover. The `in_progress → todo` release is classified
- * before this set, so a Director release still wakes the worker.
+ * `system` is absent on purpose: it is the kind of every automation write, not
+ * an id any more, so it suppresses nothing (ADR 0017). The *kind* is deliberately
+ * not consulted: `md-import` also wrote `system`, and an import is work to
+ * discover. The `in_progress → todo` release is classified before this set, so a
+ * Director release still wakes the worker.
  */
-const BOARD_ACTOR_IDS = Object.freeze(
-  new Set([SYSTEM_KIND, ORCHESTRATOR_ACTOR_ID, DIRECTOR_ACTOR_ID, "taskd"]),
-);
+const BOARD_ACTOR_IDS = Object.freeze(new Set([BOARD_ACTOR_ID, DIRECTOR_ACTOR_ID, "taskd"]));
 
 export function isOwnWrite(activity, context) {
   if (activity?.actor_kind === HUMAN_KIND) return false;

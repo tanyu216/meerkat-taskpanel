@@ -92,7 +92,7 @@ describe("role-sync — the call", () => {
     assert.equal(result.ok, true);
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].args, ["role", "sync", "--file", "-"]);
-    assert.equal(calls[0].agent, "Orchestrator");
+    assert.equal(calls[0].agent, "Board");
     assert.equal(calls[0].options.actorKind, "system");
     const payload = JSON.parse(calls[0].options.input);
     assert.equal(payload.schema, ROLE_CATALOG_SCHEMA);

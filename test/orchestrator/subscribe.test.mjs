@@ -86,13 +86,13 @@ describe("loop/subscribe — event rules", () => {
   });
 
   it("does not dispatch the board's own epic start", () => {
-    // `epic_auto_start` is written by the board (`system`), so suppression by
-    // author already wins; it belongs in the explicit ignore list, not the
-    // dispatch whitelist.
+    // `epic_auto_start` is written by the board (`Board`, kind `system`), so
+    // suppression by author already wins; it belongs in the explicit ignore
+    // list, not the dispatch whitelist.
     assert.equal(IGNORED_EVENTS.includes("epic_auto_start"), true);
     assert.equal(DISPATCH_EVENTS.includes("epic_auto_start"), false);
     assert.equal(
-      classify(activity("epic_auto_start", { actor_kind: "system", actor_id: "system" }), { agents: ["linus"] }),
+      classify(activity("epic_auto_start", { actor_kind: "system", actor_id: "Board" }), { agents: ["linus"] }),
       "ignore",
     );
   });
@@ -201,10 +201,13 @@ describe("loop/subscribe — event rules", () => {
 
   it("suppresses the board's own housekeeping and this loop's agents", () => {
     const ctx = { agents: ["linus"] };
-    assert.equal(classify(activity("task_created", { actor_kind: "system", actor_id: "system" }), ctx), "ignore");
+    assert.equal(classify(activity("task_created", { actor_kind: "system", actor_id: "Board" }), ctx), "ignore");
     assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "linus" }), ctx), "ignore");
-    // The workflow pass's automation writes as the board, under its own id.
-    assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "Orchestrator" }), ctx), "ignore");
+    // The workflow pass is the board too: one automation identity, one id.
+    assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "Board" }), ctx), "ignore");
+    // `system` is a kind, not an identity: a row that names it as the id is not
+    // the board's own write (ADR 0017). The kind alone decides nothing.
+    assert.equal(classify(activity("task_created", { actor_kind: "system", actor_id: "system" }), ctx), "dispatch");
     // The importer is the board's platform under a component id: it must pass.
     assert.equal(classify(activity("import_completed", { actor_kind: "system", actor_id: "md-import" }), ctx), "dispatch");
     // A human whose id happens to match an agent is still a human.

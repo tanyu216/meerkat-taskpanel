@@ -196,7 +196,7 @@ The deterministic passes are **not scheduled individually**:
 |---|---|---|
 | `taskctl loop poll` | scan → atomic claim → **enqueue the handoff**; also enqueues open agent questions and the 30-minute routing fallback (the director's queue) | claims, card queue |
 | `taskctl loop patrol` | heartbeat alerts + SLA rows | card queue only with `--patrol-llm=yes` |
-| `taskctl loop workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `system`/`Orchestrator` |
+| `taskctl loop workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `Board` (kind `system`) |
 
 `taskctl loop doctor` is **not** one of these passes. It is the read-only inspection a human
 runs: one report covering the supervisor verdict, the resolved scan set,
@@ -320,7 +320,7 @@ policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
 | Card handoff turn | queue row `attempts` | 3 | row `failed`; execution hold |
 | Handoff turn timeout | queue row `timeouts` | 3 (backoff 2/4/8 min) | below the bound, row pending with `retry_at`; at it, the card is re-read and (still `in_progress`) released to `todo` — never `blocked` |
 | Crash recovery | queue row `recoveries` | 3 | row `failed` + card `blocked/resource` |
-| Admission failure | `deferrals.json` `count` | backoff at 3 (30 s→1 h), hold at 5 | `blocked/external` + `Orchestrator` question |
+| Admission failure | `deferrals.json` `count` | backoff at 3 (30 s→1 h), hold at 5 | `blocked/external` + `Board` question |
 | Dispatch failure after a claim | `deferrals.json` `DISPATCH_FAILED` | 3 | claim released immediately; `blocked/resource` at the bound |
 | Worker session unrestorable | session record | first failure | row failed, claim released, `blocked/resource` |
 | Question turn | director row dispatches | 2 | left for the human; `question_stale` + doctor |
@@ -458,7 +458,7 @@ poll entry
 A **card-scoped** admission or brief-watch failure is recorded in `deferrals.json`; a
 successful admission clears the streak. Budget, no-pool and per-project-cap defers are
 backpressure, not a stuck card, and are not counted. Three consecutive failures raise one
-`Orchestrator` card comment (see "Deferred admission" below).
+`Board` card comment (see "Deferred admission" below).
 
 The tick itself costs **no model turn**: it is deterministic code, and the claim gate above
 decides whether any conversation is opened. The worker session's turn — one per card — is
@@ -857,7 +857,7 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
   with a status, how it checked and an `evidence[n]` anchor; a `met` the board cannot trace,
   or an `APPROVE` with no command anchor, is refused rather than applied. It delivers a
   report whose first line is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
-- the supervisor applies the verdict as `--actor-kind system --agent Orchestrator`. An `APPROVE` on an `auto` original
+- the supervisor applies the verdict as `--actor-kind system --agent Board`. An `APPROVE` on an `auto` original
   writes `meta.accepted_by=loop-review` and moves it `in_review → done`; on a `human`
   original it writes `meta.review_verdict=approve` / `meta.review_verdict_round` and leaves
   the card `in_review` for the person. A `REJECT` — in either mode — comments the findings,
@@ -891,11 +891,11 @@ acceptance authority**: the card's own `acceptance_mode` decides who may perform
 actor but the one who wrote the verdict closes it — the supervisor, another agent, or a human;
 `human` is a person only. A review card is the one structural exception — its reviewer
 reports the verdict, and anyone but that reviewer (or a human) closes it. The **kind is not
-an allow-list**: the authority is the evidence, so the board's own `system` writes carry no
-extra right. There is no board-level policy and no scope matrix. The refusal is
+an allow-list**: the authority is the evidence, so the board's own automation writes (kind
+`system`) carry no extra right. There is no board-level policy and no scope matrix. The refusal is
 `ACCEPTANCE_FORBIDDEN` (409) and it changes nothing. This is what makes "a worker stops
 at `in_review`" a machine rule rather than a habit, and it is why the supervisor's automated
-acceptance is attributable as `system`.
+acceptance is attributable as the automation identity `Board`.
 
 Two honest limits. First, the check reads the actor's **declared** id and the stored
 verdict: a loopback caller is trusted and `--actor-kind human` is refused, but the board has
@@ -1388,7 +1388,7 @@ The supervisor now keeps `<state>/deferrals.json`:
 
 Both admission sites record into it — the poll pass and the patrol's LLM turn. A successful
 admission (a claim in the patrol lane; admission itself in poll) removes the entry. At
-`count >= 3` the supervisor writes **one** `Orchestrator` note on the card for that failure code,
+`count >= 3` the supervisor writes **one** `Board` note on the card for that failure code,
 logs at error, and (when `--notify` is configured) pushes the same alert; a new failure code
 earns its own note, and a failed comment is retried on the next deferral. From the third
 failure the card also backs off — 30 s, then doubling to a one-hour cap (`retry_at`) — so a
