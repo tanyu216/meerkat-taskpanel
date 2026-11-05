@@ -2,7 +2,7 @@
 
 Run this audit before delivering a card. Every item ends with one of `met`, `not_applicable`,
 `partial`, `not_met` or `leftover` and a pointer to the evidence. A `partial` or `leftover`
-without a named follow-up is a red; do not deliver. Card operations (brief, report,
+without a named follow-up is a red; close it or ask before delivery. Card operations (brief, report,
 delivery) are the `meerkat` board skill's contract; decisions are the `meerkat-director`
 skill's — this file audits the work, not those contracts.
 

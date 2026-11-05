@@ -5,9 +5,8 @@ The team's security scan is three arms: **dependency audit**, **secret scan** an
 machine-readable twin is `assets/security/toolchain.json`, which
 `scripts/security-tools.mjs` reads.
 
-The check never installs and never reaches the network. `--install` and `--upgrade` are
-explicit, name the tools they act on, and print the command when this host has no
-supported package manager.
+The check runs read-only and offline. `--install` and `--upgrade` are explicit, name the
+tools they act on, and print the command when this host has no supported package manager.
 
 ## The matrix
 
@@ -64,7 +63,7 @@ a weekly schedule, a `concurrency` group, and every `uses:` pinned to a commit S
 tag in a trailing comment. Those SHAs are the ones this repository validated when the skill
 shipped: re-check them when you upgrade the skill. A scanner's own exit code is the gate —
 except CodeQL, which has none and reports into code scanning. Waivers are a recorded decision
-in the project's standard, never an edit to the generated file.
+in the project's standard; the generated file stays as generated.
 
 **Everywhere else the skill composes it, at that moment.** No per-provider template ships:
 `--ci-plan` prints each arm's command and `--ci-write` refuses, because a generator that
@@ -78,8 +77,8 @@ into the file the check reads, from the same blueprint as the GitHub arms:
 | Scope | the whole tree, every lockfile |
 | Schedule | weekly, plus the provider's pull-request trigger |
 | Privilege | read-only; only the SAST arm asks for the security-report write |
-| Pinning | a pinned image tag or action commit, never `latest` |
-| SBOM | optional, never gates |
+| Pinning | a pinned image tag or action commit, not `latest` |
+| SBOM | optional and non-gating |
 
 | Provider | Where the addition goes |
 |---|---|
@@ -125,7 +124,7 @@ node <skill-dir>/scripts/security-tools.mjs --print --project <dir>
 node <skill-dir>/scripts/security-tools.mjs --install --tool gitleaks --project <dir>
 node <skill-dir>/scripts/security-tools.mjs --upgrade --json --project <dir>
 
-# Close a CI gap: show the file, then create it. Nothing is ever overwritten.
+# Close a CI gap: show the file, then create it. An existing file is preserved.
 node <skill-dir>/scripts/security-tools.mjs --ci-plan --project <dir>
 node <skill-dir>/scripts/security-tools.mjs --ci-write --ci-arm sast --project <dir>
 ```
@@ -134,8 +133,8 @@ Exit codes: `0` the check ran (or the requested actions succeeded), `1` a requir
 missing, behind, or its version could not be read — or a CI write was refused (a conflict, a
 provider this skill cannot write, no CI at all), `2` usage, `3` an action was requested
 and this host has no supported package manager. The host (`github` or `other`) comes from
-`<dir>/.git/config`; `--host` overrides it. A CI gap alone never changes `--check`'s exit
-code: `ok` is the local-tool verdict, `ci.ok` the CI one.
+`<dir>/.git/config`; `--host` overrides it. A CI gap alone leaves `--check`'s exit
+code unchanged: `ok` is the local-tool verdict, `ci.ok` the CI one.
 
 `codeql` is reported as `ci` on purpose: on a public GitHub repository the analysis runs in
 the workflow, not on the developer's machine.

@@ -40,9 +40,9 @@ for the decision round.
 The plan is the card index: `.meerkat/<id>/spec.md` → `design/specs/<content-slug>.md`;
 `.meerkat/<id>/validation-brief.md` is the local index or an attachment; `.meerkat/<id>/prd.md`
 → `design/prds/<content-slug>.md`; `.meerkat/<id>/prototype/` →
-`design/prototype/<content-slug>/`. A design filename never carries the task id; it uses one
-content slug chosen at step 4. Another card's plan is never this card's plan; the cross-card
-channel is the `## Handoff` block.
+`design/prototype/<content-slug>/`. A design filename carries a content slug chosen at step 4,
+not the task id. Another card's plan is a different card's input; the cross-card channel is
+the `## Handoff` block.
 
 ## Decide before you build
 
@@ -109,8 +109,8 @@ execute.
 **decision rule** for each (what evidence means continue, change direction or stop), the
 product-level success and stop conditions, constraints and the evidence type needed. Choose
 **one content slug** and reuse it across both flows. Enter `references/ui-workflow.md` on the same card;
-when the director splits the work, hand the brief over for a prototype card, do not
-idle while it runs, and let the director sequence the two before step 5. Method,
+when the director splits the work, hand the brief over for a prototype card, keep moving
+on this card while it runs, and let the director sequence the two before step 5. Method,
 fidelity, participants and thresholds belong to the prototype flow. No assumption to test:
 record why and go to step 5.
 
@@ -149,7 +149,7 @@ mode the block names the prototype card, path and `commit`; the reviewer reads t
 you fold the verdict into the spec/PRD appendix and commit it here. The director's triage
 decision creates downstream cards; propose the delivery shape and next scopes, per
 the `meerkat` board skill's card and plan lifecycle. Stop at `in_review`; acceptance is not yours.
-Do not merge, rebase or push; the supervisor's acceptance pass lands the delivered tree.
+Deliver the committed tree; the supervisor's acceptance pass merges, rebases, pushes and lands it.
 
 **Essentials.** Archived paths, the findings table, the complete handoff, and a delivery shape
 whose children can land alone (`not one card per layer`). A small change or bug uses
@@ -183,8 +183,8 @@ session confirms against the archive. A small change or bug uses `meta.product_c
 An epic is `kind=epic` and not claimable; children are `kind=task`, linked with `parent`; a
 child is a deliverable that can land on the base branch alone — one change's core, CLI, web,
 docs and fixtures are one child, not one card per layer. The director takes the current
-round's latest report; **do not create the downstream card** — it triages, creates, seeds and
-links it, per the `meerkat` board skill's card and plan lifecycle.
+round's latest report; **the director creates the downstream card** — it triages, creates,
+seeds and links it, per the `meerkat` board skill's card and plan lifecycle.
 
 ## Review ownership
 
@@ -199,13 +199,13 @@ links it, per the `meerkat` board skill's card and plan lifecycle.
 ## Hard limits
 
 - The frozen acceptance is the contract; scope or acceptance changes are questions.
-- An out-of-scope defect is reported, never fixed on your own initiative: a `kind=defect`
+- An out-of-scope defect is reported and left to the director: a `kind=defect`
   comment plus a question to the director, and hold for the answer (`issue wait`). The director
   decides whether this card fixes it in passing or a fix card is created.
-- Keep artifacts inside the project with relative `design/...` paths; a filename never carries
-  the task id. A prototype is not a delivery and never production code.
+- Keep artifacts inside the project with relative `design/...` paths; a filename carries a
+  content slug, not the task id. A prototype is evidence; production code belongs to the
+  implementation card.
 - The root `GLOSSARY.md` and `docs/adr/` belong to Linus; product terms and ADRs live under
   `design/`.
 - The director's triage decision creates downstream cards; propose the shape in the handoff.
-- Do not accept your own work; do not merge, rebase or push from this card — the supervisor's
-  acceptance pass lands it.
+- Stop at `in_review`; the supervisor's acceptance pass lands the delivered tree.

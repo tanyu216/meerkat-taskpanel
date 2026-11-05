@@ -126,14 +126,14 @@ describe("role skills: identity, discovery and model invocation", () => {
       /product.*prototype.*architecture.*implementation.*refactor.*test.*docs.*epic/i,
       "the common shapes stay named as refinements",
     );
-    assert.match(description, /never a skip/i);
-    assert.match(description, /never a REJECT merely for being unlisted/i);
+    assert.match(description, /the floor is mandatory/i);
+    assert.match(description, /an unlisted type is not itself a REJECT/i);
     assert.match(description, /Return one VERDICT\.$/);
 
     assert.match(text, /any delivered card dispatched for review is in scope/i);
     assert.match(text, /a type no shape names, or a mixed one/i);
-    assert.match(text, /never a skip/i);
-    assert.match(text, /never routed an ordinary card/i);
+    assert.match(text, /the floor is mandatory/i);
+    assert.match(text, /the loop routes review cards only/i);
 
     const identity = roleJson("reviewer");
     assert.match(identity.summary, /any delivered card/i);
@@ -142,7 +142,7 @@ describe("role skills: identity, discovery and model invocation", () => {
       "the reviewer still owns review cards, and only review cards",
     );
     assert.ok(
-      identity.boundaries.some((line) => /never routed an ordinary card/i.test(line)),
+      identity.boundaries.some((line) => /ordinary card belongs to a worker role/i.test(line)),
       "the identity keeps the reviewer out of ordinary work routing",
     );
     assert.ok(
@@ -304,7 +304,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(regression, /production bug/i, "regression covers production bugs");
     assert.match(regression, /before and after|before\/after|pre-fix/i, "regression proves the fix");
     assert.doesNotMatch(turing, /\|\s*Card\s*\|\s*Branch\s*\|/i, "the branch table is not duplicated");
-    assert.match(turing, /do not merge, rebase or push/i, "the shared delivery leaves landing to the director");
+    assert.match(turing, /the supervisor's acceptance pass lands it/i, "the shared delivery leaves landing to the director");
     assert.match(testDesign, /already landed|landed implementation/i, "test design verifies a landed implementation");
     assert.doesNotMatch(testDesign, /test-first|red-first/i, "red-first belongs to the implementation card");
     assert.match(
@@ -464,7 +464,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(arch, /E5 pending/i, "a reconstruction records E5 pending");
     assert.match(check, /reconstructed — <evidence>/, "the self-check knows provenance");
     assert.match(check, /not run — <reason>/, "an unexecuted gate is recorded");
-    assert.match(check, /never by a claimed pass/i, "an audit never claims a gate");
+    assert.match(check, /only by an observed exit code/i, "an audit never claims a gate");
     assert.match(check, /^[-*] \*\*R1\.\*\*/m, "the reconstruction items start at R1");
     assert.match(linus, /missing or partial|reconstruction/i, "a missing foundation routes here");
     // A role workflow is capped by the runtime; keep headroom rather than drift to the edge.
@@ -780,12 +780,12 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.doesNotMatch(impl, /^### \d+\. Operations/m, "no operations step");
     assert.match(
       linus,
-      /not architecture, implementation, refactoring or a bug fix/i,
+      /Take architecture, implementation, refactoring and bug-fix work/i,
       "the boundary is stated",
     );
     assert.match(
       linus,
-      /operations on a running system goes outside the roles/i,
+      /operations on a running\s+system are outside the roles/i,
       "operations is routed out of the role",
     );
 
@@ -814,7 +814,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     for (const role of ["jobs", "linus", "turing"]) {
       assert.match(
         read(role, "role.json"),
-        /Do not merge, rebase or push/i,
+        /the supervisor's acceptance pass merges, rebases, pushes/i,
         `${role}'s identity leaves integration alone`,
       );
     }
@@ -826,7 +826,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       assert.match(check, /falsifiable/i, `${role} requires falsifiable evidence`);
       assert.match(check, /not_applicable/, `${role} names the not_applicable disposition`);
       assert.match(check, /\bowner\b/i, `${role} makes a leftover name its owner`);
-      assert.match(check, /never a leftover/i, `${role} lists what may not be a leftover`);
+      assert.match(check, /a blocker, not a leftover/i, `${role} lists what may not be a leftover`);
     }
 
     for (const role of ["linus", "turing"]) {
@@ -841,7 +841,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       /outside the frozen acceptance/i,
       "the reviewer accepts a leftover only outside the acceptance",
     );
-    assert.match(reviewer, /never a leftover|not a leftover/i, "a missing item is not a leftover");
+    assert.match(reviewer, /missing acceptance item\s+is a `REJECT`/i, "a missing item is a REJECT");
     assert.match(reviewer, /falsifiable/i, "the reviewer workflow says what counts as proof");
     const prompt = read("reviewer", "references/reviewer-prompt.md");
     assert.match(prompt, /falsifiable/i, "the inlined reviewer prompt says what counts as proof");
@@ -893,13 +893,13 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(jobs, /product_change=none/);
     assert.match(jobs, /director/i);
     assert.match(jobs, /card and plan lifecycle/i, "the director owns the triage lifecycle");
-    assert.match(jobs, /do not create .*downstream card/i);
+    assert.match(jobs, /the director creates the downstream card/i);
     assert.doesNotMatch(jobs, /five stages/i);
     assert.doesNotMatch(jobs, /inherit or extend/i);
 
     // A child is a deliverable that can land alone; one change's layers are its scope.
     assert.match(jobs, /not one card per layer/i);
-    assert.match(jobsCheck, /never one child per layer/i);
+    assert.match(jobsCheck, /one child per layer` is a mis-size/i);
     assert.match(impl, /not the layers of one change/i);
     assert.match(jobs, /can land on the base branch alone/i);
 
@@ -917,7 +917,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(linus, /design_stage/);
     // The marker's writer is the creator or the director's triage. TP-0033 burned a
     // round because the executor classified the card in `plan.md` and proceeded.
-    assert.match(linus, /do not classify the card\s+yourself/i, "a worker never writes its own marker");
+    assert.match(linus, /the creator or the\s+director's triage writes the marker/i, "a worker never writes its own marker");
     assert.match(linus, /hold the card/i, "an unclassified card holds instead of proceeding");
     assert.match(impl, /## Handoff/);
     assert.match(impl, /does not\s+need the design artifacts/i);
@@ -1028,7 +1028,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       const deliver = text.slice(text.indexOf(heading));
       assert.match(deliver, /commit/i, `${role}/${rel} commits before it delivers`);
       assert.match(deliver, /DELIVERY_NEEDS_COMMIT/, `${role}/${rel} names the delivery gate`);
-      assert.match(deliver, /do not merge, rebase or push/i, `${role}/${rel} leaves landing to the director`);
+      assert.match(deliver, /the\s+supervisor's acceptance pass merges, rebases, pushes/i, `${role}/${rel} leaves landing to the director`);
     }
 
     const turingWorkflow = read("turing");
@@ -1036,7 +1036,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(turingWorkflow, /commit/i, "the shared delivery commits before it delivers");
     assert.match(
       turingWorkflow,
-      /do not merge, rebase or push/i,
+      /the supervisor's acceptance pass lands it/i,
       "the shared delivery leaves landing to the director",
     );
     for (const rel of [
@@ -1224,7 +1224,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       );
     }
     assert.match(workflow, /not one card per layer/i);
-    assert.match(check, /never one child per layer/i);
+    assert.match(check, /one child per layer` is a mis-size/i);
   });
 
   it("keeps the reviewer workflow step-navigable, concise and board-delegated", () => {
@@ -1271,7 +1271,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(playbook, /beyond the floor|outside the list/i);
     assert.match(playbook, /record[^.]*extra check/i);
     assert.match(playbook, /extra finding[^.]*block/i);
-    assert.match(playbook, /do not suppress/i);
+    assert.match(playbook, /surface a real problem even outside the list/i);
 
     for (const [shape, pattern] of [
       ["product planning", /product planning/i],
@@ -1292,8 +1292,8 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(playbook, /Step 8 adding the classification/i);
     assert.match(playbook, /record the classification/i);
     assert.match(playbook, /project's own standards/i);
-    assert.match(playbook, /is not by itself a REJECT/i);
-    assert.match(playbook, /never routed an ordinary card/i);
+    assert.match(playbook, /or by itself a REJECT/i);
+    assert.match(playbook, /the loop routes review cards only/i);
 
     for (const [subject, pattern] of [
       ["unit tests", /unit test/i],
@@ -1331,10 +1331,10 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(playbook, /blocking/i);
     assert.match(playbook, /observation/i);
     assert.match(playbook, /leftover/i);
-    assert.match(playbook, /no APPROVE with an open check/i);
-    assert.match(playbook, /missing acceptance item is never a leftover/i);
+    assert.match(playbook, /an open check blocks APPROVE/i);
+    assert.match(playbook, /missing acceptance item is a REJECT/i);
     assert.match(playbook, /subjective preference is not a must-fix/i);
-    assert.match(playbook, /reviewer never waives/i);
+    assert.match(playbook, /risk acceptance belongs to the human/i);
     assert.match(playbook, /one pass/i);
     assert.match(playbook, /falsify/i);
 
@@ -1448,7 +1448,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(worker, /references\/self-check\.md/);
     assert.match(worker, /Deliver with evidence/i);
     assert.match(worker, /acceptance_mode/, "the card's acceptance mode closes it");
-    assert.match(worker, /Do not merge, rebase or push/i);
+    assert.match(worker, /landing and cleanup belong to the supervisor's acceptance pass/i);
 
     const check = read("worker", "references/self-check.md");
     for (const item of ["met", "not_applicable", "partial", "not_met", "leftover"]) {
@@ -1515,7 +1515,7 @@ describe("security: Linus owns the toolchain, the reviewer owns the checklist", 
     assert.match(doc, /--check/);
     assert.match(doc, /--install/);
     assert.match(doc, /--upgrade/);
-    assert.match(doc, /never install/i, "the check never installs on its own");
+    assert.match(doc, /read-only and offline/i, "the check never installs on its own");
     assert.match(doc, /--ci-plan/);
     assert.match(doc, /--ci-write/);
     assert.match(doc, /assets\/security\/toolchain\.json/);
@@ -1527,7 +1527,7 @@ describe("security: Linus owns the toolchain, the reviewer owns the checklist", 
     assert.match(doc, /missing/i, "the question is limited to the missing arms");
     assert.match(doc, /no CI file at all is `absent`/i, "an absent pipeline is reported, not this skill's finding");
     assert.match(doc, /SBOM/, "the optional arm is named as optional");
-    assert.match(doc, /never overwritten|Nothing is ever overwritten/i, "an existing file is never overwritten");
+    assert.match(doc, /existing file is preserved/i, "an existing file is never overwritten");
     assert.match(doc, /everywhere else/i, "a non-GitHub pipeline is still served");
     assert.match(doc, /No per-provider template ships/i, "the addition is composed, not templated");
     assert.match(doc, /Change the fewest lines/i, "an in-place edit stays minimal");
@@ -1544,5 +1544,75 @@ describe("security: Linus owns the toolchain, the reviewer owns the checklist", 
     assert.ok(row, "the tech-spec table has a Security toolchain row");
     assert.match(row, /block threshold/i);
     assert.match(row, /exit-code/i);
+  });
+});
+
+describe("card-session system prompts: one static body per lane", () => {
+  const WORKER_LANE = ["jobs", "linus", "turing", "worker"];
+
+  it("ships a non-empty, bounded system_prompt in every role.json", () => {
+    for (const role of ROLES) {
+      const prompt = roleJson(role).system_prompt;
+      assert.ok(typeof prompt === "string" && prompt.trim() !== "", `${role}: system_prompt is required`);
+      assert.ok(Buffer.byteLength(prompt, "utf8") <= 8 * 1024, `${role}: system_prompt stays under 8 KiB`);
+    }
+  });
+
+  it("keeps the four worker-lane bodies identical and the reviewer's different", () => {
+    const bodies = WORKER_LANE.map((role) => roleJson(role).system_prompt);
+    assert.equal(new Set(bodies).size, 1, "a worker-lane drift guard: one static body");
+    assert.notEqual(roleJson("reviewer").system_prompt, bodies[0], "the reviewer has its own body");
+  });
+
+  it("states the board moves the session needs in the static body", () => {
+    const worker = roleJson("linus").system_prompt;
+    assert.match(worker, /heartbeat/i);
+    assert.match(worker, /10 minutes/);
+    assert.match(worker, /in_review/);
+    assert.match(worker, /issue wait/);
+    const reviewer = roleJson("reviewer").system_prompt;
+    assert.match(reviewer, /VERDICT: APPROVE/);
+    assert.match(reviewer, /VERDICT: REJECT/);
+    assert.match(reviewer, /Step 0/);
+  });
+});
+
+describe("role prompts: positive language", () => {
+  const NEGATIVE = /\b(?:do not|don't|never|must not|cannot|can't)\b/i;
+
+  /** The `Hard limits` / `Hard boundaries` / `Limits` section of a role skill. */
+  function limitsSection(skillMd) {
+    const lines = skillMd.split("\n");
+    const start = lines.findIndex((line) => /^## (?:Hard limits|Hard boundaries|Limits)\b/.test(line));
+    assert.notEqual(start, -1, "the role skill names its limits section");
+    let end = lines.length;
+    for (let index = start + 1; index < lines.length; index += 1) {
+      if (/^## /.test(lines[index])) {
+        end = index;
+        break;
+      }
+    }
+    return lines.slice(start + 1, end).join("\n");
+  }
+
+  it("keeps role.json responsibilities, boundaries and system_prompt positive", () => {
+    for (const role of ROLES) {
+      const identity = roleJson(role);
+      const fields = [
+        ...identity.responsibilities.map((line, index) => [`responsibilities[${index}]`, line]),
+        ...identity.boundaries.map((line, index) => [`boundaries[${index}]`, line]),
+        ["system_prompt", identity.system_prompt],
+      ];
+      for (const [field, text] of fields) {
+        assert.doesNotMatch(text, NEGATIVE, `${role}.${field}: ${text}`);
+      }
+    }
+  });
+
+  it("keeps the SKILL.md limits section positive", () => {
+    for (const role of ROLES) {
+      const section = limitsSection(read(role));
+      assert.doesNotMatch(section, NEGATIVE, `${role}: the limits section reads as positive actions`);
+    }
   });
 });

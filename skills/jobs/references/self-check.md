@@ -75,23 +75,23 @@ When `.meerkat/<id>/prd.md` exists, check it and `design/prds/<content-slug>.md`
    item and user-visible state. Every row ends in one disposition:
    - **met** — falsifiable: the artifact path plus the check that resolves, renders or reads it.
    - **not_applicable** — only with `n/a — <reason>`; a bare `n/a` is an omission.
-   - **partial** / **not_met** — a blocker: finish it or ask; never deliver a baseline item
-     with either.
+   - **partial** / **not_met** — a blocker: finish it or ask; a baseline item with either stays
+     out of the delivery.
    - **leftover** — outside the frozen acceptance, with the item, its owner and the follow-up.
-     Never a leftover: a red gate, a security finding, a missing acceptance item, a missing
-     handoff path, or a published contract or migration change.
+     A blocker, not a leftover: a red gate, a security finding, a missing acceptance item, a
+     missing handoff path, or a published contract or migration change.
 2. The report's `conclusion` starts with `Outcome:` and contains the `## Handoff` block; the
    product card names Design card, Validation brief, Spec, Prototype, Prototype card, Verdict
    and commit, PRD, Glossary, Product ADRs, `Acceptance source`, `Delivery shape`, proposed
    implementation and verification, and open questions; every path resolves or says `none`.
 3. `Acceptance source` seeds the next card once; `Delivery shape` agrees with the scopes (one
-   task, or an epic whose children are landable deliverables, `never one child per layer`).
+   task, or an epic whose children are landable deliverables: `one child per layer` is a mis-size).
 4. A split prototype card's handoff names its product card or brief, questions, verdict, path,
    evidence, rejected variants, commit, limitations and open questions.
 5. The delivered tree is committed on the card's branch and the report carries the `commit` anchor;
    `nothing was merged, rebased or pushed`.
-6. The director creates downstream cards; the role does not. One card delivers once
-   unless the flow is split.
+6. The director creates downstream cards; the handoff proposes their shape. One card delivers
+   once unless the flow is split.
 
 ## Standalone mode
 
@@ -105,6 +105,6 @@ written.
 - Product flow without a prototype: Direction, PRD, Archive and Handoff apply; the PRD's
   prototype item is `not_applicable` with the reason.
 - Product and prototype on one card: both check sets run before the single delivery.
-- Prototype card: Direction and PRD do not apply; Prototype plan/design, Archive and (as its
-  own card) Delivery apply.
+- Prototype card: Direction and PRD are out of scope; Prototype plan/design, Archive and (as
+  its own card) Delivery apply.
 - Standalone: Prototype plan/design and Archive apply; no board.
