@@ -178,30 +178,31 @@ are in [`references/scenarios/execute.md`](references/scenarios/execute.md).
 
 ### The acceptance list is the contract
 
-`issue get <ref> --json` carries `acceptance[]` — the **frozen** snapshot the delivery gate
-reads. `meta.acceptance` is only the seed; the gate never reads it.
+`issue get <ref> --json` carries `acceptance[]`, the **frozen** snapshot the gate reads;
+`meta.acceptance` is only the seed.
 
-- **Non-empty** — work to it. It is frozen: append with `issue update <ref> --acceptance "…"`;
-  never replace or remove (removal is a human-only, audited prune).
+- **Non-empty** — work to it. Append (`issue update <ref> --acceptance "…"`) outside
+  `in_review`/terminal; never replace or remove (human-only, audited prune). Both
+  `--acceptance` and `--drop-acceptance` refuse with `ACCEPTANCE_LOCKED` there: rework first;
+  the new delivery round re-opens the baseline.
 - **Empty, but `meta.acceptance` / `meta.acceptance_legacy` is not** — append as above; the
   next round freezes it.
-- **All empty** — this is an acceptance decision. Derive **1–6 concrete, externally checkable**
-  items (usually 2–6; never pad) only when the handoff or the `meerkat-director` pre-authorized
-  it for this card, persist them once, and record the act:
+- **All empty** — an acceptance decision. Derive **1–6 concrete, externally checkable** items
+  (never pad) only when the handoff or the `meerkat-director` pre-authorized it, persist them,
+  and record the act:
 
 ```bash
 taskctl issue update <ref> --acceptance "…" --acceptance "…" --meta acceptance_derived=yes
 taskctl comment add <ref> --kind note --body "acceptance list derived at claim (pre-authorized): 1) …"
 ```
 
-Without that pre-authorization, write an agent `question` comment with the proposed items and
-**hold** with `issue wait` — leave the card `in_progress`. Never derive on an **epic** (its
-acceptance is its children) or a **review card**.
+Without it, write an agent `question` comment with the proposed items and **hold** with
+`issue wait` — leave the card `in_progress`. Never derive on an **epic** (its acceptance is its
+children) or a **review card**.
 
-The report must **cover the snapshot**: every item appears by text; `met` or `not_applicable`
-(with a non-empty note) passes, `partial` / `not_met` block. A report item beyond the baseline
-blocks too if unfinished. An imported checkbox list freezes as plain items: a tick is the
-author's intent, not this delivery's evidence.
+The report must **cover the snapshot**: every item by text; `met` or `not_applicable` (with a
+non-empty note) passes, `partial` / `not_met` block, and so does an unfinished item beyond it.
+An imported checkbox list freezes as plain items: a tick is intent, not evidence.
 
 ## Containers: when the card is an epic
 
