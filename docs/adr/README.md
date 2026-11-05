@@ -35,6 +35,7 @@ what a change must comply with.
 | [0014](0014-a-review-is-a-third-kind.md) | A review is a third card `kind`; the marker stays its identity and the database ties them together | Proposed |
 | [0015](0015-stale-claim-recovery-keeps-the-assignee.md) | Stale-claim recovery keeps the assignee's role; a non-assignee takeover needs the audited override; Worker is a formal, commented fallback | Accepted |
 | [0016](0016-turn-timeouts-are-transient.md) | A turn timeout has its own counter and backoff and returns the card to `todo`, never `blocked`; the loop pulses the claim and the deadline includes the opener | Accepted |
+| [0017](0017-a-claim-cycle-exit-interrupts-the-turn.md) | Leaving the claim cycle interrupts the turn, records `interrupted`, and discards the session; the next claim is fresh | Proposed |
 
 ## Writing one
 

@@ -48,6 +48,9 @@ export const STATE_FILES = Object.freeze({
   // boot-health.mjs`). One record per state directory, because one supervisor
   // runs per machine.
   health: "supervisor.health.json",
+  // TP-0125 · the cross-process turn-interrupt channel (`orchestrator/
+  // interrupts.mjs`). A directory, not a file: one request per card target.
+  interrupts: "interrupts",
 });
 
 /** Statuses a legacy ledger row may carry while it still claims a concurrency slot. */
@@ -435,7 +438,7 @@ export function wedgeKillAction(input = {}) {
  * The state siblings that live beside `continue.state.json`.
  *
  * @param {string} stateDir
- * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string, poolWedge: string, health: string}}
+ * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string, poolWedge: string, health: string, interrupts: string}}
  */
 export function statePathsForDir(stateDir) {
   const dir = String(stateDir);
@@ -447,5 +450,6 @@ export function statePathsForDir(stateDir) {
     deferrals: join(dir, STATE_FILES.deferrals),
     poolWedge: join(dir, STATE_FILES.poolWedge),
     health: join(dir, STATE_FILES.health),
+    interrupts: join(dir, STATE_FILES.interrupts),
   };
 }

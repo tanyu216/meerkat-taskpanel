@@ -212,7 +212,7 @@ supervisor 有两个时钟和一个常驻会话池：
 2. **workflow** —— 写入通道。看板用 `issue reconcile --workflow` 计算计划（容器规则、为每笔交付派出独立审核员、应用结论）；supervisor 执行计划里的审核动作。`--workflow=no` 关闭这条通道；审核卡的 assignee（角色目录的 `default_reviewer`）决定审核员。
 3. **poll** —— 扫描、导出卡片 brief、原子认领、写交接队列。它不 spawn worker。空扫描 $0。只有认领成功后，这笔工作的第一个模型回合才会开始。
 
-会话池把每张卡放进它自己的 worker 会话，在项目目录或卡片 worktree 里打开，并跑在承载该角色 skill 的 kind 上。同轮重派（问题得到回答、返工、崩溃）会按 id **恢复**原会话；原生会话不存在时，supervisor 把一段有界转录重放进新会话并标记。
+会话池把每张卡放进它自己的 worker 会话，在项目目录或卡片 worktree 里打开，并跑在承载该角色 skill 的 kind 上。**仍在认领周期内**的同轮重派（返工、崩溃）会按 id **恢复**原会话；原生会话不存在时，supervisor 把一段有界转录重放进新会话并标记。卡片一旦离开认领周期（释放、取消、问题得到回答、进入终态），正在跑的 turn 会被中断、会话被丢弃，下次认领以全新会话启动并重读卡片与评论。
 
 worker 的提问由 director 回答：写 agent `note` 并把卡移回 `todo`，或用 `awaiting --awaiting-reason --question` 升级 E1–E5。超过 30 分钟仍未分配的卡由 director 按生成的路由表指派。不再另起专门的项目会话处理这些。
 

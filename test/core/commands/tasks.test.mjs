@@ -2855,6 +2855,38 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
     });
   });
 
+  // TP-0125 — the direct edge exists so the exit does not re-enter the work
+  // cycle on its way to the queue.
+  it("walks in_progress → backlog directly, releasing the lock in the same write", async () => {
+    await board(async ({ db, commands }) => {
+      const task = await claimed(commands);
+      const backlog = commands.moveStatus({ id: task.id, to: "backlog", actor: HUMAN });
+      assert.equal(backlog.status, "backlog");
+      assert.equal(backlog.claimedBy, null);
+      assert.equal(backlog.claimedAt, null);
+      assert.equal(backlog.heartbeatAt, null);
+      assert.equal(
+        db.prepare("SELECT claimed_by FROM tasks WHERE id = ?").get(task.id).claimed_by,
+        null,
+      );
+    });
+  });
+
+  it("cancels a delivered card in one move, without bumping its round (TP-0125)", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      const delivered = commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
+      assert.equal(delivered.task.status, "in_review");
+      assert.equal(actorName(db, delivered.task.claimedBy), "linus", "review keeps the same executor's claim");
+
+      const canceled = commands.moveStatus({ id: task.id, to: "canceled", actor: HUMAN });
+      assert.equal(canceled.status, "canceled");
+      assert.equal(canceled.claimedBy, null, "a finished card is nobody's");
+      assert.equal(canceled.deliveryRound, 1, "in_review → canceled is terminal, not a rework");
+    });
+  });
+
   it("releases the lock for the terminal pair too, so a finished card is nobody's", async () => {
     await board(async ({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });

@@ -36,6 +36,15 @@ import {
   WORKER_SYSTEM_PROMPT_FALLBACK,
 } from "../foundation/scheduling.mjs";
 import { holdCard, releaseCard } from "./holds.mjs";
+import {
+  holdsClaim,
+  INTERRUPT_TOMBSTONE_MS,
+  interruptRequestsForRow,
+  interruptRequestForRow,
+  pruneInterruptRequests,
+  readInterruptRequestIndex,
+  removeInterruptRequest,
+} from "./interrupts.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
 import { drainInFlight, readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, readTriageOutcome, runCli, runCliAsync } from "./runtime.mjs";
@@ -137,8 +146,22 @@ const QUESTION_RETRY_BACKOFF_MS = 30_000;
  */
 export const CARD_HEARTBEAT_MS = 5 * 60_000;
 
+/**
+ * How long an interrupt waits for the adapter to settle a turn, and then for
+ * the handle to close (TP-0125). Both are bounded separately: a hung
+ * `interrupt()` must not hang the 1 s drain clock, and a hung `close()` must not
+ * keep the marker served forever. The pool never signals a shared process
+ * (Codex's app-server); the adapter's own `interrupt()`/`close()` are the only
+ * levers.
+ */
+export const INTERRUPT_SETTLE_MS = 10_000;
+
 /** A queue row on the question lane (everything else is a card handoff). */
 const isQuestionRow = (row) => String(row?.queue_kind ?? "handoff") === "question";
+
+/** A queue row that is history, not work (`queue.mjs#TERMINAL_CARD_STATUSES`). */
+const CARD_ROW_TERMINAL = new Set(["done", "failed", "interrupted"]);
+const isTerminalCardRow = (row) => CARD_ROW_TERMINAL.has(String(row?.status ?? ""));
 
 /**
  * The session an event belongs to.
@@ -394,6 +417,22 @@ export function createSessionPool(input = {}) {
   // not identity, because the OS reuses pids.
   let previousPoolPidStart = null;
   let warnedReviewerAllowlist = false;
+  // TP-0125 — the interrupt tokens of the rows this pool has declared dead.
+  // `<row.id>\u0000<row.enqueuedAt>` because a row id is reused when a card is
+  // re-enqueued; the timestamp makes the token name *this* handoff. The set is
+  // the synchronous "do not send / do not settle normally" guard that must be
+  // true before `interrupt()` is called.
+  const interruptedTokens = new Set();
+  let drainingInterrupts = false;
+  const interruptToken = (row) => `${String(row?.id ?? "")}\u0000${String(row?.enqueuedAt ?? "")}`;
+  const markRowInterrupted = (row) => {
+    if (row !== null && row !== undefined) interruptedTokens.add(interruptToken(row));
+  };
+  const isRowInterrupted = (row) =>
+    row !== null && row !== undefined && interruptedTokens.has(interruptToken(row));
+  const clearRowInterrupted = (row) => {
+    if (row !== null && row !== undefined) interruptedTokens.delete(interruptToken(row));
+  };
 
   /**
    * The pool for one actor kind. One process holds several: a role runs on the
@@ -954,6 +993,14 @@ export function createSessionPool(input = {}) {
     sessions.delete(entry.key);
     if (dropSession) {
       delete state.projects[entry.key];
+      // TP-0125 — dropping a session is also dropping its transcript, at once.
+      // Waiting for the next `planWorkerOpen` leaves the old conversation
+      // readable while the next claim is already racing to open fresh.
+      try {
+        rmSync(transcriptFile(stateDir, entry.key), { force: true });
+      } catch {
+        // The transcript is best-effort state; a failed unlink must not block.
+      }
     } else if (state.projects?.[entry.key] !== undefined) {
       state.projects[entry.key] = {
         ...state.projects[entry.key],
@@ -966,6 +1013,291 @@ export function createSessionPool(input = {}) {
       };
     }
     persistState();
+  }
+
+  /**
+   * TP-0125 — a claim-cycle exit is a new attempt: the stored worker session
+   * and its transcript are gone, so the next `planWorkerOpen` returns `fresh`.
+   *
+   * This must run even when there is no live entry (`abortEntry` may be too
+   * late to own the handle, and a card can be released while its turn is
+   * between processes). Deleting only one of the record and the transcript is
+   * the bug the plan calls out: `planWorkerOpen` reads the record, replay reads
+   * the transcript.
+   *
+   * @param {string|null|undefined} key a `worker:<card>:r<round>` key
+   */
+  function forgetSession(key) {
+    if (typeof key !== "string" || key === "") return;
+    sessions.delete(key);
+    if (state.projects?.[key] !== undefined) delete state.projects[key];
+    try {
+      rmSync(transcriptFile(stateDir, key), { force: true });
+    } catch {
+      // The transcript is best-effort state; a failed unlink must not block.
+    }
+    persistState();
+  }
+
+  /**
+   * Record one interrupted turn in the ledger. `interrupted` is already part of
+   * the ledger's vocabulary; without the row an interruption is invisible in
+   * `loop doctor` and in the reconcile trail.
+   */
+  function recordInterrupt(row, key) {
+    const review = String(row?.role ?? "worker") === "reviewer";
+    ledger = upsertSubagent(ledger, {
+      sessionKey: key ?? (typeof row?.worker_key === "string" ? row.worker_key : null),
+      lane: review ? "reviewer" : "worker",
+      actorKind: row?.actor_kind ?? opts.actorKind,
+      subagentId: null,
+      role: row?.role ?? "worker",
+      agentRole: row?.agent_role ?? null,
+      card: row?.card ?? null,
+      type: "card-session",
+      status: "interrupted",
+      lastResult: "claim cycle exited — turn interrupted, the next claim starts fresh",
+      queueId: row?.id ?? null,
+      project: row?.project ?? null,
+      projectDir: row?.project_dir ?? row?.target_dir ?? null,
+      workspace: row?.workspace?.path ?? row?.target_dir ?? null,
+      round: roundOf(row ?? {}),
+    });
+    writeLedgerState();
+  }
+
+  /** A bounded wait; the pool's drain clock must never hang on an adapter. */
+  function boundedWait(ms) {
+    return new Promise((resolveWait) => {
+      const timer = setTimeout(resolveWait, ms);
+      timer.unref?.();
+    });
+  }
+
+  /**
+   * Interrupt one live handoff and make its row terminal.
+   *
+   * Order is the plan's: **the token and `entry.interrupted` are set
+   * synchronously before `interrupt()`**, so the send path and the settlement
+   * path can never mistake this turn for a live delivery. Both waits are
+   * bounded independently, so a hung adapter costs the drain clock at most
+   * `2 × INTERRUPT_SETTLE_MS` and never signals a shared process.
+   *
+   * @param {object} entry the pool's live entry
+   * @param {object} row the queue row it owns
+   * @param {object|null} request the marker to unlink on success
+   * @returns {Promise<{ok: boolean, error: string|null}>}
+   */
+  async function abortEntry(entry, row, request) {
+    // The key may be reused by a later handoff; `queueId` is the precise
+    // identity, with the worker key as the fallback for a row written before it.
+    const sameHandoff =
+      entry?.worker?.queueId === row?.id ||
+      (typeof row?.worker_key === "string" && entry?.key === row.worker_key);
+    if (!sameHandoff) return { ok: false, error: "entry does not own this handoff" };
+    markRowInterrupted(row);
+    entry.interrupted = true;
+    if (typeof entry.handle?.interrupt === "function") {
+      await Promise.race([
+        Promise.resolve()
+          .then(() => entry.handle.interrupt())
+          .catch(() => {}),
+        boundedWait(INTERRUPT_SETTLE_MS),
+      ]);
+    }
+    await Promise.race([
+      closeEntry(entry, { dropSession: true }).catch(() => {}),
+      boundedWait(INTERRUPT_SETTLE_MS),
+    ]);
+    forgetSession(entry.key);
+    const completed = completeCards(stateDir, [row.id], {
+      status: "interrupted",
+      error: "card left its claim cycle",
+    });
+    if (completed.ok !== true) {
+      // The marker stays: the queue lock was busy, and the next tick retries.
+      return { ok: false, error: completed.error ?? "queue write failed" };
+    }
+    recordInterrupt(row, entry.key);
+    if (request !== null && request !== undefined) removeInterruptRequest(request);
+    return { ok: true, error: null };
+  }
+
+  /**
+   * The settlement path for a turn whose card already left its claim cycle.
+   * Idempotent with `abortEntry`: the row may already be `interrupted`, and
+   * `completeCards` skips a terminal row. The token is cleared only here, after
+   * the row is terminal, so a missed marker cannot be resurrected.
+   */
+  function settleInterrupted(row, entry) {
+    const key = entry?.key ?? (typeof row?.worker_key === "string" ? row.worker_key : null);
+    forgetSession(key);
+    const completed = completeCards(stateDir, [row.id], {
+      status: "interrupted",
+      error: "card left its claim cycle",
+    });
+    // A queue-lock refusal keeps the token: the row is still `processing`, and
+    // the next tick must retry the same terminal write rather than let a later
+    // tick resume or time it out (which would spend a counter).
+    if (completed.ok === true) {
+      recordInterrupt(row, key);
+      clearRowInterrupted(row);
+    }
+    if (entry !== undefined && entry !== null) {
+      entry.busy = false;
+      entry.interrupted = true;
+      entry.worker.status = "idle";
+    }
+    persistState();
+    return completed;
+  }
+
+  /**
+   * Consume `stateDir/interrupts/` on its own 1 s clock.
+   *
+   * Runs beside the question clock, never inside `tick()`: a tick awaits every
+   * turn, and the whole point of an interrupt is to stop one. Question rows are
+   * excluded — a director lane has no claim cycle and must never be killed by a
+   * worker's marker.
+   *
+   * The row's state decides:
+   *
+   *   terminal (`done`/`failed`/`interrupted`) → forget the finished session,
+   *   consume the marker; no state change. (The benign `in_review → done`.)
+   *   `pending` → the turn has not started; mark and complete `interrupted`.
+   *   `processing` + our live entry → `abortEntry`.
+   *   `processing` + no live entry / a dead owner → complete `interrupted`.
+   *   `processing` + another live pid → leave it to the owning pool.
+   *   no matching row → keep as a tombstone (`INTERRUPT_TOMBSTONE_MS`).
+   *
+   * A queue read failure keeps every marker: the next tick retries. A failed
+   * per-row `completeCards` keeps that marker too.
+   *
+   * @returns {Promise<{ok: boolean, interrupted: number, pending: number, skipped: number, error: string|null}>}
+   */
+  async function drainInterrupts() {
+    if (drainingInterrupts) return { ok: true, interrupted: 0, pending: 0, skipped: 0, error: null };
+    drainingInterrupts = true;
+    try {
+      const index = readInterruptRequestIndex(stateDir);
+      for (const file of index.corrupt) {
+        log(`session: discarded a corrupt interrupt request (${file})`, { level: "warn" });
+      }
+      if (index.files.length === 0) {
+        return { ok: true, interrupted: 0, pending: 0, skipped: 0, error: null };
+      }
+      pruneInterruptRequests(stateDir, { now: now() });
+      const read = readCards(stateDir);
+      if (read.error !== null) {
+        // Never treat an unreadable queue as "no matching row": that would
+        // consume the marker and lose the interrupt.
+        log(`session: interrupt drain could not read the card queue: ${read.error}`, { level: "warn" });
+        return { ok: false, interrupted: 0, pending: 0, skipped: index.files.length, error: read.error };
+      }
+      const requests = new Map();
+      for (const request of [...index.byTask.values(), ...index.byCard.values()].flat()) {
+        requests.set(request.file, request);
+      }
+      const consumed = new Set();
+      let interrupted = 0;
+      let pending = 0;
+      let skipped = 0;
+      for (const row of read.value.cards) {
+        if (isQuestionRow(row)) continue;
+        const matches = interruptRequestsForRow(index, row);
+        if (matches.length === 0) continue;
+        const consume = () => {
+          for (const match of matches) {
+            consumed.add(match.file);
+            removeInterruptRequest(match.file);
+          }
+        };
+        if (isTerminalCardRow(row)) {
+          // The turn (if any) already settled. Only the durable session is left
+          // to forget; the board is untouched.
+          forgetSession(row.worker_key);
+          consume();
+          continue;
+        }
+        if (row.status === "pending") {
+          markRowInterrupted(row);
+          const completed = completeCards(stateDir, [row.id], {
+            status: "interrupted",
+            error: "card left its claim cycle before its turn started",
+          });
+          if (completed.ok === true) {
+            forgetSession(row.worker_key);
+            recordInterrupt(row, row.worker_key);
+            consume();
+            pending += 1;
+          } else {
+            skipped += 1;
+          }
+          continue;
+        }
+        if (row.status !== "processing") continue;
+        const key = typeof row.worker_key === "string" ? row.worker_key : null;
+        const entry =
+          (key === null ? undefined : sessions.get(key)) ??
+          [...sessions.values()].find((session) => session.worker?.queueId === row.id);
+        if (entry !== undefined) {
+          const result = await abortEntry(entry, row, matches[0]);
+          if (result.ok === true) {
+            for (const match of matches.slice(1)) {
+              consumed.add(match.file);
+              removeInterruptRequest(match.file);
+            }
+            interrupted += 1;
+          } else {
+            skipped += 1;
+          }
+          continue;
+        }
+        // No in-process entry. Another live pool may own the row; only a dead
+        // owner (or this pool, whose entry is gone) may be finalized here.
+        const ownerPid = Number(row.claimedByPid);
+        const ownedByAnotherLivePool =
+          Number.isInteger(ownerPid) &&
+          ownerPid > 0 &&
+          ownerPid !== process.pid &&
+          isAlive(ownerPid);
+        if (ownedByAnotherLivePool) {
+          skipped += 1;
+          continue;
+        }
+        markRowInterrupted(row);
+        const completed = completeCards(stateDir, [row.id], {
+          status: "interrupted",
+          error: "card left its claim cycle; no live turn to interrupt",
+        });
+        if (completed.ok === true) {
+          forgetSession(row.worker_key);
+          recordInterrupt(row, row.worker_key);
+          consume();
+          interrupted += 1;
+        } else {
+          skipped += 1;
+        }
+      }
+      // Unmatched requests are tombstones: they catch a late first read of a
+      // row that was already in the queue, and expire quickly. The absolute
+      // prune above is the backstop.
+      for (const [file, request] of requests) {
+        if (consumed.has(file)) continue;
+        const at = Date.parse(String(request.requested_at ?? ""));
+        if (!Number.isFinite(at) || now() - at >= INTERRUPT_TOMBSTONE_MS) removeInterruptRequest(file);
+      }
+      if (interrupted > 0 || pending > 0) {
+        log(`session: interrupted ${interrupted + pending} turn(s) whose card left its claim cycle`, {
+          level: "info",
+          event: "turn_interrupted",
+          interrupted: interrupted + pending,
+        });
+      }
+      return { ok: true, interrupted, pending, skipped, error: null };
+    } finally {
+      drainingInterrupts = false;
+    }
   }
 
   /**
@@ -1589,10 +1921,16 @@ export function createSessionPool(input = {}) {
      * inside the agent, so the loop writes the heartbeat itself. The pulse is
      * best-effort: a refusal stops it, and it never changes the turn's outcome.
      *
-     * @param {object} row the handoff queue row
+     * TP-0125 adds the refusal arm: a pulse refused because the card is no
+     * longer in a claim-holding status (or because another actor now holds it)
+     * is a claim-cycle exit the marker channel may have missed. The pulse is
+     * the ≤5-minute backstop when no subscriber or workflow pass is installed.
+     *
+     * @param {{cards: object[], key?: string}} job the group's handoff
      * @returns {{stop: () => void}}
      */
-    const startCardPulse = (row) => {
+    const startCardPulse = (job) => {
+      const row = job?.cards?.[0] ?? null;
       const agent = typeof row?.agent === "string" ? row.agent.trim() : "";
       const card = String(row?.card ?? "");
       if (opts.dryRun || agent === "" || card === "") return { stop: () => {} };
@@ -1619,6 +1957,21 @@ export function createSessionPool(input = {}) {
               `session: card heartbeat for ${card} refused (${result.code ?? result.error ?? "unknown"}) — pulse stopped`,
               { level: "debug" },
             );
+            // The board's refusal is evidence about the claim: `details.status`
+            // outside the claim cycle is an exit, and `EXECUTION_ACTIVE` means
+            // another actor has taken the card while this turn runs (the
+            // double-run the interrupt exists to prevent).
+            const status = result.details?.status;
+            const leftClaimCycle = typeof status === "string" && !holdsClaim(status);
+            if (!leftClaimCycle && result.code !== "EXECUTION_ACTIVE") return;
+            const key = typeof row.worker_key === "string" ? row.worker_key : job?.key ?? null;
+            const entry = key === null ? undefined : sessions.get(key);
+            if (entry === undefined) return;
+            void abortEntry(entry, row, null).catch((err) =>
+              log(`session: could not interrupt ${card} after a refused pulse: ${err.message}`, {
+                level: "warn",
+              }),
+            );
           })
           .finally(() => {
             inFlight = false;
@@ -1641,6 +1994,18 @@ export function createSessionPool(input = {}) {
         entry.worker.status = "running";
         persistState();
         try {
+          // TP-0125 — the double check before the first byte: the row may have
+          // been marked between the claim and this call. Never open a card
+          // prompt for a card that already left its claim cycle.
+          if (entry.interrupted === true || isRowInterrupted(row)) {
+            return {
+              ok: false,
+              interrupted: true,
+              error: "card left its claim cycle",
+              sessionId: entry.sessionId,
+              cwd: entry.cwd,
+            };
+          }
           // A closed handle answers every send with `session is closed`; sending
           // the card prompt into it would spend the row's attempt budget on a
           // dead pipe. Report it so the caller can open a fresh conversation.
@@ -1674,6 +2039,18 @@ export function createSessionPool(input = {}) {
                 cwd: entry.cwd,
               };
             }
+          }
+          // TP-0125 — the opener is an await; the marker may have arrived while
+          // it ran. Check again before spending the card's prompt (and before
+          // reopening a conversation for a card nobody holds any more).
+          if (entry.interrupted === true || isRowInterrupted(row)) {
+            return {
+              ok: false,
+              interrupted: true,
+              error: "card left its claim cycle",
+              sessionId: entry.sessionId,
+              cwd: entry.cwd,
+            };
           }
           const prompt =
             planMode === "replay"
@@ -1769,7 +2146,7 @@ export function createSessionPool(input = {}) {
     // The pulse covers the opener and the card prompt, and is cleared whatever
     // path the turn takes.
     const sendCardJob = async (job) => {
-      const pulse = startCardPulse(job.cards[0]);
+      const pulse = startCardPulse(job);
       try {
         return await sendCardTurn(job);
       } finally {
@@ -1784,8 +2161,23 @@ export function createSessionPool(input = {}) {
       const row = batch[0];
       const review = lane === "reviewer";
       const settledJob = settled[index];
+      // TP-0125 — settlement priority: a turn the pool (or the pulse, or a
+      // marker consumer) declared dead never spends an attempt, a timeout or a
+      // recovery, whether it resolved or rejected. `abortEntry` may already
+      // have finalized the row; this path is the one that runs when the adapter
+      // settled first.
+      if (job.entry?.interrupted === true || entry.interrupted === true || isRowInterrupted(row)) {
+        settleInterrupted(row, job.entry ?? entry);
+        continue;
+      }
       if (settledJob.status === "rejected") {
         const error = String(settledJob.reason?.message ?? settledJob.reason ?? "card turn failed");
+        // A rejection can race the interrupt: re-check the token before it
+        // spends an attempt.
+        if (job.entry?.interrupted === true || entry.interrupted === true || isRowInterrupted(row)) {
+          settleInterrupted(row, job.entry ?? entry);
+          continue;
+        }
         for (const failedCard of batch) {
           await settleFailedHandoff(failedCard, lane === "reviewer", error);
         }
@@ -1851,10 +2243,13 @@ export function createSessionPool(input = {}) {
         // A resume/replay that timed out is the same transient failure as a
         // first turn: it never parks the card.
         if (isTurnTimeoutError(error)) {
-          await settleTimedOutHandoff(row, review, `session resume/replay failed: ${error}`);
+          const timeoutSettle = await settleTimedOutHandoff(row, review, `session resume/replay failed: ${error}`);
           entry.worker.status = "idle";
           entry.worker.lastError = error;
-          await closeEntry(entry, { dropSession: false });
+          // TP-0125 — a timeout that reached its bound releases the card to
+          // `todo`; the next claim is a fresh attempt and must not resume this
+          // conversation. Below the bound the session is kept for the retry.
+          await closeEntry(entry, { dropSession: timeoutSettle.terminal === true });
           persistState();
           continue;
         }
@@ -1903,11 +2298,17 @@ export function createSessionPool(input = {}) {
           );
         }
       }
+      let settleResult = { terminal: false };
       if (stillWorkable) {
-        await settleFailedHandoff(row, review, error);
+        settleResult = await settleFailedHandoff(row, review, error);
       }
       if (/closed|exited|spawn error|timed out/.test(error)) {
-        await closeEntry(entry, { dropSession: false });
+        // TP-0125 — a timeout that reached its bound returns the card to the
+        // queue; the next claim is fresh. Every other close keeps the record
+        // for the same-round retry (or the blocked hold).
+        await closeEntry(entry, {
+          dropSession: isTurnTimeoutError(error) && settleResult.terminal === true,
+        });
       }
       // The turn settled; the record must not keep saying `running` (a failed
       // turn is retried on the next tick, and the guard reads `busy`).
@@ -2024,6 +2425,13 @@ export function createSessionPool(input = {}) {
    * @returns {Promise<{terminal: boolean}>}
    */
   async function settleFailedHandoff(row, review, error) {
+    // TP-0125 — a marker can arrive during the settle's own awaits (a board
+    // re-read, a comment write). It outranks the failure: the card left the
+    // claim cycle, so this turn must not spend an attempt.
+    if (isRowInterrupted(row)) {
+      settleInterrupted(row, sessions.get(row.worker_key));
+      return { terminal: true };
+    }
     if (isTurnTimeoutError(error)) return settleTimedOutHandoff(row, review, error);
     const label = review ? "review " : "worker ";
     const result = requeueCards(stateDir, [row.id], { error });
@@ -2078,6 +2486,12 @@ export function createSessionPool(input = {}) {
    * @returns {Promise<{terminal: boolean}>}
    */
   async function settleTimedOutHandoff(row, review, error) {
+    // TP-0125 — same re-check as the failure path: a claim-cycle exit is not a
+    // timeout, so it neither increments `timeouts` nor arms a retry.
+    if (isRowInterrupted(row)) {
+      settleInterrupted(row, sessions.get(row.worker_key));
+      return { terminal: true };
+    }
     const label = review ? "review " : "worker ";
     const result = timeoutCards(stateDir, [row.id], { error, now: now() });
     if (result.ok !== true) {
@@ -2183,11 +2597,17 @@ export function createSessionPool(input = {}) {
       return { ok: false, resumed: 0, timedOut: 0, failed: 0, failedIds: [], error: read.error };
     }
     const workers = readWorkerSessions(stateDir).workers;
+    // TP-0125 — a row named by an interrupt marker is the drain's, not the
+    // reattach pass's. Resuming it here would open the very conversation the
+    // marker exists to discard; the startup drain runs first, and this skip is
+    // the second guard for the window between them.
+    const interruptIndex = readInterruptRequestIndex(stateDir);
     const ids = [];
     const timedOut = [];
     for (const row of read.value.cards) {
       if (row.status !== "processing") continue;
       if (typeof row.worker_key !== "string" || row.worker_key === "") continue;
+      if (interruptRequestForRow(interruptIndex, row) !== null) continue;
       const record = workers[row.worker_key];
       if (record === undefined || record.blocked === true) continue;
       if (!started) break;
@@ -2399,6 +2819,10 @@ export function createSessionPool(input = {}) {
     async routeQuestionsNow() {
       return routeQuestionsNow();
     },
+    /** TP-0125 — consume the cross-process interrupt requests. */
+    async drainInterrupts() {
+      return drainInterrupts();
+    },
     async evictIdle() {
       return evictIdle();
     },
@@ -2557,13 +2981,46 @@ export async function runSession(opts, deps = {}) {
   // The heartbeat is independent of the tick: while a turn is in flight the
   // state file must still say "the pool is here".
   const heartbeat = setInterval(() => pool.persistState(), POOL_HEARTBEAT_MS);
+  // TP-0125 — the interrupt clock. It is deliberately its own interval: a tick
+  // awaits every turn, and a turn is exactly what an interrupt must stop. It
+  // runs on the same cadence as the question router (1 s by default).
+  let drainingInterrupts = false;
+  let inFlightDrain = null;
+  const interruptTick = () => {
+    if (stopping || drainingInterrupts) return;
+    drainingInterrupts = true;
+    inFlightDrain = pool
+      .drainInterrupts()
+      .catch((err) => log(`session: interrupt tick failed: ${err.message}`, { level: "error" }))
+      .finally(() => {
+        drainingInterrupts = false;
+        inFlightDrain = null;
+      });
+  };
+  const interruptInterval = setInterval(
+    interruptTick,
+    Math.max(50, Number(opts.sessionPollMs ?? SESSION_DEFAULTS.pollMs)),
+  );
   // Reattach is a background pass, started only after the tick and heartbeat
   // own the pool's liveness. A slow board read here must not keep the startup
   // window open; the pass is bounded and records `reattach_timeout`.
+  //
+  // TP-0125 — **drain before recovering**: a card canceled while the pool was
+  // down must not be resumed on the way back up. The pass skips marked rows too
+  // (belt and braces); the second drain catches a marker written while the
+  // recovery itself ran.
   if (deps.signal === undefined || !deps.signal.aborted) {
-    void pool
-      .reattachOnStart()
-      .catch((err) => log(`session: reattach failed: ${err?.message ?? String(err)}`, { level: "warn" }));
+    void (async () => {
+      await pool
+        .drainInterrupts()
+        .catch((err) => log(`session: startup interrupt drain failed: ${err?.message ?? String(err)}`, { level: "warn" }));
+      await pool
+        .reattachOnStart()
+        .catch((err) => log(`session: reattach failed: ${err?.message ?? String(err)}`, { level: "warn" }));
+      await pool
+        .drainInterrupts()
+        .catch((err) => log(`session: post-reattach interrupt drain failed: ${err?.message ?? String(err)}`, { level: "warn" }));
+    })();
   }
   // These three timers are the pool's lifetime in every deployment shape: the
   // installed daemon, a `--take-over` pool, and a hand-run `loop session`. Agent
@@ -2580,6 +3037,7 @@ export async function runSession(opts, deps = {}) {
       stopping = true;
       clearInterval(interval);
       clearInterval(questionInterval);
+      clearInterval(interruptInterval);
       clearInterval(heartbeat);
       const drainMs =
         Number.isFinite(deps.stopDrainMs) && deps.stopDrainMs >= 0
@@ -2588,6 +3046,7 @@ export async function runSession(opts, deps = {}) {
       const drained = await Promise.all([
         drainInFlight(inFlightTick, drainMs),
         drainInFlight(inFlightQuestions, drainMs),
+        drainInFlight(inFlightDrain, drainMs),
       ]);
       if (drained.includes(false)) {
         log(`session: an in-flight pass outlived ${drainMs}ms — stopping anyway`, {

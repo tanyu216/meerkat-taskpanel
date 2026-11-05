@@ -75,8 +75,9 @@ describe("contract/liveness — every non-terminal status can reach canceled", (
     }
   });
 
-  it("in_review reaches canceled in two moves (there is no direct edge)", () => {
-    assert.equal(allowedTargets("in_review").includes("canceled"), false, "deliberate: no direct edge");
+  it("in_review reaches canceled in one move (TP-0125 adds the direct edge)", () => {
+    assert.equal(allowedTargets("in_review").includes("canceled"), true, "the direct edge is the escape");
+    // The two-hop path is still legal, and is what a rework/blocker uses.
     for (const via of ["in_progress", "blocked"]) {
       assert.ok(allowedTargets("in_review").includes(via), `in_review → ${via}`);
       assert.ok(allowedTargets(via).includes("canceled"), `${via} → canceled`);
