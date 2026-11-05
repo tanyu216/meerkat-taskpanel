@@ -511,8 +511,10 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   line; Codex receives the skill entry as `developerInstructions` on
   `thread/start`/`thread/resume`; Pi receives it as an appended system-prompt file. The
   handoff is then a thin task envelope (brief, plan, round details, board moves, no role
-  layer). On an inline kind the envelope carries the `Flags:` line itself, because no
-  opener message exists to carry it. The session's cwd is the card's admitted worktree, and
+  catalog fields). On an inline kind the **worker** envelope carries the `Flags:` line
+  itself, because no opener message exists to carry it; the **review** envelope never does —
+  the system prompt injected at open already carries them. The session's cwd is the card's
+  admitted worktree, and
   its id is persisted **before** the turn so a crash can resume it. The key includes the
   actor kind: a role migrated between platforms never resumes the old platform's native
   session. A changed installed skill reopens the lane the same way on every kind.
@@ -523,11 +525,15 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   system prompt carries the review card ref and brief, the card under review with its round,
   the original's brief and plan, and the `Flags:` line — so Step 0 and the verdict rules
   survive a lost handoff. The reviewer handoff prompt is the reviewer variant: no question
-  ladder, verdict-only. Each review card is one session with its **full** review handoff — a
-  subagent does not inherit the parent's loaded skill, so the review protocol and the role
-  path must be in that first context. The allowlist is real for Claude and Pi; Codex and
-  other adapters have no per-role tool surface, and the pool logs a one-time warning for
-  them.
+  ladder, verdict-only. A resident review session gets the thin review envelope — the exact
+  review card and original with its round, Step 0, the board reads and the verdict format;
+  the system prompt already carries the identity, briefs and `Flags:`. The **full** review
+  handoff is built only when no resident skill could be loaded (a non-resident dispatch or a
+  kind whose skill is not ready); it inlines `references/reviewer-prompt.md` immediately
+  before Step 0 — a subagent does not inherit the parent's loaded skill, so the protocol must
+  be in that first context — then the role skill path and the decision policy. The allowlist
+  is real for Claude and Pi; Codex and other adapters have no per-role tool surface, and the
+  pool logs a one-time warning for them.
 - **Director session** — keyed `(primary, director:<dir>)`, opened only when a question,
   route or escalation row is queued. It is the one LLM decision lane: it assigns unowned
   cards, answers worker questions with a `note` + `todo`, or escalates E1–E5 with
@@ -687,7 +693,7 @@ Every dependency's failure is named; nothing degrades silently.
 | no director skill | the pool refuses to start, so no decision row runs — the failure is not silent |
 | no decision policy | one warning; the generated prompt falls back to the built-in summary and decisions still run |
 | a role's kind cannot start | fall back to another kind that carries the role; if none does, claim nothing for that role's cards and report |
-| role skill absent | the card still runs with a plain handoff (no role layer); one warning |
+| role skill absent | the card still runs with a plain handoff (no role paths); one warning |
 | malformed `role.json` | that role is skipped with a warning; never an exception |
 | tick lock held | the tick is skipped; the event subscriber keeps its early-tick request pending |
 | board unreachable | the pass logs the error and claims nothing |
@@ -1092,14 +1098,15 @@ back to another kind that carries the same role; if none does, the card is left 
 and reported. Installation location is the routing; the only other configuration is that
 preference order — there is no platform-mapping key.
 
-**Two layers.** The supervisor routes by the card's assignee and puts the role's title,
-responsibilities and boundaries into the full handoff (layer 1); a resident worker session
-has the role's `SKILL.md` loaded from the **selected kind's** skill directory at session
-open, and reads `self_check` from the same directory before acting (layer 2). The inline
-forms are verified against codex-cli 0.161.0 (`developerInstructions`) and pi 1.4.0
+**Role catalog, not prompt text.** The supervisor routes by the card's assignee, but the
+role's `title`, `summary`, `responsibilities` and `boundaries` serve the local role catalog
+and routing only — they are **never injected into a prompt**. A resident worker session has
+the role's `SKILL.md` loaded from the **selected kind's** skill directory at session open,
+and reads `self_check` from the same directory before acting. The inline forms are verified
+against codex-cli 0.161.0 (`developerInstructions`) and pi 1.4.0
 (`--append-system-prompt` reads an existing file path); Claude's `--append-system-prompt`
-needs 2.1.292 or newer. The reviewer's prompt is inlined at the start of the review
-handoff, bounded at 2,400 characters. Every role is told to write and maintain
+needs 2.1.292 or newer. The full review handoff inlines `reviewer-prompt.md`, bounded at
+2,400 characters. Every role is told to write and maintain
 `.meerkat/<identifier>/plan.md`, which the reviewer reads.
 
 **The system prompt is a third, earlier layer.** `role.json`'s `system_prompt` is static
