@@ -1267,6 +1267,17 @@ export function createSessionPool(input = {}) {
     if (recovered.reowned > 0) {
       log(`session: re-owned ${recovered.reowned} live orphan claim(s)`, { level: "debug" });
     }
+    // A row the stale-claim recovery failed has no owner and no pending handoff:
+    // leaving the card in_progress would strand it with no loop process behind it.
+    for (const failed of recovered.failedRows ?? []) {
+      if (failed.card === "") continue;
+      await holdCard(opts, log, failed.card, {
+        code: "STALE_CLAIM_EXHAUSTED",
+        reason: "stale claim recovery exhausted its attempts",
+        blockedReason: "resource",
+      });
+      log(`session: parked ${failed.card} after stale-claim recovery exhausted`, { level: "warn" });
+    }
     // The queue is a work list, not a log: a terminal row is dropped after its
     // retention, and the board's card remains the durable record.
     pruneCards(stateDir, { now: now() });

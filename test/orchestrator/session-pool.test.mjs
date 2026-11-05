@@ -2342,6 +2342,33 @@ describe("worker session resume", () => {
     assert.equal(readCards(f.dir).value.cards[0].status, "done");
   });
 
+  // TP-0146 P0.3: the queue fails the row on its last stale-claim attempt; the
+  // card must not stay `in_progress` with no owner behind it.
+  it("parks a card when stale-claim recovery exhausts its attempts", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    claimCards(join(f.dir), { claimedBy: "other-pool", pid: 999999, limit: 1 });
+    setAttempts(f.dir, "T-1", 2);
+    const pool = createSessionPool({ opts: optsFor(f), log: () => {}, kindPool: fakePool() });
+    t.after(() => pool.stop());
+
+    const result = await pool.routeCards();
+
+    assert.equal(result.ok, true);
+    assert.equal(readCards(f.dir).value.cards[0].status, "failed");
+    assert.ok(
+      calls().some(
+        (argv) =>
+          argv.includes("move") &&
+          argv.includes("T-1") &&
+          argv.includes("blocked") &&
+          argv.includes("resource"),
+      ),
+      "the card is parked blocked/resource once the row is failed",
+    );
+  });
+
   it("starts a fresh generation on a round bump and closes the old one", async (t) => {
     const f = fixture(t);
     const fake = fakePool();

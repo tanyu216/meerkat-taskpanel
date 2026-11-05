@@ -375,6 +375,28 @@ describe("card queue", () => {
     assert.equal(readCards(dir).value.cards[0].status, "pending");
   });
 
+  // TP-0146 P0.3: a row whose stale-claim recovery spends its last attempt is
+  // failed in the queue; the caller needs its identity to park the card too.
+  it("returns the rows failed by stale-claim recovery", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, { card: "T-1", role: "worker" });
+    const [claimed] = claimCards(dir, { claimedBy: "/work/app", pid: 999999, limit: 1 }).cards;
+    const file = join(dir, "cards.queue.json");
+    const value = JSON.parse(readFileSync(file, "utf8"));
+    value.cards[0].attempts = 2;
+    writeFileSync(file, JSON.stringify(value), "utf8");
+
+    const recovered = recoverStaleCards(dir, { isAlive: () => false, maxAttempts: 3 });
+    assert.equal(recovered.failed, 1);
+    assert.deepEqual(recovered.failedRows, [{ id: claimed.id, card: "T-1" }]);
+  });
+
+  it("reports no failed rows when stale-claim recovery finds nothing", (t) => {
+    const dir = dirFor(t);
+    const recovered = recoverStaleCards(dir, { isAlive: () => false });
+    assert.deepEqual(recovered.failedRows, []);
+  });
+
   // TP-0031: a SIGKILLed pool leaves a processing row whose agent child still
   // runs. The ledger proves the subagent is working and the session record still
   // names its process; requeueing would put a second worker on the card. The
