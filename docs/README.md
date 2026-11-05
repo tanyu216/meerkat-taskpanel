@@ -70,6 +70,7 @@ never installed and a target project does not receive them.
 | [docker.md](maintenance/docker.md) | Why verification and the four-agent-kind installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
 | [contract.md](maintenance/contract.md) | The contract snapshots — the HTTP API (routes, error codes, wire fields) and the CLI surface (`taskctl` commands, flags, envelope keys): what each freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
 | [migration.md](maintenance/migration.md) | The append-only SQL schema gate, and the note recording the MCP integration's removal. |
+| [seams.md](maintenance/seams.md) | The loop's decision / execute / observe seams: which modules judge, which write, which only read, and the rule for a mixed module. |
 
 ## Design
 

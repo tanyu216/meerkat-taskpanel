@@ -323,6 +323,9 @@ policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
 | Admission failure | `deferrals.json` `count` | backoff at 3 (30 s→1 h), hold at 5 | `blocked/external` + `Orchestrator` question |
 | Dispatch failure after a claim | `deferrals.json` `DISPATCH_FAILED` | 3 | claim released immediately; `blocked/resource` at the bound |
 | Worker session unrestorable | session record | first failure | row failed, claim released, `blocked/resource` |
+| Worker fallback reassignment refused | `deferrals.json` `REASSIGN_FAILED` | 5 (the default hold bound) | `blocked/external` + `Orchestrator` question |
+| Claim cannot be handed back | `deferrals.json` `CLAIM_RELEASE_FAILED` | first failure | immediate `blocked/resource`; the failed hold stays in the ledger |
+| Claim refusal (lost CAS) | `deferrals.json` `claim_refusals` | never holds | counted only; a successful claim clears the entry |
 | Question turn | director row dispatches | 2 | left for the human; `question_stale` + doctor |
 | Route turn | route row dispatches | 2 | the card is parked `blocked/decision` (never assigned) |
 | Wedged pool | `sessions.state.json` `tickStartedAt` / `startStartedAt` | verdict at `turn + OPENER_TIMEOUT_MS + POOL_WEDGE_MARGIN_MS` / start budget; ping acts 60 s later | one `pool_killed` + SIGTERM, recorded in `pool-wedge.json`; SIGKILL on a later ping if it survives; the unit restarts it |
@@ -2107,7 +2110,11 @@ permission boundary, and it does not depend on a human catching a prompt.
 ### The resident pool's default, and the authorized opt-out
 
 The session pool keeps the same rule. By default each role runs under its own
-allowlist:
+allowlist. **One table is the source for all of it**: `src/foundation/role-tools.mjs`
+(`LANE_TOOLS`). The Claude and Pi adapters read it for `--allowedTools` / `--tools`,
+and the installer reads the same table to write each kind's native agent definition
+(Claude markdown frontmatter, Pi markdown frontmatter) — changing a lane means
+changing that table, never a copy. The table:
 
 | Role | Tools (Claude adapter, default) |
 |---|---|
@@ -2121,8 +2128,16 @@ contract is to re-run the project's declared gate (`project.meta.review_gate`)
 itself; a read-only lane with only `taskctl` and `git` cannot reproduce anything
 and turns "reproducible evidence" into "read the report and trust it". It still
 has no `Edit`/`Write`. The Pi adapter carries the same split through `--tools`
-(`read,bash` for the reviewer, `read,bash,edit,write` for the worker). Codex,
-OpenCode and Cursor have no equivalent option.
+(`read,bash` for the reviewer, `read,bash,edit,write` for the worker), and the
+table's Pi column is what the installer writes into a Pi native definition.
+Codex, OpenCode and Cursor have no equivalent option; the installer's Codex TOML
+carries no tool list.
+
+The Claude native frontmatter carries the scoped `Bash(...)` strings verbatim —
+the same form the adapter passes on the command line. Whether every Claude build
+accepts that scope in a native definition is **not yet verified by a real parser
+in this repository**; if one refuses it, the fallback is plain `Bash` recorded
+here, never a second table.
 
 An operator who needs unattended runs that edit and execute without prompts can
 opt into **full tool access** — `--allow-all-tools`, or, for the installed
