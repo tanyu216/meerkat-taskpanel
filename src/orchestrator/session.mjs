@@ -2158,20 +2158,15 @@ export function createSessionPool(input = {}) {
     return { terminal: true };
   }
 
-  function parkCard(ref, reason, blockedReason = "resource") {
+  function parkCard(ref, reason, blockedReason = "resource", code = "WORKER_SESSION_UNRESTORABLE") {
     const card = String(ref ?? "");
     if (card === "") return;
     const body = [
-      `The loop could not restore this card's worker session (${reason}).`,
+      `The loop could not restore this card's session (${reason}).`,
       "",
       "It will not be dispatched again automatically. Fix the cause (the agent CLI, the session, the workspace), then move this card back to `todo` or `in_progress`.",
     ].join("\n");
-    holdCard(opts, log, card, {
-      code: "WORKER_SESSION_UNRESTORABLE",
-      reason,
-      blockedReason,
-      body,
-    });
+    holdCard(opts, log, card, { code, reason, blockedReason, body });
   }
 
   /**
@@ -2250,13 +2245,17 @@ export function createSessionPool(input = {}) {
       for (const id of resumed.failedIds ?? []) {
         const row = read.value.cards.find((entry) => String(entry.id) === id);
         if (row === undefined) continue;
-        if (String(row.role ?? "worker") === "reviewer") {
-          // A review is never parked: with no handoff it simply falls back to
-          // the board's stale-claim recovery, and the next poll re-enqueues it.
-          log(`session: review ${row.card} stopped after repeated crash recoveries — not parked`);
-          continue;
-        }
-        parkCard(row.card, "repeated crash recoveries");
+        // A review gets a code of its own so the hold is legible, but it is
+        // parked like a worker: leaving it un-owned lets the next poll plan a
+        // fresh review for the same round and the crash loop never ends.
+        parkCard(
+          row.card,
+          "repeated crash recoveries",
+          "resource",
+          String(row.role ?? "worker") === "reviewer"
+            ? "REVIEW_SESSION_UNRESTORABLE"
+            : "WORKER_SESSION_UNRESTORABLE",
+        );
       }
       log(
         `session: ${resumed.failed} worker row(s) stopped after repeated crash recoveries — ` +

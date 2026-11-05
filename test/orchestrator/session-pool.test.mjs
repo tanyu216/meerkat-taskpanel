@@ -189,6 +189,15 @@ function setAttempts(dir, ref, attempts) {
   writeFileSync(file, JSON.stringify(value), "utf8");
 }
 
+/** Force a queue row's independent crash-recovery counter. */
+function setRecoveries(dir, ref, recoveries) {
+  const file = join(dir, "cards.queue.json");
+  const value = JSON.parse(readFileSync(file, "utf8"));
+  const row = value.cards.find((entry) => entry.card === ref);
+  row.recoveries = recoveries;
+  writeFileSync(file, JSON.stringify(value), "utf8");
+}
+
 /** Force a queue row's independent timeout counter. */
 function setTimeouts(dir, ref, timeouts) {
   const file = join(dir, "cards.queue.json");
@@ -2296,6 +2305,58 @@ describe("worker session resume", () => {
     const row = readCards(f.dir).value.cards.find((entry) => entry.id === "T-1-worker-resume");
     assert.equal(row.status, "failed");
     assert.match(row.lastError, /resume\/replay failed/);
+  });
+
+  // TP-0146 P0.4: a review that crashes every time used to be exempt from the
+  // park, so the next poll re-enqueued it and the loop never ended.
+  it("parks a review card after repeated crash recoveries", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    const key = workerKey("R-1", 1);
+    writeFileSync(
+      join(f.dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 3,
+        projects: {
+          [key]: {
+            kind: "worker-session",
+            card: "R-1",
+            round: 1,
+            worktree: f.app,
+            cwd: f.app,
+            sessionId: "sid-old",
+            status: "running",
+            startedAt: new Date().toISOString(),
+            lastUsedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    );
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    t.after(() => pool.stop());
+    enqueueCard(join(f.dir), {
+      ...card(f, "R-1", f.app, "reviewer"),
+      round: 1,
+      worker_key: key,
+    });
+    claimCards(join(f.dir), { claimedBy: f.app, pid: 999999, limit: 1 });
+    setRecoveries(f.dir, "R-1", 2);
+    assert.equal((await pool.start()).ok, true);
+
+    const resumed = await pool.reattachOnStart();
+
+    assert.equal(resumed.failed, 1);
+    assert.equal(readCards(f.dir).value.cards[0].status, "failed");
+    assert.ok(
+      calls().some(
+        (argv) =>
+          argv.includes("move") &&
+          argv.includes("R-1") &&
+          argv.includes("blocked") &&
+          argv.includes("resource"),
+      ),
+      "the review card is parked blocked/resource",
+    );
   });
 
   it("recovers a processing worker row and resumes its stored session", async (t) => {
