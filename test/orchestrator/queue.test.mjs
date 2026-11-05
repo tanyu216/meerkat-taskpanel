@@ -137,6 +137,44 @@ describe("card queue", () => {
     assert.equal(readCards(dir).value.cards.length, 3);
   });
 
+  it("normalises the rework-continuity flags, defaulting to a normal round", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    enqueueCard(dir, { ...card("T-2"), rework: true, carry_from_round: 1, force_fresh: true });
+    const [normal, rework] = readCards(dir).value.cards;
+    assert.deepEqual(
+      { rework: normal.rework, carry: normal.carry_from_round, fresh: normal.force_fresh },
+      { rework: false, carry: null, fresh: false },
+    );
+    assert.deepEqual(
+      { rework: rework.rework, carry: rework.carry_from_round, fresh: rework.force_fresh },
+      { rework: true, carry: 1, fresh: true },
+    );
+  });
+
+  it("merges a one-shot reset into an existing pending row", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    const merged = enqueueCard(dir, { ...card("T-1"), rework: true, carry_from_round: 1, force_fresh: true });
+    assert.equal(merged.coalesced, true);
+    assert.equal(merged.merged, true);
+    const [row, ...rest] = readCards(dir).value.cards;
+    assert.equal(rest.length, 0, "one row per (card, role)");
+    assert.equal(row.rework, true);
+    assert.equal(row.carry_from_round, 1);
+    assert.equal(row.force_fresh, true);
+  });
+
+  it("leaves a processing row untouched and reports it superseded", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    claimCards(dir, { claimedBy: "/work/app", limit: 1 });
+    const result = enqueueCard(dir, { ...card("T-1"), force_fresh: true });
+    assert.equal(result.superseded, true);
+    assert.equal(result.merged, undefined);
+    assert.equal(readCards(dir).value.cards[0].force_fresh, false, "the in-flight row is not rewritten");
+  });
+
   it("records the event UUID and review fields, normalizing absent ones to null", (t) => {
     const dir = dirFor(t);
     enqueueCard(dir, { ...card("T-1"), task_id: "uuid-1", review_of: "T-0", review_round: 2 });

@@ -6,8 +6,10 @@
  * in the directory's project context; no session spawns another.
  *
  * The pool manager owns the queues, routing, ledger, concurrency, heartbeat,
- * idle eviction and resume. It never talks to the board itself: the supervisor's
- * tick runs `taskctl loop patrol|workflow|poll`, and the poll pass writes the card queue.
+ * idle eviction and resume. It never speaks the board's HTTP API: the
+ * supervisor's tick runs `taskctl loop patrol|workflow|poll`, the poll pass
+ * writes the card queue, and the pool's one board write is the card's session
+ * row through `taskctl session set|close` (`board-session.mjs`).
  *
  * Node builtins only; no network, no dependencies.
  */
@@ -39,14 +41,20 @@ import { holdCard, releaseCard } from "./holds.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
 import { drainInFlight, readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, readTriageOutcome, runCli, runCliAsync } from "./runtime.mjs";
+import { createBoardSession } from "./board-session.mjs";
 import { isTurnTimeoutError } from "./turn-errors.mjs";
 import {
   appendWorkerTurn,
   buildWorkerDispatchPrompt,
   buildWorkerReplayPrompt,
   buildWorkerResumePrompt,
+  buildWorkerReworkPrompt,
+  copyWorkerTranscript,
+  dropOlderWorkerRecords,
   isWorkerKey,
+  moveWorkerTranscript,
   parseWorkerKey,
+  planWorkerCarry,
   planWorkerOpen,
   readWorkerSessions,
   readWorkerTranscript,
@@ -116,6 +124,9 @@ const ROLE_ALLOWLIST_KINDS = new Set(["claude", "pi"]);
  * not stop within the grace is killed; the restart must not wait on it longer.
  */
 export const REAP_GRACE_MS = 5_000;
+
+/** Startup/shutdown budget for reconciling board session rows. */
+export const RECONCILE_BOARD_BUDGET_MS = 10_000;
 
 /** Questions answered in one project-session turn. */
 const QUESTION_BATCH_MAX = 8;
@@ -379,6 +390,9 @@ export function createSessionPool(input = {}) {
   };
 
   const sessions = new Map();
+  // The board-visible session row (one stable row per card and segment). The
+  // writes are best-effort: a board that is down must never fail a turn.
+  const boardSession = createBoardSession({ opts, log, isAlive });
   const stateRead = readSessionsState(stateDir);
   const state = stateRead.value;
   if (stateRead.error !== null) log(`session: ${stateRead.error} — starting from empty state`);
@@ -555,6 +569,10 @@ export function createSessionPool(input = {}) {
       worktree: worker.worktree ?? entry.cwd,
       workspace_created_at: worker.workspace_created_at ?? previous.workspace_created_at ?? null,
       card: worker.card ?? previous.card ?? null,
+      // The board UUID and the reviewed round let the startup reconciliation
+      // build the natural key of the row it owns (`taskId|seg|owner`).
+      taskId: worker.taskId ?? previous.taskId ?? null,
+      reviewRound: worker.reviewRound ?? previous.reviewRound ?? null,
       round: worker.round ?? previous.round ?? 1,
       project: worker.project ?? previous.project ?? null,
       projectDir: worker.projectDir ?? previous.projectDir ?? null,
@@ -724,7 +742,7 @@ export function createSessionPool(input = {}) {
     // A role migrated to another platform is a new generation: never resume a
     // native session id on a CLI that did not create it.
     const sameKind = typeof stored?.actorKind !== "string" || stored.actorKind === actorKind;
-    const plan =
+    let plan =
       worker.forceReplay === true
         ? {
             mode: "replay",
@@ -743,6 +761,41 @@ export function createSessionPool(input = {}) {
               now: now(),
               maxAgeMs: sessionMaxAgeMs,
             });
+    // A rework whose live process is gone replays the previous round's bounded
+    // transcript in a new native session; the full native history is never
+    // loaded. A one-shot reset, or a previous record from another agent, actor
+    // kind or worktree, falls back to the ordinary fresh path.
+    let carry = null;
+    const carryFromRound = Number(row?.carry_from_round);
+    if (
+      plan.mode === "fresh" &&
+      row?.rework === true &&
+      row?.force_fresh !== true &&
+      card !== null &&
+      Number.isInteger(carryFromRound) &&
+      carryFromRound > 0
+    ) {
+      const sourceKey = workerKey(card, carryFromRound);
+      const source = storedSession(sourceKey);
+      const verdict = planWorkerCarry(source, {
+        card,
+        agent: row?.agent,
+        actorKind,
+        worktree: options.cwd,
+        workspaceCreatedAt: worker.workspace?.created_at ?? null,
+      });
+      if (verdict.ok) {
+        carry = { source, sourceKey, reason: verdict.reason };
+        plan = {
+          mode: "replay",
+          generation: Number(source.generation ?? 1) + 1,
+          reason: verdict.reason,
+          transcriptReset: false,
+        };
+      } else if (source !== null) {
+        log(`session: ${key} does not carry the previous round: ${verdict.reason}`);
+      }
+    }
     if (plan.mode === "blocked") {
       throw new Error(`worker session ${key} is blocked: ${plan.reason}`);
     }
@@ -757,6 +810,7 @@ export function createSessionPool(input = {}) {
         // A missing transcript is already the reset state.
       }
     }
+    if (carry !== null) copyWorkerTranscript(stateDir, carry.sourceKey, key);
     const resumeId = plan.mode === "resume" ? plan.sessionId ?? null : null;
     const laneRole = options.role === "reviewer" ? "reviewer" : "worker";
     // A resumed native session already carries the system prompt from the turn
@@ -781,7 +835,11 @@ export function createSessionPool(input = {}) {
       busy: false,
       fresh: plan.mode !== "resume",
       openerFingerprint:
-        typeof stored?.openerFingerprint === "string" ? stored.openerFingerprint : null,
+        typeof stored?.openerFingerprint === "string"
+          ? stored.openerFingerprint
+          : typeof carry?.source?.openerFingerprint === "string"
+            ? carry.source.openerFingerprint
+            : null,
       worker: {
         ...(stored ?? {}),
         kind: "worker-session",
@@ -791,6 +849,8 @@ export function createSessionPool(input = {}) {
           worker.workspace?.created_at ?? stored?.workspace_created_at ?? null,
         card,
         round,
+        taskId: row?.task_id ?? stored?.taskId ?? null,
+        reviewRound: row?.review_round ?? stored?.reviewRound ?? null,
         project: row?.project ?? stored?.project ?? null,
         projectDir: row?.project_dir ?? stored?.projectDir ?? null,
         agent: row?.agent ?? stored?.agent ?? null,
@@ -801,16 +861,27 @@ export function createSessionPool(input = {}) {
         reason: plan.reason,
         transcriptPath: transcriptFile(stateDir, key),
         status: "idle",
-        resumeState: plan.mode === "replay" ? "resumed_by_replay" : "fresh",
+        resumeState:
+          carry !== null
+            ? "replayed_after_rework"
+            : plan.mode === "replay"
+              ? "resumed_by_replay"
+              : "fresh",
         needsReplay: plan.mode === "replay",
         blocked: false,
-        lastResumeAt: stored?.lastResumeAt ?? null,
+        lastResumeAt: stored?.lastResumeAt ?? carry?.source?.lastResumeAt ?? null,
         lastError: stored?.lastError ?? null,
         lastBoardStatus: stored?.lastBoardStatus ?? null,
       },
     };
     sessions.set(key, entry);
     persistState();
+    if (carry !== null || (row?.force_fresh === true && card !== null)) {
+      // The source round is consumed: one record per card, current round only.
+      // This mutates the in-memory map so the next persist cannot restore it.
+      dropOlderWorkerRecords(stateDir, state.projects, card, round);
+      persistState();
+    }
     log(
       `session: opened worker ${key} (cwd=${options.cwd}, ` +
         `${plan.mode === "resume" ? `resume=${resumeId}` : plan.mode === "replay" ? `replay=${plan.reason}` : "fresh"})`,
@@ -944,16 +1015,92 @@ export function createSessionPool(input = {}) {
     if (!written.ok) log(`session: could not write ledger: ${written.error}`);
   }
 
-  async function closeOlderWorkerGenerations(card, round) {
+  /**
+   * Close the card's older generations. A rework keeps the records: the pool
+   * still needs the previous round's transcript to replay when the live process
+   * is gone, and the identity fields are what a carry validates.
+   */
+  async function closeOlderWorkerGenerations(card, round, { keepRecords = false } = {}) {
     for (const entry of [...sessions.values()]) {
       if (!isWorkerKey(entry.key)) continue;
       const parsed = parseWorkerKey(entry.key);
       if (parsed === null || parsed.card !== card || parsed.round >= round) continue;
-      await closeEntry(entry, { dropSession: true });
+      await closeEntry(entry, { dropSession: !keepRecords });
     }
   }
 
-  async function closeEntry(entry, { dropSession = false } = {}) {
+  /**
+   * Move a live worker entry from the rejected round's key to this round's,
+   * in place: no spawn, no re-brief. The native conversation and the worktree
+   * are already the right ones, so only the pool's identity changes.
+   *
+   * @param {object} entry @param {object} row
+   * @param {{cwd: string, workspaceCreatedAt?: string|null}} options
+   * @returns {{ok: true, key: string} | {ok: false, deferred?: boolean, reason: string}}
+   */
+  function rekeyWorkerEntry(entry, row, options = {}) {
+    const newKey = workerKey(row.card, roundOf(row));
+    if (newKey === entry.key) return { ok: false, reason: "already the current round" };
+    if (entry.role === "reviewer") return { ok: false, reason: "a review is not a rework" };
+    if (entry.busy === true) return { ok: false, deferred: true, reason: "the session is still running" };
+    if (entry.handle?.closed === true) return { ok: false, reason: "the native session is closed" };
+    const stored = state.projects?.[entry.key] ?? {};
+    const verdict = planWorkerCarry(
+      {
+        card: entry.worker?.card ?? stored.card,
+        agent: entry.worker?.agent ?? stored.agent,
+        actorKind: entry.actorKind ?? stored.actorKind,
+        worktree: entry.worker?.worktree ?? entry.cwd,
+        workspace_created_at:
+          entry.worker?.workspace_created_at ?? stored.workspace_created_at ?? null,
+        blocked: entry.worker?.blocked === true || stored.blocked === true,
+        worktree_gone: entry.worker?.worktree_gone === true || stored.worktree_gone === true,
+      },
+      {
+        card: row.card,
+        agent: row.agent,
+        actorKind: row.actor_kind ?? entry.actorKind,
+        worktree: options.cwd,
+        workspaceCreatedAt: options.workspaceCreatedAt ?? null,
+      },
+    );
+    if (!verdict.ok) return { ok: false, reason: verdict.reason };
+
+    const oldKey = entry.key;
+    sessions.delete(oldKey);
+    entry.key = newKey;
+    entry.worker.card = row.card;
+    entry.worker.round = roundOf(row);
+    entry.worker.queueId = row.id ?? entry.worker.queueId;
+    entry.worker.project = row.project ?? entry.worker.project;
+    entry.worker.projectDir = row.project_dir ?? entry.worker.projectDir;
+    entry.worker.agentRole = row.agent_role ?? entry.worker.agentRole;
+    entry.worker.agent = row.agent ?? entry.worker.agent;
+    entry.worker.generation = Number(entry.worker.generation ?? 1) + 1;
+    entry.worker.planMode = "resume";
+    entry.worker.resumeState = "rekeyed_rework";
+    entry.worker.reason = verdict.reason;
+    entry.worker.status = "idle";
+    entry.worker.transcriptPath = transcriptFile(stateDir, newKey);
+    entry.worker.lastResumeAt = nowIso(now);
+    entry.worker.lastUsedAt = nowIso(now);
+    // A running session's max-age clock is per generation: leaving the old
+    // start would let `evictIdle` retire a conversation that just continued.
+    entry.startedAt = nowIso(now);
+    entry.lastUsedAt = nowIso(now);
+    entry.fresh = false;
+    // Rewrite the pool's own keying and leave no earlier-round record.
+    moveWorkerTranscript(stateDir, oldKey, newKey);
+    sessions.set(newKey, entry);
+    delete state.projects[oldKey];
+    dropOlderWorkerRecords(stateDir, state.projects, row.card, roundOf(row));
+    persistState();
+    log(`session: rekeyed ${oldKey} → ${newKey} — same conversation and workspace`);
+    return { ok: true, key: newKey };
+  }
+
+  async function closeEntry(entry, { dropSession = false, boardStatus = "closed" } = {}) {
+    closeBoardSession(entry, boardStatus);
     try {
       await entry.handle.close();
     } catch (err) {
@@ -974,6 +1121,78 @@ export function createSessionPool(input = {}) {
       };
     }
     persistState();
+  }
+
+  /**
+   * A card session's stable board segment: one row per card per lane, across
+   * rounds. The reviewer's row names the round it audits, not the review card's
+   * own delivery round.
+   */
+  function boardSegmentOf(entry) {
+    return entry.role === "reviewer" ? "reviewer" : "worker";
+  }
+
+  /**
+   * Register the board-visible row for the turn that is about to run. Best
+   * effort by construction: a missing agent or a down board only logs.
+   */
+  function registerBoardSession(entry, row) {
+    if (opts.dryRun === true) return;
+    if (entry.boardSession?.status === "running") return;
+    const owner = String(entry.worker?.agent ?? "").trim();
+    if (owner === "") {
+      log(`session: ${entry.key} has no agent — no board session row is written`, { level: "warn" });
+      return;
+    }
+    const seg = boardSegmentOf(entry);
+    const round =
+      entry.role === "reviewer"
+        ? Number(entry.worker?.reviewRound ?? row?.review_round ?? roundOf(row))
+        : roundOf(row);
+    const registered = boardSession.register({
+      card: row?.card ?? entry.worker?.card ?? null,
+      seg,
+      owner,
+      ownerKind: entry.actorKind,
+      phase: seg,
+      pid: entry.handle?.pid ?? null,
+      round,
+      generation: entry.worker?.generation ?? 1,
+      planMode: entry.worker?.planMode ?? "fresh",
+      carry: entry.worker?.resumeState ?? null,
+    });
+    if (registered.ok === true) {
+      entry.boardSession = { seg, status: "running" };
+    }
+  }
+
+  /** Close the row once per turn; every terminal branch may call this. */
+  function closeBoardSession(entry, status = "closed") {
+    if (entry?.boardSession?.status !== "running") return;
+    entry.boardSession.status = "closing";
+    boardSession.close({
+      card: entry.worker?.card ?? null,
+      seg: entry.boardSession.seg,
+      owner: entry.worker?.agent ?? null,
+      failed: status === "failed",
+    });
+    entry.boardSession.status = "closed";
+  }
+
+  /**
+   * Close board rows this pool did not live to close. The natural key is
+   * `taskId|seg|owner`; a row whose pid is still alive belongs to a live
+   * conversation and is never closed from here.
+   */
+  async function reconcileBoardSessions(deadline) {
+    const liveKeys = new Set();
+    for (const entry of sessions.values()) {
+      const taskId = entry.worker?.taskId;
+      const owner = entry.worker?.agent;
+      if (typeof taskId !== "string" || taskId === "" || typeof owner !== "string" || owner === "") continue;
+      liveKeys.add(`${taskId}|${boardSegmentOf(entry)}|${owner}`);
+    }
+    return boardSession.reconcile({ loopId: boardSession.loopId, liveKeys, deadline });
   }
 
   /**
@@ -1411,6 +1630,36 @@ export function createSessionPool(input = {}) {
           continue;
         }
       }
+      // A rework continues the rejected round's live conversation in place: the
+      // key moves to this round, nothing is spawned and the opener is skipped.
+      // A busy entry is deferred untouched — a rekey must never interrupt an
+      // in-flight turn, and `closeOlderWorkerGenerations` must not close it.
+      if (lane !== "reviewer" && cards[0].rework === true && cards[0].force_fresh !== true) {
+        const carryFrom = Number(cards[0].carry_from_round);
+        const previous =
+          Number.isInteger(carryFrom) && carryFrom > 0
+            ? [...sessions.values()].find((candidate) => {
+                const parsedPrevious = parseWorkerKey(candidate.key);
+                return parsedPrevious?.card === cards[0].card && parsedPrevious.round === carryFrom;
+              })
+            : undefined;
+        if (previous !== undefined) {
+          const rekeyed = rekeyWorkerEntry(previous, cards[0], {
+            cwd: dir,
+            workspaceCreatedAt: cards[0].workspace?.created_at ?? null,
+          });
+          if (rekeyed.deferred === true) {
+            log(`session: rework ${cards[0].card} is still running — deferring the rekey`);
+            continue;
+          }
+          if (
+            rekeyed.ok !== true &&
+            !/native session is closed|current round/.test(rekeyed.reason)
+          ) {
+            log(`session: rework ${cards[0].card} does not rekey: ${rekeyed.reason}`);
+          }
+        }
+      }
       if (!sessions.has(key)) {
         const openCards = [...sessions.values()].filter((session) => isWorkerKey(session.key));
         if (openCards.length >= maxConcurrency) {
@@ -1433,7 +1682,13 @@ export function createSessionPool(input = {}) {
       }
       {
         const parsed = parseWorkerKey(key);
-        if (parsed !== null) await closeOlderWorkerGenerations(parsed.card, parsed.round);
+        if (parsed !== null) {
+          // A rework keeps the older record even when its live entry closes:
+          // the record is the bounded replay source for the new session.
+          await closeOlderWorkerGenerations(parsed.card, parsed.round, {
+            keepRecords: cards[0].rework === true && cards[0].force_fresh !== true,
+          });
+        }
         // A parked session must become runnable again once a human has cleared
         // the hold. Without this the stored `blocked` flag outlives the board
         // state and every dispatch throws for ever.
@@ -1650,8 +1905,11 @@ export function createSessionPool(input = {}) {
     const sendCardTurn = async (job) => {
       const row = job.cards[0];
       const plan = job.entry.worker?.planMode ?? "fresh";
+      // A rework is not a question-lane resume: its delta prompt is the answer,
+      // and reading the human answer would make it look like a same-round retry.
+      const rework = row.rework === true && row.force_fresh !== true;
       let answer = null;
-      if (plan !== "fresh") {
+      if (plan !== "fresh" && !rework) {
         const context = await readRedispatchContext(opts, row.card, log);
         answer = context.ok === true ? context.answer : null;
       }
@@ -1671,6 +1929,9 @@ export function createSessionPool(input = {}) {
               cwd: entry.cwd,
             };
           }
+          // The board row mirrors the turn: running while it is in flight and
+          // closed/failed on every terminal branch below.
+          registerBoardSession(entry, row);
           let opened = { ok: true, sent: false };
           if (!skipOpener) {
             opened = await ensureOpener(
@@ -1703,15 +1964,22 @@ export function createSessionPool(input = {}) {
                   answer,
                   transcript: readWorkerTranscript(stateDir, job.key),
                   nativeError: entry.worker?.lastError,
+                  rework,
                 })
               : planMode === "resume"
-                ? buildWorkerResumePrompt({
-                    row,
-                    handoff: row.handoff,
-                    reason: entry.worker?.reason,
-                    answer,
-                    sessionId: entry.sessionId,
-                  })
+                ? rework
+                  ? buildWorkerReworkPrompt({
+                      row,
+                      handoff: row.handoff,
+                      carryFromRound: row.carry_from_round,
+                    })
+                  : buildWorkerResumePrompt({
+                      row,
+                      handoff: row.handoff,
+                      reason: entry.worker?.reason,
+                      answer,
+                      sessionId: entry.sessionId,
+                    })
                 : buildWorkerDispatchPrompt({ row, handoff: row.handoff });
           // A skipped opener (the reopen path) needs the same pointer a failed
           // opener gets: the new conversation has not loaded the skill.
@@ -1810,9 +2078,10 @@ export function createSessionPool(input = {}) {
         }
         entry.worker.status = "idle";
         entry.worker.lastError = error;
+        closeBoardSession(entry, "failed");
         persistState();
         if (/closed|exited|spawn error|timed out/.test(error)) {
-          await closeEntry(entry, { dropSession: false });
+          await closeEntry(entry, { dropSession: false, boardStatus: "failed" });
         }
         continue;
       }
@@ -1828,6 +2097,7 @@ export function createSessionPool(input = {}) {
             await settleFailedHandoff(row, true, error);
             entry.worker.status = "idle";
             entry.worker.lastError = error;
+            closeBoardSession(entry, "failed");
             persistState();
             continue;
           }
@@ -1859,6 +2129,7 @@ export function createSessionPool(input = {}) {
         entry.worker.resumeState =
           plan === "resume" ? "resumed" : plan === "replay" ? "resumed_by_replay" : "fresh";
         entry.worker.lastResumeAt = nowIso(now);
+        closeBoardSession(entry, "closed");
         dispatched += 1;
         persistState();
         writeLedgerState();
@@ -1873,7 +2144,7 @@ export function createSessionPool(input = {}) {
           await settleTimedOutHandoff(row, review, `session resume/replay failed: ${error}`);
           entry.worker.status = "idle";
           entry.worker.lastError = error;
-          await closeEntry(entry, { dropSession: false });
+          await closeEntry(entry, { dropSession: false, boardStatus: "failed" });
           persistState();
           continue;
         }
@@ -1883,7 +2154,7 @@ export function createSessionPool(input = {}) {
           // the bound the card gets the same execution hold as a worker's.
           await settleFailedHandoff(row, true, `review session resume/replay failed: ${error}`);
           entry.worker.status = "idle";
-          await closeEntry(entry, { dropSession: true });
+          await closeEntry(entry, { dropSession: true, boardStatus: "failed" });
           persistState();
           continue;
         }
@@ -1899,6 +2170,7 @@ export function createSessionPool(input = {}) {
         // Stop the 30-minute re-dispatch loop: the card is parked for a human
         // instead of leaving the claim `in_progress` for the stale recovery.
         parkCard(row.card, error);
+        closeBoardSession(entry, "failed");
         persistState();
         continue;
       }
@@ -1925,8 +2197,9 @@ export function createSessionPool(input = {}) {
       if (stillWorkable) {
         await settleFailedHandoff(row, review, error);
       }
+      closeBoardSession(entry, "failed");
       if (/closed|exited|spawn error|timed out/.test(error)) {
-        await closeEntry(entry, { dropSession: false });
+        await closeEntry(entry, { dropSession: false, boardStatus: "failed" });
       }
       // The turn settled; the record must not keep saying `running` (a failed
       // turn is retried on the next tick, and the guard reads `busy`).
@@ -2369,7 +2642,16 @@ export function createSessionPool(input = {}) {
     async reattachOnStart() {
       if (!started) return { ok: true, resumed: 0, timedOut: 0, failed: 0, failedIds: [] };
       const budgetMs = Math.min(effectiveTurnTimeoutMs(turnTimeoutMs), POOL_REATTACH_MAX_MS);
-      return recoverWorkerSessions({ deadline: now() + budgetMs });
+      const recovered = await recoverWorkerSessions({ deadline: now() + budgetMs });
+      // The board rows a dead pool left `running` are closed from the same
+      // startup pass; the recovery above may have resumed some of them, so it
+      // runs after. Its own independent budget keeps it off the reattach path.
+      try {
+        await reconcileBoardSessions(now() + RECONCILE_BOARD_BUDGET_MS);
+      } catch (err) {
+        log(`session: board session reconciliation failed: ${err.message}`, { level: "warn" });
+      }
+      return recovered;
     },
     async stop() {
       started = false;
@@ -2384,6 +2666,16 @@ export function createSessionPool(input = {}) {
         }
       }
       kindPools.clear();
+      // A stopped pool owns no live turn: close any board row still saying
+      // running, within a bounded window so shutdown cannot hang the service.
+      // Only the lock owner may write, like the state file itself.
+      if (lockToken !== null) {
+        const deadline = Date.now() + RECONCILE_BOARD_BUDGET_MS;
+        for (const entry of [...sessions.values()]) {
+          if (Date.now() > deadline) break;
+          closeBoardSession(entry, "closed");
+        }
+      }
       for (const entry of [...sessions.values()]) sessions.delete(entry.key);
       // Only the lock owner may publish the stopped state: a start that never
       // took the lock (another pool owns it) must not clobber that pool's file.

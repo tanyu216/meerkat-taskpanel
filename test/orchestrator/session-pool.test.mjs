@@ -21,7 +21,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 
 import { processStartToken } from "../../src/foundation/daemon-state.mjs";
@@ -32,7 +32,7 @@ import {
   readCards,
 } from "../../src/orchestrator/queue.mjs";
 import { readLedger, upsertSubagent, writeLedger } from "../../src/orchestrator/ledger.mjs";
-import { workerKey } from "../../src/orchestrator/worker-session.mjs";
+import { appendWorkerTurn, transcriptFile, workerKey } from "../../src/orchestrator/worker-session.mjs";
 import {
   POOL_HEARTBEAT_MS,
   POOL_STALE_MS,
@@ -2517,6 +2517,327 @@ describe("worker session resume", () => {
     assert.ok(state.projects[workerKey("T-1", 2)]);
   });
 
+  it("rekeys a live worker in place on a rework round", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    const first = fake.opened.find((handle) => handle.role === "worker");
+    assert.equal(fake.opened.length, 1);
+    assert.match(first.prompts[0], /work T-1/);
+
+    enqueueCard(join(f.dir), {
+      id: "T-1-r2",
+      ...card(f, "T-1", f.app),
+      round: 2,
+      worker_key: workerKey("T-1", 2),
+      rework: true,
+      carry_from_round: 1,
+    });
+    await pool.tick();
+
+    assert.equal(
+      fake.opened.filter((handle) => handle.role === "worker").length,
+      1,
+      "a rekey spawns nothing",
+    );
+    assert.equal(first.sessionId, "sid-1", "the native conversation is unchanged");
+    assert.equal(first.prompts.length, 2, "the same session received the next turn");
+    assert.match(first.prompts[1], /rework round 2/i);
+    assert.match(first.prompts[1], /round 1 was rejected/i);
+    assert.doesNotMatch(first.prompts[1], /same-round resume/i);
+    const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
+    assert.equal(state.projects[workerKey("T-1", 1)], undefined, "the old key is gone");
+    const record = state.projects[workerKey("T-1", 2)];
+    assert.equal(record.resumeState, "resumed", "the turn ran as a resume, not a fresh handoff");
+    assert.equal(record.generation, 2, "the rekey starts a new generation of the same session");
+    assert.equal(record.sessionId, "sid-1");
+    assert.equal(readCards(f.dir).value.cards.at(-1).status, "done");
+  });
+
+  it("defers a rework while the previous turn is still running", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    const first = fake.opened.find((handle) => handle.role === "worker");
+    const entry = [...pool.sessions.values()].find((session) => session.key === workerKey("T-1", 1));
+    assert.ok(entry, "the worker entry is open");
+    entry.busy = true;
+
+    enqueueCard(join(f.dir), {
+      id: "T-1-r2",
+      ...card(f, "T-1", f.app),
+      round: 2,
+      worker_key: workerKey("T-1", 2),
+      rework: true,
+      carry_from_round: 1,
+    });
+    await pool.tick();
+    assert.equal(readCards(f.dir).value.cards.at(-1).status, "pending", "the row waits for the turn");
+    assert.equal([...pool.sessions.values()].some((session) => session.key === workerKey("T-1", 1)), true);
+    assert.equal(first.prompts.length, 1, "an in-flight turn is never interrupted");
+
+    entry.busy = false;
+    await pool.tick();
+    assert.equal(
+      [...pool.sessions.values()].some((session) => session.key === workerKey("T-1", 2)),
+      true,
+      "the deferred rework rekeys once the turn settles",
+    );
+  });
+
+  it("does not carry a conversation across a changed agent", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    const first = fake.opened.find((handle) => handle.role === "worker");
+    enqueueCard(join(f.dir), {
+      id: "T-1-r2",
+      ...card(f, "T-1", f.app),
+      agent: "bob",
+      round: 2,
+      worker_key: workerKey("T-1", 2),
+      rework: true,
+      carry_from_round: 1,
+    });
+    await pool.tick();
+    const workers = fake.opened.filter((handle) => handle.role === "worker");
+    assert.equal(workers.length, 2, "a different agent is a new conversation");
+    assert.equal(first.closed, true, "the old conversation is closed, not stolen");
+    assert.notEqual(workers[1].sessionId, first.sessionId);
+    assert.match(workers[1].prompts[0], /work T-1/, "a fresh handoff, not a rework delta");
+  });
+
+  it("replays a bounded transcript when the rework's process is gone", async (t) => {
+    const f = fixture(t);
+    const oldKey = workerKey("T-1", 1);
+    appendWorkerTurn(f.dir, oldKey, { kind: "result", text: "finished the first attempt" });
+    writeFileSync(
+      join(f.dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 3,
+        projects: {
+          [oldKey]: {
+            kind: "worker-session",
+            card: "T-1",
+            round: 1,
+            agent: "alice",
+            actorKind: "claude",
+            worktree: f.app,
+            cwd: f.app,
+            workspace_created_at: null,
+            sessionId: "sid-old",
+            status: "idle",
+            generation: 1,
+            startedAt: new Date().toISOString(),
+            lastUsedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    );
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 2,
+      worker_key: workerKey("T-1", 2),
+      rework: true,
+      carry_from_round: 1,
+    });
+    await pool.tick();
+    const worker = fake.opened.find((handle) => handle.role === "worker");
+    assert.notEqual(worker.sessionId, "sid-old", "the native session is new; only the transcript carries");
+    assert.match(worker.prompts[0], /rework round 2/i);
+    assert.match(worker.prompts[0], /finished the first attempt/);
+    assert.ok(worker.prompts[0].length < 20_000, "the replay is bounded");
+    const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
+    assert.equal(state.projects[oldKey], undefined, "the source record is consumed");
+    const record = state.projects[workerKey("T-1", 2)];
+    assert.equal(record.resumeState, "resumed_by_replay");
+    assert.equal(record.needsReplay, true, "the replay source stays recorded for the next round");
+    assert.equal(record.generation, 2, "the replay is the next generation of the card's session");
+    assert.ok(
+      existsSync(transcriptFile(f.dir, workerKey("T-1", 2))),
+      "the bounded transcript moved to the new key",
+    );
+  });
+
+  it("forces a fresh conversation on session_reset but keeps the workspace", async (t) => {
+    const f = fixture(t);
+    const oldKey = workerKey("T-1", 1);
+    writeFileSync(
+      join(f.dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 3,
+        projects: {
+          [oldKey]: {
+            kind: "worker-session",
+            card: "T-1",
+            round: 1,
+            agent: "alice",
+            actorKind: "claude",
+            worktree: f.app,
+            cwd: f.app,
+            workspace_created_at: null,
+            sessionId: "sid-old",
+            status: "idle",
+            generation: 1,
+            startedAt: new Date().toISOString(),
+            lastUsedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    );
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 2,
+      worker_key: workerKey("T-1", 2),
+      rework: true,
+      carry_from_round: 1,
+      force_fresh: true,
+    });
+    await pool.tick();
+    const worker = fake.opened.find((handle) => handle.role === "worker");
+    assert.notEqual(worker.sessionId, "sid-old", "a forced reset never resumes the old conversation");
+    assert.match(worker.prompts[0], /work T-1/, "a normal fresh handoff, not a rework delta");
+    const state = JSON.parse(readFileSync(join(f.dir, "sessions.state.json"), "utf8"));
+    assert.equal(state.projects[oldKey], undefined, "the forced-fresh turn drops the old record");
+  });
+
+  it("registers and closes one stable board row per worker turn", async (t) => {
+    const f = fixture(t);
+    const calls = recordCli(f);
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fakePool() });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      task_id: "uuid-1",
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    const recorded = calls();
+    const set = recorded.find((argv) => argv.includes("session") && argv.includes("set"));
+    assert.ok(set, `a turn registers its board row; calls: ${JSON.stringify(recorded)}`);
+    assert.ok(set.includes("worker"), "the stable segment is the lane, not the round");
+    assert.ok(set.includes("alice"));
+    assert.ok(set.includes("claude"));
+    assert.ok(set.some((arg) => arg === `loop=${resolve(f.dir)}`), "the row names its loop");
+    assert.ok(
+      recorded.some((argv) => argv.includes("session") && argv.includes("close") && argv.includes("worker")),
+      "the turn's terminal branch closes the row",
+    );
+    assert.equal(
+      recorded.filter((argv) => argv.includes("session") && argv.includes("set")).length,
+      1,
+      "one row per card per lane",
+    );
+  });
+
+  it("never fails a turn when the board rejects the session write", async (t) => {
+    const f = fixture(t);
+    writeFileSync(
+      join(f.dir, "cli.mjs"),
+      [
+        "const argv = process.argv.slice(2);",
+        'if (argv.includes("session")) {',
+        '  process.stdout.write(JSON.stringify({ ok: false, error: { code: "DB_BUSY", message: "board down" } }));',
+        "} else {",
+        '  process.stdout.write(JSON.stringify({ ok: true, data: {} }));',
+        "}",
+      ].join("\n"),
+    );
+    const lines = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      log: (line) => lines.push(line),
+      kindPool: fakePool(),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 1,
+      worker_key: workerKey("T-1", 1),
+    });
+    await pool.tick();
+    assert.equal(
+      readCards(f.dir).value.cards.at(-1).status,
+      "done",
+      "the card turn is the work; its provenance is best-effort",
+    );
+    assert.ok(
+      lines.some((line) => /board session/.test(line)),
+      "the board failure is logged once, not swallowed silently",
+    );
+  });
+
+  it("closes the rows a dead pool left running at startup", async (t) => {
+    const f = fixture(t);
+    const record = join(f.dir, "calls.jsonl");
+    writeFileSync(
+      join(f.dir, "cli.mjs"),
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, JSON.stringify(argv) + '\\n');",
+        'if (argv.includes("list")) {',
+        "  process.stdout.write(JSON.stringify({ ok: true, data: { sessions: [{ task_id: 'uuid-old', seg: 'worker', owner: 'alice', pid: 999999, meta: { loop: process.env.TP_LOOP, kind: 'card-session' } }] } }));",
+        "} else {",
+        "  process.stdout.write(JSON.stringify({ ok: true, data: {} }));",
+        "}",
+      ].join("\n"),
+    );
+    const opts = optsFor(f, {
+      cliEnv: { TP_SENTINEL: record, TP_LOOP: resolve(f.dir) },
+    });
+    const pool = createSessionPool({ opts, kindPool: fakePool() });
+    t.after(() => pool.stop());
+    await pool.start();
+    await pool.reattachOnStart();
+    const recorded = readFileSync(record, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    assert.ok(
+      recorded.some(
+        (argv) =>
+          argv.includes("session") &&
+          argv.includes("close") &&
+          argv.includes("uuid-old") &&
+          argv.includes("--failed"),
+      ),
+      `a dead pool's running row is closed as failed; calls: ${JSON.stringify(recorded)}`,
+    );
+  });
+
   it("waits for the question lane before dispatching a worker handoff", async (t) => {
     const f = fixture(t);
     const fake = fakePool();
@@ -3362,6 +3683,7 @@ describe("turn timeouts are transient", () => {
 
   it("reports a timed-out resume as transient instead of parking the card", async (t) => {
     const f = fixture(t);
+    const cli = recordCli(f);
     let calls = 0;
     const fake = fakePool({
       behavior: () => {
@@ -3397,6 +3719,17 @@ describe("turn timeouts are transient", () => {
     assert.equal(row.status, "pending", "the row waits out the timeout backoff");
     assert.equal(row.timeouts, 1);
     assert.equal(row.attempts, 0);
+    const recorded = cli();
+    assert.ok(
+      recorded.some(
+        (argv) =>
+          argv.includes("session") &&
+          argv.includes("close") &&
+          argv.includes("worker") &&
+          argv.includes("--failed"),
+      ),
+      `a timed-out turn closes its board row as failed; calls: ${JSON.stringify(recorded)}`,
+    );
   });
 
   it("releases the card to todo after the third timeout, with the note after the move", async (t) => {
@@ -3676,7 +4009,13 @@ describe("the loop's card pulse", () => {
     const recorded = existsSync(calls)
       ? readFileSync(calls, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line))
       : [];
-    assert.equal(recorded.length, 1, "one refusal stops the pulse; it is not retried on a timer");
+    // The same CLI channel also carries the board-session writes; count only
+    // the heartbeats this test is about.
+    assert.equal(
+      heartbeatCalls(recorded).length,
+      1,
+      "one refusal stops the pulse; it is not retried on a timer",
+    );
     await pool.stop();
   });
 });

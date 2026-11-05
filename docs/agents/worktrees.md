@@ -8,7 +8,9 @@
    id.
 3. Cards branch from the project's declared `base_ref` and land on `merge_ref`; read both with
    `taskctl project map show <id> --json`. Keep the primary checkout on `merge_ref`; the loop
-   refuses to land anywhere else.
+   refuses to land anywhere else. A **rework** round (the loop rejected the delivery the
+   round before) reuses the rejected round's `lane/<ref>` worktree, branch and uncommitted
+   work instead of creating `lane/<ref>-r<round>`; do not create or move that tree by hand.
 4. Landing order: merge first, then `git worktree remove`, then `git branch -d`. A worktree with
    uncommitted changes is never removed.
 5. `.worktrees/` and `.claude/worktrees/` belong in `.gitignore` and `.dockerignore`; a session
