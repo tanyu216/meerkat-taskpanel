@@ -14,8 +14,8 @@ remember reading. It moves nothing — the loop applies the verdict. Board opera
    (`git -C <targetDir> show <sha>:<path>`), and a moved tree is stated.
 4. Earlier findings are answered: resolved with evidence or explicitly deferred; none dropped
    or softened into a note.
-5. Gate and scan recorded: declared gate or `n/a — none declared`; every `security-checklist.md`
-   row plus any surface-specific security check is dispositioned; read-only arms carry job + sha.
+5. Gate and scan recorded: declared gate or `n/a — none declared`; a push-time gate outside the
+   lane's reach is `n/a — gate unobservable in lane` (E4 if needed); `security-checklist.md` rows and arms recorded.
 6. A REJECT's must-fix items are numbered, each with file/line, reproduction, expected versus
    actual and the missing case.
 7. The universal floor and every matching shape refinement were walked

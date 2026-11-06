@@ -5,7 +5,7 @@ are refinements, not a scope; a mixed card reads every matching file. Board oper
 `meerkat` board skill's contract.
 
 ## Architecture (Linus)
-**Floor.** Layering and dependency direction; one home per constant/enum (including cross-runtime mirrors); an ADR for a boundary or cross-cutting decision; ADR status vocabulary; failure modes; migration and contract impact; directory-tree changes recorded; project technical-standard conformance; DB-first invariants when the project declares them. The card sets `stage_handoff=required`; the current report's `## Handoff` is complete and its paths resolve; the project's `meta.review_gate` is recorded when the foundation declares a gate.
+**Floor.** Layering and dependency direction; one home per constant/enum (including cross-runtime mirrors); an ADR for a boundary or cross-cutting decision; ADR status vocabulary; failure modes; migration and contract impact; directory-tree changes recorded; project technical-standard conformance; DB-first invariants when the project declares them. The card sets `stage_handoff=required`; the current report's `## Handoff` is complete and its paths resolve; the project's `meta.review_gate` is recorded when the foundation declares a gate — a push-time gate outside the lane's reach is `n/a — gate unobservable in lane`, decided as an E4 matter.
 Apply the plan-quality refinement; the blast radius is a floor here, not a Beyond item.
 **Beyond.** Threat model, upgrade path.
 

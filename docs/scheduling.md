@@ -2223,7 +2223,11 @@ No role carries `Agent`/`Task`: a card session owns its whole card and spawns
 nothing. The reviewer's `npm run` / `node` / `bash` entries exist because its
 contract is to re-run the project's declared gate (`project.meta.review_gate`)
 itself; a read-only lane with only `taskctl` and `git` cannot reproduce anything
-and turns "reproducible evidence" into "read the report and trust it". It still
+and turns "reproducible evidence" into "read the report and trust it". When the
+declared gate is the push-time container gate and the lane cannot run it — the
+branch is unpushed, so no CI run exists — the reviewer records
+`n/a — gate unobservable in lane` and decides it as an E4 matter; the gap is
+environmental and does not become a rework round. It still
 has no `Edit`/`Write`. The Pi adapter carries the same split through `--tools`
 (`read,bash` for the reviewer, `read,bash,edit,write` for the worker), and the
 table's Pi column is what the installer writes into a Pi native definition.

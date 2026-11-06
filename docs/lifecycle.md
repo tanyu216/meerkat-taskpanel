@@ -376,7 +376,9 @@ report (`no_anchor` / `dangling_anchor` are `ACCEPTANCE_INCOMPLETE`), and the re
 at least one `command` anchor, because the reviewer runs the gate itself
 (`details.reason = "no_command_evidence"`). The gate is the project's declared one
 (`project.meta.review_gate`, copied into the review card's description) when there is one;
-otherwise the reviewer runs the targeted checks and records `n/a — none declared`. For an epic,
+otherwise the reviewer runs the targeted checks and records `n/a — none declared`. A gate the
+lane cannot run and cannot observe in CI — the push-time container gate (TS-34) on an unpushed
+branch — is `n/a — gate unobservable in lane`: an environmental gap, not a must-fix REJECT. For an epic,
 the current-round rollup must still match the children (`rollup_unverified` / `rollup_stale`).
 
 A `REJECT` is never checked for coverage — `partial` / `not_met` is its normal shape — but its

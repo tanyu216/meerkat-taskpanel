@@ -24,3 +24,12 @@ context does not call for either, omit the mode and let the `auto` fallback appl
 A review card is always `off`. Do not add project-specific acceptance criteria anywhere else —
 not to a project row, a configuration key, or a second local convention. If this project needs a
 rule, write it here and keep it to the three words above.
+
+## Acceptance items and the gates here
+
+Write each acceptance item as work the card can observe **in its own lane**. The lane's gate is
+the host-static loop, `npm run check`. `npm run verify:docker` is the **push-time** gate (TS-34),
+run by `.githooks/pre-push` and CI — an item that requires the worker to run it asks for
+something the lane cannot observe, and a review that rejects for it spends a rework round on an
+environmental gap. An item that must name the container gate says it is observed at push, not
+delivered by the worker.
