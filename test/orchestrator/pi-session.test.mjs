@@ -114,26 +114,19 @@ function fixture(t, source = FAKE) {
 }
 
 describe("pi session args", () => {
-  it("runs rpc mode, resumes by --session-id, and keeps a role allowlist", () => {
+  it("runs rpc mode, resumes by --session-id, and trusts project files", () => {
     const args = sessionArgs({ opts: {}, role: "worker", sessionId: "sid-1" });
     assert.deepEqual(args.slice(0, 2), ["--mode", "rpc"]);
     assert.equal(args[args.indexOf("--session-id") + 1], "sid-1");
-    assert.equal(
-      args[args.indexOf("--tools") + 1],
-      "read,bash,edit,write",
-      "a card session owns its whole card and spawns nothing",
-    );
-  });
-
-  it("keeps the reviewer read-only, with no subagent tool", () => {
-    const args = sessionArgs({ opts: {}, role: "reviewer" });
-    const tools = args[args.indexOf("--tools") + 1];
-    assert.equal(tools, "read,bash");
-  });
-
-  it("trusts project files when all tools are authorized", () => {
-    const args = sessionArgs({ opts: { allowAllTools: true }, role: "worker" });
     assert.ok(args.includes("--approve"));
+    assert.equal(args.includes("--tools"), false, "a full lane passes no allow list");
+    assert.equal(args.includes("--exclude-tools"), false);
+  });
+
+  it("excludes only the reviewer's write tools", () => {
+    const args = sessionArgs({ opts: {}, role: "reviewer" });
+    assert.ok(args.includes("--approve"));
+    assert.equal(args[args.indexOf("--exclude-tools") + 1], "edit,write");
     assert.equal(args.includes("--tools"), false);
   });
 

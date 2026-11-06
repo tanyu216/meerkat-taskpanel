@@ -711,9 +711,9 @@ while identity stays in the marker so every claim/heartbeat/report path remains 
   normally; a reviewer installed only on a non-loop kind (for example OpenClaw) is not.
   Install the role on a loop kind — a second supervisor does not help
   ([scheduling.md](scheduling.md)).
-- **The reviewer's tool surface is adapter-dependent.** Claude and Pi apply a per-role
-  allowlist; other adapters have no per-role tool surface, where the boundary is the prompt
-  plus the board's authority and the loop's report-attribution check.
+- **The reviewer's tool surface is adapter-dependent.** Claude and Pi deny the write tools;
+  other adapters have no per-role tool surface, where the boundary is the prompt plus the
+  board's authority and the loop's report-attribution check.
 
 ## 11. Where the rules live
 

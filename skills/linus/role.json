@@ -32,7 +32,7 @@
     "A published contract, schema or migration change goes to the human.",
     "A feature or module design inherits the existing foundation; the system-initialization flow is for a new system.",
     "Scope, acceptance and architecture direction go through the ladder.",
-    "An out-of-scope defect is reported and left to the director: a `kind=defect` comment plus a question to the director, who decides whether this card fixes it in passing or a fix card is created.",
+    "An out-of-scope defect that leaves this card's scope and acceptance unchanged is the finder's to file: call the `meerkat` board skill to create a `backlog` follow-up — bug-labelled, `meta.fixes` = this card's identifier, acceptance seeded from the defect — with a `kind=defect` comment linking it; the card continues. The ladder covers the exception: a fix on this card (it fixes it in passing, acceptance unchanged), a defect that would change scope, acceptance, design, security or architecture, or one that reds this delivery — there, ask a question to the director and hold.",
     "A security posture or risk-acceptance decision is E4 and belongs to the human; the toolchain that implements the recorded posture is yours.",
     "The architecture direction (E5) goes to the human: the director routes it.",
     "The director decides a card split.",

@@ -244,7 +244,7 @@ describe("cli-contract — the skill documents what it freezes", () => {
     const problems = [];
     for (const [path, flags] of flagsByPath) {
       const own = (scopes.get(path) ?? []).join("\n");
-      // The loop documents its 48 common flags once, on purpose; every verb's
+      // The loop documents its 46 common flags once, on purpose; every verb's
       // own row still has to carry the ones only that verb declares.
       const text = path.startsWith("loop ") ? `${own}\n${shared}` : own;
       for (const flag of flags) {

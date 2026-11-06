@@ -125,8 +125,8 @@ import {
   poolVerdict,
 } from "../foundation/loop-state.mjs";
 
-/** Actor kinds whose adapter turns `role` into a real tool allowlist. */
-const ROLE_ALLOWLIST_KINDS = new Set(["claude", "pi"]);
+/** Actor kinds whose adapter turns `role` into a real reviewer deny list. */
+const REVIEWER_DENY_KINDS = new Set(["claude", "pi"]);
 
 /**
  * How long a reaped orphan gets between SIGTERM and SIGKILL. A child that will
@@ -438,7 +438,7 @@ export function createSessionPool(input = {}) {
   // The previous incarnation's own start token, beside its pid: a pid alone is
   // not identity, because the OS reuses pids.
   let previousPoolPidStart = null;
-  let warnedReviewerAllowlist = false;
+  let warnedReviewerDeny = false;
   // TP-0125 — the interrupt tokens of the rows this pool has declared dead.
   // `<row.id>\u0000<row.enqueuedAt>` because a row id is reused when a card is
   // re-enqueued; the timestamp makes the token name *this* handoff. The set is
@@ -2005,13 +2005,6 @@ export function createSessionPool(input = {}) {
           await closeEntry(victim, { dropSession: false });
         }
       }
-      if (lane === "reviewer" && !ROLE_ALLOWLIST_KINDS.has(String(opts.actorKind ?? "")) && !warnedReviewerAllowlist) {
-        warnedReviewerAllowlist = true;
-        log(
-          `session: ${opts.actorKind} has no per-role tool allowlist — ` +
-            "the reviewer boundary is prompt-only for this actor kind",
-        );
-      }
       {
         const parsed = parseWorkerKey(key);
         if (parsed !== null) {
@@ -2059,6 +2052,13 @@ export function createSessionPool(input = {}) {
           ? selectRole(roleSet, row.agent, "reviewer")
           : (selectRole(roleSet, row.agent, "worker") ?? selectWorkerRole(roleSet));
       const sessionKind = String(row.actor_kind ?? opts.actorKind ?? "claude");
+      if (lane === "reviewer" && !REVIEWER_DENY_KINDS.has(sessionKind) && !warnedReviewerDeny) {
+        warnedReviewerDeny = true;
+        log(
+          `session: ${sessionKind} has no per-role tool surface — ` +
+            "the reviewer's read-only boundary is prompt-only for this actor kind",
+        );
+      }
       const skillMode = skillLoadMode(sessionKind);
       const files = role === null ? null : roleVariant(role, sessionKind);
       const skillReady = typeof files?.workflow === "string";

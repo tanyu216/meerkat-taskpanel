@@ -102,7 +102,8 @@ What the loop does next depends on why the target moved:
   (the worker's plan, if it exists), plus the notes, evidence, report drafts and attachments
   in that directory;
 - the current round's delivery report and its evidence anchors;
-- the comment trail, looking for unresolved decision / defect entries;
+- the comment trail, looking for decision / defect entries and their resolution — a recorded
+  decision, a linked filed follow-up card, or the director's disposition;
 - for an epic: the rollup report and each child's state.
 
 An `APPROVE` is checked against **two** baselines before it can close anything: the review

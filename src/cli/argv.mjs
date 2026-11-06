@@ -58,7 +58,6 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "md",
     "dry-run",
     "take-over",
-    "allow-all-tools",
     "allow-dup",
     "allow-steal",
     "assignee-only",

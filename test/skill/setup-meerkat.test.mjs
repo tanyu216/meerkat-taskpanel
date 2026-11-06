@@ -273,6 +273,23 @@ describe("skill frontmatter and the six-step shape", () => {
     assert.ok(existsSync(join(SKILL, "scripts/scaffold-role.mjs")));
   });
 
+  it("splits downstream cards from a defect follow-up in the shipped template", () => {
+    const template = join(SKILL, "assets/role-template");
+    const skill = readFileSync(join(template, "SKILL.md"), "utf8");
+    assert.match(skill, /downstream cards come from the director's triage/i);
+    assert.match(skill, /defect outside this card is filed by\s+its finder in `backlog`/i);
+    assert.match(skill, /meta\.fixes/);
+    const roleJson = JSON.parse(readFileSync(join(template, "role.json"), "utf8"));
+    const boundaries = roleJson.boundaries.join("\n");
+    assert.match(boundaries, /downstream cards in the handoff/i);
+    assert.match(boundaries, /backlog/i);
+    assert.match(boundaries, /bug-labelled/i);
+    assert.match(boundaries, /meta\.fixes/);
+    const platforms = readFileSync(join(SKILL, "references/roles-platforms.md"), "utf8");
+    assert.match(platforms, /downstream cards come from the\s+director's triage/i);
+    assert.match(platforms, /filed by its finder in `backlog`/i);
+  });
+
   it("ships the role skills as standalone skills, never a team copy", () => {
     const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
     assert.doesNotMatch(skill, /assets\/team/, "the setup skill ships no team template");

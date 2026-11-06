@@ -16,9 +16,10 @@
     "Answer every baseline item with a status and a falsifiable evidence[n].",
     "Re-check earlier-round findings; a silent drop is a REJECT.",
     "Run the declared gate (or n/a — none declared); scan osv-scanner/secret/SAST; audit OWASP.",
+    "Establish independence: when this session wrote the delivery, hand the review to one fresh-context, read-only subagent and relay its verdict; otherwise ask the human how to route an independent review.",
     "Review any delivered card dispatched for review, whatever its target type; a named shape is a refinement of the universal floor.",
     "Walk each step in SKILL.md's universal floor and every matching scenario file (audit-product.md, audit-development.md, audit-test.md): the universal floor first, then the matching shape refinements; a type no shape names, or a mixed type, follows the default floor and the project's own standards, and a floor is a minimum, so add any read-only check and record every skip.",
-    "Implementation refinement, when the card touches code: tests vs contract, code vs architecture/tech standards, code review, security scan (osv-scanner; security-checklist.md is a floor).",
+    "Implementation refinement, when the card touches code: tests vs contract, code vs architecture/tech standards, code review, and `security-checklist.md` as a mandatory verdict gate — every applicable row dispositioned and anchored; a blank row or a missing table on a code change is a REJECT.",
     "Deliver a VERDICT report on the review card."
   ],
   "boundaries": [
@@ -29,7 +30,7 @@
     "An unlisted or mixed target type is not a REJECT merely for being unlisted, and is not an exemption from the universal floor.",
     "A missing acceptance item is a REJECT; a leftover lies outside the frozen acceptance."
   ],
-  "system_prompt": "Read the task card first; it is authoritative. The supervisor owns card.md and keeps it fresh from the board.\nCarry the Flags above on every write.\nBoard: heartbeat this review card; the card under review keeps its own holder. Deliver one\nverdict on this review card with a report; the loop applies the verdict and closes the card.\nStep 0 — before anything else: if the card under review is not in_review, or its delivery_round\nis not the round above, leave a note on the review card and stop; the loop closes the review card.\n  taskctl issue get <review-ref> --json <flags>\n  taskctl issue heartbeat <review-ref> <flags>\n  taskctl issue deliver <review-ref> --report-file - <flags>\nThe report's first line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.\nA review ends in a verdict; insufficient evidence is REJECT with the findings.",
+  "system_prompt": "Read the task card first; it is authoritative. The supervisor owns card.md and keeps it fresh from the board.\nCarry the Flags above on every write.\nBoard: heartbeat this review card; the card under review keeps its own holder. Deliver one\nverdict on this review card with a report; the loop applies the verdict and closes the card.\nStep 0 — independence and round: when this session wrote the delivery, hand the review to one\nfresh-context, read-only subagent and relay its verdict verbatim; where no subagent exists, ask\nthe human how to route an independent review and hold. Before anything else, if the card under\nreview is not in_review, or its delivery_round is not the round above, leave a note on the\nreview card and stop; the loop closes the review card.\n  taskctl issue get <review-ref> --json <flags>\n  taskctl issue heartbeat <review-ref> <flags>\n  taskctl issue deliver <review-ref> --report-file - <flags>\nThe report's first line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.\nA code-changing delivery's verdict carries the security-checklist row table; a blank row or a\nmissing table is REJECT. A review ends in a verdict; insufficient evidence is REJECT with the\nfindings.",
   "self_check": "references/self-check.md",
   "reviewer_handoff": "references/reviewer-handoff.md",
   "default_reviewer": true

@@ -512,15 +512,20 @@ _Avoid_: restore, rehydrate, resync
 
 **Reviewer session**:
 The resident conversation for review cards in a project's directory, opened with the
-`reviewer` role when a review card is queued. It spawns one reviewer **subagent** per
-review card; where the adapter has a role allowlist, that surface has no Write.
+`reviewer` role when a review card is queued. It runs the review itself; when its session
+shares the delivery's context it hands the review to one fresh-context reviewer
+**subagent** (ADR 0019). Where the adapter can enforce it, the reviewer's write tools are
+denied (ADR 0020).
 _中文_: 审核会话
 _Avoid_: review worker, worker session
 
 **Subagent**:
-A reviewer started by a reviewer session through the agent kind's own subagent mechanism.
-It is not a supervisor process, and it inherits its parent session's cwd rather than being
-handed one. Workers are not subagents: each has its own **worker session**.
+A fresh-context child spawned through the agent kind's own subagent mechanism (`Agent` on
+Claude). Any lane may spawn one; the reviewer's is the independence child, one-shot, never
+resumed, read-only, and it returns the verdict, the security table and the evidence while
+the parent keeps the board writes (ADR 0019). The supervisor tracks no children. A subagent
+takes no per-call cwd, so it does not inherit the card's worktree. Workers are not
+subagents: each has its own **worker session**.
 _中文_: 子代理
 _Avoid_: worker process, child session (that is an agent-kind API term), thread
 

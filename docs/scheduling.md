@@ -545,7 +545,7 @@ cannot give two cards two workspaces — so the pool keeps **one top-level worke
 card**, opened in the card's own worktree, and resumes that same session when the card
 comes back **inside its claim** (a rework, a crash). A card released out of the claim cycle
 comes back as a new session. A review card gets a **reviewer session in the same directory**, opened with
-the `reviewer` role: the allowlist that excludes `Write` is per session.
+the `reviewer` role: the write-tool deny list is per session.
 
 ```text
 session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
@@ -602,9 +602,9 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   be loaded (a non-resident dispatch or a kind whose skill is not ready); it inlines
   `references/reviewer-handoff.md` immediately before Step 0 — a subagent does not inherit
   the parent's loaded skill, so the protocol must be in that first context — then the role
-  skill path and the decision policy. The allowlist is real for Claude and Pi; Codex and
-  other adapters have no per-role tool surface, and the pool logs a one-time warning for
-  them.
+  skill path and the decision policy. The write-tool deny list is real for Claude and Pi;
+  Codex and other adapters have no per-role tool surface, and the pool logs a one-time
+  warning for them.
 - **Director session** — keyed `(primary, director:<dir>)`, opened only when a question,
   route or escalation row is queued. It is the one LLM decision lane: it assigns unowned
   cards, answers worker questions with a `note` + `todo`, or escalates E1–E5 with
@@ -1027,8 +1027,8 @@ authenticating agents, not adding a rule to the same layer.
   OpenClaw) is not dispatched; install the role on a loop kind instead — a second supervisor
   does not help.
 - **The reviewer's tool surface is enforced only where the adapter can enforce it.**
-  A review card runs in its own `role=reviewer` conversation, so Claude and Pi apply
-  the reviewer allowlist (no `Edit`/`Write`) to the subagent it spawns. Codex,
+  A review card runs in its own `role=reviewer` conversation, so Claude and Pi deny
+  the write tools (`Edit`/`Write`/`NotebookEdit`, or `edit`/`write`). Codex,
   OpenCode and Cursor adapters have no per-role tool surface; there the boundary is
   the prompt plus the board's acceptance authority and the supervisor's report-attribution
   check. The pool logs a one-time warning when it opens a reviewer session on such a
@@ -2176,87 +2176,55 @@ behind.
 ## Headless permission boundary
 
 A wake is **non-interactive**: the supervisor starts the worker with no human at
-the keyboard to answer a prompt. An interactive agent kind that stops to ask "may I run
-this?" has no one to answer, so the worker must run under a **pre-declared
-boundary** — a tool allowlist, a permission mode, or a sandbox — chosen up front
-rather than confirmed per call.
+the keyboard to answer a prompt. The loop therefore declares the tool surface up
+front instead of confirming it per call (ADR 0020).
 
-The rule that follows from that is a **no-default-bypass** rule:
+**Every dispatched session runs with the full tool set.** The supervisor is an
+unattended executor for a board the human owns; a card session must be able to run
+the project's commands, edit its tree and spawn subagents without waiting for a
+prompt nobody can answer.
 
-- The supervisor and the resident adapters **must not** run workers with
-  permissions bypassed by default — no `claude --dangerously-skip-permissions`,
-  no Codex `--dangerously-bypass-approvals-and-sandbox` (or equivalent), on by
-  default. Neither `taskctl loop` nor any actor-kind adapter
-  ships such a flag.
-- Turning a bypass **on** is a deliberate act that requires **explicit written
-  authorization** and must be **documented at the point of use** — in the agent
-  config that carries it — so a reader can see the bypass, the reason, and who
-  authorized it. An undocumented bypass is a bug, not a config.
-- The recommended mechanism is a **narrow allowlist or sandbox**, not a blanket
-  bypass:
-  - **Claude Code** — `claude -p` with `--permission-mode` (e.g. `acceptEdits`
-    or `plan`) plus `--allowedTools` naming the tools the worker may use, or a
-    container / sandbox the turn runs inside.
-  - **Codex** — `codex exec` with its sandbox and approval-policy flags (the
-    non-interactive sandbox profile), rather than disabling approvals.
+- **Claude Code** — `--permission-mode bypassPermissions`; every lane gets the
+  whole tool pool, including `Agent`. The reviewer lane is the one exception:
+  `--disallowedTools Edit,Write,NotebookEdit` removes the write tools. A deny rule
+  is enforced in every permission mode, including `bypassPermissions`; an allow
+  list would be inert there.
+- **Pi** — `--approve` with no `--tools`; the reviewer adds
+  `--exclude-tools edit,write`.
+- **Codex** — `approvalPolicy: "never"` with `sandbox: "danger-full-access"`.
+  Codex has no per-role tool surface, so the reviewer's read-only rule stays with
+  its prompt.
 
-Prefer running the worker in a container or sandbox whose filesystem and network
-reach are already bounded: for a `-p`/`exec` turn, the process boundary *is* the
-permission boundary, and it does not depend on a human catching a prompt.
+**The project directory is not an isolation boundary** — cwd is where the work
+happens, not a sandbox. Claude and Pi sessions carry the installing user's full OS
+permissions; Codex runs the full-access sandbox. The worktree-guard hooks still
+block writes to the protected checkout, but they are a guard, not isolation.
 
-### The resident pool's default, and the authorized opt-out
+### The resident pool's tool surface
 
-The session pool keeps the same rule. By default each role runs under its own
-allowlist. **One table is the source for all of it**: `src/foundation/role-tools.mjs`
-(`LANE_TOOLS`). The Claude and Pi adapters read it for `--allowedTools` / `--tools`,
-and the installer reads the same table to write each kind's native agent definition
-(Claude markdown frontmatter, Pi markdown frontmatter) — changing a lane means
-changing that table, never a copy. The table:
+One table is the source for the adapters and the installer:
+`src/foundation/role-tools.mjs` (`REVIEWER_DENIED_TOOLS`). The Claude and Pi
+adapters read it for `--disallowedTools` / `--exclude-tools`, and the installer
+reads it to write the reviewer's native agent definition; worker and director
+definitions carry no tool line at all, so the subagent inherits its whole pool.
+Changing the reviewer boundary means changing that table, never a copy.
 
-| Role | Tools (Claude adapter, default) |
+| Role | Adapter posture |
 |---|---|
-| director | `Read`, `Grep`, `Glob`, `Bash(taskctl *)`, `Bash(node *)` |
-| reviewer | `Read`, `Grep`, `Glob`, `Bash(taskctl *)`, `Bash(git *)`, `Bash(npm run *)`, `Bash(node *)`, `Bash(bash *)` |
-| worker | `Read`, `Edit`, `Write`, `Grep`, `Glob`, `Bash(taskctl *)`, `Bash(node *)`, `Bash(git *)` |
+| director | full: `bypassPermissions` / `--approve` / `danger-full-access` |
+| worker | full: the same |
+| reviewer | full minus `Edit`, `Write`, `NotebookEdit` (Claude) and `edit`, `write` (Pi); Codex prompt-only |
 
-No role carries `Agent`/`Task`: a card session owns its whole card and spawns
-nothing. The reviewer's `npm run` / `node` / `bash` entries exist because its
-contract is to re-run the project's declared gate (`project.meta.review_gate`)
-itself; a read-only lane with only `taskctl` and `git` cannot reproduce anything
-and turns "reproducible evidence" into "read the report and trust it". When the
-declared gate is the push-time container gate and the lane cannot run it — the
+A card session may spawn subagents (`Agent`). `Agent` takes no per-call `cwd`, so
+a child does not inherit the card's worktree; subagents are not tracked in a
+supervisor ledger and none is resumed. The reviewer's write deny applies to its
+own session; a child it spawns has its own tool pool. The posture is stated in
+`--supervisor=status`; the installed units carry no tool switch.
+
+When the declared gate is the push-time container gate and the lane cannot run it — the
 branch is unpushed, so no CI run exists — the reviewer records
 `n/a — gate unobservable in lane` and decides it as an E4 matter; the gap is
-environmental and does not become a rework round. It still
-has no `Edit`/`Write`. The Pi adapter carries the same split through `--tools`
-(`read,bash` for the reviewer, `read,bash,edit,write` for the worker), and the
-table's Pi column is what the installer writes into a Pi native definition.
-Codex, OpenCode and Cursor have no equivalent option; the installer's Codex TOML
-carries no tool list.
-
-The Claude native frontmatter carries the scoped `Bash(...)` strings verbatim —
-the same form the adapter passes on the command line. Whether every Claude build
-accepts that scope in a native definition is **not yet verified by a real parser
-in this repository**; if one refuses it, the fallback is plain `Bash` recorded
-here, never a second table.
-
-An operator who needs unattended runs that edit and execute without prompts can
-opt into **full tool access** — `--allow-all-tools`, or, for the installed
-service, the per-kind config:
-
-```bash
-MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes
-MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
-```
-
-The reason is **required**; `--allow-all-tools` without it is a startup error. With
-it the Claude adapter runs `--permission-mode bypassPermissions`, and the director,
-worker and reviewer sessions alike have the installing user's full OS
-permissions. **The project directory is not an isolation boundary** — cwd is
-where the work happens, not a sandbox. Codex uses `approvalPolicy: "never"` with
-the full-access sandbox, and Pi adds `--approve`. The flag is printed in `--supervisor=status`, and the
-installed units never carry it: the config file is where the authorization is
-recorded.
+environmental and does not become a rework round.
 
 ## The three agent kinds: how each one is triggered
 
@@ -2289,7 +2257,9 @@ persistent protocol.
 | Pi | one `pi --mode rpc` process per session | `--session-id <id>` |
 
 A **card session is a top-level session**: the identity column is what the pool stores and
-resumes for it. No adapter spawns a subagent, so no adapter needs a subagent handle.
+resumes for it. Any lane may spawn subagents (`Agent`, ADR 0020); the reviewer's
+independence child is one-shot and never resumed (ADR 0019), and no lane's children are
+tracked by the supervisor.
 
 Claude, Codex and Pi are verified against the real CLIs (Codex's app-server
 schema is pinned by `codex app-server generate-json-schema`);
@@ -2300,9 +2270,11 @@ design — an adapter implements `openSession({cwd, sessionId, role}) →
 {send, interrupt, close}` in `src/orchestrator/actor-kinds/`, and the pool manager never
 names a CLI.
 
-Pi needs no subagent extension: the session pool runs every card — worker or review — as its
-own top-level `pi --mode rpc` session, so nothing is spawned from inside a session. A Pi host
-needs only the CLI, a selected provider and model, and the role skills.
+Pi needs no subagent extension for the loop itself: the session pool runs every card — worker
+or review — as its own top-level `pi --mode rpc` session. Spawning a child at all needs
+`pi-subagents`; where the extension is absent the reviewer skill asks the human how to route
+an independent review. A Pi host needs only the CLI, a selected provider and model, and the
+role skills for the ordinary loop.
 
 Installers also install the **director skill** at `<agent-dir>/skills/meerkat-director/`, the
 **chat console** at `<agent-dir>/skills/meerkat-chat/` and the five **role skills** beside
@@ -2598,11 +2570,9 @@ the one-supervisor rule.)
 ### What an enabled supervisor runs
 
 An enabled unit is just a clock: it runs the supervisor, and the supervisor claims and
-wakes. Enabling does **not** change the worker's permission boundary, which is documented
-in full at [Headless permission boundary](#headless-permission-boundary) — nothing here
-loosens it: the resident adapters ship **no** bypass flag by default, and turning one on
-still needs the written authorization, documented at the point of use, that section
-describes.
+wakes. Enabling does **not** change the worker's tool surface, which is documented in full
+at [Headless permission boundary](#headless-permission-boundary): every session runs with
+the full tool set and the reviewer's write tools are denied.
 
 - **Identity and parameters.** The units start the supervisor with `--actor-kind <h>`, `--agent
   <installer name>` and one pass (`taskctl loop run --ping-once` / `--continue-once`). The

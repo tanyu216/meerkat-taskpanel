@@ -214,9 +214,10 @@ the `meerkat` board skill's card and plan lifecycle.
 ## Hard limits
 
 - The frozen acceptance is the contract; scope or acceptance changes are questions.
-- An out-of-scope defect is reported and left to the director: a `kind=defect`
-  comment plus a question to the director, and hold for the answer (`issue wait`). The director
-  decides whether this card fixes it in passing or a fix card is created.
+- An out-of-scope defect that leaves scope and acceptance unchanged: the finder files a
+  `backlog` follow-up via the `meerkat` board skill (bug-labelled, `meta.fixes` = this card) and
+  links it in a `kind=defect` comment; the card continues. A fix here (it fixes it in passing) or
+  a change beyond it is a question to the director, held with `issue wait`.
 - Keep artifacts inside the project with relative `design/...` paths; a filename carries a
   content slug, not the task id. A prototype is evidence; production code belongs to the
   implementation card.

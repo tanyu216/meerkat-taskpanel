@@ -50,8 +50,6 @@ const POLICY = [
   num("project-concurrency", "projectConcurrency", "<n>", "Per-project concurrency cap."),
   num("project-idle-ms", "projectIdleMs", "<ms>", "Idle project-session eviction."),
   str("workspace", "workspace", "<worktree|shared>", "Where a card runs: its own worktree (default) or the project checkout."),
-  bool("allow-all-tools", "allowAllTools", "Give spawned agents the unrestricted tool set (needs a reason)."),
-  str("allow-all-tools-reason", "allowAllToolsReason", "<text>", "Who authorized the unrestricted tool set, and why."),
   num("patrol-interval", "patrolInterval", "<sec>", "SLA measurement period."),
   num("max-concurrency", "maxConcurrency", "<n>", "Whole-fleet subagent cap."),
   str("claim-unassigned", "claimUnassigned", "<yes|no>", "Claim from the unassigned pool."),

@@ -17,7 +17,7 @@ Apply the plan-quality refinement; the blast radius is a floor here, not a Beyon
 - **Code review:** correctness and edge cases, error handling, concurrency/resources, compatibility, dead code, readability, test quality, unrelated changes. Every finding names a rule, a reproducible failure or a missing case; a preference without a declared standard is not a must-fix.
 - **Security scan:** the declared arms plus every `security-checklist.md` row; the checklist is a floor, not a ceiling, so add surface security checks and record them.
 - **Coverage and performance:** a reproducible coverage source; a performance claim names the number, method and bound.
-- **Follow-up:** a report or leftover that names a follow-up card must set `stage_handoff=required` and name it in the `## Handoff`; a missing marker is a `REJECT`.
+- **Follow-up:** a report or leftover that names a downstream follow-up card must set `stage_handoff=required` and name it in the `## Handoff`; a missing marker is a `REJECT`. A defect follow-up filed by its finder in `backlog` is referenced by its identifier.
 Apply the plan-quality refinement to the change: every acceptance item maps to code and a test, the blast radius is named, and the change is the smallest reliable one.
 **Beyond.** Failure injection, upgrade/compatibility matrix, concurrency/backpressure.
 
