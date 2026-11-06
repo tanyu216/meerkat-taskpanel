@@ -2918,10 +2918,18 @@ describe("the ping is the pool's single kill authority", () => {
     // A SIGTERM-trapping pool: the blocked-pool case the second signal exists for.
     const child = spawn(
       process.execPath,
-      ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);"],
-      { stdio: "ignore" },
+      ["-e", "process.on('SIGTERM', () => {}); process.stdout.write('ready\\n'); setInterval(() => {}, 1000);"],
+      { stdio: ["ignore", "pipe", "ignore"] },
     );
     try {
+      // "spawn" means the OS process exists, not that the trap is installed: a
+      // SIGTERM sent in that window would use the default action and kill it.
+      // The pool under test is one that already survives SIGTERM.
+      child.stdout.setEncoding("utf8");
+      await new Promise((resolveReady, rejectReady) => {
+        child.stdout.once("data", resolveReady);
+        child.once("error", rejectReady);
+      });
       const statePath = join(dir, "supervisor.state.json");
       const sessionPath = join(dir, "sessions.state.json");
       const logPath = join(dir, "supervisor.log");

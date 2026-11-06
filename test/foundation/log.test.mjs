@@ -24,6 +24,7 @@ import {
   parseLogLevel,
   withLogContext,
 } from "../../src/foundation/log.mjs";
+import { ACTIVITY_EVENTS } from "../../src/core/domain/enums.mjs";
 
 const FIXED = new Date("2026-01-02T03:04:05.678Z");
 
@@ -119,6 +120,26 @@ describe("log — the callable contract", () => {
     const { lines, logger } = capture();
     logger({ event: "crash_loop", boot_failures: 4, delay_ms: 5000 });
     assert.equal(levelOf(lines[0]), "error");
+  });
+
+  it("catalogues the nine operational events and never as activities", () => {
+    // The self-heal/observability vocabulary: each name is a log record with a
+    // level, and none is board state — the activity trail is business facts.
+    const operational = {
+      process_crash: "error",
+      pool_wedged: "error",
+      pool_killed: "error",
+      pool_start_failed: "error",
+      reattach_timeout: "warn",
+      turn_spawn_failed: "error",
+      crash_loop: "error",
+      event_loop_blocked: "error",
+      board_unresponsive: "error",
+    };
+    for (const [name, level] of Object.entries(operational)) {
+      assert.equal(EVENT_LEVELS[name], level, `${name} is catalogued at ${level}`);
+      assert.equal(ACTIVITY_EVENTS.includes(name), false, `${name} is not an activity event`);
+    }
   });
 
   it("exposes .info/.warn/.error/.debug methods", () => {

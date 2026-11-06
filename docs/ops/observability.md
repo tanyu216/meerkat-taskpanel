@@ -58,16 +58,24 @@ stdout is the data plane and its stderr is the product's error surface.
 | `process_crash` | error | the process-level boundary caught an escaped exception or rejection; one record, then exit 1 |
 | `crash_loop` | error | a long-lived loop entry has failed more than three boots without completing a first tick; the `supervisor.health.json` record is written and the restart is delayed 5/15/60/300 s |
 | `pool_killed` | error | the ping clock's only enforcement: a pool past a phase deadline plus one minute — SIGTERM once per wedge, then SIGKILL on a later ping; `wedgedKillAt`/`wedgedSigkillAt` are in `pool-wedge.json` |
+| `pool_wedged` | error | the wedged verdict's vocabulary; the enforced record is `pool_killed` when the ping acts |
+| `turn_spawn_failed` | error | an agent CLI (`claude`, `codex` or `pi`) could not be spawned for a turn |
+| `event_loop_blocked` | error | the board's 1 s probe fired more than 2 s late — the loop was blocked and cannot heal itself; the record is written when it frees up |
+| `board_unresponsive` | error | the ping's third consecutive failed `/health` probe (1 s bound); the ping never stops the board on this record — the guard/operator owns that decision |
 | `cli_command`, `cli_failure` | debug | CLI diagnostics (off unless `TASKD_LOG_LEVEL=debug`) |
 
 The loop writes free-form lines rather than event objects (`time=… level=info
 component=supervisor msg="…"`), and marks a failure with the same levels: `session: tick
 failed`, `continue error`, `workflow: … failed`, `subscribe: dispatch failed` are `error`;
-a recoverable one (`notify failed`, a refused question enqueue) is `warn`. Two exceptions name
+a recoverable one (`notify failed`, a refused question enqueue) is `warn`. Some exceptions name
 their event: a resident pool whose `start()` throws writes `event=pool_start_failed` (one
-`error` line, exit 2), and a long-lived entry past the boot-failure threshold writes
-`event=crash_loop` at `error` before it delays its own restart. A missing skill and an
-unsupported Node exit 78 (`EX_CONFIG`), which systemd is told not to restart.
+`error` line, exit 2), a long-lived entry past the boot-failure threshold writes
+`event=crash_loop` at `error` before it delays its own restart, and an agent CLI that cannot
+be spawned writes `event=turn_spawn_failed`. The board's own two health records are outside
+the loop: `taskd` writes `event=event_loop_blocked` when its 1 s probe fires more than 2 s
+late, and the ping writes `event=board_unresponsive` after three consecutive failed `/health`
+probes. A missing skill and an unsupported Node exit 78 (`EX_CONFIG`), which systemd is told
+not to restart.
 
 ### The line
 

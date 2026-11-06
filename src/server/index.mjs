@@ -53,6 +53,7 @@ import { withLogContext } from "../foundation/log.mjs";
 import { slaConfigToWire } from "../foundation/wire.mjs";
 import { allowListFrom, readAccessConfig } from "./access-config.mjs";
 import { authorize } from "./auth.mjs";
+import { createHealthProbe } from "./health.mjs";
 import { shape, str } from "./requests.mjs";
 import { createRouter, errorResponse, readJsonBody, sendJson } from "./router.mjs";
 import { registerAccessRoutes } from "./routes/access.mjs";
@@ -70,6 +71,28 @@ import { registerTaskRoutes } from "./routes/tasks.mjs";
 import { registerTokenRoutes } from "./routes/token.mjs";
 import { openEventStream, revisionFromRequest } from "./sse.mjs";
 import { createStaticHost } from "./static.mjs";
+
+/**
+ * The HTTP timeouts, stated once.
+ *
+ * Node's defaults are inherited silently, which hides the fact that a stalled
+ * peer is bounded at all. These are explicit:
+ *
+ *   * `requestTimeout` — the whole request (headers + body) must arrive within
+ *     the same 30 s the board's own client allows itself;
+ *   * `headersTimeout` — a peer that cannot even send its headers is gone
+ *     sooner (Node requires this to be at most `requestTimeout`);
+ *   * `keepAliveTimeout` — an idle keep-alive socket is retired after Node's
+ *     default 5 s, named here so it is a decision rather than a default.
+ *
+ * An SSE response is not affected: `requestTimeout` measures receiving the
+ * request, not sending the response.
+ */
+export const HTTP_TIMEOUTS = Object.freeze({
+  requestTimeout: 30_000,
+  headersTimeout: 10_000,
+  keepAliveTimeout: 5_000,
+});
 
 /** `/api/v1/attachments/<id>/content` — handled outside the JSON router. */
 const ATTACHMENT_CONTENT_PATH = /^\/api\/v1\/attachments\/([^/]+)\/content$/;
@@ -312,6 +335,11 @@ export async function createTaskd(options = {}) {
 
   const token = board.token === null ? null : readToken(board.dataDir);
   const startedAt = Date.now();
+  // The health probe is the one owner of "is the database answering" and "how
+  // late did our own timer fire". It starts before `listen`, so the first
+  // request has a real revision, and it is stopped before the board closes.
+  const healthProbe = createHealthProbe({ db: board.db, logger });
+  healthProbe.start();
   const router = createRouter();
   const surface = { board, token, logger, access: accessState };
   const staticHost = createStaticHost({
@@ -334,13 +362,21 @@ export async function createTaskd(options = {}) {
    */
   const streams = new Set();
 
-  router.get("/health", () => ({
-    status: "ok",
-    stage: STAGE,
-    version: VERSION,
-    uptimeMs: Date.now() - startedAt,
-    revision: currentRevision(board.db),
-  }));
+  router.get("/health", () => {
+    // The live read is deliberate: a cache that is up to one probe interval
+    // stale would report a healthy database a moment after it went away.
+    const health = healthProbe.check();
+    return {
+      status: "ok",
+      stage: STAGE,
+      version: VERSION,
+      uptimeMs: Date.now() - startedAt,
+      revision: health.revision,
+      db: health.db,
+      lastOkAt: health.lastOkAt,
+      eventLoopLagMs: health.eventLoopLagMs,
+    };
+  });
 
   router.get("/meta", async () => ({
     version: VERSION,
@@ -414,6 +450,12 @@ export async function createTaskd(options = {}) {
       sendJson(res, status, payload, headers);
     });
   });
+
+  // Explicit, not inherited: a stalled peer must not sit on a socket for
+  // Node's silent defaults (see `HTTP_TIMEOUTS`).
+  server.requestTimeout = HTTP_TIMEOUTS.requestTimeout;
+  server.headersTimeout = HTTP_TIMEOUTS.headersTimeout;
+  server.keepAliveTimeout = HTTP_TIMEOUTS.keepAliveTimeout;
 
   async function handle(req, res) {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${host}`}`);
@@ -630,6 +672,8 @@ export async function createTaskd(options = {}) {
      * during the close must not write to a closed board.
      */
     async close() {
+      // The probe reads the database; it must stop before the connection closes.
+      healthProbe.stop();
       labelGc.stop();
       for (const stream of streams) stream.close("server_shutdown");
       streams.clear();

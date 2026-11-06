@@ -14,7 +14,9 @@ The design stance, in four sentences:
   of the same board is the [`meerkat-chat`](../skills/meerkat-chat/SKILL.md) console. This
   page is the system those decisions run inside.
 - It owns **two clocks** — a cheap *ping* for liveness and one *tick* that runs the
-  deterministic passes — and performs no board I/O outside those passes.
+  deterministic passes — and performs no board **API** I/O outside those passes. The ping's
+  one outbound call is the read-only `/health` probe, which is liveness, not a board
+  operation.
 - The board work is **deterministic code** — `taskctl loop poll|patrol|workflow` — run by
   the supervisor in-process; the model's invariants live in those passes and in the board,
   never in a prompt. There is **no control/continue LLM turn**.
@@ -27,7 +29,7 @@ The design stance, in four sentences:
 
 | Component | Responsibility | Invariant it upholds |
 |---|---|---|
-| **ping** clock | prunes dead pids, keeps the registry honest | no board read and no model turn |
+| **ping** clock | prunes dead pids, probes the board's `/health`, keeps the registry honest | no board **API** read and no model turn; the probe never stops the board |
 | **tick** clock | runs the deterministic passes in-process | one tick per cadence, under one lock |
 | **poll** | scans candidates, claims, enqueues the handoff | **the atomic claim is the single dispatch source** |
 | **patrol** | the SLA pass: stale claims, review aging, recovery | no silent state; every alert is re-checked before emit |
@@ -164,9 +166,10 @@ finds the director by scanning the installed skills trees, never from a config v
 
 ## The two clocks
 
-The supervisor is a **scheduler**. It owns two clocks and performs no board I/O
-outside the deterministic passes. The passes — poll, patrol, workflow — live in
-separate `taskctl loop` verbs, and the supervisor runs them **in process**.
+The supervisor is a **scheduler**. It owns two clocks and performs no board **API**
+I/O outside the deterministic passes; the ping's one outbound call is the read-only
+`/health` liveness probe. The passes — poll, patrol, workflow — live in separate
+`taskctl loop` verbs, and the supervisor runs them **in process**.
 
 | | **ping** | **tick** | **session** |
 |---|---|---|---|
@@ -377,6 +380,34 @@ is degraded, not wedged. A row whose agent child is alive is never recovered:
 `recoverStaleCards` reads the session record, so a SIGKILLed pool cannot put a second worker on
 a card its orphan still holds. The one verdict is `poolVerdict` and the one kill decision is
 `wedgeKillAction`, both in `src/foundation/loop-state.mjs`.
+
+## The board's own health
+
+The loop asks `taskd` one read-only question it can answer badly and still keep running:
+`GET /health`. The endpoint keeps `status: "ok"` (the HTTP surface answered) and reports the
+truth beside it — `db` (`ok` or `unavailable`), `lastOkAt`, `eventLoopLagMs` and the last
+known `revision`. A database that cannot be read is reported, never turned into a 500, so a
+client's resume cursor survives the failure. The probe is one owner
+(`src/server/health.mjs`), stopped before the database connection closes.
+
+- **The event loop measures itself every second.** A tick that fires more than
+  `EVENT_LOOP_BLOCKED_MS` (2 s) late writes `event_loop_blocked` at `error` and reports the
+  measured lag. **A synchronous block cannot self-heal.** A blocked loop runs no timer while
+  it is blocked, so the record can only be written when it frees up; there is no in-process
+  recovery to add, and a "self-heal" timer would be exactly the code that cannot run. The
+  block is detected from outside — by the probe's own late tick, and by the ping below.
+- **The ping probes from outside.** Every ping pass performs one `/health` request with a 1 s
+  timeout. Three consecutive failures write `board_unresponsive` at `error`, once per episode;
+  a success resets the streak and arms the next one. The streak lives in
+  `<stateDir>/board-health.json` because the installed ping is a **one-shot** process. **It
+  never stops the board**: a slow or unreachable board is not a wedged pool, and single-writer
+  plus data safety make the guard/operator the owner of that decision. The ping's one kill
+  authority remains `killWedgedPool` (`pool_killed`), which acts only on a `wedged` phase.
+- **`loop status` is the read side.** It already reports the five live verdicts
+  (`starting`, `running`, `busy`, `unresponsive`, `wedged`); it adds the pool's `tickAgeMs`
+  and the boot ledger from `supervisor.health.json` — `lastCrash`, the consecutive failed-start
+  streak (`bootFailures`) and the recent `starts`. The human output prints those as `tick:`
+  and `health:` lines; the JSON carries the same fields.
 
 ## Atomic claim = the single dispatch source
 
@@ -2052,6 +2083,8 @@ directory**:
 ├── workspaces.json               runtime (per-card worktree/branch records)
 ├── deferrals.json                runtime (consecutive admission failures per card)
 ├── pool-wedge.json               runtime (ping-owned: the wedge it signalled, `wedgedKillAt`/`wedgedSigkillAt`)
+├── board-health.json             runtime (ping-owned: consecutive `/health` failures, last ok/failure —
+│                                 the one-shot ping's `board_unresponsive` streak)
 ├── supervisor.health.json        runtime (the long-lived entries' boot ledger: `startedAt`, `pid`, `version`,
 │                                 `lastCrash`, `starts`, `bootFailures` — the restart ladder's input)
 ├── subagents.state.json          runtime (ledger: worker/reviewer/director id → project, actor kind, role, card, status)
@@ -2610,7 +2643,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--agent <name>` | `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
 | `--actor-kind claude\|codex\|pi` | `claude` | the supervisor's **primary kind**: its board identity and config (the director lane follows the director skill's location) |
 | `--repo <path>` | this checkout — or, for a agent-installed copy, the `MEERKAT_TASKPANEL_REPO` in the per-kind config | repository root: what `--cli` is resolved from, and the fallback working directory |
-| `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids; no board read |
+| `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids and probe `/health` (1 s); no board API read |
 | `--continue-interval <sec>` | `600` | tick clock: run `patrol → workflow → poll` in-process |
 | `--max-concurrency <n>` | `8` | cap on simultaneously running worker sessions and reviewer subagents; both share it and the split follows demand (no per-role reservation) |
 | `--workspace=worktree\|shared` | `worktree` | a git project's cards each run in `.worktrees/<ref>[-r<round>][-<slug>]` on `lane/<ref>[-r<round>][-<slug>]`; a creation failure defers the card (no fallback). `shared` restores the old shared-checkout behaviour |

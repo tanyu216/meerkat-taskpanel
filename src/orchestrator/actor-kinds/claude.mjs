@@ -127,7 +127,10 @@ class ClaudeSession {
       this.finish({ ok: false, error: `session stdin closed: ${err.message}` });
     });
     this.child.on("error", (err) => {
-      this.log(`claude[${this.cwd}] spawn error: ${err.message}`);
+      this.log(`claude[${this.cwd}] spawn error: ${err.message}`, {
+        level: "error",
+        event: "turn_spawn_failed",
+      });
       this.finish({
         ok: false,
         resumeFailed: this.resumeId !== null && !this.sawResult,
