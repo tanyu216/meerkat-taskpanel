@@ -47,7 +47,13 @@ import { isKindAvailable } from "./platforms.mjs";
 import { defaultReviewerAgent, loadRoles, selectWorkerRole } from "../foundation/roles.mjs";
 import { planPatrolClaim } from "../foundation/scheduling.mjs";
 import { enqueueCard, questionDispatches, readCards } from "./queue.mjs";
-import { parseWorkerKey, readWorkerSessions, workerRecordIsRunning } from "./worker-session.mjs";
+import {
+  isReworkDispatch,
+  parseWorkerKey,
+  readWorkerSessions,
+  sessionResetRequested,
+  workerRecordIsRunning,
+} from "./worker-session.mjs";
 import {
   createWorkspace,
   findWorkspace,
@@ -56,6 +62,7 @@ import {
   probeRef,
   removeWorkspace,
   removeWorkspaceRecord,
+  reusableReworkWorkspace,
   sweepWorkspaces,
   upsertWorkspaceRecord,
   WORKSPACE_CODES,
@@ -212,6 +219,28 @@ function prepareDispatchTarget({
     log(`admission: ${identifier} r${round} workspace ${existing.path} is gone; dropping the record`);
     removeWorkspaceRecord(stateDir, { identifier, round });
     reuseExistingBranch = true;
+  }
+
+  // A rework continues in the rejected round's own tree: the uncommitted work,
+  // the plan and the evidence are still there, and the agent's absolute-path
+  // context stays valid. The new round gets its own record pointing at the same
+  // path and branch; the previous record is kept so the reviewer and the
+  // acceptance merge can still resolve their own round.
+  if (isReworkDispatch(card)) {
+    const previous = reusableReworkWorkspace({
+      stateDir,
+      identifier,
+      round,
+      projectDir,
+      exists,
+      run: runGit,
+    });
+    if (previous !== null) {
+      const moved = { ...previous, round, created_at: previous.created_at };
+      upsertWorkspaceRecord(stateDir, moved);
+      log(`admission: ${identifier} r${round} reuses ${previous.path} from round ${previous.round}`);
+      return { ok: true, targetDir: moved.path, workspace: moved, created: false, reused: true };
+    }
   }
 
   // A rework continues from the most recent previous round whose branch still
@@ -615,6 +644,10 @@ export function createQueueDispatch(input) {
         error: `no available platform carries role ${who}; not dispatching ${action.identifier}`,
       };
     }
+    // A rework reuses the previous round's tree and conversation; a one-shot
+    // `meta.session_reset=yes` keeps the tree but forces a fresh conversation.
+    const rework = isReworkDispatch(card);
+    const forceFresh = sessionResetRequested(card);
     const queued = enqueueCard(stateDir, {
       card: action.identifier,
       role,
@@ -627,6 +660,9 @@ export function createQueueDispatch(input) {
       workspace: context?.workspace ?? null,
       round,
       worker_key,
+      rework,
+      carry_from_round: rework ? Math.max(1, Number(card?.delivery_round ?? round) - 1) : null,
+      force_fresh: forceFresh,
       handoff,
       // The subscriber maps an event's `task_id` (UUID) back to the card; the
       // identifier alone is not in the event. A review row also keeps its
@@ -636,6 +672,23 @@ export function createQueueDispatch(input) {
       review_round: card?.review_round ?? null,
     });
     if (!queued.ok) return { ok: false, error: queued.error };
+
+    // The reset is one-shot. A row that ran into a *processing* turn did not
+    // take the flag, so the marker stays for the next round; a queued (new or
+    // merged) row consumed it and the marker is cleared to `no`. A failed clear
+    // is only a warning: the next round simply resets once more, never silently
+    // ignoring the request.
+    if (forceFresh && queued.superseded !== true) {
+      const cleared = runCli(
+        opts,
+        ORCHESTRATOR_ACTOR_ID,
+        ["issue", "meta", action.identifier, "--meta", "session_reset=no"],
+        { actorKind: SYSTEM_KIND },
+      );
+      if (!cleared.ok) {
+        log(`session_reset: could not clear ${action.identifier}: ${cleared.error}`, { level: "warn" });
+      }
+    }
 
     // No post-claim export: the claim itself is an event, and the registration
     // made before it refreshes the brief. One writer, one path.

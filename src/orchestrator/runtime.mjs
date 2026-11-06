@@ -67,8 +67,11 @@ export async function drainInFlight(pending, timeoutMs = STOP_DRAIN_MS) {
   const bound = Number.isFinite(requested) && requested >= 0 ? requested : STOP_DRAIN_MS;
   let timer = null;
   const timeout = new Promise((resolveTimeout) => {
+    // The bound must keep the event loop alive for its own duration: when the
+    // in-flight pass holds no handle of its own, an unref'd timer lets the
+    // process exit before the bound can fire, so the drain (and its
+    // stop_drain_timeout record) never happens.
     timer = setTimeout(() => resolveTimeout(false), bound);
-    timer.unref?.();
   });
   try {
     return await Promise.race([

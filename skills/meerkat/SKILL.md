@@ -155,8 +155,9 @@ text stays as it is. Baseline and reviewer contract:
 [`references/lifecycle/delivery.md#4a-the-acceptance-baseline`](references/lifecycle/delivery.md#4a-the-acceptance-baseline),
 [`references/review-protocol.md#3-the-reviewers-protocol`](references/review-protocol.md#3-the-reviewers-protocol).
 
-**Prose fields are Markdown.** A comment's `body`, a report's `conclusion`/`leftovers` and an
-acceptance item's `note` render as Markdown; the item's `text` stays plain.
+**Prose fields are Markdown** — a comment's `body`, a report's conclusion/leftovers and an
+acceptance `note` render as Markdown; the item's `text` stays plain
+([`references/cli/files.md`](references/cli/files.md)).
 `card.md` is transport: the export escapes a comment's newlines and writes a note inline.
 
 ## Claim one card, deliver it, stop
@@ -234,17 +235,14 @@ are in [`references/scenarios/wait.md`](references/scenarios/wait.md).
 ## Coordinating with other agents
 
 - **Never force a conflict** — the retry rule is in *Reading a refusal*.
-- **Stamp every write with your identity:** `--actor-kind <kind> --session-id <id>`.
-  `taskctl session id <ref> --seg <seg> --owner <name>` derives it; offline,
-  [`scripts/session-id.mjs`](scripts/session-id.mjs) computes the same value from the resolved
-  task UUID.
+- **Stamp every write with your identity:** `--actor-kind <kind> --session-id <id>`
+  ([derivation and the offline script](references/cli/core.md#session)).
+- **A self-claimed card owns its row** (`--seg manual`); a dispatched card's is the loop's.
 - **Metadata has two writers.** `issue meta` is a read-modify-write with `--if-version` that
   preserves value types; `issue update --meta` merges but stringifies and sends no CAS, so a
   concurrent write can be lost. Use `issue meta` for machine keys. Neither writes
   `acceptance[]`.
 - **The board runs no timer.** The supervisor owns the scheduler — add no second poller.
-
-Session identity: [`references/cli.md#session`](references/cli.md#session).
 
 ## Project directories and the brief
 
