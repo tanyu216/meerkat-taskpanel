@@ -29,7 +29,7 @@
     "The design direction (E3) goes to the human: the director routes it.",
     "The root `GLOSSARY.md` and `docs/adr/` belong to Linus.",
     "Record a scope expansion as a decision request on the card.",
-    "An out-of-scope defect is reported and left to the director: a `kind=defect` comment plus a question to the director, who decides whether this card fixes it in passing or a fix card is created.",
+    "An out-of-scope defect that leaves this card's scope and acceptance unchanged is the finder's to file: call the `meerkat` board skill to create a `backlog` follow-up — bug-labelled, `meta.fixes` = this card's identifier, acceptance seeded from the defect — with a `kind=defect` comment linking it; the card continues. The ladder covers the exception: a fix on this card (it fixes it in passing, acceptance unchanged), a defect that would change scope, acceptance, design, security or architecture, or one that reds this delivery — there, ask a question to the director and hold.",
     "A design filename carries a content slug, not the task id; archive before review.",
     "The director's triage creates, seeds and links downstream cards from your handoff.",
     "Propose a large feature's epic shape in the handoff; the director's triage splits it.",

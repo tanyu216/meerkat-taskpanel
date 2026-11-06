@@ -40,4 +40,5 @@ The branches are in `references/workflow.md`.
 - Do not accept your own work or move a card to `done`.
 - Do not merge, rebase or push from this card.
 - Do not widen the scope; a scope expansion is an E1 question.
-- Do not create downstream or fix cards; the director's triage does.
+- Downstream cards come from the director's triage; a defect outside this card is filed by
+  its finder in `backlog` (bug-labelled, `meta.fixes` = this card).

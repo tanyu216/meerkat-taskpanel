@@ -79,6 +79,20 @@ reaches nobody: attach the file and point `--description` at the attachment inst
 retyping it. A file named without a path gets one question for the path — never go hunting
 the tree for a document nobody named.
 
+## File a defect follow-up
+
+An out-of-scope defect that leaves scope and acceptance unchanged is filed by its finder in
+`backlog` — bug-labelled, `meta.fixes` = the source, acceptance seeded from the defect — and a
+`kind=defect` comment links it; the card continues:
+
+```bash
+taskctl issue create --project <p> --title "<defect>" --status backlog --label bug \
+  --meta fixes=<source> --acceptance "<repro>" --idem "defect|<source>|<slug>"
+```
+
+`backlog` is never claimable; a dispatcher or human releases it. Name the role whose shapes
+fit, or leave it unassigned.
+
 ## Say the outcome
 
 Say the outcome in one line, then stop: the identifier, that it is queued, and the file when

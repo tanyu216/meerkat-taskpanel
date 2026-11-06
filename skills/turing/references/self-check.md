@@ -16,8 +16,10 @@ delivery and not the `## Handoff` block. Run this audit in both modes; a card-on
    the test stops covering the item), **not_applicable** (`n/a — <reason>`; a bare `n/a` is an
    omission), or **partial/not_met** (a blocker: close it, or ask and hold).
 4. A leftover lies outside the frozen acceptance and names the item, its owner and the
-   follow-up card, or why none is needed. A blocker, not a leftover: a failure, a red gate, a
-   security finding, a missing acceptance item, a handoff gap, or a contract/schema/migration
+   follow-up card; a non-defect leftover outside the board's scope names why no card is needed.
+   An out-of-scope defect is filed by its finder in `backlog`, bug-labelled and
+   `meta.fixes` = this card, and named here. A blocker, not a leftover: a failure, a red gate,
+   a security finding, a missing acceptance item, a handoff gap, or a contract/schema/migration
    change.
 5. The decision round is closed; terms are canonical; no glossary or ADR was edited. A card
    with a handoff used every named path and report; a regression card uses no design artifacts.

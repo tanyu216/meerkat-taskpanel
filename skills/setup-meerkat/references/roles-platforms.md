@@ -71,8 +71,8 @@ workflows — is:
 - each role and the shapes it owns, read from its `role.json`; the Reviewer is never routed
   an ordinary card;
 - who lands and cleans up: the supervisor's acceptance pass merges the lane and removes the
-  worktree; the card's `acceptance_mode` names who may close it; no role creates a downstream
-  or fix card — the director does;
+  worktree; the card's `acceptance_mode` names who may close it; downstream cards come from the
+  director's triage, and a defect follow-up outside the card is filed by its finder in `backlog`;
 - the handoff markers and their writers: `stage_handoff=required` (the producer role), the
   project's `review_gate` (Linus), and `handoff_consumed_round` / `handoff_declined_round`
   (the director's triage). A card's design/verification shape comes from the project's
