@@ -1441,22 +1441,6 @@
           "positionals": [],
           "flags": [
             {
-              "flag": "allow-all-tools",
-              "as": "boolean",
-              "value": null,
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "allow-all-tools-reason",
-              "as": "string",
-              "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "assignee-only",
               "as": "boolean",
               "value": null,
@@ -1854,22 +1838,6 @@
           "name": "doctor",
           "positionals": [],
           "flags": [
-            {
-              "flag": "allow-all-tools",
-              "as": "boolean",
-              "value": null,
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "allow-all-tools-reason",
-              "as": "string",
-              "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
             {
               "flag": "assignee-only",
               "as": "boolean",
@@ -2269,22 +2237,6 @@
           "positionals": [],
           "flags": [
             {
-              "flag": "allow-all-tools",
-              "as": "boolean",
-              "value": null,
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "allow-all-tools-reason",
-              "as": "string",
-              "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "assignee-only",
               "as": "boolean",
               "value": null,
@@ -2683,22 +2635,6 @@
           "positionals": [],
           "flags": [
             {
-              "flag": "allow-all-tools",
-              "as": "boolean",
-              "value": null,
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "allow-all-tools-reason",
-              "as": "string",
-              "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "assignee-only",
               "as": "boolean",
               "value": null,
@@ -3096,22 +3032,6 @@
           "name": "run",
           "positionals": [],
           "flags": [
-            {
-              "flag": "allow-all-tools",
-              "as": "boolean",
-              "value": null,
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "allow-all-tools-reason",
-              "as": "string",
-              "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
             {
               "flag": "assignee-only",
               "as": "boolean",
@@ -3527,22 +3447,6 @@
           "positionals": [],
           "flags": [
             {
-              "flag": "allow-all-tools",
-              "as": "boolean",
-              "value": null,
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "allow-all-tools-reason",
-              "as": "string",
-              "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "assignee-only",
               "as": "boolean",
               "value": null,
@@ -3940,22 +3844,6 @@
           "name": "status",
           "positionals": [],
           "flags": [
-            {
-              "flag": "allow-all-tools",
-              "as": "boolean",
-              "value": null,
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "allow-all-tools-reason",
-              "as": "string",
-              "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
             {
               "flag": "assignee-only",
               "as": "boolean",
@@ -4371,22 +4259,6 @@
           "positionals": [],
           "flags": [
             {
-              "flag": "allow-all-tools",
-              "as": "boolean",
-              "value": null,
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "allow-all-tools-reason",
-              "as": "string",
-              "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
               "flag": "assignee-only",
               "as": "boolean",
               "value": null,
@@ -4784,22 +4656,6 @@
           "name": "tick",
           "positionals": [],
           "flags": [
-            {
-              "flag": "allow-all-tools",
-              "as": "boolean",
-              "value": null,
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "allow-all-tools-reason",
-              "as": "string",
-              "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
             {
               "flag": "assignee-only",
               "as": "boolean",
@@ -5206,22 +5062,6 @@
           "name": "workflow",
           "positionals": [],
           "flags": [
-            {
-              "flag": "allow-all-tools",
-              "as": "boolean",
-              "value": null,
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
-            {
-              "flag": "allow-all-tools-reason",
-              "as": "string",
-              "value": "<text>",
-              "required": false,
-              "repeat": false,
-              "short": null
-            },
             {
               "flag": "assignee-only",
               "as": "boolean",

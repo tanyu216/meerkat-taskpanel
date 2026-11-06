@@ -37,6 +37,8 @@ what a change must comply with.
 | [0016](0016-turn-timeouts-are-transient.md) | A turn timeout has its own counter and backoff and returns the card to `todo`, never `blocked`; the loop pulses the claim and the deadline includes the opener | Accepted |
 | [0017](0017-a-claim-cycle-exit-interrupts-the-turn.md) | Leaving the claim cycle interrupts the turn, records `interrupted`, and discards the session; the next claim is fresh | Proposed |
 | [0018](0018-board-is-the-one-automation-identity.md) | The board has one automation identity, `Board` (kind `system`); `system` and `Orchestrator` stop being actor ids | Accepted |
+| [0019](0019-the-reviewer-may-spawn-one-review-subagent.md) | The reviewer may spawn one fresh-context, read-only, one-shot review subagent; no ledger returns | Superseded by ADR 0020 (tool-surface claims; the one-shot child stands) |
+| [0020](0020-full-tool-access-by-default.md) | Every dispatched session runs with the full tool set; the reviewer's write tools are denied; the `--allow-all-tools` opt-in is retired | Accepted |
 
 ## Writing one
 

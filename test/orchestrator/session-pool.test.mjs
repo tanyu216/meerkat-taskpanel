@@ -1382,7 +1382,7 @@ describe("session pool", () => {
     await pool.stop();
   });
 
-  it("warns once when the actor kind has no per-role allowlist", async (t) => {
+  it("warns once when the actor kind has no per-role tool surface", async (t) => {
     const f = fixture(t);
     const lines = [];
     const fake = fakePool();
@@ -1397,8 +1397,30 @@ describe("session pool", () => {
     enqueueCard(join(f.dir), card(f, "R-2", f.api, "reviewer"));
     await pool.tick();
 
-    const warnings = lines.filter((line) => /no per-role tool allowlist/.test(line));
+    const warnings = lines.filter((line) => /no per-role tool surface/.test(line));
     assert.equal(warnings.length, 1, "the missing boundary is reported once, not every batch");
+    await pool.stop();
+  });
+
+  it("warns for the card's kind, not the supervisor's primary kind", async (t) => {
+    // A Codex review row under a Claude primary still has no per-role surface.
+    // Reading `opts.actorKind` here would miss it.
+    const f = fixture(t);
+    const lines = [];
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f, { actorKind: "claude" }),
+      kindPool: fake,
+      log: (line) => lines.push(line),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), { ...card(f, "R-1", f.app, "reviewer"), actor_kind: "codex" });
+    await pool.tick();
+
+    const warnings = lines.filter((line) => /no per-role tool surface/.test(line));
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /\bcodex\b/, "the warning names the session's kind");
     await pool.stop();
   });
 

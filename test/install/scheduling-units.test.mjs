@@ -132,7 +132,7 @@ describe("install.sh: scheduling units", () => {
     assert.match(sessionPlist, /<key>KeepAlive<\/key>\s*<true\/>/);
     assert.match(sessionPlist, /<key>ThrottleInterval<\/key>\s*<integer>10<\/integer>/);
     assert.doesNotMatch(sessionPlist, /<key>StartInterval<\/key>/, "a daemon has no interval");
-    assert.doesNotMatch(sessionPlist, /--allow-all-tools/, "full tool access is opt-in through the config");
+    assert.doesNotMatch(sessionPlist, /--allow-all-tools/, "the unit carries no tool switch");
 
     // systemd — oneshot services driven by timers, plus the subscriber service.
     assert.match(readFileSync(paths.pingTimer, "utf8"), /OnUnitActiveSec=60s/);

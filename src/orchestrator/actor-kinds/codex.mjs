@@ -29,19 +29,15 @@ const CLIENT_INFO = Object.freeze({ name: "meerkat-taskpanel-loop", version: "1.
 /**
  * The thread's approval/sandbox posture.
  *
- * With `--allow-all-tools`, the thread runs unattended with approvals off and a
- * full-access sandbox — the documented opt-in; the project directory is not an
- * isolation boundary. Otherwise approvals stay on and the sandbox is the
- * workspace.
+ * A supervisor turn is unattended and runs with the full tool set: approvals
+ * off and a full-access sandbox. The project directory is not an isolation
+ * boundary. Codex carries no per-role tool surface, so the reviewer's read-only
+ * rule stays with its prompt here.
  *
- * @param {{opts?: object}} input
  * @returns {{approvalPolicy: string, sandbox: string}}
  */
-export function threadPolicy(input = {}) {
-  if (input.opts?.allowAllTools === true) {
-    return { approvalPolicy: "never", sandbox: "danger-full-access" };
-  }
-  return { approvalPolicy: "on-request", sandbox: "workspace-write" };
+export function threadPolicy() {
+  return { approvalPolicy: "never", sandbox: "danger-full-access" };
 }
 
 /**
@@ -85,7 +81,7 @@ export function skillDeveloperInstructions(skillPath, systemPrompt) {
  * @param {{opts?: object, cwd: string, developerInstructions?: string|null}} input
  */
 export function threadStartParams(input) {
-  const params = { cwd: input.cwd, ...threadPolicy(input) };
+  const params = { cwd: input.cwd, ...threadPolicy() };
   if (typeof input.developerInstructions === "string" && input.developerInstructions !== "") {
     params.developerInstructions = input.developerInstructions;
   }
@@ -98,7 +94,7 @@ export function threadStartParams(input) {
  * @param {{opts?: object, cwd?: string, threadId: string, developerInstructions?: string|null}} input
  */
 export function threadResumeParams(input) {
-  const params = { threadId: input.threadId, ...threadPolicy(input) };
+  const params = { threadId: input.threadId, ...threadPolicy() };
   if (typeof input.cwd === "string" && input.cwd !== "") params.cwd = input.cwd;
   if (typeof input.developerInstructions === "string" && input.developerInstructions !== "") {
     params.developerInstructions = input.developerInstructions;

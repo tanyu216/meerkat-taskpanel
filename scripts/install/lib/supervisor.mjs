@@ -1181,15 +1181,9 @@ export function runSupervisorAction(options) {
       unitLoaded: subscribeUnitLoaded,
     });
     log(subscribeStatusLine(subscriber, options.now ?? Date.now));
-    // The full-access opt-in is an authorization, so status states it — and who
-    // recorded it — rather than leaving a bypass invisible.
-    const allowAll = String(agentConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS") ?? "").toLowerCase();
-    if (allowAll === "yes" || allowAll === "true" || allowAll === "1") {
-      const reason = agentConfigValue(paths.config, "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON") ?? "unrecorded";
-      log(`supervisor:   tools: all enabled (authorized by: ${reason}) — the project directory is not an isolation boundary`);
-    } else {
-      log("supervisor:   tools: role allowlists (full access is off)");
-    }
+    // Full access is the loop's posture, not a hidden opt-in; the reviewer is
+    // the one lane with a deny list.
+    log("supervisor:   tools: full (reviewer read-only) — the project directory is not an isolation boundary");
     return 0;
   }
 
