@@ -1459,8 +1459,8 @@ export function wakeHandoff(opts, config, action, card, resident = false) {
           actorKind,
           role,
           roleWorkflowPath: files?.workflow ?? null,
-          reviewerPrompt: readRoleText(files?.reviewerPrompt),
-          reviewerPromptPath: files?.reviewerPrompt ?? null,
+          reviewerHandoff: readRoleText(files?.reviewerHandoff),
+          reviewerHandoffPath: files?.reviewerHandoff ?? null,
           decisionPolicyPath,
         })
       : buildHandoff({

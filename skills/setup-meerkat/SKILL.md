@@ -266,6 +266,9 @@ the shapes, the self-check path and the same caps the supervisor reads. A re-run
 supervisor sync the role catalog and read `taskctl role list --json` to confirm the new role
 is assignable. An installed-tree-only role is not refreshed or deleted by a later
 `install.sh` run, and gets no native agent definition; the supervisor still injects the skill.
+A role installed before the `reviewer_prompt` → `reviewer_handoff` rename keeps the old key
+(the installer never clobbers an existing skill); the loader does not read `reviewer_prompt`
+and logs a rename warning, and `install.sh --force` refreshes the skill.
 
 ## Invariants every step keeps
 
@@ -313,7 +316,7 @@ skills/setup-meerkat/
 ├── references/{detection,install-upgrade,config,director-project,board-project,
 │               worktree-guard,roles-platforms,new-role,matt-pocock,evals}.md
 ├── assets/epic-graphs.md
-├── assets/role-template/{SKILL.md,role.json,references/{workflow,self-check,reviewer-prompt}.md}
+├── assets/role-template/{SKILL.md,role.json,references/{workflow,self-check,reviewer-handoff}.md}
 ├── evals/evals.json
 ├── scripts/{detect,configure-env,audit-config,route-role,scaffold-role,worktree-init}.mjs
 └── scripts/lib/{agent-kinds,atomic,env-merge,entry-guard}.mjs

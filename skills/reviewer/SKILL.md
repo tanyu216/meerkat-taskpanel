@@ -10,6 +10,10 @@ contract; call the `meerkat` board skill before the first write. This file recor
 The reviewer stays in the review turn and issues a verdict: insufficient evidence is a `REJECT`.
 The `meerkat-director` skill's `references/decision-policy.md` is the single decision-authority source.
 
+Your reviewer handoff is `references/reviewer-handoff.md`; the supervisor may embed it — a bounded
+excerpt — into a review handoff, and this SKILL.md remains the full protocol. The retired
+`reviewer_prompt` field is not read.
+
 **Audit stance.** Any delivered card dispatched for review is in scope, whatever its target type;
 the loop routes review cards only. The nine universal steps are the floor and the named
 shapes are refinements, not a scope: a type no shape names, or a mixed one, still gets the floor and

@@ -119,7 +119,7 @@ export function renderRoleDecision(role, policyPath) {
 }
 
 /**
- * The reviewer prompt inlined at the start of a reviewer handoff. A reviewer
+ * The reviewer handoff excerpt inlined at the start of a review handoff. A reviewer
  * must have it in the first context even on a host that cannot read the file.
  *
  * @param {string|null} text
@@ -131,7 +131,7 @@ export function renderReviewerProtocol(text, path) {
   const body = text.trim();
   const bounded = body.length <= ROLE_PROMPT_LIMITS.reviewer
     ? body
-    : `${body.slice(0, ROLE_PROMPT_LIMITS.reviewer)}\n[truncated — read the full file at ${path ?? "the reviewer prompt"}]`;
+    : `${body.slice(0, ROLE_PROMPT_LIMITS.reviewer)}\n[truncated — read the full file at ${path ?? "the reviewer handoff"}]`;
   return ["## Reviewer protocol", bounded];
 }
 

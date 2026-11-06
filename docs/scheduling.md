@@ -586,16 +586,17 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   Claude, developer instructions on Codex, an appended system prompt on Pi), and the
   system prompt carries the review card ref and brief, the card under review with its round,
   the original's brief and plan, and the `Flags:` line — so Step 0 and the verdict rules
-  survive a lost handoff. The reviewer handoff prompt is the reviewer variant: no question
-  ladder, verdict-only. A resident review session gets the thin review envelope — the exact
-  review card and original with its round, Step 0, the board reads and the verdict format;
-  the system prompt already carries the identity, briefs and `Flags:`. The **full** review
-  handoff is built only when no resident skill could be loaded (a non-resident dispatch or a
-  kind whose skill is not ready); it inlines `references/reviewer-prompt.md` immediately
-  before Step 0 — a subagent does not inherit the parent's loaded skill, so the protocol must
-  be in that first context — then the role skill path and the decision policy. The allowlist
-  is real for Claude and Pi; Codex and other adapters have no per-role tool surface, and the
-  pool logs a one-time warning for them.
+  survive a lost handoff. The role's `reviewer_handoff` file is the bounded excerpt inlined
+  at the start of that handoff: no question ladder, verdict-only. A resident review session
+  gets the thin review envelope — the exact review card and original with its round, Step 0,
+  the board reads and the verdict format; the system prompt already carries the identity,
+  briefs and `Flags:`. The **full** review handoff is built only when no resident skill could
+  be loaded (a non-resident dispatch or a kind whose skill is not ready); it inlines
+  `references/reviewer-handoff.md` immediately before Step 0 — a subagent does not inherit
+  the parent's loaded skill, so the protocol must be in that first context — then the role
+  skill path and the decision policy. The allowlist is real for Claude and Pi; Codex and
+  other adapters have no per-role tool surface, and the pool logs a one-time warning for
+  them.
 - **Director session** — keyed `(primary, director:<dir>)`, opened only when a question,
   route or escalation row is queued. It is the one LLM decision lane: it assigns unowned
   cards, answers worker questions with a `note` + `todo`, or escalates E1–E5 with
@@ -1156,12 +1157,14 @@ refreshed on whichever kinds already carry it during an upgrade):
 skills/<role>/
 ├── SKILL.md            role entry: routing branches and the workflow index
 ├── role.json           machine-readable identity, read by the supervisor
-└── references/         branch workflows, self-check, reviewer prompt, checklist
+└── references/         branch workflows, self-check, reviewer handoff, checklist
 ```
 
 `role.json` carries `id`, `agent`, `native_agent`, `lanes`, `title`, `summary`,
 `responsibilities`, `boundaries`, `shapes` (the work shapes it owns), `system_prompt`
-(static text only), `self_check` and `reviewer_prompt`. It must carry
+(static text only), `self_check` and `reviewer_handoff` (the bounded excerpt inlined into a
+review handoff); the retired `reviewer_prompt` key is not read and only produces a rename
+warning. It must carry
 `"schema": "meerkat-role"`; a skill without that marker is
 not a role, so a third-party skill cannot register itself as a board agent. Every referenced
 path must stay inside the skill directory, including through symlinks.
@@ -1183,7 +1186,7 @@ the role's `SKILL.md` loaded from the **selected kind's** skill directory at ses
 and reads `self_check` from the same directory before acting. The inline forms are verified
 against codex-cli 0.161.0 (`developerInstructions`) and pi 1.4.0
 (`--append-system-prompt` reads an existing file path); Claude's `--append-system-prompt`
-needs 2.1.292 or newer. The full review handoff inlines `reviewer-prompt.md`, bounded at
+needs 2.1.292 or newer. The full review handoff inlines `reviewer-handoff.md`, bounded at
 2,400 characters. Every role is told to write and maintain
 `.meerkat/<identifier>/plan.md`, which the reviewer reads.
 

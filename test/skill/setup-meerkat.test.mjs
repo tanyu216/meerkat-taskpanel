@@ -262,7 +262,7 @@ describe("skill frontmatter and the six-step shape", () => {
       typeof roleJson.system_prompt === "string" && roleJson.system_prompt.trim() !== "",
       "the template ships the static card-session board text",
     );
-    assert.ok(existsSync(join(template, "references", "reviewer-prompt.md")), "the reviewer sample exists");
+    assert.ok(existsSync(join(template, "references", "reviewer-handoff.md")), "the reviewer sample exists");
     const templateSkill = readFileSync(join(template, "SKILL.md"), "utf8");
     assert.match(templateSkill, /\nname: example\n/);
     assert.doesNotMatch(templateSkill, /disable-model-invocation/);
@@ -964,7 +964,7 @@ describe("scaffold-role.mjs — render and validate a role skill", () => {
     assert.equal(identity.schema, "meerkat-role");
     assert.equal(identity.id, "ops");
     assert.deepEqual(identity.lanes, ["worker"]);
-    assert.equal(identity.reviewer_prompt, null);
+    assert.equal(identity.reviewer_handoff, null);
     assert.ok(existsSync(join(dir, identity.self_check)));
     const generated = readFileSync(join(dir, "SKILL.md"), "utf8");
     assert.match(generated, /\nname: ops\n/);
@@ -1036,7 +1036,7 @@ describe("scaffold-role.mjs — render and validate a role skill", () => {
     assert.equal(forced.body.status, "written");
   });
 
-  it("writes a reviewer prompt and the default-reviewer flag for a reviewer lane", (t) => {
+  it("writes a reviewer handoff and the default-reviewer flag for a reviewer lane", (t) => {
     const home = temp(t);
     const skills = join(home, ".agents", "skills");
     mkdirSync(skills, { recursive: true });
@@ -1044,9 +1044,9 @@ describe("scaffold-role.mjs — render and validate a role skill", () => {
     const result = runJson(t, SCAFFOLD, ["--spec", file, "--skills-dir", skills, "--json"], { cwd: temp(t), env: { HOME: home } });
     assert.equal(result.status, 0, result.stderr);
     const identity = JSON.parse(readFileSync(join(skills, "grace", "role.json"), "utf8"));
-    assert.equal(identity.reviewer_prompt, "references/reviewer-prompt.md");
+    assert.equal(identity.reviewer_handoff, "references/reviewer-handoff.md");
     assert.equal(identity.default_reviewer, true);
-    assert.ok(existsSync(join(skills, "grace", "references", "reviewer-prompt.md")));
+    assert.ok(existsSync(join(skills, "grace", "references", "reviewer-handoff.md")));
   });
 
   it("rejects a traversal id and a non-reviewer default reviewer", (t) => {

@@ -84,11 +84,11 @@ describe("role skills: identity, discovery and model invocation", () => {
     const reviewer = roleJson("reviewer");
     assert.deepEqual(reviewer.lanes, ["reviewer"]);
     assert.equal(reviewer.default_reviewer, true);
-    assert.match(reviewer.reviewer_prompt, /^references\/.+\.md$/);
-    assert.ok(existsSync(join(roleDir("reviewer"), reviewer.reviewer_prompt)));
+    assert.match(reviewer.reviewer_handoff, /^references\/.+\.md$/);
+    assert.ok(existsSync(join(roleDir("reviewer"), reviewer.reviewer_handoff)));
     for (const role of ["jobs", "linus", "turing", "worker"]) {
       assert.deepEqual(roleJson(role).lanes, ["worker"], `${role}: worker lane`);
-      assert.equal(roleJson(role).reviewer_prompt, null, `${role}: no reviewer prompt`);
+      assert.equal(roleJson(role).reviewer_handoff, null, `${role}: no reviewer handoff`);
     }
   });
 
@@ -150,7 +150,7 @@ describe("role skills: identity, discovery and model invocation", () => {
       "an unlisted type is a normal review path, not a reject",
     );
 
-    const prompt = read("reviewer", "references/reviewer-prompt.md");
+    const prompt = read("reviewer", "references/reviewer-handoff.md");
     assert.match(prompt, /any target type is in scope/i);
 
     const check = read("reviewer", "references/self-check.md");
@@ -909,8 +909,8 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     );
     assert.match(reviewer, /missing acceptance item\s+is a `REJECT`/i, "a missing item is a REJECT");
     assert.match(reviewer, /falsifiable/i, "the reviewer workflow says what counts as proof");
-    const prompt = read("reviewer", "references/reviewer-prompt.md");
-    assert.match(prompt, /falsifiable/i, "the inlined reviewer prompt says what counts as proof");
+    const prompt = read("reviewer", "references/reviewer-handoff.md");
+    assert.match(prompt, /falsifiable/i, "the inlined reviewer handoff says what counts as proof");
     assert.match(prompt, /evidence\[n\]/, "the inlined prompt names the anchor reference");
 
     const impl = read("linus", "references/implementation-workflow.md");
@@ -948,7 +948,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     const regression = read("turing", "references/regression-workflow.md");
     const turingCheck = read("turing", "references/self-check.md");
     const reviewer = read("reviewer");
-    const prompt = read("reviewer", "references/reviewer-prompt.md");
+    const prompt = read("reviewer", "references/reviewer-handoff.md");
     const setup = readFileSync(join(SKILLS, "setup-meerkat", "SKILL.md"), "utf8");
 
     assert.match(jobs, /## Handoff/);
@@ -1133,8 +1133,8 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     const testDesign = read("turing", "references/test-design-workflow.md");
     assert.doesNotMatch(testDesign, /^### 4\. Self-check/m, "step 4 is a plan check, not the self-check");
 
-    const prompt = readFileSync(join(roleDir("reviewer"), "references/reviewer-prompt.md"));
-    assert.ok(prompt.length <= 2400, "the reviewer prompt must fit its 2,400-character inline budget");
+    const prompt = readFileSync(join(roleDir("reviewer"), "references/reviewer-handoff.md"));
+    assert.ok(prompt.length <= 2400, "the reviewer handoff must fit its 2,400-character inline budget");
   });
 
   it("keeps the Linus flows step-navigable, concise and board-delegated", () => {
@@ -1343,7 +1343,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     const all = [universal, ...scenarios].join("\n");
 
     for (const [name, text] of [
-      ["references/reviewer-prompt.md", read("reviewer", "references/reviewer-prompt.md")],
+      ["references/reviewer-handoff.md", read("reviewer", "references/reviewer-handoff.md")],
       ["references/self-check.md", read("reviewer", "references/self-check.md")],
       ["role.json", read("reviewer", "role.json")],
     ]) assert.match(text, /SKILL\.md/, `${name} points at the universal floor`);
@@ -1422,9 +1422,9 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(universal, /shared tree/i);
     assert.doesNotMatch(all, /\.worktrees\//);
     assert.doesNotMatch(read("reviewer"), /\.worktrees\//);
-    assert.doesNotMatch(read("reviewer", "references/reviewer-prompt.md"), /\.worktrees\//);
+    assert.doesNotMatch(read("reviewer", "references/reviewer-handoff.md"), /\.worktrees\//);
     assert.match(read("reviewer"), /git -C/);
-    assert.match(read("reviewer", "references/reviewer-prompt.md"), /git -C/);
+    assert.match(read("reviewer", "references/reviewer-handoff.md"), /git -C/);
 
     assert.match(universal, /verdict rule/i);
     assert.match(universal, /APPROVE only when/i);
@@ -1452,8 +1452,8 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(universal, /surface (security )?check/i);
     assert.match(read("reviewer"), /floor, not a ceiling/i);
     assert.match(read("reviewer"), /surface (security )?check/i);
-    assert.match(read("reviewer", "references/reviewer-prompt.md"), /a floor/i);
-    assert.match(read("reviewer", "references/reviewer-prompt.md"), /surface (security )?check/i);
+    assert.match(read("reviewer", "references/reviewer-handoff.md"), /a floor/i);
+    assert.match(read("reviewer", "references/reviewer-handoff.md"), /surface (security )?check/i);
     assert.match(read("reviewer", "role.json"), /floor/i);
     assert.ok(universal.split("\n").length <= 270, "the reviewer skill carries the universal floor");
     assert.ok(product.split("\n").length <= 30, "the product floor stays compact");
@@ -1475,7 +1475,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
         "references/test-design-workflow.md",
         "references/regression-workflow.md",
         "references/performance-workflow.md",
-        "references/reviewer-prompt.md",
+        "references/reviewer-handoff.md",
         "references/security-checklist.md",
         "references/audit-product.md",
         "references/audit-development.md",
@@ -1509,7 +1509,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
         "references/test-design-workflow.md",
         "references/regression-workflow.md",
         "references/performance-workflow.md",
-        "references/reviewer-prompt.md",
+        "references/reviewer-handoff.md",
         "references/audit-product.md",
         "references/audit-development.md",
         "references/audit-test.md",
@@ -1531,7 +1531,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
   it("keeps every command the reviewer is told to run inside its lane allowlist", () => {
     // A rule the lane cannot execute is a rule the reviewer learns to skip.
     const allow = allowedToolsFor("reviewer");
-    for (const rel of ["SKILL.md", "references/reviewer-prompt.md", "references/audit-product.md", "references/audit-development.md", "references/audit-test.md"]) {
+    for (const rel of ["SKILL.md", "references/reviewer-handoff.md", "references/audit-product.md", "references/audit-development.md", "references/audit-test.md"]) {
       const text = read("reviewer", rel);
       for (const [kind, pattern] of [
         ["Bash(npm run *)", /\bnpm run\b/],
@@ -1607,7 +1607,7 @@ describe("security: Linus owns the toolchain, the reviewer owns the checklist", 
   it("points the reviewer at the manual checklist from every copy", () => {
     for (const rel of [
       "SKILL.md",
-      "references/reviewer-prompt.md",
+      "references/reviewer-handoff.md",
       "references/self-check.md",
     ]) {
       assert.match(read("reviewer", rel), /security-checklist\.md/, `${rel} points at the checklist`);

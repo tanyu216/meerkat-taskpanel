@@ -130,7 +130,7 @@ function validateSpec(raw) {
     workflow: raw.workflow.map((step) => ({ title: line(step.title), body: String(step.body).trim() })),
     self_check: raw.self_check.map(line),
     default_reviewer: raw.default_reviewer === true,
-    reviewer_prompt: lane === "reviewer" ? "references/reviewer-prompt.md" : null,
+    reviewer_handoff: lane === "reviewer" ? "references/reviewer-handoff.md" : null,
   };
 }
 
@@ -185,7 +185,7 @@ function renderSkill(role) {
           `- Review cards only: ordinary cards belong to the worker roles.`,
           `- Stay in the review turn; insufficient evidence is a \`VERDICT: REJECT\`.`,
           ``,
-          `Your review prompt is \`references/reviewer-prompt.md\`.`,
+          `Your reviewer handoff is \`references/reviewer-handoff.md\`.`,
         ]
       : []),
     ``,
@@ -207,7 +207,7 @@ function renderRoleJson(role) {
     boundaries: role.boundaries,
     system_prompt: role.system_prompt,
     self_check: "references/self-check.md",
-    reviewer_prompt: role.reviewer_prompt,
+    reviewer_handoff: role.reviewer_handoff,
   };
   if (role.default_reviewer) json.default_reviewer = true;
   return `${JSON.stringify(json, null, 2)}\n`;
@@ -225,8 +225,8 @@ function renderSelfCheck(role) {
   return `# Self-check\n\nBefore delivery, answer every item:\n\n${bullet(role.self_check)}\n`;
 }
 
-function renderReviewerPrompt(role) {
-  return `# Reviewer prompt\n\nYou are **${role.agent}**. Review any delivered card dispatched for review, whatever its\ntarget type: walk the universal floor, then the shape refinements that match. A type no\nshape names still gets the floor and the project's own standards — never a skip.\n\nVerify the requirement ledger at the delivered commit, answer every baseline item with a\nfalsifiable evidence item, and return exactly one \`VERDICT: APPROVE\` or\n\`VERDICT: REJECT\` on the first line.\n`;
+function renderReviewerHandoff(role) {
+  return `# Reviewer handoff\n\nYou are **${role.agent}**. Review any delivered card dispatched for review, whatever its\ntarget type: walk the universal floor, then the shape refinements that match. A type no\nshape names still gets the floor and the project's own standards — never a skip.\n\nVerify the requirement ledger at the delivered commit, answer every baseline item with a\nfalsifiable evidence item, and return exactly one \`VERDICT: APPROVE\` or\n\`VERDICT: REJECT\` on the first line.\n`;
 }
 
 function filesFor(role) {
@@ -236,7 +236,7 @@ function filesFor(role) {
     [join("references", "workflow.md"), renderWorkflow(role)],
     [join("references", "self-check.md"), renderSelfCheck(role)],
   ];
-  if (role.lane === "reviewer") files.push([join("references", "reviewer-prompt.md"), renderReviewerPrompt(role)]);
+  if (role.lane === "reviewer") files.push([join("references", "reviewer-handoff.md"), renderReviewerHandoff(role)]);
   return files;
 }
 

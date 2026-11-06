@@ -1835,7 +1835,7 @@ describe("the resident poll dispatch", () => {
       installedOn: ["codex"],
       workflow: "/roles/codex/turing/SKILL.md",
       selfCheck: null,
-      reviewerPrompt: null,
+      reviewerHandoff: null,
       defaultReviewer: false,
       variants: {},
     };
@@ -1978,7 +1978,7 @@ describe("the resident poll dispatch", () => {
       skillDir: "/roles/reviewer",
       workflow: "/roles/reviewer/SKILL.md",
       selfCheck: null,
-      reviewerPrompt: null,
+      reviewerHandoff: null,
       variants: {},
     };
     const opts = {
@@ -2035,7 +2035,7 @@ describe("the resident poll dispatch", () => {
       skillDir: "/roles/jobs",
       workflow: "/roles/jobs/SKILL.md",
       selfCheck: null,
-      reviewerPrompt: null,
+      reviewerHandoff: null,
       variants: {},
     };
     const opts = {
@@ -2302,7 +2302,7 @@ describe("the resident poll dispatch", () => {
       skillDir: "/roles/reviewer",
       workflow: "/roles/reviewer/SKILL.md",
       selfCheck: null,
-      reviewerPrompt: null,
+      reviewerHandoff: null,
       variants: {},
     };
     const opts = {
