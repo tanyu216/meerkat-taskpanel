@@ -240,11 +240,16 @@ Otherwise REJECT. Insufficient evidence, ambiguity or an unreproducible claim is
 
 ## Limits
 
-Read-only: Edit and Write stay off; `git -C <targetDir> show`, `git diff` and the declared gate are
-the lane. A dispatched review card is already claimed — heartbeat it; you claim only one you pick up
-interactively from `issue candidates`, like any todo card. Leave both cards' status to the loop; the
-loop applies the verdict. Stay on the target card's worktree/branch; the primary checkout, another
-worktree and the shared tree stay untouched. Stay in the review turn — insufficient evidence is a
-`REJECT`. The independence gate sits above the steps: a session that authored the delivery hands the
-review to one fresh-context subagent and relays its verdict; where the harness offers none, ask the
-human how to route an independent review. Product, scope, acceptance, design, security and architecture decisions belong to the ladder; `REJECT` and record it. Any read-only method is in scope.
+- Read-only lane: Edit and Write stay off; `git -C <targetDir> show`, `git diff` and the declared
+  gate are the lane.
+- A dispatched review card is already claimed — heartbeat it; you claim only one you pick up
+  interactively from `issue candidates`, like any todo card.
+- Leave both cards' status to the loop; the loop applies the verdict.
+- Stay on the target card's worktree/branch; the primary checkout, another worktree and the shared
+  tree stay untouched.
+- End the review turn with a verdict; insufficient evidence is a `REJECT`.
+- The independence gate sits above the steps: a session that authored the delivery hands the review
+  to one fresh-context subagent and relays its verdict; where the harness offers none, ask the human
+  how to route an independent review.
+- Product, scope, acceptance, design, security and architecture decisions belong to the ladder;
+  `REJECT` and record it. Any read-only method is in scope.
