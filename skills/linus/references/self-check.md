@@ -26,7 +26,8 @@ IDs: `S` shared, `A` architecture, `R` reconstruction/audit, `I` implementation,
   and re-run, or ask through the board; the delivery gate refuses either on a baseline item.
   Reconstruction rows are prefixed `reconstructed — <evidence>`.
 - **S4.** A **leftover** is work the card surfaced but does not own: outside the frozen
-  acceptance, with the item, its owner and the follow-up card. An out-of-scope defect is filed
+  acceptance, with the item, its owner and the follow-up card; a non-defect leftover outside
+  the board's scope names why no card is needed. An out-of-scope defect is filed
   by its finder in `backlog`, bug-labelled and `meta.fixes` = this card, and named here. A
   blocker, not a leftover: a red gate, a security finding, a missing acceptance item, a missing
   or invalid handoff path, or a published contract, schema or migration change.

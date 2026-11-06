@@ -43,8 +43,9 @@ is a **new worker** that re-reads the comments (ADR 0017).
 - Creating a downstream card from a required handoff. An out-of-scope defect's disposition
   defaults to a `backlog` follow-up the finder files: bug label, `meta.fixes` = the source
   identifier, acceptance seeded from the defect, and the card continues. The director decides
-  the exception — fixed on the current card (reported, acceptance unchanged), or a defect that
-  would change scope, acceptance, design, security or architecture.
+  the fix on the current card (reported, acceptance unchanged); a defect that would change
+  scope, acceptance, design, security or architecture follows the decision map — the human
+  decides it unless the project delegates that entry.
 
 Ordering belongs to the board; concurrency, timeouts and other configuration belong to the
 human; the project directory is a registered map the human maintains; scope, the acceptance

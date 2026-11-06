@@ -283,6 +283,7 @@ describe("skill frontmatter and the six-step shape", () => {
     const boundaries = roleJson.boundaries.join("\n");
     assert.match(boundaries, /downstream cards in the handoff/i);
     assert.match(boundaries, /backlog/i);
+    assert.match(boundaries, /bug-labelled/i);
     assert.match(boundaries, /meta\.fixes/);
     const platforms = readFileSync(join(SKILL, "references/roles-platforms.md"), "utf8");
     assert.match(platforms, /downstream cards come from the\s+director's triage/i);

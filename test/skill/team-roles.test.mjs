@@ -119,6 +119,12 @@ describe("team roles: the cross-file seams", () => {
     assert.match(policy, /meta\.fixes/i);
     assert.match(policy, /finder/i);
     assert.match(policy, /downstream card/i);
+    assert.match(policy, /follows the decision map/i, "the scope-changing case leaves the director");
+    assert.match(
+      policy,
+      /the human\s+decides it unless the project delegates/i,
+      "the director is not the decider of E1-E5",
+    );
 
     assert.match(
       read("skills/reviewer/SKILL.md"),

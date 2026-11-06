@@ -7,8 +7,8 @@ handoff and card.
 
 ## The project's policy file
 
-Before applying the defaults to a decision, resolve the project the card belongs to through
-the project map the `meerkat` board skill owns, and read
+Before applying the defaults to a decision, resolve the project the card belongs to from the
+project map the `meerkat` board skill owns, the directory's only source, and read
 `<project directory>/docs/agents/decision-policy.md`.
 
 No such file: the defaults apply unchanged and silently. The file may be a short
