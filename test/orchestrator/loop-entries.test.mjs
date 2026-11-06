@@ -2497,7 +2497,7 @@ describe("the loop entries install the crash boundary", () => {
       const source = readFileSync(join(ROOT, "src", "orchestrator", entry), "utf8");
       assert.match(
         source,
-        /import \{ installEntryCrashGuard \} from "\.\.\/foundation\/crash-guard\.mjs";/,
+        /import \{[^}]*\binstallEntryCrashGuard\b[^}]*\} from "\.\.\/foundation\/crash-guard\.mjs";/,
         `${entry} does not import the crash guard`,
       );
       const blockAt = source.indexOf("if (isEntryPoint(import.meta.url))");

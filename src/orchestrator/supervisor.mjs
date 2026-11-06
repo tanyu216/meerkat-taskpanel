@@ -24,7 +24,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
+import { installEntryCrashGuard, registerLongLivedEntry } from "../foundation/crash-guard.mjs";
 import { VERSION } from "../foundation/constants.mjs";
 import { readJsonFile, writeJsonFile } from "../foundation/daemon-state.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
@@ -265,17 +265,21 @@ export async function main(argv, env = process.env, io = {}) {
     }
   }
 
-  // The long-lived entries keep the boot ledger: a start that never completes a
-  // first tick is delayed before the service manager restarts it. The one-shot
-  // clocks exit on every tick and need none of it.
+  // The resident shapes: a session, a subscriber or the two-clock daemon. They
+  // keep the boot ledger (a start that never completes a first tick is delayed
+  // before the service manager restarts it), and they declare themselves to the
+  // crash guard, because the CLI's one-shot stream rule must not exit 0 on a
+  // closed reader. The one-shot clocks exit on every tick and need neither.
+  const longLived = mode === "session" || mode === "subscribe" || mode === null;
   const boot =
-    opts.dryRun !== true && (mode === "session" || mode === "subscribe" || mode === null)
+    opts.dryRun !== true && longLived
       ? beginBootHealth({
           path: statePathsForDir(dirname(String(opts.state))).health,
           log,
           version: VERSION,
         })
       : null;
+  const unregisterLongLived = longLived ? registerLongLivedEntry() : null;
   const finish = async (code) => {
     if (boot === null) return code;
     const { delayMs } = boot.settle(code);
@@ -301,7 +305,7 @@ export async function main(argv, env = process.env, io = {}) {
         log("mode: bare --once runs the legacy poll pass; new units use --ping-only/--continue-only");
         return passesEntry.runPollOnce(opts, env);
       case "subscribe":
-        return finish(await subscribeEntry.runOnce(opts, env, { log, onFirstTick }));
+        return await finish(await subscribeEntry.runOnce(opts, env, { log, onFirstTick }));
       case "session": {
         // The resident pool is long-lived. A signal closes it cleanly; the
         // service manager is responsible for restarting the process.
@@ -309,10 +313,10 @@ export async function main(argv, env = process.env, io = {}) {
         const abort = () => controller.abort();
         process.once("SIGTERM", abort);
         process.once("SIGINT", abort);
-        return finish(await runSession(opts, { log, signal: controller.signal, onFirstTick }));
+        return await finish(await runSession(opts, { log, signal: controller.signal, onFirstTick }));
       }
       default:
-        return finish(await runDaemon(opts, env, log, { onFirstTick }));
+        return await finish(await runDaemon(opts, env, log, { onFirstTick }));
     }
   } catch (err) {
     // An escaped throw is a failed boot too. The dispatcher will render it and
@@ -322,6 +326,11 @@ export async function main(argv, env = process.env, io = {}) {
       if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
     throw err;
+  } finally {
+    // The marker lives through the boot ledger's delay: until `main` settles
+    // this process is still a long-lived entry, and a closed reader must not
+    // turn it into a silent exit 0 on the way out.
+    unregisterLongLived?.();
   }
 }
 
