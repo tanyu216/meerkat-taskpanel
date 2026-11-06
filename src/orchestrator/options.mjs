@@ -832,7 +832,7 @@ Options:
   --reviewer <agent>        Deprecated no-op (the review card's assignee picks the role).
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
-  --rework-max-rounds <n>   Park a card after this many delivery rounds since its last hold (default: 4).
+  --rework-max-rounds <n>   Park a card after this many review rejections since its last hold (default: 4).
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).
   --notify <cmd>            Run <cmd> with each patrol alert as JSON on stdin.
   --dry-run                 Print intended actions; write nothing, spawn nothing.
