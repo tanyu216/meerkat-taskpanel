@@ -38,18 +38,25 @@ import {
   createProjectAdmission,
   createQueueDispatch,
   isGitCheckout,
+  recordPatrolAdmissionFailure,
   reassignCard,
+  settlePatrolDispatchFailure,
 } from "../../src/orchestrator/passes.mjs";
-import { QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
+import { createDeferralRecorder, readDeferralLedger } from "../../src/orchestrator/deferrals.mjs";
+import { holdCard, releaseCard } from "../../src/orchestrator/holds.mjs";
+import { claimCards, enqueueCard, QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
 import { findWorkspace, upsertWorkspaceRecord } from "../../src/orchestrator/workspace.mjs";
 import { runContinue, runPollTick, runQuestionTick } from "../../src/orchestrator/runners.mjs";
 import {
+  BOARD_UNRESPONSIVE_AFTER,
   acquireContinueLock,
+  boardProbeUrl,
   loadContinueLock,
   readCardForRedispatch,
   readRouteOutcome,
   recordContinuePid,
   killWedgedPool,
+  probeBoardHealth,
   releaseContinueLock,
   runCli,
   runCliAsync,
@@ -304,6 +311,137 @@ describe("the ping's one kill authority", () => {
     assert.deepEqual(h.markers, [], "no marker for a signal that did not go out");
     assert.equal(h.logs[0].level, "error");
     assert.match(h.logs[0].line, /EPERM/);
+  });
+});
+
+describe("the ping's board /health probe", () => {
+  const NOW = Date.parse("2026-01-01T02:00:00.000Z");
+  const iso = (ms) => new Date(ms).toISOString();
+
+  /** Drive the streak the way the one-shot ping does: one call per minute. */
+  function sequence(outcomes) {
+    const logs = [];
+    const saves = [];
+    let state = null;
+    let minute = 0;
+    return {
+      logs,
+      saves,
+      run: async () => {
+        const probes = [];
+        const result = await probeBoardHealth({
+          url: "http://127.0.0.1:9527",
+          state,
+          now: () => NOW + minute * 60_000,
+          probe: async () => {
+            probes.push(minute);
+            return outcomes[minute++] !== false;
+          },
+          save: (record) => saves.push(record),
+          log: (line, meta) => logs.push({ line, ...meta }),
+        });
+        state = result;
+        return result;
+      },
+    };
+  }
+
+  it("logs board_unresponsive once the third consecutive probe fails", async () => {
+    const run = sequence([false, false, false, false]);
+    const first = await run.run();
+    const second = await run.run();
+    const third = await run.run();
+    assert.equal(first.failures, 1);
+    assert.equal(second.failures, 2);
+    assert.equal(third.failures, 3);
+    assert.equal(third.unresponsive, true);
+    assert.equal(run.logs.length, 1, "one record, not one per minute");
+    assert.equal(run.logs[0].event, "board_unresponsive");
+    assert.equal(run.logs[0].level, "error");
+    assert.equal(run.logs[0].failures, BOARD_UNRESPONSIVE_AFTER);
+    assert.equal(run.logs[0].url, "http://127.0.0.1:9527");
+
+    // Staying down does not repeat the record for the same episode.
+    const fourth = await run.run();
+    assert.equal(fourth.failures, 4);
+    assert.equal(fourth.unresponsive, true);
+    assert.equal(run.logs.length, 1);
+    assert.equal(run.saves.length, 4, "the streak is durable for the next one-shot ping");
+  });
+
+  it("a successful probe resets the streak and arms the next episode", async () => {
+    const run = sequence([false, false, true, false, false, false]);
+    await run.run();
+    await run.run();
+    const recovered = await run.run();
+    assert.equal(recovered.ok, true);
+    assert.equal(recovered.failures, 0);
+    assert.equal(recovered.unresponsive, false);
+    assert.equal(recovered.lastOkAt, iso(NOW + 2 * 60_000));
+    assert.equal(run.logs.length, 0);
+
+    await run.run();
+    await run.run();
+    const again = await run.run();
+    assert.equal(again.failures, 3);
+    assert.equal(run.logs.length, 1, "a second episode is reported again");
+  });
+
+  it("treats a missing or throwing probe as a failed health read", async () => {
+    let state = null;
+    const result = await probeBoardHealth({
+      url: null,
+      state,
+      now: () => NOW,
+      probe: async () => {
+        throw new Error("should not be called");
+      },
+      save: () => {},
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.failures, 1);
+
+    state = result;
+    const broken = await probeBoardHealth({
+      url: "http://127.0.0.1:9527",
+      state,
+      now: () => NOW,
+      probe: async () => {
+        throw new Error("EHOSTUNREACH");
+      },
+      save: () => {},
+    });
+    assert.equal(broken.ok, false);
+    assert.equal(broken.failures, 2);
+  });
+
+  it("never kills: the probe has no process or kill seam at all", async () => {
+    // The one kill authority is `killWedgedPool`, tested above. This probe is
+    // observability, so its result deliberately carries no pid, signal or kill
+    // action — a failed /health read cannot stop the board (single writer + data
+    // safety leave that to the guard/operator).
+    const result = await probeBoardHealth({
+      url: null,
+      state: null,
+      now: () => NOW,
+      save: () => {},
+      log: () => {},
+    });
+    assert.equal(Object.hasOwn(result, "pid"), false);
+    assert.equal(Object.hasOwn(result, "kill"), false);
+    assert.equal(Object.hasOwn(result, "signal"), false);
+    assert.equal(result.ok, false);
+  });
+
+  it("resolves the board URL from the flag, then the environment, then the pointer", () => {
+    const pointer = () => ({ url: "http://127.0.0.1:7000" });
+    assert.equal(boardProbeUrl({ opts: { url: "http://127.0.0.1:9000" }, env: {}, pointer }), "http://127.0.0.1:9000");
+    assert.equal(
+      boardProbeUrl({ opts: {}, env: { TASKD_URL: "http://127.0.0.1:8000" }, pointer }),
+      "http://127.0.0.1:8000",
+    );
+    assert.equal(boardProbeUrl({ opts: {}, env: {}, pointer }), "http://127.0.0.1:7000");
+    assert.equal(boardProbeUrl({ opts: {}, env: {}, pointer: () => null }), null);
   });
 });
 
@@ -569,6 +707,34 @@ describe("ping and continue entries", () => {
     assert.equal(sup.status, 0, sup.stderr);
     assert.deepEqual(calls(record), [], "ping must not call taskctl");
     assert.deepEqual(Object.keys(JSON.parse(readFileSync(state, "utf8")).running), [], "the dead pid is pruned");
+  });
+
+  it("logs board_unresponsive after three failed /health probes and keeps a streak on disk", () => {
+    const dir = tempDir("tp-entry-ping-health-");
+    const state = join(dir, "state.json");
+    const log = join(dir, "log");
+    writeFileSync(state, JSON.stringify({ version: 1, running: {} }));
+    // A dead board: connection refused is immediate, so the 1 s probe bound is
+    // not what this test spends time on.
+    const env = { ...process.env, HOME: dir, TASKD_URL: "http://127.0.0.1:1" };
+    const argv = [
+      join(ROOT, "src", "orchestrator", "supervisor.mjs"),
+      "--actor-kind", "claude", "--agent", "alice", "--ping-only", "--once",
+      "--state", state, "--log", log,
+    ];
+    const ping = () => spawnSync(process.execPath, argv, { encoding: "utf8", env });
+
+    for (let pass = 0; pass < 2; pass += 1) {
+      assert.equal(ping().status, 0);
+      assert.equal(readFileSync(log, "utf8").includes("event=board_unresponsive"), false);
+    }
+    assert.equal(ping().status, 0, "the third failed probe is the news");
+    assert.match(readFileSync(log, "utf8"), /event=board_unresponsive/);
+
+    const record = JSON.parse(readFileSync(join(dir, "board-health.json"), "utf8"));
+    assert.equal(record.failures, 3);
+    assert.equal(record.unresponsive, true);
+    assert.equal(typeof record.lastFailureAt, "string");
   });
 
   it("tick dry-run prints the pass order and spawns nothing", () => {
@@ -890,6 +1056,10 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       capabilities: ["question-lane"],
       projects: { "worker:T-1:r1": { status: "running", sessionId: "sid-1" } },
     });
+    // Same isolation as the closed-record case: the scan set is the discovered
+    // Worker role, never whatever the host happens to have installed.
+    const home = join(dir, "home");
+    seedRole(home, "claude", "worker", "Worker");
     const record = join(dir, "calls.jsonl");
     const script = join(dir, "running-cli.mjs");
     writeFileSync(
@@ -909,8 +1079,10 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       "passes.mjs",
       [
         "--actor-kind", "claude", "--agent", "alice",
+        "--home", home,
         "--cli", script, "--repo", dir,
         "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+        "--config", join(dir, ".env.claude"),
       ],
       { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
       "poll",
@@ -942,6 +1114,11 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
         },
       },
     });
+    // The scan set is the discovered Worker role: seed a temp home so a
+    // developer's installed skills cannot answer for the test, and the
+    // container's empty home cannot make the poll scan nothing.
+    const home = join(dir, "home");
+    seedRole(home, "claude", "worker", "Worker");
     const record = join(dir, "calls.jsonl");
     const script = join(dir, "closed-cli.mjs");
     writeFileSync(
@@ -961,8 +1138,11 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
       "passes.mjs",
       [
         "--actor-kind", "claude", "--agent", "alice",
+        "--home", home,
         "--cli", script, "--repo", dir, "--workspace", "shared",
         "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+        // Keep a developer's installed per-kind config out of the scan set.
+        "--config", join(dir, ".env.claude"),
       ],
       { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
       "poll",
@@ -1511,6 +1691,134 @@ describe("the resident poll dispatch", () => {
     assert.equal(entry.handoff.includes("/meerkat-loop"), false, "a handoff is not a continue turn");
   });
 
+  it("reuses the rejected round's worktree and branch for a rework", async () => {
+    const f = fixture();
+    mkdirSync(join(f.app, ".git"), { recursive: true });
+    const lane = join(f.dir, "app-lane");
+    mkdirSync(join(lane, ".git"), { recursive: true });
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    const original = {
+      identifier: "T-1",
+      round: 1,
+      path: lane,
+      branch: "lane/T-1",
+      project_dir: f.app,
+      created_at: createdAt,
+    };
+    upsertWorkspaceRecord(f.dir, original);
+    const runGit = (cmd, argv) =>
+      argv.join(" ").includes("rev-parse --verify --quiet")
+        ? { status: 0, stdout: "abc\n", stderr: "" }
+        : { status: 0, stdout: "", stderr: "" };
+    const admission = createProjectAdmission({
+      opts: f.opts,
+      projectConcurrency: f.concurrency,
+      stateDir: f.dir,
+      workspaceMode: "worktree",
+      runGit,
+      watchCards: f.watchCards,
+    });
+    const action = { identifier: "T-1", agent: "alice", reason: "ready" };
+    const card = {
+      id: "uuid-1",
+      identifier: "T-1",
+      project: "P",
+      title: "do it",
+      delivery_round: 2,
+      meta: { rework_round: "2" },
+    };
+    assert.equal((await admission.admit(action, card)).ok, true);
+    assert.equal(admission.contextFor("T-1")?.targetDir, lane, "the rework runs in the rejected tree");
+    const moved = findWorkspace(f.dir, { identifier: "T-1", round: 2 });
+    assert.equal(moved.path, lane);
+    assert.equal(moved.branch, "lane/T-1");
+    assert.equal(moved.created_at, createdAt, "the workspace identity did not change");
+    assert.equal(
+      findWorkspace(f.dir, { identifier: "T-1", round: 1 }).path,
+      lane,
+      "the rejected round's record is kept for its reviewer and merge",
+    );
+  });
+
+  it("marks a rework round and carries the previous round", async () => {
+    const f = fixture();
+    const admission = createProjectAdmission({ opts: f.opts, projectConcurrency: f.concurrency, watchCards: f.watchCards });
+    const action = { identifier: "T-1", agent: "alice", reason: "ready" };
+    const card = {
+      id: "uuid-1",
+      identifier: "T-1",
+      project: "P",
+      title: "do it",
+      delivery_round: 2,
+      meta: { rework_round: "2" },
+    };
+    assert.equal((await admission.admit(action, card)).ok, true);
+    const dispatch = createQueueDispatch({
+      opts: f.opts,
+      config: { reviewers: [] },
+      stateDir: f.dir,
+      admission,
+    });
+    assert.equal((await dispatch(action, card)).ok, true);
+    const [entry] = readCards(f.dir).value.cards;
+    assert.equal(entry.rework, true);
+    assert.equal(entry.carry_from_round, 1);
+    assert.equal(entry.force_fresh, false);
+  });
+
+  it("forces one fresh conversation and clears the one-shot marker", async () => {
+    const f = fixture();
+    const { script, record } = sentinelCli(f.dir);
+    const opts = { ...f.opts, cli: script, cliEnv: { TP_SENTINEL: record } };
+    const admission = createProjectAdmission({ opts, projectConcurrency: f.concurrency, watchCards: f.watchCards });
+    const action = { identifier: "T-1", agent: "alice", reason: "ready" };
+    const card = {
+      id: "uuid-1",
+      identifier: "T-1",
+      project: "P",
+      title: "do it",
+      delivery_round: 2,
+      meta: { rework_round: "2", session_reset: "yes" },
+    };
+    assert.equal((await admission.admit(action, card)).ok, true);
+    const dispatch = createQueueDispatch({ opts, config: { reviewers: [] }, stateDir: f.dir, admission });
+    assert.equal((await dispatch(action, card)).ok, true);
+    const [entry] = readCards(f.dir).value.cards;
+    assert.equal(entry.rework, true, "the workspace still follows the rework rule");
+    assert.equal(entry.force_fresh, true);
+    const calls = readFileSync(record, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    assert.ok(
+      calls.some(
+        (argv) =>
+          argv.includes("issue") &&
+          argv.includes("meta") &&
+          argv.includes("T-1") &&
+          argv.includes("session_reset=no"),
+      ),
+      `the one-shot marker is cleared after enqueue; calls: ${JSON.stringify(calls)}`,
+    );
+  });
+
+  it("leaves the reset marker for the next round when a processing row refuses it", async () => {
+    const f = fixture();
+    const { script, record } = sentinelCli(f.dir);
+    const opts = { ...f.opts, cli: script, cliEnv: { TP_SENTINEL: record } };
+    const admission = createProjectAdmission({ opts, projectConcurrency: f.concurrency, watchCards: f.watchCards });
+    const action = { identifier: "T-1", agent: "alice", reason: "ready" };
+    const card = { id: "uuid-1", identifier: "T-1", project: "P", title: "do it" };
+    assert.equal((await admission.admit(action, card)).ok, true);
+    enqueueCard(f.dir, { card: "T-1", role: "worker", target_dir: f.dir });
+    claimCards(f.dir, { claimedBy: "other-pool", pid: process.pid, limit: 1 });
+    const dispatch = createQueueDispatch({ opts, config: { reviewers: [] }, stateDir: f.dir, admission });
+    const reset = { ...card, delivery_round: 2, meta: { rework_round: "2", session_reset: "yes" } };
+    assert.equal((await dispatch(action, reset)).ok, true);
+    assert.equal(
+      existsSync(record) ? readFileSync(record, "utf8").includes("session_reset=no") : false,
+      false,
+      "an in-flight turn did not take the flag, so the marker stays",
+    );
+  });
+
   it("carries the role's platform and an inline envelope while the supervisor keeps its own kind", async () => {
     const f = fixture();
     const turing = {
@@ -1705,9 +2013,12 @@ describe("the resident poll dispatch", () => {
     assert.equal(entry.task_id, "uuid-2");
     assert.equal(entry.review_of, "T-1");
     assert.equal(entry.review_round, 1);
-    assert.match(entry.handoff, /^You are the reviewer for the P project/);
-    assert.match(entry.handoff, /Review brief: \.meerkat\/T-2\/card\.md/);
-    assert.match(entry.handoff, /Original brief: \.meerkat\/T-1\/card\.md/);
+    assert.match(entry.handoff, /^Review card: T-2; card under review: T-1 \(round 1\)\./);
+    assert.match(entry.handoff, /Step 0 — the review_not_ready check/);
+    assert.match(entry.handoff, /taskctl issue get T-1 --json <flags>/);
+    assert.match(entry.handoff, /taskctl issue deliver T-2 --report-file - <flags>/);
+    assert.match(entry.handoff, /VERDICT: APPROVE/);
+    assert.doesNotMatch(entry.handoff, /Review brief:|Original brief:/);
     assert.deepEqual(watched, [["T-2", "T-1"]], "the claim event refreshes it; no second export");
   });
 
@@ -2482,6 +2793,135 @@ describe("poll deferral accounting", () => {
     assert.equal(held.length, 2, "admission holds at five");
   });
 
+  // TP-0146 P0.5: a refused Worker fallback reassignment used to be retried
+  // forever with no counter behind it.
+  it("counts a refused Worker reassignment and parks at five", async () => {
+    const recorded = [];
+    const held = [];
+    const refused = (count) =>
+      runPollTick(
+        base({
+          readCandidates: () => [
+            {
+              identifier: "T-1",
+              project: "P",
+              delivery_round: 2,
+              agent: "alice",
+              reason: "ready",
+              reassign: { to: "bob", reason: "Worker fallback" },
+            },
+          ],
+          admit: async () => ({ ok: true }),
+          reassign: async () => ({ ok: false, error: "VERSION_CONFLICT" }),
+          release: async () => {},
+          recordDefer: (id, failure) => {
+            recorded.push({ id, failure });
+            return { count, code: failure.code, reason: failure.reason };
+          },
+          holdCard: async (id, payload) => {
+            held.push({ id, code: payload.code });
+            return { ok: true };
+          },
+          clearDeferral: () => {},
+        }),
+      );
+    await refused(4);
+    assert.deepEqual(held, [], "four refusals keep retrying");
+    assert.equal(recorded[0].failure.code, "REASSIGN_FAILED");
+    await refused(5);
+    assert.deepEqual(held, [{ id: "T-1", code: "REASSIGN_FAILED" }]);
+  });
+
+  // TP-0146 P0.6: a claim whose hand-back fails is still `in_progress`; the
+  // loop must park it rather than leave an ownerless claim behind.
+  it("holds the card when the claim cannot be handed back", async () => {
+    const held = [];
+    const recorded = [];
+    await runPollTick(
+      base({
+        admit: async () => ({ ok: true }),
+        dispatch: async () => ({ ok: false, error: "spawn failed" }),
+        release: async () => {},
+        moveBack: async () => ({ ok: false, error: "board unavailable" }),
+        recordDefer: (id, failure) => {
+          recorded.push({ id, failure });
+          return { count: 1, code: failure.code, reason: failure.reason };
+        },
+        holdCard: async (id, payload) => {
+          held.push({ id, code: payload.code });
+          return { ok: true };
+        },
+      }),
+    );
+    assert.deepEqual(held, [{ id: "T-1", code: "CLAIM_RELEASE_FAILED" }]);
+    assert.deepEqual(recorded[0].failure, {
+      code: "CLAIM_RELEASE_FAILED",
+      reason: "board unavailable",
+      round: 2,
+      version: null,
+    });
+  });
+
+  // TP-0146 P0.7: a hold write that fails must stay visible in the deferral
+  // ledger without changing the bound that produced it.
+  it("records a hold-write failure and alerts instead of dropping it", async () => {
+    const recorded = [];
+    const lines = [];
+    const first = { count: 3, code: "DISPATCH_FAILED", reason: "spawn failed", round: 2, version: null };
+    await runPollTick(
+      base({
+        admit: async () => ({ ok: true }),
+        dispatch: async () => ({ ok: false, error: "spawn failed" }),
+        release: async () => {},
+        moveBack: async () => ({ ok: true }),
+        recordDefer: (id, failure) => {
+          recorded.push({ id, failure });
+          return recorded.length === 1 ? first : { count: 4, code: failure.code, reason: failure.reason };
+        },
+        holdCard: async () => ({ ok: false, error: "move refused" }),
+        log: (line) => lines.push(line),
+      }),
+    );
+    assert.equal(recorded.length, 2, "the failed hold is recorded, not dropped");
+    assert.deepEqual(recorded[1].failure, {
+      code: "DISPATCH_FAILED",
+      reason: "hold failed: move refused",
+      round: 2,
+      version: null,
+    });
+    assert.ok(lines.some((line) => /could not park the card/.test(line)));
+  });
+
+  // TP-0146 P0.8: losing a claim CAS is ordinary competition. It is counted on
+  // its own field so it cannot advance the shared failure streak toward a hold.
+  it("counts claim refusals without touching the handoff streak", async () => {
+    const refusals = [];
+    const recorded = [];
+    const held = [];
+    const result = await runPollTick(
+      base({
+        admit: async () => ({ ok: true }),
+        claim: async () => ({ ok: false, error: "VERSION_CONFLICT" }),
+        release: async () => {},
+        recordDefer: (id, failure) => {
+          recorded.push({ id, failure });
+          return { count: 1, code: failure.code };
+        },
+        recordClaimRefusal: (id, failure) => refusals.push({ id, failure }),
+        holdCard: async () => {
+          held.push(1);
+          return { ok: true };
+        },
+      }),
+    );
+    assert.equal(result.conflicts, 1);
+    assert.deepEqual(recorded, [], "a refusal is not a handoff failure");
+    assert.deepEqual(refusals, [
+      { id: "T-1", failure: { reason: "VERSION_CONFLICT", round: 2, version: null } },
+    ]);
+    assert.deepEqual(held, [], "competition never holds a card");
+  });
+
   it("releases the reservation when dispatch fails", async () => {
     const released = [];
     const result = await runPollTick(
@@ -2493,5 +2933,134 @@ describe("poll deferral accounting", () => {
     );
     assert.equal(result.failed, 1);
     assert.deepEqual(released, ["T-1"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Patrol — the second admission site
+// ---------------------------------------------------------------------------
+
+describe("patrol admission settlement", () => {
+  /**
+   * A real deferral recorder plus the real board writes against a sentinel CLI:
+   * the argv sequence is the evidence, the ledger is the count.
+   */
+  function settlementFixture() {
+    const dir = tempDir("tp-patrol-settle-");
+    const { script, record } = sentinelCli(dir);
+    const opts = { cli: script, actorKind: "system", dryRun: false, cliEnv: { TP_SENTINEL: record } };
+    const log = () => {};
+    const stopped = [];
+    const discarded = [];
+    const deferrals = createDeferralRecorder({
+      stateDir: dir,
+      postComment: () => ({ ok: true }),
+      log,
+    });
+    const input = {
+      stateDir: dir,
+      log,
+      deferrals,
+      hold: (id, payload) => holdCard(opts, log, id, payload),
+      release: (id, payload) => releaseCard(opts, log, id, payload),
+      stopWatch: async (owned) => { stopped.push(owned); },
+      discard: (workspace) => { discarded.push(workspace); },
+    };
+    return { dir, record, input, stopped, discarded };
+  }
+
+  /** The board moves this fixture made, as the argv tail from `issue`. */
+  function moves(record) {
+    return calls(record)
+      .filter((call) => call.includes("issue") && call.includes("move"))
+      .map((call) => call.slice(call.indexOf("issue")));
+  }
+
+  it("hands the claim back when a patrol dispatch is refused after the claim", async () => {
+    const f = settlementFixture();
+    const result = await settlePatrolDispatchFailure(f.input, {
+      identifier: "T-1",
+      reason: "no reviewer-lane executor",
+      round: 1,
+      owned: { ref: "T-1", out: "/tmp/T-1.md" },
+      workspace: { identifier: "T-1", round: 1 },
+      workspaceCreated: true,
+    });
+    assert.deepEqual(result, { ok: false });
+    assert.deepEqual(moves(f.record), [
+      ["issue", "move", "T-1", "todo", "--reason", "no reviewer-lane executor"],
+    ]);
+    assert.equal(readDeferralLedger(f.dir).value.cards["T-1"].count, 1);
+    assert.deepEqual(f.stopped, [{ ref: "T-1", out: "/tmp/T-1.md" }], "the watch is released");
+    assert.deepEqual(f.discarded, [{ identifier: "T-1", round: 1 }], "the workspace is released");
+  });
+
+  it("parks a patrol card at the third post-claim dispatch failure", async () => {
+    const f = settlementFixture();
+    const settle = () =>
+      settlePatrolDispatchFailure(f.input, { identifier: "T-1", reason: "still refused", round: 2 });
+    await settle();
+    await settle();
+    assert.deepEqual(
+      moves(f.record).map((call) => call[3]),
+      ["todo", "todo"],
+      "the first two failures hand the claim back",
+    );
+    await settle();
+    const held = moves(f.record).at(-1);
+    assert.deepEqual(held.slice(0, 6), [
+      "issue", "move", "T-1", "blocked", "--blocked-reason", "resource",
+    ]);
+    assert.equal(
+      readDeferralLedger(f.dir).value.cards["T-1"],
+      undefined,
+      "a successful hold clears the streak",
+    );
+  });
+
+  it("keeps the streak when the claim cannot be released and the hold also fails", async () => {
+    const f = settlementFixture();
+    const errors = [];
+    const input = {
+      ...f.input,
+      log: (line, meta) => { if (meta?.level === "error") errors.push(line); },
+      hold: async () => ({ ok: false, error: "move refused" }),
+      release: async () => ({ ok: false, error: "board unavailable" }),
+    };
+    await settlePatrolDispatchFailure(input, {
+      identifier: "T-1",
+      reason: "denied",
+      round: 1,
+    });
+    assert.match(errors.at(-1), /release and hold both failed for T-1/);
+    // The release failure itself is a dispatch failure: the streak survives so
+    // the next pass tries the hold again instead of restarting at one.
+    const entry = readDeferralLedger(f.dir).value.cards["T-1"];
+    assert.equal(entry.count, 1);
+    assert.equal(entry.code, "DISPATCH_FAILED");
+  });
+
+  it("parks a patrol admission failure at five, not five hundred", async () => {
+    const f = settlementFixture();
+    const record = (n) =>
+      recordPatrolAdmissionFailure(f.input, {
+        identifier: "T-2",
+        code: "ADMISSION_FAILED",
+        reason: "workspace create failed",
+        round: 1,
+        version: 7,
+        blockedReason: "external",
+      });
+    for (let n = 1; n <= 4; n += 1) {
+      const result = await record(n);
+      assert.equal(result.held, false, `attempt ${n} keeps retrying`);
+    }
+    assert.deepEqual(moves(f.record), [], "an admission failure never moves the card");
+    const fifth = await record(5);
+    assert.equal(fifth.held, true);
+    assert.deepEqual(moves(f.record).at(-1).slice(0, 6), [
+      "issue", "move", "T-2", "blocked", "--blocked-reason", "external",
+    ]);
+    assert.equal(readDeferralLedger(f.dir).value.cards["T-2"], undefined);
   });
 });

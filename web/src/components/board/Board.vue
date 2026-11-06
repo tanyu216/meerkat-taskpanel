@@ -35,6 +35,7 @@ import {
   projectLoading,
   writeStatusFilter,
 } from "../../stores/board.js";
+import { askConfirm } from "../../stores/confirm.js";
 import { closeMoveMenu, moveMenu, openCreateTask, view } from "../../stores/ui.js";
 import Column from "./Column.vue";
 
@@ -81,6 +82,25 @@ function onDragEnd() {
   dragging.value = null;
 }
 
+/**
+ * TP-0125 — a `canceled` target is the one destructive move a person drives
+ * from the board, so it asks first. The write is the same `moveTask` either
+ * way; its own failure path (a toast in the reader's language) is what reports
+ * a refusal, so the confirmation never wraps it in a swallow.
+ */
+function requestMove(task, status) {
+  if (status !== "canceled") {
+    moveTask(task, status).catch(() => {});
+    return;
+  }
+  askConfirm({
+    titleKey: "confirm.cancelCard.title",
+    bodyKey: "confirm.cancelCard.body",
+    actionKey: "confirm.cancelCard.action",
+    run: () => moveTask(task, "canceled").catch(() => {}),
+  });
+}
+
 function onDrop(status, event) {
   const identifier = dragging.value ?? event?.dataTransfer?.getData("text/plain");
   const task = board.tasks.find((item) => item.id === identifier || item.identifier === identifier);
@@ -91,7 +111,7 @@ function onDrop(status, event) {
   // drop. Keeping the guard here means a terminal card cannot send a move the
   // server would refuse for a missing reason.
   if (!allowedTargets(task.status).includes(status)) return;
-  moveTask(task, status).catch(() => {});
+  requestMove(task, status);
 }
 
 function openCard(task) {
@@ -102,7 +122,7 @@ function chooseMove(row) {
   const task = moveMenu.value?.task;
   closeMoveMenu();
   if (!task || task.status === row.status) return;
-  moveTask(task, row.status).catch(() => {});
+  requestMove(task, row.status);
 }
 
 function clearFilters() {
@@ -154,7 +174,7 @@ watch(view, closeMoveMenu);
         :style="{ position: 'fixed', top: `${moveMenu.top}px`, left: `${moveMenu.left}px` }"
       >
         <li v-for="row in moveRows" :key="row.status">
-          <button type="button" data-move-to :aria-current="row.current ? 'true' : 'false'" @click="chooseMove(row)">
+          <button type="button" data-move-to :data-status="row.status" :aria-current="row.current ? 'true' : 'false'" @click="chooseMove(row)">
             {{ $t(`status.${row.status}`) }}
           </button>
         </li>

@@ -16,7 +16,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { rmSync } from "node:fs";
+import { renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { readJsonFile, writeJsonFile } from "./queue.mjs";
@@ -41,6 +41,85 @@ export function isWorkerKey(key) {
 export function roundOf(row) {
   const value = Number(row?.round ?? row?.delivery_round ?? 1);
   return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+/**
+ * The round a rejected review ordered: `meta.rework_round` is written with the
+ * round the card is on *after* the move out of `in_review` (workflow's
+ * reject action), so it equals `delivery_round` exactly on the rework pass.
+ *
+ * @param {object|null|undefined} card
+ * @returns {number|null}
+ */
+export function reworkRoundOf(card) {
+  const value = Number(card?.meta?.rework_round ?? NaN);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/**
+ * Whether this pass runs the rework a REJECT ordered. The marker is the
+ * authority: a card moved out of `in_review` by hand carries no marker and is
+ * not a rework, whatever its round.
+ *
+ * @param {object|null|undefined} card
+ * @returns {boolean}
+ */
+export function isReworkDispatch(card) {
+  const round = roundOf({ round: card?.delivery_round ?? card?.round ?? 1 });
+  const marker = reworkRoundOf(card);
+  return marker !== null && marker === round && round > 1;
+}
+
+/**
+ * The one-shot escape hatch: `meta.session_reset=yes` forces the next rework
+ * round to a fresh conversation. Cleared to `no` once the handoff is queued.
+ *
+ * @param {object|null|undefined} card
+ * @returns {boolean}
+ */
+export function sessionResetRequested(card) {
+  return String(card?.meta?.session_reset ?? "").trim().toLowerCase() === "yes";
+}
+
+/**
+ * Whether a previous round's worker record may be carried into this rework.
+ *
+ * One card, one agent, one actor kind, one worktree: a conversation is only
+ * meaningful for the tree and platform that produced it. A blocked or gone
+ * record is not a source — it is a failure the next round must not inherit.
+ *
+ * @param {object|null|undefined} previous the earlier round's record
+ * @param {{card: string, agent?: string|null, actorKind?: string|null, worktree?: string|null, workspaceCreatedAt?: string|null}} input
+ * @returns {{ok: true, reason: string} | {ok: false, reason: string}}
+ */
+export function planWorkerCarry(previous, input = {}) {
+  if (previous === null || previous === undefined || typeof previous !== "object") {
+    return { ok: false, reason: "no previous worker record" };
+  }
+  const card = String(input.card ?? "");
+  if (String(previous.card ?? "") !== card) return { ok: false, reason: "another card" };
+  if (previous.blocked === true) return { ok: false, reason: "the previous session is blocked" };
+  if (previous.worktree_gone === true) {
+    return { ok: false, reason: "the previous worktree is gone" };
+  }
+  const agent = String(input.agent ?? "").trim();
+  if (agent === "") return { ok: false, reason: "no agent to carry" };
+  if (String(previous.agent ?? "").trim().toLowerCase() !== agent.toLowerCase()) {
+    return { ok: false, reason: "a different agent" };
+  }
+  const actorKind = String(input.actorKind ?? "");
+  if (actorKind !== "" && String(previous.actorKind ?? "") !== actorKind) {
+    return { ok: false, reason: "a different actor kind" };
+  }
+  const worktree = String(input.worktree ?? "");
+  if (worktree !== "" && String(previous.worktree ?? "") !== worktree) {
+    return { ok: false, reason: "a different worktree" };
+  }
+  const createdAt = String(input.workspaceCreatedAt ?? "");
+  if (String(previous.workspace_created_at ?? "") !== createdAt) {
+    return { ok: false, reason: "a different workspace" };
+  }
+  return { ok: true, reason: "review rework — same conversation and workspace" };
 }
 
 /** A handoff row that runs a card, not a review. */
@@ -178,6 +257,29 @@ export function buildWorkerResumePrompt(input = {}) {
 }
 
 /**
+ * A rework turn: the same worktree and the same conversation continue after a
+ * REJECT. It is a delta, not a re-brief — the agent already read the repo, and
+ * the point of the rework session is that it does not read it all again.
+ */
+export function buildWorkerReworkPrompt(input = {}) {
+  const row = input.row ?? {};
+  const ref = String(row.card ?? "<card>");
+  const round = roundOf(row);
+  const previous = Number.isInteger(Number(input.carryFromRound))
+    ? Number(input.carryFromRound)
+    : Math.max(1, round - 1);
+  return [
+    `This is rework round ${round} of the SAME worktree and the SAME conversation for card ${ref}; the delivery in round ${previous} was rejected by the independent review.`,
+    "Continue from the last completed step of this conversation: the worktree, the brief you already read, and the completed work are the starting point for this turn.",
+    "",
+    `Read .meerkat/${ref}/card.md, the latest \`VERDICT: REJECT\` comment, and the acceptance baseline appended for round ${round}.`,
+    `Answer every must-fix item in the review one by one, then deliver a new report for round ${round} written from this round's work; the rejected report records round ${previous}.`,
+    "",
+    String(input.handoff ?? "").trim(),
+  ].join("\n");
+}
+
+/**
  * The native session is gone. Start fresh, replay the bounded transcript, and
  * verify the tree/board before repeating anything. A review replays into a
  * fresh verdict on the same round.
@@ -195,6 +297,11 @@ export function buildWorkerReplayPrompt(input = {}) {
       input.nativeError ?? input.reason ?? "session unavailable",
     )}.`,
     "This is a NEW session; the bounded transcript of the previous session follows.",
+    ...(input.rework === true
+      ? [
+          `This turn is rework round ${round} of the SAME worktree; the previous delivery was rejected. Continue from the last completed step, answer every must-fix item, and deliver a new report for this round.`,
+        ]
+      : []),
     "",
     "Previous transcript:",
     clip(transcript, WORKER_TRANSCRIPT_MAX_CHARS).trim() || "(no transcript recorded)",
@@ -248,6 +355,77 @@ export function appendWorkerTurn(stateDir, key, turn = {}) {
   }
   const written = writeJsonFile(transcriptFile(stateDir, key), { version: 1, turns });
   return { ok: written.ok, turns, error: written.error };
+}
+
+/**
+ * Move a transcript from the old round's key to the new one. A missing file is
+ * not a failure: the conversation is the source of truth, the transcript is the
+ * bounded fallback for a session that has to replay instead.
+ *
+ * @param {string} stateDir @param {string} fromKey @param {string} toKey
+ * @returns {{ok: boolean, moved: boolean}}
+ */
+export function moveWorkerTranscript(stateDir, fromKey, toKey) {
+  const from = transcriptFile(stateDir, fromKey);
+  const to = transcriptFile(stateDir, toKey);
+  if (from === to) return { ok: true, moved: false };
+  try {
+    renameSync(from, to);
+    return { ok: true, moved: true };
+  } catch {
+    return { ok: false, moved: false };
+  }
+}
+
+/**
+ * Copy a transcript to the new round's key without consuming the source, so a
+ * replay has the bounded history while the source record is still readable.
+ *
+ * @param {string} stateDir @param {string} fromKey @param {string} toKey
+ * @returns {{ok: boolean, copied: boolean}}
+ */
+export function copyWorkerTranscript(stateDir, fromKey, toKey) {
+  const from = transcriptFile(stateDir, fromKey);
+  const to = transcriptFile(stateDir, toKey);
+  if (from === to) return { ok: true, copied: false };
+  try {
+    const turns = readWorkerTranscript(stateDir, fromKey).turns;
+    const written = writeJsonFile(to, { version: 1, turns });
+    return { ok: written.ok, copied: written.ok };
+  } catch {
+    return { ok: false, copied: false };
+  }
+}
+
+/**
+ * Drop earlier-round worker records and their transcripts from the live state.
+ *
+ * The memory map is the source — `retireWorkerGenerations` writes the file, but
+ * the next `persistState` rebuilds it from memory and would restore the old
+ * keys. Mutating the map and persisting is the only durable removal.
+ *
+ * @param {string} stateDir
+ * @param {Record<string, object>} projects the pool's live `state.projects`
+ * @param {string} card @param {number} round
+ * @returns {{removed: string[]}}
+ */
+export function dropOlderWorkerRecords(stateDir, projects, card, round) {
+  if (projects === null || typeof projects !== "object") return { removed: [] };
+  const prefix = `${WORKER_KEY_PREFIX}${encodeURIComponent(String(card))}:r`;
+  const removed = [];
+  for (const key of Object.keys(projects)) {
+    if (!key.startsWith(prefix)) continue;
+    const parsed = parseWorkerKey(key);
+    if (parsed === null || parsed.round >= Number(round)) continue;
+    delete projects[key];
+    removed.push(key);
+    try {
+      rmSync(transcriptFile(stateDir, key), { force: true });
+    } catch {
+      // The transcript is best-effort state; a failed unlink must not block.
+    }
+  }
+  return { removed };
 }
 
 /** Render a stored transcript as the bounded replay block. */

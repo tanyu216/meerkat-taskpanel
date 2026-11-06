@@ -8,7 +8,7 @@
  * together and adds the facts the answers do not carry: whether the patrol is
  * still *completing*, which cards are stuck, and which cards keep going round
  * the same loop (rework rounds, review reopens, dispatch retries, failed
- * subagents).
+ * subagents, landing conflicts the loop routed back as rework).
  *
  * **It is not a pass.** It claims nothing, dispatches nothing, starts no process,
  * writes no state and opens no logger — an inspection that changed the thing it
@@ -31,9 +31,14 @@ import { closeSync, existsSync, fstatSync, openSync, readSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { ROUTE_UNASSIGNED_MS } from "../foundation/constants.mjs";
+import {
+  cycleVerdict,
+  groupQueueRowsByCard,
+  newestRow,
+} from "../foundation/cycle-status.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import { markerMatches } from "../foundation/handoff-round.mjs";
-import { QUEUE_FILES, SESSION_DEFAULTS } from "../foundation/loop-state.mjs";
+import { QUEUE_FILES, SESSION_DEFAULTS, statePathsForDir } from "../foundation/loop-state.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import { PATROL_STALE_MS, planPatrol } from "../foundation/scheduling.mjs";
@@ -45,7 +50,7 @@ import {
 } from "./deferrals.mjs";
 import { liveSubagents, readLedger } from "./ledger.mjs";
 import { parseArgs } from "./options.mjs";
-import { readCards } from "./queue.mjs";
+import { readCards, readJsonFile } from "./queue.mjs";
 import { isProcessAlive, readPeerMarker } from "./runtime.mjs";
 import { readWorkerSessions, workerRecordIsRunning } from "./worker-session.mjs";
 import { probeSupervisor } from "./status.mjs";
@@ -90,6 +95,12 @@ export const LOOP_DISPATCH_ROWS_MIN = 5;
 export const LOOP_DISPATCH_FAILED_MIN = 2;
 /** Three failed subagent rows for one card inside the ledger's 7-day retention. */
 export const LOOP_SUBAGENT_FAILED_MIN = 3;
+/**
+ * Two landing conflicts on one card is a cycle, not the cost of a moving
+ * integration branch: the loop routed the card back for a merge-resolution round
+ * and it conflicted again.
+ */
+export const LOOP_LANDING_CONFLICT_MIN = 2;
 
 /** Ledger statuses that mean the subagent did not finish its work. */
 const LEDGER_FAILURE_STATUSES = new Set(["failed", "interrupted", "stale"]);
@@ -483,6 +494,57 @@ function ledgerLoopFindings(rows, boardByRef) {
   return findings;
 }
 
+/**
+ * Landing conflicts the loop routed back as rework.
+ *
+ * The workflow ledger holds one key per conflict **round**
+ * (`landing_conflict|<action>|<ref>|r<round>`), and each one became a fresh
+ * delivery round on the board. One conflict is the cost of a moving integration
+ * branch; two on the same card is a cycle — the row makes it visible before the
+ * rework cap parks the card. A card the board knows is finished is history.
+ */
+function landingLoopFindings(seen, boardByRef, nowMs) {
+  const groups = new Map();
+  for (const [key, entry] of Object.entries(seen ?? {})) {
+    const parts = String(key).split("|");
+    if (parts.length !== 4 || parts[0] !== "landing_conflict") continue;
+    const ref = parts[2].trim();
+    const roundMatch = /^r(\d+)$/.exec(parts[3].trim());
+    if (ref === "" || roundMatch === null) continue;
+    if (knownTerminal(ref, boardByRef)) continue;
+    if (!groups.has(ref)) groups.set(ref, []);
+    const firstSeen = typeof entry?.first_seen === "string" ? entry.first_seen : null;
+    groups.get(ref).push({
+      round: Number(roundMatch[1]),
+      first_seen: firstSeen,
+      last_seen: typeof entry?.last_seen === "string" ? entry.last_seen : firstSeen,
+    });
+  }
+  const findings = [];
+  for (const [ref, group] of groups) {
+    const rounds = [...new Set(group.map((row) => row.round))].sort((left, right) => left - right);
+    if (rounds.length < LOOP_LANDING_CONFLICT_MIN) continue;
+    const firstAt = group.map((row) => row.first_seen).filter(Boolean).sort()[0] ?? null;
+    const lastAt = group.map((row) => row.last_seen).filter(Boolean).sort().at(-1) ?? null;
+    const board = boardByRef.get(ref) ?? null;
+    findings.push({
+      ref,
+      title: board?.title ?? null,
+      status: board?.status ?? null,
+      conflicts: rounds.length,
+      rounds,
+      last_round: rounds.at(-1),
+      first_at: firstAt,
+      last_at: lastAt,
+      age_ms: ageSince(firstAt, nowMs),
+    });
+  }
+  findings.sort(
+    (left, right) => right.conflicts - left.conflicts || left.ref.localeCompare(right.ref),
+  );
+  return findings;
+}
+
 function patrolReport(opts, nowMs) {
   const markerPath = opts.slaLastOk ?? null;
   const marker = readPeerMarker(markerPath);
@@ -602,6 +664,9 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     done: 0,
     failed: 0,
     dispatched: 0,
+    // TP-0125 — a claim-cycle exit the loop acted on. It is terminal, but an
+    // operator needs to see how often turns are stopped this way.
+    interrupted: 0,
     total: 0,
     error: null,
   };
@@ -619,10 +684,31 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     queue.done = cards.filter((card) => card?.status === "done").length;
     queue.failed = cards.filter((card) => card?.status === "failed").length;
     queue.dispatched = cards.filter((card) => card?.status === "dispatched").length;
+    queue.interrupted = cards.filter((card) => card?.status === "interrupted").length;
     queue.depth = queue.pending + queue.processing;
   } catch (error) {
     queue.error = error.message;
     errors.push(`queue: ${error.message}`);
+  }
+
+  // 5b. The settled ladder: one verdict per card the queue knows, from the rows
+  // and the board snapshot read above. Observe-only — the doctor names the level
+  // and nothing dispatches on it. A card with no row cannot be judged here; the
+  // board sections above already own "stuck" and "undispatched".
+  const cycles = { terminal: 0, settled: 0, needs_human: 0, in_flight: 0, by_ref: {} };
+  for (const [ref, rows] of groupQueueRowsByCard(queueRows)) {
+    const row = newestRow(rows);
+    const verdict = cycleVerdict({
+      cardStatus: boardByRef.get(ref)?.status ?? null,
+      rowStatus: row?.status ?? null,
+      attempts: row?.attempts ?? 0,
+      timeouts: row?.timeouts ?? 0,
+      recoveries: row?.recoveries ?? 0,
+      retryAt: row?.retry_at ?? null,
+      now: nowMs,
+    });
+    cycles[verdict.level] += 1;
+    cycles.by_ref[ref] = verdict;
   }
 
   const subagents = {
@@ -739,6 +825,64 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   } catch (error) {
     errors.push(`deferrals: ${error.message}`);
   }
+
+  // A refused claim is ordinary competition, counted on its own field. It is
+  // reported apart from `looping.deferrals`: that list filters on the shared
+  // streak, and a claim-only entry has no streak to reach.
+  const claimRefusals = deferralRows
+    .filter((entry) => Number(entry?.claim_refusals ?? 0) > 0)
+    .map((entry) => ({
+      ref: entry.identifier ?? null,
+      count: Number(entry.claim_refusals),
+      last_at: entry.claim_last_at ?? null,
+      last_reason: entry.claim_last_reason ?? null,
+    }))
+    .sort((left, right) => String(left.ref).localeCompare(String(right.ref)));
+
+  // 6c. The workflow de-duplication ledger. A workflow action that fails every
+  // pass is a standing alarm with no card of its own; without this the only
+  // evidence is the log. `workflow_action_failed|` is the exact prefix — the
+  // `_escalated` sibling is the same failure re-sent, not a second one.
+  const workflowActions = [];
+  let workflowLedgerSeen = null;
+  try {
+    const read = readJsonFile(statePathsForDir(stateDir).workflowLedger, null);
+    if (read.error !== null) errors.push(`workflow_ledger: ${read.error}`);
+    const seen = read.value?.seen;
+    if (seen !== null && typeof seen === "object" && !Array.isArray(seen)) {
+      workflowLedgerSeen = seen;
+      for (const [key, entry] of Object.entries(seen)) {
+        if (!key.startsWith("workflow_action_failed|")) continue;
+        workflowActions.push({
+          key,
+          first_seen: typeof entry?.first_seen === "string" ? entry.first_seen : null,
+          count: Number.isInteger(entry?.count) ? entry.count : null,
+        });
+      }
+      workflowActions.sort((left, right) => left.key.localeCompare(right.key));
+    }
+  } catch (error) {
+    errors.push(`workflow_ledger: ${error.message}`);
+  }
+
+  // A hold written by a path that does not set `meta.loop_hold_code` (the
+  // stale-claim, crash and claim-release holds) is invisible to `looping.held`.
+  // The board status is the fact; the code is optional evidence.
+  const blockedCards =
+    board.error === null
+      ? tasks
+          .filter((task) => String(task?.status ?? "") === "blocked")
+          .map((task) => ({
+            ref: task.identifier ?? null,
+            title: task.title ?? null,
+            hold_code:
+              typeof task?.meta?.loop_hold_code === "string" && task.meta.loop_hold_code !== ""
+                ? task.meta.loop_hold_code
+                : null,
+            since: task.status_changed_at ?? task.updated_at ?? null,
+          }))
+          .sort((left, right) => String(left.ref).localeCompare(String(right.ref)))
+      : [];
 
   // 7. The cards that look like they are looping. The board half reuses the
   // same snapshot; the local halves read the queue and ledger rows the sections
@@ -947,6 +1091,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     question_lane: questionLane,
     unowned: unownedCards,
     orphaned: orphanedRows,
+    landing_conflicts: landingLoopFindings(workflowLedgerSeen, boardByRef, nowMs),
     total: 0,
   };
   // One card, one count: a card may be named by more than one list, and the
@@ -963,6 +1108,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     looping.question_lane,
     looping.unowned,
     looping.orphaned,
+    looping.landing_conflicts,
   ]) {
     for (const card of list) {
       if (typeof card.ref === "string" && card.ref !== "") loopRefs.add(card.ref);
@@ -1191,6 +1337,12 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   if (workers.missing_worktree.length > 0) {
     attentionReasons.push(`worker_worktrees: ${workers.missing_worktree.length}`);
   }
+  if (cycles.needs_human > 0) {
+    attentionReasons.push(`cycles: ${cycles.needs_human} need a human`);
+  }
+  if (blockedCards.length > 0) {
+    attentionReasons.push(`blocked_cards: ${blockedCards.length}`);
+  }
   if (queue.failed > 0) attentionReasons.push(`queue: ${queue.failed} failed`);
   if (handoffUnconsumed.length > 0) {
     attentionReasons.push(`handoff_unconsumed: ${handoffUnconsumed.length}`);
@@ -1220,6 +1372,10 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     log,
     queue,
     subagents,
+    cycles,
+    workflow_actions: workflowActions,
+    claim_refusals: claimRefusals,
+    blocked_cards: blockedCards,
     stuck_cards: stuck,
     undispatched_claims: undispatched,
     looping,
@@ -1332,6 +1488,7 @@ function humanReport(report) {
     ["question-lane", report.looping.question_lane.length],
     ["unowned", report.looping.unowned.length],
     ["orphaned", report.looping.orphaned.length],
+    ["landing", report.looping.landing_conflicts.length],
   ];
   const loopListed = loopKinds.reduce((sum, [, count]) => sum + count, 0);
   lines.push(
@@ -1339,6 +1496,24 @@ function humanReport(report) {
       .map(([name, count]) => `${name} ${count}`)
       .join(", ")}` + (loopListed > report.looping.total ? " (a card can appear in more than one list)" : ""),
   );
+  lines.push(
+    `cycles      ${report.cycles.terminal} terminal, ${report.cycles.settled} settled, ` +
+      `${report.cycles.needs_human} need a human, ${report.cycles.in_flight} in flight`,
+  );
+  if (report.blocked_cards.length > 0) {
+    lines.push(`blocked     ${report.blocked_cards.length} card(s) parked for a human`);
+    for (const card of report.blocked_cards) {
+      lines.push(
+        `  ${card.ref}  ${card.hold_code ?? "no loop_hold_code"}  ${card.title ?? ""}`.trimEnd(),
+      );
+    }
+  }
+  if (report.claim_refusals.length > 0) {
+    lines.push(`claims      ${report.claim_refusals.length} card(s) with refused claims`);
+  }
+  if (report.workflow_actions.length > 0) {
+    lines.push(`workflow    ${report.workflow_actions.length} failing workflow action(s)`);
+  }
   for (const card of report.looping.rework_rounds) {
     const age = card.age_ms === null ? "?" : minutes(card.age_ms);
     lines.push(
@@ -1404,6 +1579,13 @@ function humanReport(report) {
     lines.push(
       `  ${card.ref ?? "?"}  orphaned  pid ${card.pid}  ${age} > ${minutes(card.bound_ms)}` +
         `  ${card.title ?? ""}`.trimEnd(),
+    );
+  }
+  for (const card of report.looping.landing_conflicts) {
+    const age = card.age_ms === null ? "?" : minutes(card.age_ms);
+    lines.push(
+      `  ${card.ref}  landing  ${card.conflicts} round(s), last r${card.last_round}` +
+        `  ${card.status ?? "?"}  ${age}  ${card.title ?? ""}`.trimEnd(),
     );
   }
   if (report.workspaces.stale.length > 0) {

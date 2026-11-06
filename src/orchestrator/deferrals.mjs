@@ -42,6 +42,38 @@ export const DEFERRAL_HOLD = 5;
 export const DEFERRAL_HOLD_DISPATCH = 3;
 
 /**
+ * The hold bound a ledger entry is judged against.
+ *
+ * `count` is shared by every failure code (one entry per card); the code of the
+ * latest failure names the cause and so decides the bound. A dispatch failure
+ * is parked tighter than an admission failure, so a mixed streak is closed by
+ * whichever bound the current code carries.
+ *
+ * @param {{code?: string}|null|undefined} entry
+ * @returns {number}
+ */
+export function deferralHoldBound(entry) {
+  return entry?.code === "DISPATCH_FAILED" ? DEFERRAL_HOLD_DISPATCH : DEFERRAL_HOLD;
+}
+
+/**
+ * Has this card's streak reached the bound its failure code carries?
+ *
+ * The poll and patrol admission sites both ask this one question; keeping it
+ * here is what stops the two lanes from deciding the same streak differently.
+ *
+ * @param {{code?: string, count?: number}|null|undefined} entry
+ * @returns {boolean}
+ */
+export function shouldHoldDeferral(entry) {
+  return (
+    entry !== null &&
+    entry !== undefined &&
+    Number(entry.count ?? 0) >= deferralHoldBound(entry)
+  );
+}
+
+/**
  * The wait after the streak becomes a pattern: 30 s, 1 min, 2 min, … capped at
  * one hour. A card that cannot be admitted is re-offered by every poll, so the
  * backoff is what keeps a persistent failure from spinning the scan.
@@ -195,6 +227,49 @@ export function recordCardDeferral(stateDir, { identifier, code, reason, round, 
         };
   const backoffMs = deferralBackoffMs(entry.count);
   entry.retry_at = backoffMs > 0 ? new Date(Date.parse(at) + backoffMs).toISOString() : null;
+  value.cards[id] = entry;
+  const written = writeDeferralLedger(stateDir, value);
+  return { ok: written.ok, entry, error: written.error ?? error ?? null };
+}
+
+/**
+ * Record a refused claim without touching the handoff streak.
+ *
+ * A claim is refused when another owner won the board's CAS — ordinary
+ * competition, not a card the loop cannot advance. The shared `count`/`code`
+ * would let that competition advance (and re-code) a real failure streak toward
+ * its hold, so this writes its own fields and leaves `count`, `code` and
+ * `retry_at` exactly as they were. A successful claim clears the whole entry.
+ *
+ * @param {string} stateDir
+ * @param {{identifier: string, reason?: string, round?: number, version?: number|null, now?: string}} input
+ */
+export function recordClaimRefusal(stateDir, { identifier, reason, round, version, now }) {
+  const id = String(identifier ?? "").trim();
+  if (id === "") return { ok: false, entry: null, error: "no card identifier" };
+  const at = typeof now === "string" && now !== "" ? now : new Date().toISOString();
+  const text = String(reason ?? "").slice(0, DEFERRAL_REASON_MAX);
+  const { value, error } = readDeferralLedger(stateDir);
+  const previous = value.cards[id];
+  const entry =
+    previous !== null && typeof previous === "object" && !Array.isArray(previous)
+      ? { ...previous }
+      : {
+          identifier: id,
+          round: Number(round ?? 1),
+          count: 0,
+          code: null,
+          first_at: at,
+          last_at: at,
+          retry_at: null,
+          alerted_code: null,
+          alerted_at: null,
+        };
+  entry.claim_refusals = Number(entry.claim_refusals ?? 0) + 1;
+  entry.claim_last_at = at;
+  entry.claim_last_reason = text;
+  entry.last_at = at;
+  if (Number.isInteger(version)) entry.version = version;
   value.cards[id] = entry;
   const written = writeDeferralLedger(stateDir, value);
   return { ok: written.ok, entry, error: written.error ?? error ?? null };
@@ -372,7 +447,11 @@ export function createDeferralRecorder({
   dryRun = false,
 }) {
   if (dryRun === true) {
-    return { record: () => null, clear: () => ({ ok: true, cleared: false }) };
+    return {
+      record: () => null,
+      recordClaimRefusal: () => null,
+      clear: () => ({ ok: true, cleared: false }),
+    };
   }
   return {
     record(identifier, { code, reason, round, version = null }) {
@@ -395,6 +474,22 @@ export function createDeferralRecorder({
         notify,
         log,
       });
+      return written.entry;
+    },
+    recordClaimRefusal(identifier, { reason, round, version = null }) {
+      const written = recordClaimRefusal(stateDir, {
+        identifier,
+        reason,
+        round,
+        version,
+        now: now(),
+      });
+      if (written.ok !== true) {
+        log(`deferral: could not record claim refusal for ${identifier}: ${written.error}`, {
+          level: "warn",
+        });
+        return null;
+      }
       return written.entry;
     },
     clear(identifier) {

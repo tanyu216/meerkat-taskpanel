@@ -77,11 +77,16 @@ relocates it). `taskctl role list` reads it; both commands are local — no boar
 
 - **Shape:** `{schema:"meerkat-role-catalog/1", source, primary_kind, updated_at, roles:[…]}`.
   A role carries `id`, `agent`, `native_agent`, `title`, `summary`, `lanes`, `shapes`,
-  `responsibilities`, `boundaries`, `installed_on`, `default_reviewer`. Host paths (`skillDir`,
-  the per-kind files) are deliberately not projected.
+  `installed_on`, `default_reviewer`. Host paths (`skillDir`, the per-kind files) are
+  deliberately not projected, and neither is the role contract's prose (`responsibilities`,
+  `boundaries`, `system_prompt`): that body lives only in `skills/<id>/role.json`, and a caller
+  that needs it reads the role skill. A catalog written before this shape shrank keeps those
+  keys on disk, but they are **ignored on read** and never written back.
 - **Idempotent:** content comparison excludes `updated_at`; an unchanged sync leaves the stored
-  timestamp alone. The poll calls it on every tick — including a poll with no resident pool — so
-  a deleted or hand-broken file heals on the next tick (one small CLI spawn per default 600 s).
+  timestamp alone **and writes nothing**, so a legacy file whose content has not changed is not
+  rewritten (it is not healed in place; a fresh install or a real content change writes the
+  slim shape). The poll calls it on every tick — including a poll with no resident pool — so a
+  deleted or hand-broken file heals on the next tick (one small CLI spawn per default 600 s).
 - **Bounded and atomic:** a hard 64 KiB read cap, validation before use, temp-file-then-rename
   write, mode preserved. A malformed, oversized or newer-schema file is reported and treated as
   **absent**, never half-applied.

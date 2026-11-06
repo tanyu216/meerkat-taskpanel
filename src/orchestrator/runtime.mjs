@@ -7,7 +7,9 @@
  * the SLA ledger / liveness marker, and the continue lock. None of it decides
  * anything — the decisions live in `src/foundation/`.
  *
- * Node builtins only; no network, no dependencies.
+ * Node builtins only; no dependencies. The one network call is the ping's
+ * read-only `/health` liveness probe through the shared foundation transport —
+ * no board operation ever goes through here (those stay `taskctl`'s).
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -24,10 +26,12 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { CLI_TIMEOUT_MS, EVENT_STREAM_LINE } from "../foundation/constants.mjs";
+import { CLI_TIMEOUT_MS, EVENT_STREAM_LINE, URL_ENV } from "../foundation/constants.mjs";
 import { pidMatches, processStartToken } from "../foundation/daemon-state.mjs";
 import { markerMatches } from "../foundation/handoff-round.mjs";
 import { STOP_DRAIN_MS, wedgeKillAction } from "../foundation/loop-state.mjs";
+import { probeHealth } from "../foundation/transport/autostart.mjs";
+import { readPointer } from "../foundation/transport/runtime.mjs";
 import {
   createFileSink,
   createLogger as createFoundationLogger,
@@ -67,8 +71,11 @@ export async function drainInFlight(pending, timeoutMs = STOP_DRAIN_MS) {
   const bound = Number.isFinite(requested) && requested >= 0 ? requested : STOP_DRAIN_MS;
   let timer = null;
   const timeout = new Promise((resolveTimeout) => {
+    // The bound must keep the event loop alive for its own duration: when the
+    // in-flight pass holds no handle of its own, an unref'd timer lets the
+    // process exit before the bound can fire, so the drain (and its
+    // stop_drain_timeout record) never happens.
     timer = setTimeout(() => resolveTimeout(false), bound);
-    timer.unref?.();
   });
   try {
     return await Promise.race([
@@ -876,6 +883,136 @@ export function killWedgedPool(input = {}) {
     phase: decision.phase,
     ageMs: decision.ageMs,
   };
+}
+
+/**
+ * Consecutive failed `/health` probes that make the board unresponsive.
+ *
+ * The ping is the loop's external evidence that the board is reachable: it runs
+ * in its own process, so a blocked or dead board cannot report on itself.
+ */
+export const BOARD_UNRESPONSIVE_AFTER = 3;
+
+/** The ping's probe timeout — the card's one-second bound. */
+export const BOARD_PROBE_TIMEOUT_MS = 1_000;
+
+/**
+ * Where the ping probes: `--url`, then `TASKD_URL`, then the runtime pointer.
+ *
+ * No autostart: "no board" is a failed probe, not a reason to start a second
+ * writer. `pointer` is injectable so a test never reads the machine's slot.
+ *
+ * @param {{opts?: object, env?: NodeJS.ProcessEnv, pointer?: Function}} [input]
+ * @returns {string|null}
+ */
+export function boardProbeUrl({ opts = {}, env = process.env, pointer = readPointer } = {}) {
+  if (typeof opts?.url === "string" && opts.url.trim() !== "") return opts.url.trim();
+  const configured = env?.[URL_ENV];
+  if (typeof configured === "string" && configured.trim() !== "") return configured.trim();
+  try {
+    const found = pointer({ env });
+    return typeof found?.url === "string" && found.url.trim() !== "" ? found.url.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One `/health` probe, and the consecutive-failure streak it maintains.
+ *
+ * The installed ping is a **one-shot** process, so the streak cannot live in
+ * memory: the caller passes the record it read last and saves the one returned.
+ * A successful probe resets the streak; a failed one (including a missing URL,
+ * a timeout, a non-`ok` answer or a thrown probe) grows it. The event is written
+ * once when the streak reaches {@link BOARD_UNRESPONSIVE_AFTER} — staying down
+ * does not repeat it every minute.
+ *
+ * This is observability and nothing else. The ping's single kill authority is
+ * `killWedgedPool`; this function has no pid, signal or kill seam, because a
+ * board that answers /health slowly is not a board that may be stopped — single
+ * writer and data safety leave that decision to the guard/operator.
+ *
+ * Never throws: a probe, a state write or a log sink that fails must not fail
+ * the ping clock.
+ *
+ * @param {{
+ *   url?: string|null,
+ *   state?: object|null,             // the record from the previous ping
+ *   now?: () => number,
+ *   probe?: (url: string, options: object) => Promise<boolean>,
+ *   timeoutMs?: number,
+ *   save?: (record: object) => void,
+ *   log?: (line: string, meta?: object) => void,
+ * }} [input]
+ * @returns {Promise<{ok: boolean, version: number, failures: number, lastOkAt: string|null, lastFailureAt: string|null, unresponsive: boolean}>}
+ */
+export async function probeBoardHealth(input = {}) {
+  const {
+    url = null,
+    state = null,
+    now = Date.now,
+    probe = probeHealth,
+    timeoutMs = BOARD_PROBE_TIMEOUT_MS,
+    save = () => {},
+    log = () => {},
+  } = input;
+
+  const previous = state !== null && typeof state === "object" ? state : {};
+  const failuresBefore =
+    Number.isInteger(previous.failures) && previous.failures > 0 ? previous.failures : 0;
+  const at = new Date(Number(now())).toISOString();
+
+  let ok = false;
+  if (typeof url === "string" && url.trim() !== "") {
+    try {
+      ok = (await probe(url, { timeoutMs })) === true;
+    } catch {
+      ok = false;
+    }
+  }
+
+  const failures = ok ? 0 : failuresBefore + 1;
+  const record = {
+    version: 1,
+    failures,
+    lastOkAt: ok
+      ? at
+      : typeof previous.lastOkAt === "string"
+        ? previous.lastOkAt
+        : null,
+    lastFailureAt: ok
+      ? typeof previous.lastFailureAt === "string"
+        ? previous.lastFailureAt
+        : null
+      : at,
+    unresponsive: failures >= BOARD_UNRESPONSIVE_AFTER,
+  };
+
+  try {
+    save(record);
+  } catch {
+    /* the count is best-effort; a read-only state directory must not fail the ping */
+  }
+
+  if (!ok && failures === BOARD_UNRESPONSIVE_AFTER && typeof log === "function") {
+    try {
+      log(
+        `ping: board /health failed ${failures} times in a row at ${url ?? "(no url)"} — ` +
+          `the board is unresponsive (last ok ${record.lastOkAt ?? "never"})`,
+        {
+          event: "board_unresponsive",
+          level: "error",
+          failures,
+          url,
+          last_ok_at: record.lastOkAt,
+        },
+      );
+    } catch {
+      /* see above: logging must not fail the caller */
+    }
+  }
+
+  return { ok, ...record };
 }
 
 /**

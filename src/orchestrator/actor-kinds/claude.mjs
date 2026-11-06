@@ -13,6 +13,7 @@
 
 import { spawn } from "node:child_process";
 
+import { claudeAllowedTools } from "../../foundation/role-tools.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
@@ -26,17 +27,9 @@ export const DEFAULT_TURN_TIMEOUT_MS = 60 * 60 * 1000;
  */
 export function allowedToolsFor(role) {
   // A card session owns its whole card: nothing spawns a subagent, so no role
-  // carries `Agent`/`Task`. The reviewer runs the project's gate itself, hence
-  // the command entries; it never edits.
-  switch (role) {
-    case "director":
-      return "Read,Grep,Glob,Bash(taskctl *),Bash(node *)";
-    case "reviewer":
-      return "Read,Grep,Glob,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)";
-    case "worker":
-    default:
-      return "Read,Edit,Write,Grep,Glob,Bash(taskctl *),Bash(node *),Bash(git *)";
-  }
+  // carries `Agent`/`Task`. The table lives once in foundation so the installer
+  // renders the same surface (`src/foundation/role-tools.mjs`).
+  return claudeAllowedTools(String(role ?? "worker"));
 }
 
 /**
@@ -126,8 +119,18 @@ class ClaudeSession {
     this.child.stderr.setEncoding("utf8");
     this.child.stdout.on("data", lineSplitter((line) => this.handleLine(line)));
     this.child.stderr.on("data", lineSplitter((line) => this.log(`claude[${this.cwd}] ${line}`)));
+    // A child that exits between the turn starting and the prompt write makes
+    // the stdin socket emit EPIPE. Without a listener that is an uncaught
+    // exception that takes the pool down; it is this turn's failure instead.
+    this.child.stdin.on("error", (err) => {
+      this.log(`claude[${this.cwd}] stdin error: ${err.message}`);
+      this.finish({ ok: false, error: `session stdin closed: ${err.message}` });
+    });
     this.child.on("error", (err) => {
-      this.log(`claude[${this.cwd}] spawn error: ${err.message}`);
+      this.log(`claude[${this.cwd}] spawn error: ${err.message}`, {
+        level: "error",
+        event: "turn_spawn_failed",
+      });
       this.finish({
         ok: false,
         resumeFailed: this.resumeId !== null && !this.sawResult,
@@ -232,11 +235,15 @@ class ClaudeSession {
         this.interrupt().catch(() => {});
       }, Math.max(1, timeoutMs));
       this.current = { resolve, timer };
-      writeJsonLine(this.child.stdin, {
-        type: "user",
-        message: { role: "user", content: String(prompt) },
-        parent_tool_use_id: null,
-      });
+      try {
+        writeJsonLine(this.child.stdin, {
+          type: "user",
+          message: { role: "user", content: String(prompt) },
+          parent_tool_use_id: null,
+        });
+      } catch (err) {
+        this.finish({ ok: false, error: `session stdin closed: ${err?.message ?? String(err)}` });
+      }
     });
   }
 

@@ -33,7 +33,7 @@ import {
   skillLoadMode,
 } from "../foundation/roles.mjs";
 import { resolveRolePlatform } from "../foundation/role-platforms.mjs";
-import { DEFERRAL_HOLD, DEFERRAL_HOLD_DISPATCH } from "./deferrals.mjs";
+import { shouldHoldDeferral } from "./deferrals.mjs";
 import { resolveLoopConfig } from "./options.mjs";
 import * as passes from "./passes.mjs";
 import { poolStatus } from "./session.mjs";
@@ -92,6 +92,7 @@ export async function runPollTick(deps) {
     admit = null,
     release = null,
     recordDefer = null,
+    recordClaimRefusal = null,
     clearDeferral = null,
     moveBack = null,
     holdCard = null,
@@ -173,8 +174,7 @@ export async function runPollTick(deps) {
    */
   const holdIfExhausted = async (identifier, entry) => {
     if (entry === null || entry === undefined) return;
-    const bound = entry.code === "DISPATCH_FAILED" ? DEFERRAL_HOLD_DISPATCH : DEFERRAL_HOLD;
-    if (Number(entry.count ?? 0) < bound) return;
+    if (!shouldHoldDeferral(entry)) return;
     if (holdCard === null) return;
     const held = await holdCard(identifier, {
       code: entry.code ?? "ADMISSION_FAILED",
@@ -187,6 +187,16 @@ export async function runPollTick(deps) {
         { level: "warn" },
       );
     } else {
+      // The hold write is part of the failure's terminal state: a refused move
+      // must stay visible to the doctor instead of being a single log line.
+      // The original code is kept on purpose — changing it to a hold code would
+      // move the bound (DISPATCH_FAILED is 3) and delay the next retry.
+      recordDefer?.(identifier, {
+        code: entry.code ?? "DISPATCH_FAILED",
+        reason: `hold failed: ${held?.error ?? "unknown error"}`,
+        round: Number(entry.round ?? 1),
+        version: entry.version ?? null,
+      });
       log(`hold ${identifier}: could not park the card (${held?.error ?? "unknown error"})`, {
         level: "error",
       });
@@ -256,10 +266,15 @@ export async function runPollTick(deps) {
       });
       if (moved?.ok !== true) {
         deferred += 1;
-        log(
-          `defer ${action.identifier} (reassign to ${card.reassign.to} failed: ${moved?.error ?? "unknown error"})`,
-          { level: "warn" },
-        );
+        const reason = `reassign to ${card.reassign.to} failed: ${moved?.error ?? "unknown error"}`;
+        const entry = recordDefer?.(action.identifier, {
+          code: "REASSIGN_FAILED",
+          reason,
+          round: Number(card?.delivery_round ?? 1),
+          version: card?.version ?? null,
+        });
+        await holdIfExhausted(action.identifier, entry);
+        log(`defer ${action.identifier} (${reason})`, { level: "warn" });
         if (release !== null) await release(action.identifier);
         continue;
       }
@@ -270,6 +285,13 @@ export async function runPollTick(deps) {
     const verdict = await claim(action.identifier, action.agent, { ifVersion: claimVersion });
     if (!verdict?.ok) {
       conflicts += 1;
+      // A lost CAS is competition, not a card the loop cannot advance: it gets
+      // its own counter so it can never push the handoff streak toward a hold.
+      recordClaimRefusal?.(action.identifier, {
+        reason: verdict?.error ?? "conflict",
+        round: Number(card?.delivery_round ?? 1),
+        version: card?.version ?? null,
+      });
       log(`claim refused ${action.identifier} (${verdict?.error ?? "conflict"}) — not dispatching`);
       // The registration must not outlive the claim it was made for: nothing
       // would ever move that card through this loop, so the watch would wait
@@ -292,10 +314,25 @@ export async function runPollTick(deps) {
       if (moveBack !== null) {
         const moved = await moveBack(action.identifier, action.agent);
         if (moved?.ok !== true) {
-          log(
-            `release claim failed for ${action.identifier}: ${moved?.error ?? "unknown error"}`,
-            { level: "warn" },
-          );
+          const reason = moved?.error ?? "move back failed";
+          // The claim is still on the board with no worker behind it: record it
+          // and park the card instead of waiting for the stale recovery.
+          recordDefer?.(action.identifier, {
+            code: "CLAIM_RELEASE_FAILED",
+            reason,
+            round: Number(card?.delivery_round ?? 1),
+            // Post-claim: the claim itself bumped the board version, so keying
+            // the streak on it would reset every pass.
+            version: null,
+          });
+          const held = await holdCard?.(action.identifier, {
+            code: "CLAIM_RELEASE_FAILED",
+            reason,
+            blockedReason: "resource",
+          });
+          if (held?.ok !== true) {
+            log(`release claim failed for ${action.identifier}: ${reason}`, { level: "error" });
+          }
         }
       }
       const entry = recordDefer?.(action.identifier, {
@@ -567,6 +604,10 @@ export async function runWorkflowTick(deps) {
     comment = null,
     setMeta = null,
     appendAcceptance = null,
+    // TP-0125 — write a cross-process interrupt request for a review turn the
+    // loop is about to orphan. Null keeps the old behaviour for a caller that
+    // does not wire the state directory.
+    requestInterrupt = null,
     // Landing runs before a card is moved to `done`: the lane branch is merged
     // into the project's current branch. `null` keeps the old (shared-tree)
     // behaviour for a caller that does not wire it.
@@ -655,9 +696,10 @@ export async function runWorkflowTick(deps) {
   };
 
   // Closing the review card is the last write of every outcome. A cancel is a
-  // two-hop move when the card is `in_review`: the state machine has no direct
-  // `in_review → canceled` edge. `close_review` still ends `done`, because that
-  // is the only terminal an `in_review` card can reach directly.
+  // **one-hop** move (`in_review → canceled`, TP-0125): the old `→ in_progress
+  // → canceled` briefly returned the review card to the work cycle and would
+  // have re-armed dispatch. `close_review` still ends `done`, because that is
+  // the only non-cancel terminal an `in_review` card can reach.
   const closeReviewCard = async (action, note) => {
     // 0038 — the loop always closes the review card it dispatched. `human` is a
     // card mode, not a "leave the review open" flag.
@@ -666,16 +708,30 @@ export async function runWorkflowTick(deps) {
       action.review_status ?? (action.type === "cancel_review" ? "canceled" : "in_review");
     if (status === "done" || status === "canceled") return;
     if (note !== null) await step(comment, "comment", action.review_ref, { kind: "note", body: note });
-    if (status === "in_review") {
-      if (action.type === "cancel_review") {
-        await step(move, "move", action.review_ref, "in_progress");
-        await step(move, "move", action.review_ref, "canceled");
-        return;
-      }
+    if (status === "in_review" && action.type !== "cancel_review") {
       await step(move, "move", action.review_ref, "done");
       return;
     }
     await step(move, "move", action.review_ref, "canceled");
+    // TP-0125 — the reviewer's turn may still be running. The board move is
+    // authoritative; the marker is a request to the pool that owns the turn.
+    // A marker-write failure must not fail the workflow action.
+    if (action.type === "cancel_review" && requestInterrupt !== null) {
+      try {
+        requestInterrupt({
+          taskId: null,
+          card: action.review_ref,
+          from: status,
+          to: "canceled",
+          reason: "cancel_review",
+          requestedAt: now(),
+        });
+      } catch (err) {
+        log(`workflow: could not write the interrupt request for ${action.review_ref}: ${err.message}`, {
+          level: "warn",
+        });
+      }
+    }
   };
 
   /**
@@ -713,6 +769,54 @@ export async function runWorkflowTick(deps) {
         action,
         `Loop closed this review card because the board refused the approval of ${ref}: ` +
           "its delivery report cannot close the card.",
+      );
+    }
+  };
+
+  /**
+   * The lane no longer merges into the integration branch. Unlike a refusal,
+   * nothing was written to the board: the merge was aborted before any
+   * acceptance marker. Re-planning re-runs the same two trees and the same
+   * hunks, so the conflict is a **rework** signal, not a retry — the worker
+   * merges the integration branch into the lane and delivers again.
+   *
+   * `meta.rework_round` is the round the card is on **after** the move out of
+   * `in_review`; writing it here is what lets the planner's `reworkApplied`
+   * crash recovery finish a half-applied route, and what makes the next round
+   * reuse the same worktree and branch. `accepted_by` is deliberately not
+   * written: no acceptance happened.
+   */
+  const routeLandingConflict = async (action, err) => {
+    const ref = action.original_ref ?? action.review_ref;
+    const details = err.details ?? {};
+    const files = (Array.isArray(details.conflicts) ? details.conflicts : []).filter(
+      (file) => typeof file === "string" && file !== "",
+    );
+    const list =
+      files.length === 0
+        ? "(git named no files — re-run the merge in the lane to see what it reports)"
+        : files.map((file) => `- ${file}`).join("\n");
+    const where =
+      typeof details.branch === "string" && typeof details.project_dir === "string"
+        ? `Landing \`${details.branch}\` into \`${details.project_dir}\``
+        : "Landing the lane branch into the project's integration branch";
+    const body =
+      `${where} conflicted and the merge was aborted; nothing landed.\n\n` +
+      `Conflicting files:\n${list}\n\n` +
+      "Merge the project's integration branch into this lane, resolve these conflicts, " +
+      "re-run the checks, and deliver a new round. This is rework — the next round is " +
+      "reviewed again.";
+    await step(setMeta, "setMeta", ref, { rework_round: String(Number(action.round) + 1) });
+    await step(comment, "comment", ref, { kind: "change", body });
+    // `in_review → in_progress` bumps the delivery round; the second hop frees
+    // the card for dispatch. Same order as `reject_task`.
+    await step(move, "move", ref, "in_progress");
+    await step(move, "move", ref, "todo");
+    if (action.type === "approve") {
+      await closeReviewCard(
+        action,
+        `Loop closed this review card because landing ${ref} conflicted; the card is back ` +
+          "for a merge-resolution round.",
       );
     }
   };
@@ -988,6 +1092,46 @@ export async function runWorkflowTick(deps) {
         ]);
         continue;
       }
+      // A content conflict at landing is deterministic: the same two trees, the
+      // same hunks, forever. Retrying it is the livelock this route removes; the
+      // lane is the only side that can resolve it.
+      if (
+        err.code === "WORKSPACE_MERGE_CONFLICT" &&
+        (action.type === "approve" || action.type === "auto_accept")
+      ) {
+        const key = `landing_conflict|${action.type}|${ref}|r${action.round}`;
+        const conflicts = Array.isArray(err.details?.conflicts) ? err.details.conflicts : [];
+        const alert = {
+          type: "landing_conflict",
+          action: action.type,
+          ref,
+          round: action.round,
+          branch: err.details?.branch ?? null,
+          conflicts,
+          error: err.message,
+          dedupKey: key,
+        };
+        try {
+          await routeLandingConflict(action, err);
+        } catch (routeErr) {
+          failed += 1;
+          log(
+            `workflow: ${action.type} landing conflicted for ${ref} (${err.message}), and the ` +
+              `reopen failed (${routeErr.message}) — the next pass retries`,
+            { level: "error" },
+          );
+          notifyBatch([{ ...alert, route_error: routeErr.message }]);
+          continue;
+        }
+        blocked += 1;
+        log(
+          `workflow: ${action.type} landing conflicted for ${ref} (${err.message}) — reopened ` +
+            "for a merge-resolution round",
+          { level: "warn" },
+        );
+        notifyBatch([alert]);
+        continue;
+      }
       if (EXPECTED_ACCEPTANCE_SKIP_CODES.has(err.code)) {
         skipped += 1;
         log(`workflow: ${action.type} skipped for ${ref} (${err.code}: ${err.message})`);
@@ -1098,6 +1242,8 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   "workflow_action_failed_escalated",
   // Same reason: the refused-acceptance route notifies directly.
   "acceptance_blocked",
+  // Same reason: the landing-conflict route notifies directly.
+  "landing_conflict",
 ]);
 
 function describeWorkflowAlert(alert) {
@@ -1300,7 +1446,6 @@ export function wakeHandoff(opts, config, action, card, resident = false) {
     ? isReview
       ? buildReviewEnvelope({
           card: card ?? { identifier: action.identifier },
-          flags,
         })
       : buildResidentEnvelope({
           card: card ?? { identifier: action.identifier },

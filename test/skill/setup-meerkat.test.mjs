@@ -149,6 +149,11 @@ describe("skill frontmatter and the six-step shape", () => {
     assert.match(skill, /\/meerkat/, "the entry points card work at the board skill");
     assert.match(skill, /docs\/agents\//, "the entry points board rules at docs/agents");
     assert.match(skill, /card scope/i, "the entry carries the card scope");
+    assert.match(
+      skill,
+      /load the matching role skill[^.]*before the first edit/i,
+      "the entry loads the role skill for a task or plan that is not a card",
+    );
     assert.match(skill, /call `init` once|call the `init` skill once/i, "one call, not per kind");
     assert.match(skill, /never write an entry yourself|never write an entry/i, "setup never writes it");
     assert.match(skill, /no `init` skill|has no `init` skill/i, "the missing-init path is named");
@@ -317,6 +322,7 @@ describe("skill frontmatter and the six-step shape", () => {
     assert.match(text, /docs\/agents\//);
     assert.match(text, /card scope/i);
     assert.match(text, /init/i);
+    assert.match(text, /role skill/i, "the eval names the card-less role-skill trigger");
 
     const interview = evals.evals.find((entry) => entry.name === "setup-interview");
     const interviewText = interview.assertions.join("\n");

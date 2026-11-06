@@ -1885,6 +1885,31 @@ export async function run() {
       `session goals read ${JSON.stringify(trailRead.goals)}`,
     );
 
+    /* The prototype's two session seats: Resume states the intent, and the id
+       copies itself — or, with no clipboard permission in the harness, still
+       toasts the id. Both are measured on the running row the trail leads with. */
+    const toastTexts = () => page.evaluate(() =>
+      [...document.querySelectorAll("[data-toast-region] [data-toast-text]")].map((el) => el.textContent.trim()),
+    );
+    await page.evaluate(() =>
+      document.querySelector("[data-detail-agent-session-body] [data-agent-resume]")?.click(),
+    );
+    await page.waitForTimeout(80);
+    const resumeToasts = await toastTexts();
+    drawerTabsCheck(
+      resumeToasts.includes("Resuming agent session"),
+      `Resume raised ${JSON.stringify(resumeToasts)} instead of toast.resume`,
+    );
+    await page.evaluate(() =>
+      document.querySelector("[data-detail-agent-session-body] [data-agent-session-id]")?.click(),
+    );
+    await page.waitForTimeout(80);
+    const copyToasts = await toastTexts();
+    drawerTabsCheck(
+      copyToasts.some((text) => text.includes("sess_pi_01HQ8ZM4K2")),
+      `clicking the session id raised ${JSON.stringify(copyToasts)}, expected the id in a toast`,
+    );
+
     await page.click('[data-detail-tab="reports"]');
     await page.waitForTimeout(120);
     const reportsRead = await page.evaluate(() => ({
@@ -2693,7 +2718,9 @@ export async function run() {
     // only the human-facing subset (`web/src/stores/board.js` `UI_TRANSITIONS`),
     // so the expected row count is read off the card the menu was opened on; a
     // card with no target keeps a disabled kebab and never opens a menu.
-    const MOVE_ROWS = { backlog: 2, todo: 2, in_progress: 0, awaiting: 0, in_review: 2, blocked: 0, done: 0, canceled: 0 };
+    // TP-0125 — `in_progress` gains three human exits and `in_review` three
+    // (including `canceled`). The count is the number of targets, not cards.
+    const MOVE_ROWS = { backlog: 2, todo: 2, in_progress: 3, awaiting: 0, in_review: 3, blocked: 0, done: 0, canceled: 0 };
     const moveMenu = await page.evaluate((rows) => {
       const card = [...document.querySelectorAll("[data-card]")].find((el) => (rows[el.getAttribute("data-status")] ?? 0) > 0);
       card?.querySelector("[data-card-menu]")?.click();
@@ -2705,10 +2732,31 @@ export async function run() {
     moveMenu.expected = MOVE_ROWS[moveMenu.cardStatus];
     await page.keyboard.press("Escape");
     await page.waitForTimeout(120);
+    // TP-0125 — the two new claim-cycle menus, read by target status. Opening a
+    // menu writes nothing; Escape closes it.
+    const menuTargetsFor = async (status) => {
+      await page.evaluate((wanted) => {
+        const card = [...document.querySelectorAll("[data-card]")].find(
+          (el) => el.getAttribute("data-status") === wanted,
+        );
+        card?.querySelector("[data-card-menu]")?.click();
+      }, status);
+      // Vue renders the menu on its own tick; read after it lands.
+      await page.waitForTimeout(120);
+      const targets = await page.evaluate(() =>
+        [...document.querySelectorAll("[data-move-to]")].map((el) => el.getAttribute("data-status")),
+      );
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(80);
+      return targets;
+    };
+    moveMenu.inProgressTargets = await menuTargetsFor("in_progress");
+    moveMenu.inReviewTargets = await menuTargetsFor("in_review");
     // A status with no human-facing target keeps the kebab (the part set is
-    // invariant) but disables it, so an empty menu cannot open.
+    // invariant) but disables it, so an empty menu cannot open. `blocked` still
+    // has no target; `in_progress` no longer is one (TP-0125).
     moveMenu.locked = await page.evaluate(() => {
-      const card = [...document.querySelectorAll("[data-card]")].find((el) => el.getAttribute("data-status") === "in_progress");
+      const card = [...document.querySelectorAll("[data-card]")].find((el) => el.getAttribute("data-status") === "blocked");
       const kebab = card?.querySelector("[data-card-menu]");
       if (!kebab) return null;
       kebab.click();
@@ -5224,6 +5272,9 @@ export async function run() {
       agentSessionHook: drawerOpen.agentSessionHook,
       moveMenuOpened: moveMenu.open && moveMenu.rows === moveMenu.expected,
       moveMenuLocked: moveMenu.locked === true && moveMenu.lockedMenu === false,
+      // TP-0125 — the two claim-cycle menus, in their exact offered order.
+      moveMenuProgress: moveMenu.inProgressTargets.join(",") === "canceled,todo,backlog",
+      moveMenuReview: moveMenu.inReviewTargets.join(",") === "done,in_progress,canceled",
       statusMenuFiltered:
         statusOptions.length === 7 &&
         statusOptions.filter((option) => !option.disabled).map((option) => option.value).join(",") === "todo,canceled",
@@ -8259,8 +8310,8 @@ export async function run() {
       // The rows render in board order (`in_progress` before `done`), so the
       // assertion is the enabled **set**, not the transition table's own order.
       acceptanceActCheck(
-        enabledStatuses.slice().sort().join(",") === "done,in_progress",
-        `an in_review card's status menu enables ${JSON.stringify(enabledStatuses)}, expected done + in_progress`,
+        enabledStatuses.slice().sort().join(",") === "canceled,done,in_progress",
+        `an in_review card's status menu enables ${JSON.stringify(enabledStatuses)}, expected canceled + done + in_progress`,
       );
 
       // A refusal the client cannot foresee lands on the standard error path:
@@ -8439,6 +8490,89 @@ export async function run() {
       acceptanceActCheck(reviewHidden, "a review card is rendered on the board by default");
       acceptanceActCheck(reviewShown, "the review switch did not show the review card");
       acceptanceActCheck(reviewHiddenAgain, "the review switch did not hide the review card again");
+
+      // TP-0125 — the cancel confirmation, on both faces the board offers it:
+      // a claimed card's move menu, and the drawer's status combo. Dismissing
+      // writes nothing; accepting writes exactly one `in_progress → canceled`.
+      await closeDrawer();
+
+      const cancelMenuBefore = data.writes.length;
+      await page.evaluate(() => {
+        const card = document.querySelector('[data-card][data-identifier="TD-5"]');
+        card?.querySelector("[data-card-menu]")?.click();
+      });
+      // Vue renders the menu on its own tick; read after it lands.
+      await page.waitForTimeout(120);
+      const progressMenu = await page.evaluate(() =>
+        [...document.querySelectorAll("[data-move-to]")].map((el) => el.getAttribute("data-status")),
+      );
+      acceptanceActCheck(
+        progressMenu.join(",") === "canceled,todo,backlog",
+        `an in_progress card's move menu offers ${JSON.stringify(progressMenu)}, expected canceled + todo + backlog`,
+      );
+      await page.evaluate(() => document.querySelector('[data-move-to][data-status="canceled"]')?.click());
+      await page.waitForTimeout(120);
+      acceptanceActCheck(
+        await page.evaluate(() => document.querySelector("[data-confirm-dialog]")?.hasAttribute("hidden") === false),
+        "the board's cancel did not ask for confirmation",
+      );
+      await page.evaluate(() => document.querySelector("[data-confirm-dismiss]")?.click());
+      await page.waitForTimeout(120);
+      acceptanceActCheck(
+        data.writes.length === cancelMenuBefore,
+        "dismissing the board confirmation wrote something",
+      );
+      acceptanceActCheck(
+        await page.evaluate(() => document.querySelector("[data-confirm-dialog]")?.hasAttribute("hidden") === true),
+        "the confirmation stayed open after Dismiss",
+      );
+
+      await page.evaluate(() => {
+        const card = document.querySelector('[data-card][data-identifier="TD-5"]');
+        card?.querySelector("[data-card-menu]")?.click();
+      });
+      await page.waitForTimeout(80);
+      await page.evaluate(() => document.querySelector('[data-move-to][data-status="canceled"]')?.click());
+      await page.waitForTimeout(80);
+      await page.evaluate(() => document.querySelector("[data-confirm-accept]")?.click());
+      await page.waitForTimeout(400);
+      const menuCancelWrites = data.writes.slice(cancelMenuBefore);
+      acceptanceActCheck(
+        menuCancelWrites.length === 1 &&
+          menuCancelWrites[0]?.verb === "move" &&
+          menuCancelWrites[0]?.from === "in_progress" &&
+          menuCancelWrites[0]?.to === "canceled",
+        `the board's confirmed cancel wrote ${JSON.stringify(menuCancelWrites)}, expected one in_progress → canceled move`,
+      );
+
+      await page.evaluate(() => document.querySelector('[data-card][data-identifier="TD-6"]')?.click());
+      await page.waitForTimeout(300);
+      const drawerCancelBefore = data.writes.length;
+      await page.evaluate(() => document.querySelector("[data-detail-status]")?.click());
+      await page.waitForTimeout(80);
+      // The drawer selects on `mousedown` (so the option press is not read as a
+      // blur that closes the menu); a synthetic click never fires it.
+      await page.evaluate(() => {
+        document
+          .querySelector('[data-detail-status-option][data-status-value="canceled"]')
+          ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+      });
+      await page.waitForTimeout(120);
+      acceptanceActCheck(
+        await page.evaluate(() => document.querySelector("[data-confirm-dialog]")?.hasAttribute("hidden") === false),
+        "the drawer's cancel did not ask for confirmation",
+      );
+      await page.evaluate(() => document.querySelector("[data-confirm-accept]")?.click());
+      await page.waitForTimeout(500);
+      const drawerCancelWrites = data.writes.slice(drawerCancelBefore);
+      acceptanceActCheck(
+        drawerCancelWrites.length === 1 &&
+          drawerCancelWrites[0]?.verb === "move" &&
+          drawerCancelWrites[0]?.from === "in_progress" &&
+          drawerCancelWrites[0]?.to === "canceled",
+        `the drawer's confirmed cancel wrote ${JSON.stringify(drawerCancelWrites)}, expected one in_progress → canceled move`,
+      );
+      await closeDrawer();
     } catch (err) {
       acceptanceActFailures.push(`the acceptance-acts probe could not run: ${err.message}`);
     }
@@ -8790,6 +8924,8 @@ if (isEntryPoint) run().then(
       report.interactions.agentSessionHook &&
       report.interactions.moveMenuOpened &&
       report.interactions.moveMenuLocked &&
+      report.interactions.moveMenuProgress &&
+      report.interactions.moveMenuReview &&
       report.interactions.statusMenuFiltered &&
       report.interactions.themeCycleReturns &&
       report.interactions.langZh &&

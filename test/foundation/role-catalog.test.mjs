@@ -68,8 +68,6 @@ describe("role-catalog — validation", () => {
         summary: "",
         lanes: [],
         shapes: [],
-        responsibilities: [],
-        boundaries: [],
         installed_on: [],
         default_reviewer: false,
       },
@@ -123,6 +121,26 @@ describe("role-catalog — validation", () => {
     assert.equal(normalizeRoleCatalog(raw({ default_reviewer: "yes" })).ok, false);
   });
 
+  it("discards responsibilities and boundaries an older supervisor still sends", () => {
+    const result = normalizeRoleCatalog({
+      schema: ROLE_CATALOG_SCHEMA,
+      source: "skills",
+      primary_kind: "claude",
+      updated_at: null,
+      // The pre-shrink payload: the two prose lists were part of the wire shape.
+      roles: [{
+        id: "jobs",
+        agent: "Jobs",
+        responsibilities: ["write the brief"],
+        boundaries: ["no implementation"],
+      }],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(Object.hasOwn(result.catalog.roles[0], "responsibilities"), false);
+    assert.equal(Object.hasOwn(result.catalog.roles[0], "boundaries"), false);
+    assert.equal(JSON.stringify(result.catalog.roles[0]).includes("write the brief"), false);
+  });
+
   it("bounds the role count and the text lists", () => {
     const tooMany = normalizeRoleCatalog(
       doc(Array.from({ length: 33 }, (_, index) => role({ id: `r${index}`, agent: `R${index}` }))),
@@ -143,7 +161,7 @@ describe("role-catalog — validation", () => {
 });
 
 describe("role-catalog — projection", () => {
-  it("drops host paths and keeps only the declared fields", () => {
+  it("drops host paths, the role contract's prose and everything else undeclared", () => {
     const projected = projectRole(role());
     assert.deepEqual(Object.keys(projected), [
       "id",
@@ -153,11 +171,13 @@ describe("role-catalog — projection", () => {
       "summary",
       "lanes",
       "shapes",
-      "responsibilities",
-      "boundaries",
       "installed_on",
       "default_reviewer",
     ]);
+    // The long-form contract lives in `skills/<id>/role.json`, never in the projection.
+    assert.equal(Object.hasOwn(projected, "responsibilities"), false);
+    assert.equal(Object.hasOwn(projected, "boundaries"), false);
+    assert.equal(JSON.stringify(projected).includes("write the brief"), false);
     assert.equal(projected.skill_dir, undefined);
     assert.equal(JSON.stringify(projected).includes("/home/tester"), false);
   });

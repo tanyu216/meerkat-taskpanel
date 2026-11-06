@@ -1648,6 +1648,27 @@ describe("loop breakers", () => {
     assert.equal(hold.review_ref, "T-2");
     assert.equal(hold.close_review, true);
   });
+
+  it("lets the hold win over an approval planned in the same tick", () => {
+    // At the bound the planner emits `hold_card`; the same pass must not also
+    // approve and land the card, which would un-park it in the same tick.
+    const result = planWorkflowTick({
+      tasks: [
+        card({ status: "in_review", delivery_round: 4 }),
+        reviewCard({
+          delivery_round: 4,
+          meta: { review_of: "T-1", flow: "B", review_round: 4 },
+        }),
+      ],
+      verdicts: {
+        "T-2": { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT },
+      },
+      reportsByRef: {},
+      config: CONFIG,
+      now: NOW,
+    });
+    assert.deepEqual(types(result), ["hold_card"], "the cap parks the card; nothing lands it");
+  });
 });
 
 describe("loop breakers — a human release wins", () => {

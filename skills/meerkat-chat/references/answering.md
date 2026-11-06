@@ -23,7 +23,9 @@ taskctl comment list <ref> --limit 20 --json
 - It is **open** when nothing newer and non-`question` sits above it. A human comment, a
   `note`, a `decision` — any newer non-question — settles it.
 - An `awaiting` card is narrower: only a **human** comment resumes it. The board moves it back
-  to `todo` in the same transaction, whatever the comment's kind.
+  to `todo` in the same transaction, whatever the comment's kind. That leaves the claim cycle:
+  the parked turn is interrupted and the next claim is a **fresh worker** that re-reads the
+  comments (ADR 0017).
 
 `loop console --json` already applies these predicates; use `comment list` to read the body and
 to confirm an answer that arrived in the board UI.

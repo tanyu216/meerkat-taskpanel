@@ -43,6 +43,7 @@ import {
   uploadAttachment,
 } from "../../stores/board.js";
 import { acceptanceRowsFor, deliverySummaryOf } from "../../lib/acceptance.js";
+import { askConfirm } from "../../stores/confirm.js";
 import { reviewRoundsFor } from "../../lib/review.js";
 import { isAcceptanceWaiting } from "../../lib/waiting-queue.js";
 import { resolveDetailTab } from "../../lib/activity-feed.js";
@@ -305,6 +306,41 @@ function setTabRef(name, el) {
 }
 const sessions = computed(() => detail.value?.sessions ?? []);
 const hasSessions = computed(() => sessions.value.length > 0);
+
+/**
+ * The session trail's two seats, matching the prototype (`design/prototype/app.js`
+ * `data-agent-session-id` / `data-agent-resume`):
+ *
+ *   * the id copies itself through a throwaway textarea + `execCommand`, because
+ *     the Clipboard API is unavailable in a non-secure context and a failed
+ *     permission must still tell the reader what the id was;
+ *   * Resume is a statement, not a control — the agent runtime owns the actual
+ *     resume, so the board only confirms the intent.
+ *
+ * Neither adds a hook or a style: the seats and their geometry are the B16
+ * contract's own.
+ */
+function copySessionId(value) {
+  const text = String(value ?? "").trim();
+  if (text === "" || text === "—") return;
+  let copied = false;
+  try {
+    const helper = document.createElement("textarea");
+    helper.value = text;
+    helper.setAttribute("readonly", "readonly");
+    document.body.appendChild(helper);
+    helper.select();
+    copied = document.execCommand("copy");
+    document.body.removeChild(helper);
+  } catch {
+    copied = false;
+  }
+  pushToast(copied ? `${t("toast.copied")}: ${text}` : text, copied ? "success" : "info");
+}
+
+function resumeSession() {
+  pushToast(t("toast.resume"), "info");
+}
 const tabs = computed(() =>
   TAB_ORDER.map((name) => ({
     name,
@@ -783,6 +819,18 @@ function closePropMenus() {
 async function chooseStatus(to) {
   closePropMenus();
   if (to === status.value || !statusTargets.value.includes(to)) return;
+  // TP-0125 — cancelling is destructive and carries the claim-cycle exit, so it
+  // asks once. The write is still `runCommit`, which owns the error panel and
+  // the toast; the dialog rethrows, it never swallows.
+  if (to === "canceled") {
+    askConfirm({
+      titleKey: "confirm.cancelCard.title",
+      bodyKey: "confirm.cancelCard.body",
+      actionKey: "confirm.cancelCard.action",
+      run: () => runCommit(() => saveDetailField("status", "canceled")),
+    });
+    return;
+  }
   await runCommit(() => saveDetailField("status", to));
 }
 
@@ -2135,11 +2183,11 @@ async function submitComment() {
                 <span v-else class="badge badge-xs td-agent-badge">{{ row.ownerKind }}</span>
                 <span class="td-mono text-xs text-(--brand-text-2)" :data-agent-platform-value="index === 0 ? platform || row.ownerKind : undefined">{{ index === 0 ? (platform || row.ownerKind) : row.ownerKind }}</span>
                 <span class="badge badge-xs" :data-session-status="row.status">{{ $t(`drawer.session.status.${row.status}`) }}</span>
-                <button v-if="index === 0" v-show="row.running" type="button" class="btn btn-outline btn-xs ms-auto" data-agent-resume data-i18n="drawer.resume">{{ $t("drawer.resume") }}</button>
+                <button v-if="index === 0" v-show="row.running" type="button" class="btn btn-outline btn-xs ms-auto" data-agent-resume data-i18n="drawer.resume" @click="resumeSession">{{ $t("drawer.resume") }}</button>
               </div>
               <div class="mt-2 flex items-center gap-2">
                 <span class="text-xs text-(--brand-text-3)" data-i18n="session.id">{{ $t("session.id") }}</span>
-                <span class="td-copy" data-agent-session-id>{{ row.sessionId }}</span>
+                <span class="td-copy" data-agent-session-id @click="copySessionId(row.sessionId)">{{ row.sessionId }}</span>
               </div>
               <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-(--brand-text-3)" :data-session-owner="row.owner" :data-session-seg="row.seg ?? undefined" :data-session-phase="row.phase ?? undefined">
                 <span>{{ $t("drawer.session.owner") }} <span class="font-medium td-mono">{{ row.owner }}</span></span>

@@ -3,11 +3,11 @@
  *
  * The role layer is optional: with no role input the two handoffs must stay
  * byte-for-byte what they were before this feature, because deployed loops and
- * their tests pin that text. With a role, the handoff gains the loop's routing
- * decision (layer 1), the role workflow path (layer 2), the plan-file
- * convention, and the question-first rule: a subagent never decides an
- * unauthorized question itself — it asks the project session, which decides or
- * escalates to the human.
+ * their tests pin that text. With a role, the handoff gains the role workflow
+ * path, the plan-file convention, the decision policy and the question-first
+ * rule: a subagent never decides an unauthorized question itself — it asks the
+ * project session, which decides or escalates to the human. The role's title,
+ * responsibilities and boundaries stay in the role catalog, never in the prompt.
  *
  * The reviewer is the one lane that cannot enter `awaiting`: it must end in a
  * verdict, so insufficient evidence is a REJECT, not a question.
@@ -221,9 +221,12 @@ describe("handoffs without a role stay byte-identical", () => {
     // Re-pinned for 0002: the card vocabulary is `off | auto | human`.
     // Re-pinned for TP-0109: the card-session prompts read as positive actions
     // (the same rules, stated as what to do and who owns the boundary).
+    // Re-pinned for the pre-delivery lane merge: the worker merges the
+    // integration branch into its lane before delivering, so landing on an
+    // approved, stale tree stops conflicting.
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "435d6fc814532aeafe8b71666c4dd17d73f81fb25a2f90fb127bdc996fff1244",
+      "76cf722cc1cec194d688196b01376d210e9d365e7c4305d0ef0ec86117ed5a86",
     );
   });
 
@@ -235,9 +238,12 @@ describe("handoffs without a role stay byte-identical", () => {
     // a reviewer that judges the live tree can pass code nobody delivered.
     // Re-pinned for the director vocabulary (no project session exists now).
     // Re-pinned for TP-0109: the positive-language rewrite of the review handoff.
+    // Re-pinned for TP-0137: the role catalog left the prompt, so the handoff
+    // opens with the review card instead of an identity line and repeats neither
+    // the board rules nor the audit prose the system prompt and skill already own.
     assert.equal(
       hash(buildReviewHandoff(REVIEW_INPUT)),
-      "594868afb0cfecac7850097632a01baa843b9d335d6e48001ef67da661f1f4c1",
+      "87846570e12a4ec60301ddfa4e50bf1cbce1f3d75653e5379be8ca2fa805a42b",
     );
   });
 });
@@ -251,16 +257,18 @@ describe("worker handoff with a role", () => {
     decisionPolicyPath: "/roles/decision-policy.md",
   });
 
-  it("carries layer 1 — the role the supervisor selected", () => {
-    assert.match(text, /## Team role/);
-    assert.match(text, /Role: Jobs — Product design/);
-    assert.match(text, /Write the product brief first/);
-    assert.match(text, /Do not write production backend code/);
-    assert.match(text, /selected this role from the card's assignee/);
-    assert.match(text, /role skill below is authoritative/);
+  it("does not carry the role's catalog fields into the prompt", () => {
+    // The system prompt and the loaded skill own identity and procedure; the
+    // role's title, responsibilities and boundaries stay in role.json for the
+    // local role catalog.
+    assert.doesNotMatch(text, /## Team role/);
+    assert.doesNotMatch(text, /Responsibilities:/);
+    assert.doesNotMatch(text, /Boundaries:/);
+    assert.doesNotMatch(text, /Write the product brief first/);
+    assert.doesNotMatch(text, /Do not write production backend code/);
   });
 
-  it("carries layer 2 — the role skill and self-check paths", () => {
+  it("carries the role skill and self-check paths", () => {
     assert.match(text, /## Role skill/);
     assert.match(text, /\/roles\/jobs\/SKILL\.md/);
     assert.match(text, /## Role self-check/);
@@ -349,6 +357,14 @@ describe("reviewer handoff with a role", () => {
     assert.match(text, /\/roles\/reviewer\/SKILL\.md/);
     assert.match(text, /\/roles\/decision-policy\.md/);
   });
+
+  it("does not carry the role's catalog fields into the prompt", () => {
+    assert.doesNotMatch(text, /## Team role/);
+    assert.doesNotMatch(text, /Responsibilities:/);
+    assert.doesNotMatch(text, /Boundaries:/);
+    assert.doesNotMatch(text, /Verify every acceptance item/);
+    assert.doesNotMatch(text, /Move nothing/);
+  });
 });
 
 describe("wakeHandoff selects the card's role", () => {
@@ -376,8 +392,9 @@ describe("wakeHandoff selects the card's role", () => {
     assert.equal(result.executorReady, true);
     assert.equal(result.role, "worker");
     assert.equal(result.agentRole, "Jobs");
-    assert.match(result.handoff, /## Team role/);
-    assert.match(result.handoff, /Role: Jobs/);
+    assert.doesNotMatch(result.handoff, /## Team role/);
+    assert.doesNotMatch(result.handoff, /Role: Jobs/);
+    assert.match(result.handoff, /\/roles\/jobs\/SKILL\.md/);
     assert.doesNotMatch(result.handoff, /Work routing/, "routing belongs to the project session");
     assert.deepEqual(result.roleWarnings, ["a role warning"]);
   });
@@ -538,7 +555,7 @@ describe("wakeHandoff selects the card's role", () => {
     assert.equal(result.executorReady, false, "the assignee does not select a reviewer role");
     assert.equal(result.role, "reviewer", "the card still needs the review handoff");
     assert.equal(result.agentRole, null);
-    assert.match(result.handoff, /^You are the reviewer/);
+    assert.match(result.handoff, /^Review card: R-2/);
     assert.doesNotMatch(result.handoff, /## Role skill/);
   });
 
@@ -598,7 +615,7 @@ describe("wakeHandoff selects the card's role", () => {
     assert.match(result.handoff, /meerkat-director skill's rounds\.md/);
   });
 
-  it("gives a resident review session the lean envelope, not the role layer", () => {
+  it("gives a resident review session a thin envelope of its own moves", () => {
     const dir = mkdtempSync(join(tmpdir(), "tp-role-resident-"));
     try {
       const promptPath = join(dir, "reviewer-handoff.md");
@@ -615,13 +632,25 @@ describe("wakeHandoff selects the card's role", () => {
         true,
       );
       assert.equal(result.isReview, true);
-      assert.match(result.handoff, /You are the reviewer for the P1 project/);
-      assert.match(result.handoff, /Review card: R-1/);
-      assert.match(result.handoff, /Original brief: \.meerkat\/T-1\/card\.md/);
+      assert.match(result.handoff, /^Review card: R-1; card under review: T-1 \(round 1\)\./);
       assert.match(result.handoff, /Step 0 — the review_not_ready check/);
-      assert.match(result.handoff, /VERDICT: APPROVE/);
-      // The skill was loaded at open, so the envelope carries neither the role
-      // layer nor the duplicate protocol text.
+      assert.match(result.handoff, /taskctl issue get T-1 --json <flags>/);
+      assert.match(result.handoff, /taskctl issue get R-1 --json <flags>/);
+      assert.match(result.handoff, /taskctl report list T-1 <flags>/);
+      assert.match(result.handoff, /taskctl comment list T-1 --limit 200 --json <flags>/);
+      assert.match(result.handoff, /taskctl relation list T-1 <flags>/);
+      assert.match(result.handoff, /taskctl issue deliver R-1 --report-file - <flags>/);
+      assert.match(result.handoff, /VERDICT: APPROVE.*VERDICT: REJECT/);
+      assert.ok(
+        result.handoff.length < 800,
+        `the lean envelope must stay under 800 characters (got ${result.handoff.length})`,
+      );
+      // The system prompt owns identity, briefs and Flags; the loaded skill owns
+      // the audit floor. The envelope carries only this card's exact moves.
+      assert.doesNotMatch(result.handoff, /You are the reviewer/);
+      assert.doesNotMatch(result.handoff, /Review brief:/);
+      assert.doesNotMatch(result.handoff, /Original brief:/);
+      assert.doesNotMatch(result.handoff, /Flags:/);
       assert.doesNotMatch(result.handoff, /## Role skill/);
       assert.doesNotMatch(result.handoff, /## Reviewer protocol/);
       assert.doesNotMatch(result.handoff, /VERDICT first/);

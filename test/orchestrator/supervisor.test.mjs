@@ -921,7 +921,9 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /--actor-kind claude/);
     assert.match(text, /--session-id sid-9/);
     assert.match(text, /report/i);
-    assert.ok(text.length < 3600, "the handoff must be bounded");
+    // Raised once for the pre-delivery lane merge: the handoff gained the one
+    // line that keeps an approved lane landable. `bounded` still means bounded.
+    assert.ok(text.length < 3760, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("places the worker in the project and says the claim is already taken", () => {
@@ -957,7 +959,7 @@ describe("buildHandoff (pure)", () => {
       agent: "alice",
       actorKind: "codex",
     });
-    assert.ok(text.length < 3900, `the handoff must be bounded (was ${text.length})`);
+    assert.ok(text.length < 4070, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("asks the director before splitting an epic, rather than promoting it", () => {
@@ -1030,7 +1032,7 @@ describe("buildHandoff (pure)", () => {
       actorKind: "claude",
       sessionId: "550e8400-e29b-41d4-a716-446655440000",
     });
-    assert.ok(text.length < 3900, `the handoff must be bounded (was ${text.length})`);
+    assert.ok(text.length < 4070, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("points the worker at the reviewer when one is configured", () => {
@@ -1092,17 +1094,16 @@ describe("buildReviewHandoff (pure)", () => {
     assert.ok(text.length < 3600, "the handoff must be bounded");
   });
 
-  it("points the reviewer at both briefs and the never-edit rule", () => {
+  it("points the reviewer at both briefs", () => {
     assert.match(text, /Review brief: \.meerkat\/T-2\/card\.md/);
     assert.match(text, /Original brief: \.meerkat\/T-1\/card\.md/);
-    assert.match(text, /Read a card\.md as the loop's export/);
-    assert.match(text, /This lane is read-only/);
     assert.doesNotMatch(text, /Put your process files|attachment download/);
     assert.match(text, /On resume, re-read \.meerkat\/T-2\/card\.md/);
   });
 
-  it("is the reviewer for the project, with the claim already taken", () => {
-    assert.match(text, /^You are the reviewer for the <project id> project/);
+  it("names the review card first, with the claim already taken", () => {
+    assert.match(text, /^Review card: T-2/);
+    assert.doesNotMatch(text, /You are the reviewer /, "the system prompt owns the identity line");
     assert.match(text, /already claimed this review card for you: keep the claim with a heartbeat/);
     assert.match(text, /heartbeat only this review card/);
   });
@@ -1116,8 +1117,9 @@ describe("buildReviewHandoff (pure)", () => {
 
   it("audits a worker-derived acceptance list for coverage", () => {
     assert.match(text, /acceptance_derived/);
-    assert.match(text, /covers every requirement/);
-    assert.match(text, /narrows/);
+    assert.match(text, /re-derive/);
+    assert.match(text, /narrowed acceptance list/);
+    assert.match(text, /missing a requirement/);
     assert.match(text, /VERDICT: REJECT/);
   });
 
@@ -2026,7 +2028,7 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-2:done", "T-3:canceled"]);
   });
 
-  it("cancels an in-review review card through in_progress, never done", async () => {
+  it("cancels a review card in one move and interrupts its turn, never done", async () => {
     const order = [];
     await runWorkflowTick(
       baseDeps({
@@ -2041,14 +2043,21 @@ describe("runWorkflowTick (injected deps)", () => {
         },
         comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
         move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+        requestInterrupt: (request) => {
+          order.push(`interrupt:${request.card}:${request.from}:${request.to}`);
+          return { ok: true };
+        },
       }),
     );
+    // TP-0125 — `in_review → canceled` is one hop; the marker is written after
+    // the move so the pool can stop a reviewer turn that is still running.
     assert.deepEqual(order, [
       "comment:T-3:note",
-      "move:T-3:in_progress",
       "move:T-3:canceled",
+      "interrupt:T-3:in_review:canceled",
       "comment:T-4:note",
       "move:T-4:canceled",
+      "interrupt:T-4:in_progress:canceled",
     ]);
     assert.equal(order.includes("move:T-3:done"), false, "a canceled review is never recorded as accepted");
   });
@@ -2918,10 +2927,18 @@ describe("the ping is the pool's single kill authority", () => {
     // A SIGTERM-trapping pool: the blocked-pool case the second signal exists for.
     const child = spawn(
       process.execPath,
-      ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);"],
-      { stdio: "ignore" },
+      ["-e", "process.on('SIGTERM', () => {}); process.stdout.write('ready\\n'); setInterval(() => {}, 1000);"],
+      { stdio: ["ignore", "pipe", "ignore"] },
     );
     try {
+      // "spawn" means the OS process exists, not that the trap is installed: a
+      // SIGTERM sent in that window would use the default action and kill it.
+      // The pool under test is one that already survives SIGTERM.
+      child.stdout.setEncoding("utf8");
+      await new Promise((resolveReady, rejectReady) => {
+        child.stdout.once("data", resolveReady);
+        child.once("error", rejectReady);
+      });
       const statePath = join(dir, "supervisor.state.json");
       const sessionPath = join(dir, "sessions.state.json");
       const logPath = join(dir, "supervisor.log");

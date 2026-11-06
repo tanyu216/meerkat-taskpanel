@@ -207,7 +207,11 @@ describe("board skill: the scenario layout", () => {
     }
 
     const total = markdownFiles(SKILL).reduce((sum, file) => sum + size(file), 0);
-    assert.ok(total <= 230_000, `the skill's markdown totals ${total} B (≤ 230 KB)`);
+    // Raised from 230 KB after two shipped features documented themselves in
+    // the skill: TP-0033 added 456 B (loop status fields) and TP-0125 947 B
+    // (claim-cycle exits, the new transition edges). The cap still bounds
+    // growth; it is not a target.
+    assert.ok(total <= 232_000, `the skill's markdown totals ${total} B (≤ 232 KB)`);
   });
 
   it("keeps the scenario pages self-contained for their operation", () => {

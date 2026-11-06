@@ -22,6 +22,7 @@ import { after, describe, it } from "node:test";
 import {
   LOOP_DISPATCH_FAILED_MIN,
   LOOP_DISPATCH_ROWS_MIN,
+  LOOP_LANDING_CONFLICT_MIN,
   LOOP_REVIEW_REOPEN_MIN,
   LOOP_REVIEW_ROUND_MIN,
   LOOP_REWORK_ROUND_MIN,
@@ -212,6 +213,17 @@ describe("loop doctor — the report", () => {
     assert.deepEqual(report.handoff_unconsumed, []);
   });
 
+  it("counts an interrupted row as its own terminal state (TP-0125)", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir);
+    seedState(dir, {
+      cards: [{ status: "pending" }, { status: "processing" }, { status: "interrupted" }],
+    });
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+    assert.equal(report.queue.interrupted, 1);
+    assert.equal(report.queue.depth, 2, "an interrupted row is history, not queue depth");
+  });
+
   it("covers every surface in one pass", () => {
     const dir = tempDir();
     const { script } = sentinel(dir);
@@ -289,6 +301,7 @@ describe("loop doctor — the report", () => {
       question_lane: [],
       unowned: [],
       orphaned: [],
+      landing_conflicts: [],
       total: 0,
     }, "the looping section is always present, and empty when nothing is circling");
 
@@ -297,6 +310,102 @@ describe("loop doctor — the report", () => {
     assert.equal(report.ok, true);
     assert.equal(report.attention, true);
     assert.ok(report.attention_reasons.includes("stuck_cards: 2"));
+  });
+
+  // TP-0146 P1.3: the settled ladder is visible per card, a failing workflow
+  // action is a standing alarm with no card of its own, a claim refusal is not
+  // a deferral streak, and a hold that did not write `meta.loop_hold_code` is
+  // still a blocked card.
+  it("reports the settled ladder, failing workflow actions and claim refusals", () => {
+    const dir = tempDir();
+    const tasks = [
+      { identifier: "T-10", title: "Done", status: "done" },
+      { identifier: "T-11", title: "Delivered", status: "in_review" },
+      { identifier: "T-12", title: "Running", status: "in_progress" },
+      { identifier: "T-13", title: "Failed", status: "in_progress" },
+      {
+        identifier: "T-15",
+        title: "Held without the marker",
+        status: "blocked",
+        status_changed_at: at(30 * MIN),
+      },
+    ];
+    const { script } = sentinel(dir, { tasks });
+    writeJson(join(dir, "cards.queue.json"), {
+      version: 1,
+      cards: [
+        { card: "T-10", status: "pending", enqueuedAt: at(1 * MIN) },
+        { card: "T-11", status: "done", enqueuedAt: at(1 * MIN) },
+        { card: "T-12", status: "processing", enqueuedAt: at(1 * MIN) },
+        { card: "T-13", status: "failed", enqueuedAt: at(1 * MIN) },
+      ],
+    });
+    writeJson(join(dir, "subagents.state.json"), { version: 1, subagents: [] });
+    writeJson(join(dir, "workflow-ledger.json"), {
+      version: 1,
+      seen: {
+        "workflow_action_failed|create_review|T-1|board refused": {
+          first_seen: at(120 * MIN),
+          last_seen: at(2 * MIN),
+          count: 4,
+        },
+        "workflow_action_failed_escalated|create_review|T-1|b1": {
+          first_seen: at(120 * MIN),
+          last_seen: at(2 * MIN),
+        },
+        "sla|T-9|review_aging": { first_seen: at(5 * MIN), last_seen: at(5 * MIN) },
+      },
+    });
+    writeJson(join(dir, "deferrals.json"), {
+      version: 1,
+      cards: {
+        "T-20": {
+          identifier: "T-20",
+          round: 1,
+          count: 0,
+          code: null,
+          first_at: at(10 * MIN),
+          last_at: at(2 * MIN),
+          retry_at: null,
+          alerted_code: null,
+          alerted_at: null,
+          claim_refusals: 2,
+          claim_last_at: at(2 * MIN),
+          claim_last_reason: "VERSION_CONFLICT",
+        },
+      },
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(report.cycles, {
+      terminal: 1,
+      settled: 1,
+      needs_human: 1,
+      in_flight: 1,
+      by_ref: {
+        "T-10": { level: "terminal", reason: "card_terminal" },
+        "T-11": { level: "settled", reason: "row_done" },
+        "T-12": { level: "in_flight", reason: "queued" },
+        "T-13": { level: "needs_human", reason: "row_failed" },
+      },
+    });
+    assert.ok(report.attention_reasons.includes("cycles: 1 need a human"));
+
+    assert.deepEqual(report.workflow_actions, [
+      {
+        key: "workflow_action_failed|create_review|T-1|board refused",
+        first_seen: at(120 * MIN),
+        count: 4,
+      },
+    ], "the escalated sibling key is not counted as a second failure");
+
+    assert.deepEqual(report.claim_refusals, [
+      { ref: "T-20", count: 2, last_at: at(2 * MIN), last_reason: "VERSION_CONFLICT" },
+    ]);
+
+    assert.deepEqual(report.blocked_cards.map((card) => card.ref), ["T-15"]);
+    assert.ok(report.attention_reasons.includes("blocked_cards: 1"));
   });
 
   it("does not call an epic container a stuck card", () => {
@@ -975,6 +1084,7 @@ describe("loop doctor — the loop thresholds", () => {
     assert.equal(LOOP_DISPATCH_ROWS_MIN, 5);
     assert.equal(LOOP_DISPATCH_FAILED_MIN, 2);
     assert.equal(LOOP_SUBAGENT_FAILED_MIN, 3);
+    assert.equal(LOOP_LANDING_CONFLICT_MIN, 2);
   });
 });
 
@@ -1036,6 +1146,75 @@ describe("loop doctor — looping cards", () => {
     assert.equal(report.looping.total, 3);
     assert.ok(report.attention_reasons.includes("looping: 3"));
     assert.equal(report.ok, true, "a looping finding is not an error");
+  });
+
+  it("flags a card whose landing kept conflicting, once per round", async () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          id: "id-710",
+          identifier: "T-710",
+          title: "Landing loops",
+          status: "todo",
+          delivery_round: 4,
+          status_changed_at: at(80 * MIN),
+        },
+        {
+          id: "id-711",
+          identifier: "T-711",
+          title: "Second conflict too",
+          status: "in_review",
+          delivery_round: 2,
+          status_changed_at: at(50 * MIN),
+        },
+        { id: "id-712", identifier: "T-712", title: "Landed late", status: "done", delivery_round: 3 },
+      ],
+    });
+    seedState(dir);
+    writeJson(join(dir, "workflow-ledger.json"), {
+      version: 1,
+      seen: {
+        "landing_conflict|approve|T-710|r1": { first_seen: at(90 * MIN), last_seen: at(80 * MIN) },
+        "landing_conflict|approve|T-710|r2": { first_seen: at(70 * MIN), last_seen: at(60 * MIN) },
+        "landing_conflict|auto_accept|T-711|r1": { first_seen: at(50 * MIN), last_seen: at(40 * MIN) },
+        "landing_conflict|approve|T-711|r2": { first_seen: at(35 * MIN), last_seen: at(30 * MIN) },
+        "landing_conflict|approve|T-712|r1": { first_seen: at(30 * MIN), last_seen: at(20 * MIN) },
+        "landing_conflict|approve|T-712|r2": { first_seen: at(20 * MIN), last_seen: at(10 * MIN) },
+      },
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(
+      report.looping.landing_conflicts.map((row) => [row.ref, row.conflicts, row.last_round]),
+      [
+        ["T-710", 2, 2],
+        ["T-711", 2, 2],
+      ],
+      "two conflict rounds on a live card; a done card and a single conflict are not a cycle",
+    );
+    const row = report.looping.landing_conflicts.find((entry) => entry.ref === "T-710");
+    assert.deepEqual(row.rounds, [1, 2]);
+    assert.equal(row.first_at, at(90 * MIN));
+    assert.equal(row.last_at, at(60 * MIN));
+    assert.equal(row.age_ms, 90 * MIN);
+    assert.equal(report.looping.total, 2, "T-710 is one card even in two lists");
+    assert.ok(report.attention_reasons.includes("looping: 2"));
+
+    let out = "";
+    const argv = [
+      "--state", join(dir, "state.json"),
+      "--log", join(dir, "supervisor.log"),
+      "--config", join(dir, "config.env"),
+      "--cli", script,
+      "--agent", "alice",
+      "--actor-kind", "claude",
+      "--home", dir,
+    ];
+    const exit = await main(argv, { HOME: dir }, deps(), { out: (text) => (out += text) });
+    assert.equal(exit, 0);
+    assert.match(out, /T-710\s+landing\s+2 round\(s\), last r2/);
   });
 
   it("flags a review card the loop re-dispatched to exhaustion", () => {
@@ -1329,6 +1508,7 @@ describe("loop doctor — looping cards", () => {
       question_lane: [],
       unowned: [],
       orphaned: [],
+      landing_conflicts: [],
       total: 0,
     });
     assert.equal(report.attention_reasons.some((reason) => reason.startsWith("looping")), false);

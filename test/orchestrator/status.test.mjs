@@ -257,6 +257,62 @@ describe("supervisor status", () => {
     assert.match(text, /^ {2}scan set: {2}Jobs$/m);
   });
 
+  it("reports the boot ledger and the tick age", async () => {
+    const dir = tempDir();
+    writePool(dir, { tickStartedAt: new Date(NOW - 12_000).toISOString() });
+    const lastCrash = new Date(NOW - 90_000).toISOString();
+    writeFileSync(
+      join(dir, "supervisor.health.json"),
+      JSON.stringify({
+        startedAt: new Date(NOW - 60_000).toISOString(),
+        pid: 4242,
+        version: "0.2.0",
+        lastCrash,
+        starts: [new Date(NOW - 120_000).toISOString(), new Date(NOW - 60_000).toISOString()],
+        bootFailures: 3,
+      }),
+    );
+
+    const report = probeSupervisor(optsFor(dir), {
+      isAlive: (pid) => pid === 4242,
+      now: () => NOW,
+      run: noUnits(),
+    });
+    assert.equal(report.verdict, "busy");
+    assert.equal(report.pool.tickAgeMs, 12_000);
+    assert.equal(report.health.lastCrash, lastCrash);
+    assert.equal(report.health.bootFailures, 3, "the consecutive failed-start streak");
+    assert.equal(report.health.starts.length, 2);
+
+    const out = [];
+    const code = await main(
+      [
+        "--state", join(dir, "state.json"),
+        "--config", join(dir, "config.env"),
+        "--actor-kind", "claude",
+        "--home", dir,
+      ],
+      { HOME: dir },
+      { isAlive: (pid) => pid === 4242, now: () => NOW, run: noUnits() },
+      { out: (text) => out.push(text), err: () => {} },
+    );
+    assert.equal(code, 0);
+    const text = out.join("");
+    assert.match(text, /^ {2}tick: {6}12s in flight$/m);
+    assert.match(text, new RegExp(`last crash ${lastCrash}`));
+    assert.match(text, /3 consecutive failed starts/);
+  });
+
+  it("says there is no boot ledger when none was written", () => {
+    const dir = tempDir();
+    const report = probeSupervisor(optsFor(dir), {
+      isAlive: () => false,
+      now: () => NOW,
+      run: noUnits(),
+    });
+    assert.equal(report.health, null);
+  });
+
   it("splits card sessions by lane in the human report", async () => {
     const dir = tempDir();
     writePool(dir, {

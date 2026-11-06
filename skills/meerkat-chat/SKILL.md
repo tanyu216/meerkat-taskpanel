@@ -189,7 +189,8 @@ own words, keep them. "You decide" or "go with your recommendation" is that same
 show the literal body, and do not invent options beyond the round you presented. Default
 `--kind note`;
 `decision`/`confirm`/`change` is an explicit record marker, not a requirement — the resume is
-judged by the content.
+judged by the content. A claim-cycle exit **interrupts the turn**; the next claim is a fresh
+worker that re-reads the comments (ADR 0017).
 
 If the human answered in the board UI (`discuss`), that is already an answer: do not duplicate
 it. Verify with `comment list` and report the card's new status.
@@ -219,7 +220,8 @@ A `human` card is the human's to close after its review finishes. On an `auto` c
 normally closes it after an `APPROVE`; a human may still close it, but say so and confirm the
 verdict first. A review card
 is closed by a human or any actor but its own verdict author — never by the one who wrote it.
-`canceled` is abandonment: never cancel a card to close it.
+`canceled` is abandonment: never cancel a card to close it. A cancel interrupts any running
+turn; the board and drawer confirm first (TP-0125).
 
 On a refusal, read `error.code`: `ACCEPTANCE_FORBIDDEN` (wrong closer for the mode),
 `ACCEPTANCE_UNVERIFIED` / `ACCEPTANCE_INCOMPLETE` (the gate or the evidence),
@@ -240,7 +242,7 @@ announces waiting cards only; health stays a one-shot read or an answer to a dir
 | `undispatched_claims` | a stale claim whose handoff rows are all terminal (or absent) | show the last row's status/attempts/error; only a human move frees the card |
 | `blocked_acceptance` | the board refused the close | show the refusal; offer a release only when the human says the blocker is gone |
 | `handoff_unconsumed` | an accepted producer's required handoff has no decision for its round | report; the director creates the proposed card, or the human records that none is needed |
-| `looping` | rework rounds, review reopens, dispatch retries, failed subagents, and `held` cards the loop already parked | explain the loop; the fix is a decision (reject, cut scope, reassign), not a retry — a held card is released only by an explicit human move |
+| `looping` | rework rounds, review reopens, dispatch retries, failed subagents, landing conflicts, and `held` cards the loop already parked | explain the loop; the fix is a decision (reject, cut scope, reassign), not a retry — a held card is released only by an explicit human move; a landing conflict is already back in the worker's hands |
 | `unlanded` | a `done` card whose lane branch is not in the project's current branch | report it; the fix is a git merge, not a board write |
 | `workers` | blocked, stale or missing-worktree worker records | report; do not restart daemons |
 | `queue` | failed dispatch rows | report; the loop retries within its own budget |

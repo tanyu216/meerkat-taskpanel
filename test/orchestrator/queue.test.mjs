@@ -22,6 +22,7 @@ import {
   questionDispatches,
   rowDispatches,
   retireLegacyDispatched,
+  resumeCards,
   timeoutCards,
   TIMEOUT_BACKOFF_MS,
   TIMEOUT_MAX_ATTEMPTS,
@@ -135,6 +136,44 @@ describe("card queue", () => {
     assert.equal(enqueueCard(dir, card("T-1")).coalesced, true);
     assert.equal(enqueueCard(dir, card("T-1", "reviewer")).coalesced, false);
     assert.equal(readCards(dir).value.cards.length, 3);
+  });
+
+  it("normalises the rework-continuity flags, defaulting to a normal round", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    enqueueCard(dir, { ...card("T-2"), rework: true, carry_from_round: 1, force_fresh: true });
+    const [normal, rework] = readCards(dir).value.cards;
+    assert.deepEqual(
+      { rework: normal.rework, carry: normal.carry_from_round, fresh: normal.force_fresh },
+      { rework: false, carry: null, fresh: false },
+    );
+    assert.deepEqual(
+      { rework: rework.rework, carry: rework.carry_from_round, fresh: rework.force_fresh },
+      { rework: true, carry: 1, fresh: true },
+    );
+  });
+
+  it("merges a one-shot reset into an existing pending row", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    const merged = enqueueCard(dir, { ...card("T-1"), rework: true, carry_from_round: 1, force_fresh: true });
+    assert.equal(merged.coalesced, true);
+    assert.equal(merged.merged, true);
+    const [row, ...rest] = readCards(dir).value.cards;
+    assert.equal(rest.length, 0, "one row per (card, role)");
+    assert.equal(row.rework, true);
+    assert.equal(row.carry_from_round, 1);
+    assert.equal(row.force_fresh, true);
+  });
+
+  it("leaves a processing row untouched and reports it superseded", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, card("T-1"));
+    claimCards(dir, { claimedBy: "/work/app", limit: 1 });
+    const result = enqueueCard(dir, { ...card("T-1"), force_fresh: true });
+    assert.equal(result.superseded, true);
+    assert.equal(result.merged, undefined);
+    assert.equal(readCards(dir).value.cards[0].force_fresh, false, "the in-flight row is not rewritten");
   });
 
   it("records the event UUID and review fields, normalizing absent ones to null", (t) => {
@@ -375,6 +414,28 @@ describe("card queue", () => {
     assert.equal(readCards(dir).value.cards[0].status, "pending");
   });
 
+  // TP-0146 P0.3: a row whose stale-claim recovery spends its last attempt is
+  // failed in the queue; the caller needs its identity to park the card too.
+  it("returns the rows failed by stale-claim recovery", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, { card: "T-1", role: "worker" });
+    const [claimed] = claimCards(dir, { claimedBy: "/work/app", pid: 999999, limit: 1 }).cards;
+    const file = join(dir, "cards.queue.json");
+    const value = JSON.parse(readFileSync(file, "utf8"));
+    value.cards[0].attempts = 2;
+    writeFileSync(file, JSON.stringify(value), "utf8");
+
+    const recovered = recoverStaleCards(dir, { isAlive: () => false, maxAttempts: 3 });
+    assert.equal(recovered.failed, 1);
+    assert.deepEqual(recovered.failedRows, [{ id: claimed.id, card: "T-1" }]);
+  });
+
+  it("reports no failed rows when stale-claim recovery finds nothing", (t) => {
+    const dir = dirFor(t);
+    const recovered = recoverStaleCards(dir, { isAlive: () => false });
+    assert.deepEqual(recovered.failedRows, []);
+  });
+
   // TP-0031: a SIGKILLed pool leaves a processing row whose agent child still
   // runs. The ledger proves the subagent is working and the session record still
   // names its process; requeueing would put a second worker on the card. The
@@ -505,6 +566,56 @@ describe("card queue", () => {
     assert.equal(retired.retired, 0);
     const statuses = readCards(dir).value.cards.map((row) => row.status).sort();
     assert.deepEqual(statuses, ["pending", "processing"]);
+  });
+});
+
+describe("card queue interrupted rows (TP-0125)", () => {
+  function claimedRow(dir, ref = "T-1") {
+    enqueueCard(dir, { card: ref, role: "worker", agent: "alice", target_dir: "/work/app" });
+    const [row] = claimCards(dir, { claimedBy: "/work/app", pid: process.pid, limit: 1 }).cards;
+    return row;
+  }
+
+  it("is terminal: no mutator resurrects it and no counter moves", (t) => {
+    const dir = dirFor(t);
+    const row = claimedRow(dir);
+    const completed = completeCards(dir, [row.id], { status: "interrupted", error: "claim cycle exited" });
+    assert.equal(completed.ok, true);
+    let [live] = readCards(dir).value.cards;
+    assert.equal(live.status, "interrupted");
+    assert.equal(live.attempts, 0);
+    assert.equal(live.timeouts, 0);
+    assert.equal(live.recoveries, 0);
+
+    // A later mutator sees a terminal row and leaves it alone — including the
+    // requeue that would otherwise spend an attempt.
+    requeueCards(dir, [row.id], { error: "late failure" });
+    resumeCards(dir, [row.id], {});
+    timeoutCards(dir, [row.id], { now: Date.now() });
+    claimCards(dir, { claimedBy: "/work/other", limit: 1 });
+    [live] = readCards(dir).value.cards;
+    assert.equal(live.status, "interrupted");
+    assert.equal(live.attempts, 0);
+    assert.equal(live.timeouts, 0);
+    assert.equal(live.recoveries, 0);
+  });
+
+  it("a new handoff for the same card is a fresh pending row", (t) => {
+    const dir = dirFor(t);
+    const row = claimedRow(dir);
+    completeCards(dir, [row.id], { status: "interrupted" });
+    enqueueCard(dir, { card: "T-1", role: "worker", agent: "alice", target_dir: "/work/app", round: 2 });
+    const rows = readCards(dir).value.cards;
+    assert.equal(rows.length, 2, "the terminal history is kept; the new attempt is a new row");
+    assert.deepEqual(rows.map((entry) => entry.status).sort(), ["interrupted", "pending"]);
+  });
+
+  it("is dropped by the ordinary retention prune", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, { card: "T-1", role: "worker", enqueuedAt: "2026-01-01T00:00:00.000Z" });
+    completeCards(dir, ["T-1-worker"], { status: "interrupted", now: "2026-01-01T00:30:00.000Z" });
+    const pruned = pruneCards(dir, { now: Date.parse("2026-01-02T00:00:00.000Z"), ttlMs: 60_000 });
+    assert.equal(pruned.dropped, 1);
   });
 });
 
