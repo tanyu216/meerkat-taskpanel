@@ -183,7 +183,7 @@ function renderSkill(role) {
     ...(reviewer
       ? [
           `- Review cards only: ordinary cards belong to the worker roles.`,
-          `- Stay in the review turn; insufficient evidence is a \`VERDICT: REJECT\`.`,
+          `- End the review turn with a verdict; insufficient evidence is a \`VERDICT: REJECT\`.`,
           ``,
           `Your reviewer handoff is \`references/reviewer-handoff.md\`.`,
         ]
