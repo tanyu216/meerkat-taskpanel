@@ -90,14 +90,18 @@ derived, not a field: combine the uncovered `acceptance[]` items, the current re
 
 ## 2. Keep the waiting register
 
-`loop console --json` is the human-owned queue. Read `questions[]` — `awaiting` cards plus
-`in_progress` cards carrying an unanswered agent question — and `pending_acceptance[]` for
-`in_review` cards. `loop doctor --json` adds the health rows.
+`loop console --json` is the human-owned queue. Read `questions[]` — `awaiting` cards,
+`in_progress` cards carrying an unanswered agent question, and `blocked` cards whose
+`blocked_reason` is `decision` (the loop's rework/exhaustion hold) — and `pending_acceptance[]`
+for `in_review` cards. `loop doctor --json` adds the health rows.
 
 - **One card at a time.** Present the oldest or most urgent first; the next card opens only
   after this one's answer is recorded. A wall of questions gets a wall of vague answers.
 - **An `awaiting` card is the human's rung.** Show its `awaiting_reason` (`E1`–`E5`), the
   question body, its age, and what stays blocked until it is answered.
+- **A `blocked` decision is a held card, not a paused agent.** The loop parks it because it
+  cannot decide; a board comment alone does not resume it. Answer it, then release the card
+  (`blocked → todo`) in the same act — see §3.
 - **A pending acceptance is not always the human's.** Read `acceptance_mode`: `human` is the
   human's; `auto` closes on the loop's `APPROVE`; `off` is the deliverer's. Say which and why.
 - Do not re-raise an item the human already handled. Re-read and confirm it left the list.
@@ -177,10 +181,13 @@ Then branch on the card's status:
   question but leaves the card `in_progress` with its worker stopped. After recording the
   answer, move the card `in_progress → todo` yourself so the queue can dispatch it again. Show
   both writes as one act.
+- **`blocked` — the loop's hold.** The loop parked the card (`blocked_reason=decision`) and
+  posted its question. A comment does not move a blocked card: record the answer, then release
+  it `blocked → todo` so the loop can dispatch it again. Show both writes as one act.
 
 ```bash
 taskctl --as-human comment add <ref> --kind note --body "<the human's answer>"
-taskctl --as-human issue move <ref> todo        # in_progress questions only
+taskctl --as-human issue move <ref> todo        # in_progress and blocked questions only
 ```
 
 Show the exact body and both commands before writing. A "yes" to a recommendation is recorded
@@ -249,8 +256,11 @@ announces waiting cards only; health stays a one-shot read or an answer to a dir
 | `waiting.in_review` | delivered cards awaiting acceptance | feed the waiting register |
 | `board.truncated` | the read is a lower bound | say so; do not present it as the whole board |
 
-A `blocked` card is a board read, not a doctor row: `issue list --status blocked --json` and
-`issue get <ref> --json` give its `blocked_reason`, age and assignee. Report only.
+A `blocked` card is a board read: `issue list --status blocked --json` and `issue get <ref>
+--json` give its `blocked_reason`, age and assignee. A `blocked_reason=decision` hold is also a
+register item — `questions[]` carries it as `kind: "blocked-decision"` — because the human owes
+both the answer and the release. Every other block is report only — never unblock it behind the
+human's back.
 
 Corrective board edits — releasing a card, requeueing a stopped one, reassigning — are the
 human's call: when they authorize one, §6's shown-then-write rule applies. Never unblock a

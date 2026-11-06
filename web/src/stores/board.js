@@ -36,7 +36,12 @@ import { mergeById } from "../lib/board-merge.js";
 
 export { authorLabel, isAgentKind, kindLabel, platformForActor, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
-import { acceptanceWaitingTasks, firstSentence, payloadCommentOf } from "../lib/waiting-queue.js";
+import {
+  acceptanceWaitingTasks,
+  firstSentence,
+  isBlockedDecision,
+  payloadCommentOf,
+} from "../lib/waiting-queue.js";
 // The preview's sentence rule moved into the projection (a row's field); it is
 // re-exported here so an existing import site keeps its one store entry point.
 export { firstSentence };
@@ -463,6 +468,11 @@ export const projectLoading = computed(() => board.loading && !board.loaded);
  * One predicate for both (design §8-05): the view and the count read the same
  * derivation, so they cannot disagree.
  *
+ * Two rungs feed it: an `awaiting` card (the question overlay) and a `blocked`
+ * card whose reason is `decision` (the loop's hold). A blocked decision keeps
+ * the card in the queue until a human moves it — the comment alone does not
+ * resume a blocked card.
+ *
  * Derived from `board.tasks` — the whole reading, unfiltered — rather than from
  * `visibleTasks`, and narrowed by the **assignee condition alone** (TP-0021).
  * The waiting view hides the filter bar, so a status / priority / label / search
@@ -472,7 +482,11 @@ export const projectLoading = computed(() => board.loading && !board.loaded);
  * The assignee narrowing stays because it is the sidebar's name narrowing —
  * *whose* queue is being read — not a board-view filter.
  */
-export const waitingTasks = computed(() => board.tasks.filter((task) => isAwaiting(task) && passesAssignee(task)));
+export const waitingTasks = computed(() =>
+  board.tasks.filter(
+    (task) => (isAwaiting(task) || isBlockedDecision(task)) && passesAssignee(task),
+  ),
+);
 
 /**
  * The cards whose **delivery** waits on this human: an `in_review` card whose

@@ -143,12 +143,27 @@ export function payloadCommentOf(comments) {
 export { AWAITING_CATEGORIES } from "./board-enums.js";
 
 /**
- * The kind a card's awaiting category maps to.
+ * A card the loop parked on a decision: `blocked` + `blocked_reason=decision`.
  *
- * @param {{awaiting_reason?: string|null}} [task]
+ * The loop's rework/exhaustion holds land here, and a board comment alone does
+ * not move a blocked card — the human owes an answer **and** the move. It shares
+ * the queue with `awaiting` because the ball is on the human's side either way.
+ *
+ * @param {{status?: string, blocked_reason?: string|null}} [task]
+ * @returns {boolean}
+ */
+export function isBlockedDecision(task) {
+  return task?.status === "blocked" && task?.blocked_reason === "decision";
+}
+
+/**
+ * The kind a card's awaiting category — or a blocked decision — maps to.
+ *
+ * @param {{status?: string, awaiting_reason?: string|null, blocked_reason?: string|null}} [task]
  * @returns {"question"|"blocked"}
  */
 export function reasonKindOf(task) {
+  if (isBlockedDecision(task)) return "blocked";
   const raw = String(task?.awaiting_reason ?? "").toLowerCase();
   return WAITING_REASON_KINDS.includes(raw) ? raw : "question";
 }

@@ -40,6 +40,11 @@ The human-owned queue, already filtered to what is actually unanswered.
 - `kind: "agent-question"` — an `in_progress` card carries a worker question the director has
   not settled. The card needs a requeue after the answer (see
   [`answering.md`](answering.md#answer-an-in_progress-agent-question)).
+- `kind: "blocked-decision"` — a `blocked` card whose `blocked_reason` is `decision`: the loop
+  parked it (rework cap or review-reopen exhaustion) and posted its question there. The row
+  carries `status: "blocked"` and `blocked_reason: "decision"`. **A comment does not resume a
+  blocked card** — record the answer and then release it `blocked → todo` in the same act. The
+  row disappears once the card is moved.
 - `age_ms` is how long the question has waited (working time in the SLA sense is the
   board's, not this field). `answered_pending_release: true` means a later human comment
   exists but the card is still `in_progress` — the **director owes the release**; do not

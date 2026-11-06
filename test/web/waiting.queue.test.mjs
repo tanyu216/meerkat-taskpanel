@@ -17,6 +17,7 @@ import {
   WAITING_REASON_KINDS,
   actionKeyOf,
   firstSentence,
+  isBlockedDecision,
   openKeyOf,
   payloadCommentOf,
   reasonKeyOf,
@@ -66,6 +67,47 @@ describe("B27 · the reason is a two-value attribute", () => {
     // M6 adds `acceptance`: the third thing that can be on a human's side.
     assert.deepEqual([...WAITING_REASON_KINDS], ["question", "blocked", "acceptance"]);
     assert.equal(reasonKeyOf("acceptance"), "waiting.reason.acceptance");
+  });
+});
+
+describe("R4 · a blocked decision is a waiting row", () => {
+  const held = () =>
+    card("1", "TD-1", {
+      status: "blocked",
+      awaiting_reason: null,
+      blocked_reason: "decision",
+      updated_at: at(120),
+    });
+
+  it("maps a blocked decision card to the blocked reason", () => {
+    assert.equal(isBlockedDecision(held()), true);
+    assert.equal(reasonKindOf(held()), "blocked");
+    assert.equal(reasonKeyOf("blocked"), "waiting.reason.blocked");
+    assert.equal(actionKeyOf("blocked"), "waiting.action.blocked");
+    assert.equal(openKeyOf("blocked"), "waiting.open.unblock");
+  });
+
+  it("does not map a resource block", () => {
+    const resource = card("2", "TD-2", {
+      status: "blocked",
+      awaiting_reason: null,
+      blocked_reason: "resource",
+    });
+    assert.equal(isBlockedDecision(resource), false);
+    assert.equal(reasonKindOf(resource), "question");
+  });
+
+  it("projects the hold question as the row's ask", () => {
+    const payload = {
+      kind: "question",
+      body: "Decide: narrow the baseline, take the work as-is, or cancel.",
+      created_at: at(120),
+    };
+    const [row] = waitingRows([held()], { 1: payload }, NOW);
+    assert.equal(row.reasonKind, "blocked");
+    assert.equal(row.tab, "activity");
+    assert.equal(row.preview, firstSentence(payload.body));
+    assert.equal(row.since, payload.created_at);
   });
 });
 
