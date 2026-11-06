@@ -1729,6 +1729,20 @@ export function planWorkflowTick(input = {}) {
     ...dispatch.actions,
   ];
   const actions = planned.slice(0, Math.max(cap, breakers.actions.length));
+  // A same-tick hold is planned directly after its reject. A small cap must not
+  // split the pair: the reject alone leaves the card in `todo` at the bound, and
+  // poll can claim it before the next workflow pass — the race the hold closes.
+  // Planner actions are mixed-case before the wire rename (`reject_task` carries
+  // `originalRef`, `hold_card` carries `original_ref`), so read both.
+  const originalRefOf = (action) => action.original_ref ?? action.originalRef;
+  const rejected = new Set(actions.map(originalRefOf));
+  const pairedHolds = planned.filter(
+    (action) =>
+      action.type === "hold_card" &&
+      !actions.includes(action) &&
+      rejected.has(originalRefOf(action)),
+  );
+  if (pairedHolds.length > 0) actions.push(...pairedHolds);
   const dropped = planned.length - actions.length;
 
   const alerts = [

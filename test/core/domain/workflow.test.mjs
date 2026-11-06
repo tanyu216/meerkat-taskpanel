@@ -1649,6 +1649,23 @@ describe("loop breakers", () => {
     assert.match(hold.question, /more times than the loop allows/);
   });
 
+  it("keeps a same-tick hold when the action cap admits only its reject", () => {
+    const result = planWorkflowTick({
+      tasks: [card({ meta: { review_rejects: "3" } }), reviewCard()],
+      verdicts: {
+        "T-2": { ok: true, verdict: "REJECT", findings: "1. fix it", report: REVIEWER_REPORT },
+      },
+      reportsByRef: {},
+      config: { ...CONFIG, maxActions: 1, reworkMaxRounds: 4 },
+      now: NOW,
+    });
+    assert.deepEqual(
+      types(result),
+      ["reject_task", "hold_card"],
+      "a small cap must not split the reject from the hold that closes the poll race",
+    );
+  });
+
   it("lets the delivered round be reviewed before the hold", () => {
     const result = tick([
       card({ status: "in_review", delivery_round: 5, meta: { review_rejects: "4" } }),
