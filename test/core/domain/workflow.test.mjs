@@ -619,6 +619,38 @@ describe("planReviewOutcomes", () => {
     assert.equal(result.actions[0].held, true, "the move is retried; the rejection is not re-posted");
   });
 
+  it("counts a rejection once, and the held retry does not increment again", () => {
+    const first = outcomes({
+      tasks: [card({ meta: { review_rejects: "3" } }), reviewCard()],
+      verdicts: { "T-2": reject },
+      config: CONFIG,
+    });
+    assert.equal(first.actions[0].reviewRejects, 4, "the applied rejection is counted");
+
+    const retried = outcomes({
+      tasks: [card({ meta: { review_rejects: "4", rework_round: "2" } }), reviewCard()],
+      verdicts: { "T-2": reject },
+      config: CONFIG,
+    });
+    assert.equal(retried.actions[0].held, true, "the move is retried");
+    assert.equal(retried.actions[0].reviewRejects, 4, "the marker was already written");
+  });
+
+  it("holds in the same tick when the rejection reaches the bound", () => {
+    const result = outcomes({
+      tasks: [card({ meta: { review_rejects: "3" } }), reviewCard()],
+      verdicts: { "T-2": reject },
+      config: { ...CONFIG, reworkMaxRounds: 4 },
+    });
+    assert.deepEqual(types(result), ["reject_task", "hold_card"], "the card is parked before poll can claim it");
+    const hold = result.actions[1];
+    assert.equal(hold.code, "rework_cap");
+    assert.equal(hold.round, 2, "the round after leaving in_review");
+    assert.equal(hold.marker.loop_hold_round, "2");
+    assert.equal(hold.marker.loop_hold_retry_base, "4", "the count the hold parks at");
+    assert.equal(hold.close_review, false, "the reject already closed the review card");
+  });
+
   it("does not hold a reject whose marker names another round", () => {
     const result = outcomes({
       tasks: [card({ meta: { rework_round: "3" } }), reviewCard()],
@@ -1589,8 +1621,22 @@ describe("loop breakers", () => {
   const tick = (tasks, config = {}) =>
     planWorkflowTick({ tasks, verdicts: {}, reportsByRef: {}, config: { ...CONFIG, ...config } });
 
-  it("parks a card at the rework bound instead of dispatching another review", () => {
-    const result = tick([card({ status: "in_review", delivery_round: 4 })]);
+  it("does not park an undelivered round on the old round count", () => {
+    // TP-0129 r4: a fourth delivery round was held before its review ran.
+    const result = tick([
+      card({ status: "in_review", delivery_round: 4, meta: { review_rejects: "0" } }),
+    ]);
+    assert.deepEqual(types(result), ["create_review"], "the delivery is reviewed, not parked");
+  });
+
+  it("parks a todo card after the fourth review rejection", () => {
+    const result = tick([
+      card({
+        status: "todo",
+        delivery_round: 5,
+        meta: { review_rejects: "4", loop_hold_retry_base: "0" },
+      }),
+    ]);
     assert.equal(result.actions[0].type, "hold_card");
     const hold = result.actions[0];
     assert.equal(hold.original_ref, "T-1");
@@ -1598,32 +1644,36 @@ describe("loop breakers", () => {
     assert.equal(hold.e_code, "E2");
     assert.equal(hold.blocked_reason, "decision");
     assert.equal(hold.held, false);
-    assert.equal(hold.marker.loop_hold_round, "4");
+    assert.equal(hold.marker.loop_hold_round, "5");
+    assert.equal(hold.marker.loop_hold_retry_base, "4", "the count the hold parks at");
     assert.match(hold.question, /more times than the loop allows/);
-    assert.equal(
-      result.actions.some((action) => action.type === "create_review"),
-      false,
-      "a parked card is not dispatched for another review",
-    );
   });
 
-  it("does not park below the bound, and parks again after a fresh epoch", () => {
-    const below = tick([card({ status: "in_review", delivery_round: 3 })]);
-    assert.deepEqual(below.actions.map((action) => action.type), ["create_review"]);
+  it("lets the delivered round be reviewed before the hold", () => {
+    const result = tick([
+      card({ status: "in_review", delivery_round: 5, meta: { review_rejects: "4" } }),
+    ]);
+    assert.deepEqual(types(result), ["create_review"]);
+  });
 
-    // A human moved the card back at round 4: rounds 5–7 are inside the epoch.
-    const epoch = card({ status: "in_review", delivery_round: 6, meta: { loop_hold_round: "4" } });
-    assert.equal(tick([epoch]).actions.some((action) => action.type === "hold_card"), false);
-
-    const next = card({ status: "in_review", delivery_round: 8, meta: { loop_hold_round: "4" } });
-    assert.equal(tick([next]).actions[0].type, "hold_card");
+  it("does not count a landing conflict or an acceptance refusal as a rejection", () => {
+    // Rounds 5..7 came from landing conflicts; no review rejected the work.
+    const result = tick([
+      card({ status: "in_review", delivery_round: 7, meta: { review_rejects: "0" } }),
+    ]);
+    assert.equal(result.actions.some((action) => action.type === "hold_card"), false);
   });
 
   it("re-emits an interrupted hold as a retry of the move only", () => {
     const interrupted = card({
-      status: "in_review",
-      delivery_round: 4,
-      meta: { loop_hold_round: "4", loop_hold_code: "rework_cap" },
+      status: "todo",
+      delivery_round: 5,
+      meta: {
+        review_rejects: "4",
+        loop_hold_code: "rework_cap",
+        loop_hold_round: "5",
+        loop_hold_retry_base: "0",
+      },
     });
     const [hold] = tick([interrupted]).actions;
     assert.equal(hold.type, "hold_card");
@@ -1632,7 +1682,7 @@ describe("loop breakers", () => {
 
   it("holds nothing when the board read is truncated", () => {
     const result = planWorkflowTick({
-      tasks: [card({ status: "in_review", delivery_round: 9 })],
+      tasks: [card({ status: "todo", delivery_round: 9, meta: { review_rejects: "9" } })],
       verdicts: {},
       reportsByRef: {},
       config: CONFIG,
@@ -1643,31 +1693,17 @@ describe("loop breakers", () => {
 
   it("closes the open review it stops dispatching", () => {
     const review = reviewCard();
-    const result = tick([card({ status: "in_review", delivery_round: 4 }), review]);
+    const result = tick([
+      card({
+        status: "todo",
+        delivery_round: 5,
+        meta: { review_rejects: "4", loop_hold_retry_base: "0" },
+      }),
+      review,
+    ]);
     const hold = result.actions.find((action) => action.type === "hold_card");
     assert.equal(hold.review_ref, "T-2");
     assert.equal(hold.close_review, true);
-  });
-
-  it("lets the hold win over an approval planned in the same tick", () => {
-    // At the bound the planner emits `hold_card`; the same pass must not also
-    // approve and land the card, which would un-park it in the same tick.
-    const result = planWorkflowTick({
-      tasks: [
-        card({ status: "in_review", delivery_round: 4 }),
-        reviewCard({
-          delivery_round: 4,
-          meta: { review_of: "T-1", flow: "B", review_round: 4 },
-        }),
-      ],
-      verdicts: {
-        "T-2": { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT },
-      },
-      reportsByRef: {},
-      config: CONFIG,
-      now: NOW,
-    });
-    assert.deepEqual(types(result), ["hold_card"], "the cap parks the card; nothing lands it");
   });
 });
 
@@ -1675,22 +1711,25 @@ describe("loop breakers — a human release wins", () => {
   const tick = (tasks) =>
     planWorkflowTick({ tasks, verdicts: {}, reportsByRef: {}, config: CONFIG, now: "2026-10-19T10:00:00.000Z" });
 
-  it("does not undo a human move that follows the hold", () => {
+  it("starts a fresh epoch from the reject count at the release", () => {
     const released = card({
       status: "todo",
-      delivery_round: 4,
+      delivery_round: 5,
       status_changed_at: "2026-10-19T09:59:00.000Z",
       meta: {
+        review_rejects: "4",
         loop_hold_code: "rework_cap",
-        loop_hold_round: "4",
+        loop_hold_round: "5",
+        // The count the card was parked at; the release starts a new epoch here.
+        loop_hold_retry_base: "4",
         loop_hold_at: "2026-10-19T09:30:00.000Z",
       },
     });
-    const result = tick([released]);
-    assert.deepEqual(
-      result.actions,
-      [],
-      "a marker older than the human's move is spent: the card is free to run again",
-    );
+    assert.deepEqual(tick([released]).actions, [], "the human's move starts a fresh epoch");
+
+    // Four more rejections are allowed before the next hold.
+    assert.deepEqual(tick([card({ ...released, meta: { ...released.meta, review_rejects: "7" } })]).actions, []);
+    const next = tick([card({ ...released, meta: { ...released.meta, review_rejects: "8" } })]);
+    assert.equal(next.actions[0].type, "hold_card");
   });
 });
