@@ -16,10 +16,12 @@ export const TOOL_LANES = Object.freeze(["director", "reviewer", "worker"]);
 /**
  * One entry per lane and actor kind.
  *
- * A card session owns its whole card, so no lane carries a subagent tool. The
- * reviewer runs the project's gate itself (hence the command entries) and never
- * edits; the worker edits its own tree; the director only reads and drives the
- * board. The Claude strings use the CLI's scoped `Bash(...)` form.
+ * The reviewer may spawn one fresh-context review subagent (ADR 0019) when its
+ * session shares the delivery's context; every other lane owns its whole card
+ * and carries no subagent tool. The reviewer runs the project's gate itself
+ * (hence the command entries) and never edits; the worker edits its own tree;
+ * the director only reads and drives the board. The Claude strings use the CLI's
+ * scoped `Bash(...)` form.
  */
 export const LANE_TOOLS = Object.freeze({
   director: Object.freeze({
@@ -28,7 +30,7 @@ export const LANE_TOOLS = Object.freeze({
   }),
   reviewer: Object.freeze({
     claude:
-      "Read,Grep,Glob,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)",
+      "Read,Grep,Glob,Agent,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)",
     pi: "read,bash",
   }),
   worker: Object.freeze({

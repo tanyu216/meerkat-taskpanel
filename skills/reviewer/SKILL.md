@@ -25,6 +25,8 @@ file's universal floor plus the matching `audit-*.md` scenario file; the snapsho
 ## Audit rules
 
 - **Scope.** Any delivered card the loop dispatches for review is in scope, whatever its target type. The scenario floors are refinements, not a gate: a type no scenario names, or a mixed type, follows **Default — a target type no floor names**, and the floor is mandatory; the loop routes review cards only.
+- **Independence first.** The verdict comes from a reviewer whose context did not produce the delivery: this session when it is independent, otherwise the fresh-context subagent of Step 0. A self-review that neither delegates nor asks the human is blocking.
+- **Security is a gate for code.** A code-changing delivery's verdict carries the `security-checklist.md` row table; a blank row, an unwalked tier or a missing table is a `REJECT`, whatever the code's quality.
 - **One pass.** The steps own the sequence; the scenario files are an index of refinements, not a second pass, and the must-do items are a floor, not a ceiling.
 - **Snapshot is the report frame.** Every original acceptance item and every review-card generic item gets a status.
 - **Board operations are the `meerkat` board skill's contract;** this file records only what to check.
@@ -34,6 +36,7 @@ file's universal floor plus the matching `audit-*.md` scenario file; the snapsho
 
 ## Steps
 
+0. Establish an independent reviewer.
 1. Confirm the review still stands.
 2. Read the handoff and the sources.
 3. Build the requirement ledger.
@@ -43,6 +46,21 @@ file's universal floor plus the matching `audit-*.md` scenario file; the snapsho
 7. Run the declared gate and the security audit.
 8. Apply the shape refinement.
 9. Write the verdict, run the self-check and deliver.
+
+### 0. Establish an independent reviewer
+**Purpose.** The verdict belongs to a reviewer whose context did not produce the delivery.
+**Watch for.** A review turn that shares the delivery's context — this session wrote the
+commit, the plan, the report or the proof, or the handoff names this session — where an
+approval would be self-review.
+**Essentials.** Decide whether this session authored the delivery. When it did, hand the
+review to one **fresh-context, read-only** subagent through the harness's own mechanism
+(a fresh agent, not a fork, which inherits this context), give it the targetDir, the
+delivered sha, the handoff and this skill's path, and let it read the full protocol and
+return the verdict, the security table and the evidence. Relay that verdict verbatim under
+`independent: delegated`, re-judging nothing; the child is one level, and every board
+write stays in this session. When the harness offers no subagent, ask the human how to
+route an independent review and hold the turn; a self-review approves nothing.
+**Beyond.** Any read-only way to establish who produced the delivery.
 
 ### 1. Confirm the review still stands
 **Purpose.** Decide whether a verdict is still meaningful for this round.
@@ -124,7 +142,7 @@ the delivered surface calls for; an extra security finding can block `APPROVE`. 
 scan — `osv-scanner` by default, secret scan, SAST — on the delivered sha; an arm this lane cannot
 run is recorded as read with its CI job and sha. An unwaived high/critical, committed secret or
 unresolved ASVS row is a `REJECT` unless a human accepts the risk (E4).
-**Must do.** Run the project's declared review gate (`meta.review_gate`) at the delivered sha and record the command, exit code and coverage. **A red gate is a REJECT**, not a note (TS-34). Attribute a failure against the baseline; a pre-existing failure changes ownership, not the verdict. Host-static checks are corroboration, not the declared gate. If the lane has no way to run it, record the CI run for the sha; record only a run you observed; an unobserved run is a gap. Walk every row of `security-checklist.md`; it is a **floor, not a ceiling**. Run the documented arms (dependency audit, default `osv-scanner`; secret scan; SAST), record read-only arms with their CI job and sha, and check waivers and the target ASVS level. `security-checklist.md` is a floor, not a ceiling: add any surface security check the change calls for (threat model, authorization matrix, abuse cases, concurrency/resource, supply chain, data protection).
+**Must do.** Run the project's declared review gate (`meta.review_gate`) at the delivered sha and record the command, exit code and coverage. **A red gate is a REJECT**, not a note (TS-34). Attribute a failure against the baseline; a pre-existing failure changes ownership, not the verdict. Host-static checks are corroboration, not the declared gate. If the lane has no way to run it, record the CI run for the sha; record only a run you observed; an unobserved run is a gap. Walk every row of `security-checklist.md`; it is a **floor, not a ceiling**. For a code-changing delivery the verdict carries the **row table**: every Tier 1 row, each Tier 2 row the surface touches, Tier 3 at the project's recorded target level (or `n/a — no target level recorded`), and the Tier 4 weakness where relevant — each row a disposition plus an anchor. A blank row, an unwalked tier or a missing table is a `REJECT`; a documentation-only delivery records one `n/a — <reason>` per tier. Run the documented arms (dependency audit, default `osv-scanner`; secret scan; SAST), record read-only arms with their CI job and sha, and check waivers and the target ASVS level. `security-checklist.md` is a floor, not a ceiling: add any surface security check the change calls for (threat model, authorization matrix, abuse cases, concurrency/resource, supply chain, data protection).
 **Beyond.** Any additional security check or read-only method; an extra security finding is classified by impact and can block APPROVE.
 
 ### 8. Apply the shape refinement
@@ -186,7 +204,7 @@ supplies its own equivalents.
 ## Verdict rule, precedence and classification
 
 ### Verdict rule
-APPROVE only when all of these hold: (1) the ledger is complete — every requirement has an acceptance item and an implementation; (2) every snapshot item is `met` or `not_applicable` with a reason, while `partial`/`not_met` fail the snapshot; (3) every `met` has `evidence[n]`, anchors resolve at the delivered sha, and at least one valid `command` anchor exists; (4) there is no blocking finding — from the floor, a scenario refinement or any extra check; an extra finding that proves the delivery incorrect, unsafe, non-conformant or unverifiable blocks APPROVE; (5) the declared review gate is green — a red gate is a REJECT (TS-34), pre-existing or not; (6) security has no unwaived high/critical, no committed secret and no unresolved ASVS row at the target level; the checklist is a floor — an extra security finding can block APPROVE; (7) every prior finding is resolved with evidence or explicitly deferred; (8) every plan deviation is recorded and justified; (9) there is no self-review conflict, extra checks are recorded not hidden, and a real problem outside the list is still surfaced.
+APPROVE only when all of these hold: (1) the ledger is complete — every requirement has an acceptance item and an implementation; (2) every snapshot item is `met` or `not_applicable` with a reason, while `partial`/`not_met` fail the snapshot; (3) every `met` has `evidence[n]`, anchors resolve at the delivered sha, and at least one valid `command` anchor exists; (4) there is no blocking finding — from the floor, a scenario refinement or any extra check; an extra finding that proves the delivery incorrect, unsafe, non-conformant or unverifiable blocks APPROVE; (5) the declared review gate is green — a red gate is a REJECT (TS-34), pre-existing or not; (6) security is complete: for a code-changing delivery the `security-checklist.md` row table is present with every applicable row dispositioned and anchored — a blank row, an unwalked tier or a missing table fails the verdict — and no unwaived high/critical, committed secret or unresolved ASVS row at the target level; the checklist is a floor — an extra security finding can block APPROVE; (7) every prior finding is resolved with evidence or explicitly deferred; (8) every plan deviation is recorded and justified; (9) the verdict is independent — this session when it did not author the delivery, otherwise the Step 0 subagent recorded under `independent: delegated` or a human decision to route another session — extra checks are recorded not hidden, and a real problem outside the list is still surfaced.
 
 Otherwise REJECT. Insufficient evidence, ambiguity or an unreproducible claim is a REJECT; product, scope, acceptance, design, security-risk and architecture questions belong to the ladder.
 
@@ -205,7 +223,7 @@ Otherwise REJECT. Insufficient evidence, ambiguity or an unreproducible claim is
 | ambiguous requirement vs reviewer decision | the decision belongs to the ladder; REJECT and record the finding |
 
 ### Classification
-- **Blocking / must-fix:** any finding that proves the delivery incorrect, unsafe, non-conformant or unverifiable, whether or not the floor names it; an extra security finding; a failed snapshot item; an uncovered requirement; a missing/invalid handoff; a fabricated anchor; a dropped prior finding; a red gate; an unwaived high/critical or committed secret; an unresolved target ASVS row; an unrecorded plan deviation; self-review; a missing acceptance item.
+- **Blocking / must-fix:** any finding that proves the delivery incorrect, unsafe, non-conformant or unverifiable, whether or not the floor names it; an extra security finding; a failed snapshot item; an uncovered requirement; a missing/invalid handoff; a fabricated anchor; a dropped prior finding; a red gate; an unwaived high/critical or committed secret; an unresolved target ASVS row; an unrecorded plan deviation; a self-review verdict with neither the Step 0 delegation nor a human decision; an incomplete or absent security checklist table on a code-changing delivery; a missing acceptance item.
 - **Observation:** a real but non-blocking improvement or defect outside the card's scope, with an owner; a subjective design preference; an unrelated pre-existing defect that does not red the gate. A real blocking problem stays blocking.
 - **Leftover:** outside the frozen acceptance, with an owner and follow-up. A missing acceptance item is a REJECT.
 - **`n/a — <reason>`:** genuinely not applicable; a reason, not a finding.
@@ -227,4 +245,6 @@ the lane. A dispatched review card is already claimed — heartbeat it; you clai
 interactively from `issue candidates`, like any todo card. Leave both cards' status to the loop; the
 loop applies the verdict. Stay on the target card's worktree/branch; the primary checkout, another
 worktree and the shared tree stay untouched. Stay in the review turn — insufficient evidence is a
-`REJECT`. Product, scope, acceptance, design, security and architecture decisions belong to the ladder; `REJECT` and record it. Any read-only method is in scope.
+`REJECT`. The independence gate sits above the steps: a session that authored the delivery hands the
+review to one fresh-context subagent and relays its verdict; where the harness offers none, ask the
+human how to route an independent review. Product, scope, acceptance, design, security and architecture decisions belong to the ladder; `REJECT` and record it. Any read-only method is in scope.

@@ -2277,7 +2277,9 @@ persistent protocol.
 | Pi | one `pi --mode rpc` process per session | `--session-id <id>` |
 
 A **card session is a top-level session**: the identity column is what the pool stores and
-resumes for it. No adapter spawns a subagent, so no adapter needs a subagent handle.
+resumes for it. The reviewer lane may spawn one fresh-context review subagent when its
+session shares the delivery's context (ADR 0019); the child is one-shot and never resumed.
+Worker and director lanes spawn nothing.
 
 Claude, Codex and Pi are verified against the real CLIs (Codex's app-server
 schema is pinned by `codex app-server generate-json-schema`);
@@ -2288,9 +2290,11 @@ design — an adapter implements `openSession({cwd, sessionId, role}) →
 {send, interrupt, close}` in `src/orchestrator/actor-kinds/`, and the pool manager never
 names a CLI.
 
-Pi needs no subagent extension: the session pool runs every card — worker or review — as its
-own top-level `pi --mode rpc` session, so nothing is spawned from inside a session. A Pi host
-needs only the CLI, a selected provider and model, and the role skills.
+Pi needs no subagent extension for the loop itself: the session pool runs every card — worker
+or review — as its own top-level `pi --mode rpc` session. The reviewer's one review child
+(ADR 0019) is the one place that needs `pi-subagents`; where the extension is absent the
+reviewer skill asks the human how to route an independent review. A Pi host needs only the
+CLI, a selected provider and model, and the role skills for the ordinary loop.
 
 Installers also install the **director skill** at `<agent-dir>/skills/meerkat-director/`, the
 **chat console** at `<agent-dir>/skills/meerkat-chat/` and the five **role skills** beside

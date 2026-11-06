@@ -78,7 +78,7 @@ describe("native agent definitions", () => {
     const text = readFileSync(join(f.home, ".claude", "agents", "reviewer.md"), "utf8");
     assert.match(
       text,
-      /tools: Read,Grep,Glob,Bash\(taskctl \*\),Bash\(git \*\),Bash\(npm run \*\),Bash\(node \*\),Bash\(bash \*\)/,
+      /tools: Read,Grep,Glob,Agent,Bash\(taskctl \*\),Bash\(git \*\),Bash\(npm run \*\),Bash\(node \*\),Bash\(bash \*\)/,
     );
     assert.doesNotMatch(text, /tools:.*Write/);
   });

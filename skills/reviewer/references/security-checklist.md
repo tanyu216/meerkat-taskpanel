@@ -6,6 +6,10 @@ Tier 1 is answered on every code-changing card; Tiers 2 and 3 are answered for t
 the card changes. A documentation-only card records one `n/a — <reason>` per tier.
 The scanner supplies evidence; you classify the row.
 
+For a **code-changing change** the checklist is a mandatory part of the verdict: the
+verdict carries the row table, and a blank row, an unwalked tier or a missing table is a
+`REJECT`, whatever the code's quality.
+
 The list is a floor, not a ceiling. A security check this card's surface calls for and no
 row above names is still yours: run it with any available read-only method, and record it the
 same way. An extra security finding can block APPROVE.
@@ -71,6 +75,8 @@ rank in the finding. It is not a second pass.
 `<source: checklist row / standard / advisory id or rule id> · <severity> · <disposition> · <anchor>`
 
 An unwaived high or critical, an unresolved ASVS row at the target level, or a committed
-secret is a REJECT unless a human accepts the risk under E4. A committed secret is rotated
+secret is a REJECT unless a human accepts the risk under E4. On a code-changing change, an
+incomplete row table is the same kind of REJECT: every applicable row carries its
+disposition and its anchor. A committed secret is rotated
 and purged rather than waivered. A `.vue` or Svelte single-file component has no SAST extractor — answer
 C2 and C4 here, by hand, and record the scanner gap as `n/a — no extractor`.

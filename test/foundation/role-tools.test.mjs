@@ -25,7 +25,7 @@ describe("lane tools", () => {
     );
     assert.equal(
       claudeAllowedTools("reviewer"),
-      "Read,Grep,Glob,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)",
+      "Read,Grep,Glob,Agent,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)",
     );
     assert.equal(
       claudeAllowedTools("worker"),
