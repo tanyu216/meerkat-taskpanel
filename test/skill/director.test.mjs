@@ -92,9 +92,9 @@ describe("director skill: SKILL.md", () => {
   });
 
   it("states the decision boundary without restating the scheduler", () => {
-    assert.match(text, /do not do the work/i);
-    assert.match(text, /never claim a card/i);
-    assert.match(text, /move a card to `done`/i);
+    assert.match(text, /stay with the board and the roles/i);
+    assert.match(text, /Claims, execution and closure belong to the roles, the board and the human/i);
+    assert.match(text, /the decision and the release/i);
     assert.doesNotMatch(
       text,
       /deterministic passes|patrol|workflow|poll|queue|row|attempt|retry|session|prompt/i,
@@ -149,7 +149,7 @@ describe("director skill: references", () => {
     const route = ref("route.md");
     assert.match(route, /one accountable role/i);
     assert.match(route, /Worker/);
-    assert.match(route, /never invent a role name/i);
+    assert.match(route, /role catalog/i);
   });
 
   it("puts the triage markers and the E1 check in triage.md", () => {
@@ -183,9 +183,22 @@ describe("director skill: references", () => {
     assert.match(policy, /keeps its default/i, "unmentioned items keep the default");
     assert.match(policy, /`human` or `director`/, "a project entry names its decider");
     assert.match(policy, /unreadable[\s\S]*apply the default/i, "an unusable file falls back");
-    assert.match(policy, /cannot add a code/i, "the E-code vocabulary is fixed");
+    assert.match(policy, /code set itself\s+stays fixed/i, "the E-code vocabulary is fixed");
     assert.match(policy, /ladder[\s\S]{0,120}fixed/i, "the ladder cannot be overridden");
     assert.match(policy, /Record which source decided/i, "the deciding source is recorded");
+  });
+
+  it("states every boundary as a positive action", () => {
+    const files = [
+      ["SKILL.md", readFileSync(join(DIRECTOR_SKILL, "SKILL.md"), "utf8")],
+      ...readdirSync(refsDir)
+        .filter((name) => name.endsWith(".md"))
+        .map((name) => [name, ref(name)]),
+    ];
+    const negative = /\b(?:do not|don't|never|must not|cannot|can't)\b/i;
+    for (const [name, body] of files) {
+      assert.doesNotMatch(body, negative, `${name}: state the positive action`);
+    }
   });
 
   it("puts the round protocol in rounds.md", () => {

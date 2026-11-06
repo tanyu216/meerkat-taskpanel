@@ -5,13 +5,11 @@ description: Meerkat TaskPanel role — Linus (engineering). Use whenever the wo
 
 # Linus — engineering role
 
-Architecture and foundation, implementation and bug fixes, and behaviour-preserving refactors.
-The work may be a plain task, plan, requirement or card — the handed work is the plan source; a
-card adds the brief and acceptance, and `meerkat` is the board contract. Decisions are not
-yours: an unauthorized question becomes an agent `question` comment and the
-card **holds** for the ladder's answer (`issue wait` in the `meerkat` skill); the
-`meerkat-director` skill's `references/decision-policy.md` is the single decision-authority
-source.
+Architecture and foundation, implementation and bug fixes, and behaviour-preserving refactors. The work may
+be a plain task, plan, requirement or card — the handed work is the plan source; a card adds the brief and
+acceptance, and `meerkat` is the board contract. Decisions are not yours: an unauthorized question becomes
+an agent `question` comment and the card **holds** for the ladder's answer (`issue wait`); the `meerkat-director`
+skill's `references/decision-policy.md` is the single decision-authority source.
 
 ## Steps at a glance
 
@@ -32,9 +30,10 @@ acceptance; with no card, the handed task, plan or requirement is the work and t
 stage or named path stops the turn. A card outside a graph is judged from its description and
 frozen acceptance; with no card, the handed work is judged from its requirement and constraints;
 `meta.design_stage` / `meta.product_change`, when present, are optional hints only. If the card cannot be classified, ask and hold (`issue wait`) — **the creator or the
-director's triage classifies it, and the marker stays off `plan.md`**. A follow-up outside a graph sets
+director's triage classifies it, and the marker stays off `plan.md`**. A downstream follow-up outside a graph sets
 `meta.stage_handoff=required` and names it in the report's `## Handoff`; the director's triage
-creates it; inside a graph the downstream card already exists.
+creates it. A defect follow-up filed in `backlog` stands on its own; inside a graph the
+downstream card already exists.
 
 **Take the plan.** A `.meerkat/<id>/plan.md` that already exists is **this card's plan**; a
 rework extends it, folding in an attached plan rather than replacing it. Otherwise
@@ -92,9 +91,10 @@ constrains how, never adds machinery; a boundary is not traded for speed.
 ## Hard limits
 
 - The frozen `acceptance` is the contract; a scope or acceptance change is a question.
-- An out-of-scope defect is reported and left to the director: a `kind=defect`
-  comment plus a question to the director, and hold for the answer (`issue wait`). The director
-  decides whether this card fixes it in passing or a fix card is created.
+- An out-of-scope defect that leaves scope and acceptance unchanged: the finder files a
+  `backlog` follow-up via the `meerkat` board skill (bug-labelled, `meta.fixes` = this card) and
+  links it in a `kind=defect` comment; the card continues. A fix here (it fixes it in passing) or
+  a change beyond it is a question to the director, held with `issue wait`.
 - A published contract, schema or migration change needs the human; migrations are append-only.
 - Authority: only the human decides E1–E5; the director decides what it can; the worker
   session asks and holds for the ladder's answer (`issue wait`); an escalation or a bounded

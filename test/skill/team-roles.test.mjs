@@ -65,17 +65,40 @@ describe("team roles: the cross-file seams", () => {
     }
   });
 
+  it("separates the downstream handoff from a filed defect follow-up", () => {
+    const workerCheck = read("skills/worker/references/self-check.md");
+    assert.match(workerCheck, /backlog/i);
+    assert.match(workerCheck, /`kind=defect`/);
+    assert.match(workerCheck, /meta\.fixes/i);
+    const linus = read("skills/linus/SKILL.md");
+    assert.match(linus, /downstream follow-up/i);
+    assert.match(linus, /defect follow-up/i);
+    const meerkat = read("skills/meerkat/SKILL.md");
+    assert.match(meerkat, /defect follow-up[\s\S]{0,140}stands on its own/i);
+    const implementation = read("skills/linus/references/implementation-workflow.md");
+    assert.match(implementation, /downstream follow-up/i);
+    assert.match(implementation, /defect follow-up/i);
+    for (const role of ["linus", "turing"]) {
+      const check = read(`skills/${role}/references/self-check.md`);
+      assert.match(check, /defect is filed\s+by its finder in `backlog`/i);
+    }
+  });
+
   it("treats a missing plan.md as a fallback, not a REJECT", () => {
     assert.match(read("skills/reviewer/SKILL.md"), /missing `plan\.md` is not\s+itself a `REJECT`/i);
     assert.match(read("skills/reviewer/SKILL.md"), /falls back/i);
   });
 
-  it("routes an out-of-scope defect to the director instead of fixing it unasked", () => {
+  it("files a non-blocking out-of-scope defect and asks the director for the exception", () => {
     for (const role of ["jobs", "linus", "turing", "worker"]) {
       for (const rel of [`skills/${role}/SKILL.md`, `skills/${role}/role.json`]) {
         const text = read(rel);
         assert.match(text, /`kind=defect`/, `${rel}: names the defect comment kind`);
-        assert.match(text, /question to the\s+director/i, `${rel}: asks the director`);
+        assert.match(text, /backlog/i, `${rel}: the default follow-up is a backlog card`);
+        assert.match(text, /meta\.fixes/i, `${rel}: the follow-up references the source card`);
+        assert.match(text, /bug[- ]label|bug-labelled/i, `${rel}: the follow-up is bug-labelled`);
+        assert.match(text, /card continues/i, `${rel}: the finder continues without a hold`);
+        assert.match(text, /question to the\s+director/i, `${rel}: the exception asks the director`);
         assert.match(
           text,
           /fixes\s+it in passing/i,
@@ -83,8 +106,8 @@ describe("team roles: the cross-file seams", () => {
         );
         assert.doesNotMatch(
           text,
-          /director creates the fix card|do not widen this card to fix it/i,
-          `${rel}: no blanket fix-card rule`,
+          /reported and left to the director|director creates the fix card|do not widen this card to fix it/i,
+          `${rel}: no blanket director round and no blanket fix-card rule`,
         );
       }
     }
@@ -92,11 +115,23 @@ describe("team roles: the cross-file seams", () => {
     const policy = read("skills/meerkat-director/references/decision-policy.md");
     assert.match(policy, /out-of-scope defect's\s+disposition/i);
     assert.match(policy, /acceptance unchanged/i);
+    assert.match(policy, /backlog/i);
+    assert.match(policy, /meta\.fixes/i);
+    assert.match(policy, /finder/i);
+    assert.match(policy, /downstream card/i);
 
     assert.match(
       read("skills/reviewer/SKILL.md"),
       /surface a real problem even outside the list/i,
       "the read-only reviewer surfaces, never suppresses, an out-of-scope defect",
     );
+    const audit = read("skills/reviewer/references/audit-development.md");
+    assert.match(audit, /downstream follow-up/i);
+    assert.match(audit, /defect follow-up[\s\S]{0,160}identifier/i);
+    const product = read("skills/reviewer/references/audit-product.md");
+    assert.match(product, /defect follow-up[\s\S]{0,160}identifier/i);
+    const reviewer = read("skills/reviewer/SKILL.md");
+    assert.match(reviewer, /entry is resolved by a recorded decision/i);
+    assert.match(reviewer, /acceptance pass or the director's triage/i);
   });
 });

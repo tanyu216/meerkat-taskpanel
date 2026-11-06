@@ -128,7 +128,7 @@ into a deferral.
 with a recorded decision; a silent drop is a `REJECT`. A leftover lies only
 `outside the frozen acceptance` and names its owner and follow-up; a missing acceptance item
 is a `REJECT`.
-**Must do.** Every prior finding is resolved with evidence or explicitly deferred with a recorded decision. A silent drop is a REJECT. A leftover lies only outside the frozen acceptance and names its owner and follow-up; a missing acceptance item is a REJECT.
+**Must do.** Every prior finding is resolved with evidence or explicitly deferred with a recorded decision. A silent drop is a REJECT. A leftover lies only outside the frozen acceptance and names its owner and follow-up; a decision/defect/change entry is resolved by a recorded decision, a linked filed follow-up card, or the director's disposition; a missing acceptance item is a REJECT.
 **Beyond.** Reproduce the original defect, check related regressions and whether the root cause is still present.
 
 ### 7. Run the declared gate and the security audit
@@ -224,7 +224,7 @@ Otherwise REJECT. Insufficient evidence, ambiguity or an unreproducible claim is
 
 ### Classification
 - **Blocking / must-fix:** any finding that proves the delivery incorrect, unsafe, non-conformant or unverifiable, whether or not the floor names it; an extra security finding; a failed snapshot item; an uncovered requirement; a missing/invalid handoff; a fabricated anchor; a dropped prior finding; a red gate; an unwaived high/critical or committed secret; an unresolved target ASVS row; an unrecorded plan deviation; a self-review verdict with neither the Step 0 delegation nor a human decision; an incomplete or absent security checklist table on a code-changing delivery; a missing acceptance item.
-- **Observation:** a real but non-blocking improvement or defect outside the card's scope, with an owner; a subjective design preference; an unrelated pre-existing defect that does not red the gate. A real blocking problem stays blocking.
+- **Observation:** a real but non-blocking improvement or defect outside the card's scope, with an owner; a subjective design preference; an unrelated pre-existing defect that does not red the gate. A real blocking problem stays blocking. Filing the follow-up card belongs to the acceptance pass or the director's triage.
 - **Leftover:** outside the frozen acceptance, with an owner and follow-up. A missing acceptance item is a REJECT.
 - **`n/a — <reason>`:** genuinely not applicable; a reason, not a finding.
 - **`not_met`:** applicable but unproven or failed; blocking.

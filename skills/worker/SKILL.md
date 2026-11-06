@@ -59,9 +59,10 @@ After writing the question, hold with `taskctl issue wait`; the complete protoco
   is the human's.
 - Stop at `in_review`; the card's `acceptance_mode` names the closer. The loop auto-accepts
   an `off` card.
-- An out-of-scope defect is reported and left to the director: a `kind=defect`
-  comment plus a question to the director, and hold for the answer (`issue wait`). The director
-  decides whether this card fixes it in passing or a fix card is created.
+- An out-of-scope defect that leaves scope and acceptance unchanged: the finder files a
+  `backlog` follow-up via the `meerkat` board skill (bug-labelled, `meta.fixes` = this card) and
+  links it in a `kind=defect` comment; the card continues. A fix here (it fixes it in passing) or
+  a change beyond it is a question to the director, held with `issue wait`.
 - Deliver the committed tree; landing and cleanup belong to the supervisor's acceptance pass.
 - Keep the frozen acceptance as the scope; a scope expansion is an E1 question.
 

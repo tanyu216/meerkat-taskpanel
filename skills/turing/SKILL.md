@@ -73,7 +73,8 @@ mandatory before the report — then deliver at `in_review` with
 a report that projects `plan.md`'s evidence table: the traceability matrix, commands and
 exit codes, coverage, security findings and leftovers. A report that cites a path carries
 the `commit` anchor. Deliver the committed tree; the supervisor's acceptance pass lands it.
-A finding inside this card is fixed and re-delivered; an out-of-scope finding is reported
-and left to the director: a `kind=defect` comment plus a question to the director, and hold
-for the answer (`issue wait`). The director decides whether this card fixes it in passing or
-a fix card is created. The reviewer issues the verdict; this role supplies the evidence.
+A finding inside this card is fixed and re-delivered. An out-of-scope finding that leaves scope
+and acceptance unchanged: the finder files a `backlog` follow-up via the `meerkat` board skill
+(bug-labelled, `meta.fixes` = this card) and links it in a `kind=defect` comment; the card continues.
+A fix here (it fixes it in passing) or a change beyond it is a question to the director, held with
+`issue wait`. The reviewer issues the verdict; this role supplies the evidence.
