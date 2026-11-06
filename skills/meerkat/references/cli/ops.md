@@ -26,8 +26,8 @@ board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `session`); the
 | `loop poll` | Scan, admit, claim and enqueue ready cards; writes the queue. |
 | `loop tick [--passes <list>]` | Run `patrol,workflow,poll` (or `--passes` order) in one command — the cron/unit entry. |
 | `loop console` | One read-only question / frontier cycle. |
-| `loop doctor` | One read-only daily-inspection report: supervisor verdict, the resolved scan set, the patrol's last-successful-run marker, the log tail, queue and ledger depth, the cards whose heartbeat is stale or unreadable, the stale claims whose handoff rows are all terminal or absent (`undispatched_claims` — nothing can re-dispatch them; only a human release frees the card), the `in_review` cards waiting on a human (age only — review aging stays the workflow pass's judgement), and the cards carrying an acceptance marker for their current round while still `in_review` (`blocked_acceptance` — the board refused the close), and the `done` cards whose lane branch is not in the project's current branch (`unlanded`), and the cards that keep going round the same loop (`looping`: rework rounds, review reopens, dispatch retries, subagent failures — read-only facts, with the loop's own queue/ledger windows). Writes nothing and exits 0 whenever it produced a report — read `attention` from `--json`. |
-| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict, the agent platform (`--actor-kind`), the discovered role platforms and the scan set it resolved; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
+| `loop doctor` | One read-only inspection: supervisor verdict, scan set, patrol marker, log tail, queue/ledger depth, stale heartbeats, stale claims nothing can re-dispatch (`undispatched_claims`; only a human release frees the card), `in_review` cards waiting on a human (age only; review aging is the workflow pass's), cards carrying a current-round acceptance marker while `in_review` (`blocked_acceptance` — the board refused the close), `done` cards whose lane branch is not in the project's branch (`unlanded`), and cards going round the same loop (`looping`: rework rounds, review reopens, dispatch retries, subagent failures, landing conflicts). Writes nothing; exits 0 whenever it produced a report — read `attention` from `--json`. |
+| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict (`unresponsive`, `wedged`), pool tick age, boot ledger (`lastCrash`, failed-start streak, recent starts), agent platform (`--actor-kind`), role platforms and the scan set; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
 | `loop run [--ping-once] [--continue-once]` | The two clocks as a daemon; either `--*-once` runs one pass and exits. |
 | `loop subscribe` | The event subscriber daemon; it requests an early tick. |
 | `loop session` | The resident session pool daemon. |
@@ -37,14 +37,17 @@ board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `session`); the
 verbs a human runs while the daemons are up. Every verb writes its **own** output: `loop status --json` is the
 loop's JSON, not the `{ok:true,data}` envelope, and none of them adds `token_source`.
 `loop status --json` carries `platform` (`claude|codex|pi`) and `agents` (the resolved scan
-set); the human output prints the same two facts as `platform:` and `scan set:` lines. They
-are output fields, not new flags.
+set); the human output prints the same two facts as `platform:` and `scan set:` lines. It
+also carries `pool.tickAgeMs` (the in-flight tick's age, `null` when idle) and `health` — the
+`supervisor.health.json` projection `{startedAt, pid, version, lastCrash, starts, bootFailures}`,
+`null` before any entry ran; the human output prints `tick:` and `health:`. Output fields, not
+new flags.
 
 
-The retired single-purpose flags are gone: `--once` (bare poll), `--poll-interval`,
-`--ping-only`, `--continue-only`, `--patrol-only`, `--subscribe` and `--session` are the
-verbs (`loop poll`, `loop run --ping-once`, `loop subscribe`, `loop session`). `--state` is
-still accepted; `--state-dir` is the documented spelling.
+The retired single-purpose flags are gone: `--once`, `--poll-interval`, `--ping-only`,
+`--continue-only`, `--patrol-only`, `--subscribe`, `--session` are now the verbs (`loop poll`,
+`loop run --ping-once`, `loop subscribe`, `loop session`). `--state` is still accepted;
+`--state-dir` is the documented spelling.
 
 ## reconcile --workflow — the board's workflow plan
 
@@ -54,31 +57,28 @@ taskctl issue reconcile --workflow --assignee jobs \
 ```
 
 `--json` returns `{dry_run, scanned, actions, workflow}`, where `workflow` is
-`{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the snapshot; a
-truncated snapshot still applies outcomes but dispatches nothing. `--rework-max-rounds`
-bounds the delivery rounds since the last hold before the plan emits a `hold_card` (the card
-is parked as `blocked` with a question; the loop's configured liveness bounds apply).
-The actions are decisions the loop executes, not effects; what each one means, and the
-fail-safe rules behind them, are in
+`{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the snapshot (a
+truncated one applies outcomes but dispatches nothing). `--rework-max-rounds` bounds the rounds
+since the last hold before a `hold_card` (parked as `blocked` with a question; the loop's
+liveness bounds apply). The actions are decisions, not effects; what each means, and the
+fail-safe rules, are in
 [`lifecycle/workflow.md` §11](../lifecycle/workflow.md#11-the-boards-workflow-decisions).
 
 ### `role`
 
 The **local role catalog** — a host-local projection of the roles the supervisor discovered
-(`<config root>/roles.json`), never board state. Both verbs are local: no board, no token, no
+(`<config root>/roles.json`), never board state. Both verbs are local: no board, token or
 `--actor-kind`.
 
 | Command | What it does |
 |---|---|
-| `role list [--json]` | Print `data.roles[].agent`, `id`, `title`, `lanes` and `installed_on`. This is the valid `--assignee` range for `issue create`/`issue assign`. An absent or malformed file reads as no roles (with a warning), never as a partial range. |
-| `role sync --file <path\|->` | **Supervisor-only.** Replace the catalog with a discovered set (stdin with `-`). Identical content is a no-op; a removed role disappears. |
+| `role list [--json]` | Print `data.roles[]` (`agent`, `id`, `title`, `lanes`, `installed_on`) — the valid `--assignee` range for `issue create`/`issue assign`. JSON is the routing projection only (`docs/roles.md`); the prose stays in `skills/<id>/role.json`. An absent or malformed file reads as no roles (warned), never partial. |
+| `role sync --file <path\|->` | **Supervisor-only.** Replace the catalog with a discovered set (stdin `-`). Identical content is a no-op; a legacy file is not rewritten while unchanged. A removed role disappears. |
 
-A card's assignee is checked against this catalog when it is non-empty (`ASSIGNEE_NOT_IN_CATALOG`,
-exit 1). The check is a **CLI guard**, not a board invariant: a direct HTTP write bypasses it.
-The writer identity (`Board`) is never exempt — the guard looks at the
-assignee. A review card is stricter still: its assignee must name a **reviewer-lane** role
-(`ASSIGNEE_NOT_REVIEWER`), so the loop creates it with the catalog's `default_reviewer` and
-never needs `--force-create`.
+A non-empty catalog checks a card's assignee (`ASSIGNEE_NOT_IN_CATALOG`, exit 1) — a **CLI
+guard**, not a board invariant: an HTTP write bypasses it; the writer (`Board`) is never
+exempt. A review card must name a **reviewer-lane** role (`ASSIGNEE_NOT_REVIEWER`); the
+loop creates it with the catalog's `default_reviewer`, never `--force-create`.
 
 ### `worktree`
 

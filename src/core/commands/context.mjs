@@ -99,6 +99,6 @@ export function actorOf(actor, options = {}) {
  * The kind is the board's own (`system`); the id is the one automation identity,
  * `Board`. A reader still learns that no person and no agent wrote this from the
  * kind, and the id says *which* automation author — one, not the two (`system`,
- * `Orchestrator`) the board used to show (ADR 0017).
+ * `Orchestrator`) the board used to show (ADR 0018).
  */
 export const BOARD_ACTOR = Object.freeze({ kind: SYSTEM_KIND, id: BOARD_ACTOR_ID });

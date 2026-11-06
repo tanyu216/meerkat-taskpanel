@@ -11,6 +11,13 @@
  *      into codes (a `UNIQUE` on `task_relations.target_task_id` is a
  *      `SINGLE_PARENT_VIOLATION`, not a generic "constraint failed").
  *
+ * Two availability families sit beside them: lock contention (`SQLITE_BUSY` /
+ * `SQLITE_LOCKED` → `DB_BUSY`) and an unusable file (`SQLITE_FULL` /
+ * `SQLITE_IOERR` / `SQLITE_CANTOPEN` → `DB_UNAVAILABLE`). Both are 503-class
+ * service faults; before this, the second fell through to a 400
+ * `VALIDATION_FAILED`, telling the caller its input was wrong when the board
+ * could not work.
+ *
  * Everything is re-messaged through `redactText` so a token can never ride out
  * on a SQL error string.
  *
@@ -35,6 +42,12 @@ export const SQLITE_ERRCODE = Object.freeze({
   // way. Both are contention, never a caller error (R2).
   BUSY: 5,
   LOCKED: 6,
+  // The engine cannot use its file at all. These are **primary** codes; the
+  // extended result code keeps the primary in its low byte, so the map below
+  // tests `errcode & 0xff`. A service fault (503), never a caller error.
+  IOERR: 10,
+  FULL: 13,
+  CANTOPEN: 14,
   CHECK: 275,
   FOREIGNKEY: 787,
   NOTNULL: 1299,
@@ -45,6 +58,17 @@ export const SQLITE_ERRCODE = Object.freeze({
 
 /** The two lock-contention codes, as a set the retry loop can ask about. */
 export const SQLITE_BUSY_ERRCODES = new Set([SQLITE_ERRCODE.BUSY, SQLITE_ERRCODE.LOCKED]);
+
+/**
+ * The primary codes that mean "the database cannot be used": an I/O failure, a
+ * full disk, or a file that cannot be opened. Matched against `errcode & 0xff`
+ * so every extended variant (`SQLITE_IOERR_READ`, `SQLITE_FULL`, …) is covered.
+ */
+export const SQLITE_UNAVAILABLE_PRIMARY_CODES = new Set([
+  SQLITE_ERRCODE.IOERR,
+  SQLITE_ERRCODE.FULL,
+  SQLITE_ERRCODE.CANTOPEN,
+]);
 
 /** Codes a trigger is allowed to raise (mirrors `DB_RAISE_CODES`). */
 export const RAISED_CODES = new Set(DB_RAISE_CODES);
@@ -192,6 +216,19 @@ export function mapSqliteError(err, context = {}) {
     // with a `Retry-After`, never the 500 a `VALIDATION_FAILED` used to be.
     return new DomainError("DB_BUSY", {
       message: "the database is locked by another writer; the write was not applied",
+      details,
+      cause: err,
+    });
+  }
+
+  if (SQLITE_UNAVAILABLE_PRIMARY_CODES.has(errcode & 0xff)) {
+    // The engine cannot use its file: a full disk, an I/O failure, or a file it
+    // cannot open. This used to fall through to `VALIDATION_FAILED` (400), which
+    // told the caller its input was wrong when the board was the one that could
+    // not work. Contention (`DB_BUSY`, checked above) is the *retryable* sibling;
+    // this one is also a 503, but it needs the operator, not a retry clock.
+    return new DomainError("DB_UNAVAILABLE", {
+      message: "the database is unavailable; the write was not applied",
       details,
       cause: err,
     });

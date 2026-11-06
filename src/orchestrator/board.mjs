@@ -22,6 +22,7 @@ import {
   pruneSlaLedger,
 } from "../foundation/sla-patrol.mjs";
 
+import { requestInterrupt } from "./interrupts.mjs";
 import { newestQuestion, questionOpen } from "./questions.mjs";
 import { findWorkspace, mergeWorkspace, runGit } from "./workspace.mjs";
 import { notifySlaAlerts, runWorkflowTick, notifyReal } from "./runners.mjs";
@@ -607,9 +608,10 @@ export async function runWorkflowPass(opts, config, log) {
       return read.ok ? { ok: true } : boardRefusal(read);
     },
     // Acceptance lands the work: the lane branch is merged into the project's
-    // current branch *before* the card reaches `done`. A failed merge keeps the
-    // card in `in_review` (the verdict is already recorded) and leaves the
-    // worktree and branch for a human; the next tick retries.
+    // current branch *before* the card reaches `done`. A content conflict is
+    // deterministic — retrying it changes nothing — so the runner routes the
+    // card back for a merge-resolution round; the environmental codes (a dirty
+    // or detached checkout) keep the card in `in_review` and retry next tick.
     land: (action) => {
       if (opts.dryRun) return { ok: true };
       const stateDir = dirname(String(opts.state));
@@ -641,15 +643,28 @@ export async function runWorkflowPass(opts, config, log) {
       if (merged.ok === true) return { ok: true, sha: headSha(record.project_dir) };
       log(
         `workflow: landing ${action.original_ref} blocked (${merged.code}: ${merged.message}) — ` +
-          "the card stays in in_review",
+          "the runner decides whether this is a rework or a retry",
       );
+      // `step()` forwards `code`, `details` and `hint`; the conflicting paths
+      // must travel inside `details` or the routing comment cannot name them.
       return {
         ok: false,
         error: `${merged.code}: ${merged.message}`,
         code: merged.code,
-        conflicts: merged.conflicts ?? [],
+        details: {
+          branch: record.branch ?? null,
+          project_dir: record.project_dir ?? null,
+          conflicts: merged.conflicts ?? [],
+        },
       };
     },
+    // TP-0125 — cancelling a review card orphans the reviewer's turn. The marker
+    // travels through the state directory to the pool that owns it; a dry run
+    // writes nothing.
+    requestInterrupt:
+      opts.dryRun || typeof opts.state !== "string" || opts.state === ""
+        ? null
+        : (request) => requestInterrupt(dirname(String(opts.state)), request),
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),
     log,
   });

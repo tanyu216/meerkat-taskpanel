@@ -78,7 +78,7 @@ own `system`, or `human` — the one reserved value a caller may not
 declare. It is recorded on every write and read back as `author_kind` / `owner_kind`;
 the CLI flag is `--actor-kind`. It is **not** the identity: that is the actor id
 (`--agent jobs|linus|…`). Every automated write carries the kind `system` under the one
-automation identity `Board`; `system` itself is never an actor id (ADR 0017).
+automation identity `Board`; `system` itself is never an actor id (ADR 0018).
 _中文_: actor kind（平台）
 _Avoid_: host (that is the machine), platform (the web layer's display badge), kind alone
 (card kind is a different word)
@@ -181,13 +181,16 @@ _Avoid_: ping, keepalive, poll
 The record of which conversation is doing the work on a card. It is the trail that answers
 "which agent, in which run, touched this", and it is distinct from the actor. Its row pairs
 `owner` with `owner_kind` — the owner's platform kind, the same `kind` an actor reference
-carries elsewhere.
+carries elsewhere. The loop writes one stable row per card per segment; a rework round keeps
+that identity (`meta.round` moves, the conversation continues), so the trail reads as one
+conversation per card, not one per delivery round.
 _中文_: 会话
 _Avoid_: connection, run, thread
 
 **Segment** (`seg`):
 The discriminator that lets one card have several concurrent working conversations. A
-session is identified by the card, the owner and the segment together.
+session is identified by the card, the owner and the segment together. The loop's segments
+are stable lane names — `worker` and `reviewer` — never a round number.
 _Avoid_: part, shard, chunk
 
 **Goal**:
@@ -196,6 +199,14 @@ session row, so concurrent segments on one card each state their own; it is not 
 field and does not replace the round's report.
 _中文_: 目标
 _Avoid_: description, note, summary
+
+**Session reset** (`meta.session_reset`):
+A one-shot card marker that forces the next rework round into a fresh conversation while
+keeping the same worktree and branch. The loop clears it to `no` once the handoff is queued;
+a row that runs into an in-flight turn leaves it for the next round. It resets the
+conversation, never the workspace.
+_中文_: 会话重置
+_Avoid_: workspace reset, clear history
 
 **Candidate**:
 A card the loop may claim, with the reason it qualified — `ready` (assigned and unblocked),

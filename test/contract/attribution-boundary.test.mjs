@@ -131,7 +131,7 @@ describe("contract/attribution-boundary — what 0020 does and does not referenc
       assert.deepEqual(reserved, [], "a log-only synthetic id must not become a roster entry");
 
       // And the names really are the ones the code writes: one identity, `Board`,
-      // under the `system` kind (ADR 0017).
+      // under the `system` kind (ADR 0018).
       assert.equal(BOARD_ACTOR.id, "Board");
       assert.equal(BOARD_ACTOR.kind, "system");
     } finally {

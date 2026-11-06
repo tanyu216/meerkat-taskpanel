@@ -28,7 +28,7 @@ export { QUEUE_FILES } from "../foundation/loop-state.mjs";
 import { LIVE_STATUSES, QUEUE_FILES } from "../foundation/loop-state.mjs";
 
 /** A card handoff's terminal failure threshold. */
-const DEFAULT_CARD_MAX_ATTEMPTS = 3;
+export const DEFAULT_CARD_MAX_ATTEMPTS = 3;
 /**
  * A turn timeout is a transient failure with its own counter. It never touches
  * `attempts`; after this many the caller releases the card instead of holding
@@ -42,15 +42,19 @@ export const TIMEOUT_BACKOFF_MS = Object.freeze([2, 4, 8].map((minutes) => minut
  * A crash is not a delivery attempt, so it has its own counter; three in a row
  * means the same session cannot be restored and replaying it is the loop.
  */
-const DEFAULT_RECOVERY_MAX = 3;
+export const DEFAULT_RECOVERY_MAX = 3;
 
 /**
  * Rows that are history, not work. A row's id is deterministic (`<card>-<role>`),
  * so once an old row is terminal a new handoff for the same card carries the
  * *same* id (`enqueueCard`). Every mutator must therefore skip terminal rows, or
  * one requeue inflates — and can resurrect — the retained history.
+ *
+ * `interrupted` (TP-0125) is terminal on purpose: a turn whose card left the
+ * claim cycle has no work left, and it must never spend an attempt, a timeout or
+ * a recovery. The row stays for inspection until the ordinary retention prune.
  */
-const TERMINAL_CARD_STATUSES = new Set(["done", "failed"]);
+const TERMINAL_CARD_STATUSES = new Set(["done", "failed", "interrupted"]);
 const isTerminalCard = (entry) => TERMINAL_CARD_STATUSES.has(String(entry?.status ?? ""));
 
 /**
@@ -182,6 +186,19 @@ function rowRound(row) {
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
+/**
+ * The rework-continuity flags a row carries. They are additive: a row written
+ * by an older loop has none and reads as a normal round.
+ */
+function continuityFields(row) {
+  const carry = Number(row?.carry_from_round);
+  return {
+    rework: row?.rework === true,
+    carry_from_round: Number.isInteger(carry) && carry > 0 ? carry : null,
+    force_fresh: row?.force_fresh === true,
+  };
+}
+
 /** The canonical shape of one queue row. */
 function normaliseRow(row, id = undefined) {
   return {
@@ -190,6 +207,7 @@ function normaliseRow(row, id = undefined) {
     id: id ?? row.id ?? `${row.card}-${row.role ?? "worker"}`,
     queue_kind: row.queue_kind ?? "handoff",
     role: row.role ?? "worker",
+    ...continuityFields(row),
     // The board identity selected for this handoff (Jobs/Linus/Turing). It is
     // additive metadata: the dedupe key stays (card, role).
     agent_role: row.agent_role ?? null,
@@ -253,6 +271,36 @@ function enqueueCardUnlocked(stateDir, card) {
     const sameRound = rowRound(existing) === rowRound(card);
     const sameTarget = String(existing.target_dir ?? "") === String(card.target_dir ?? "");
     if (sameRound && sameTarget) {
+      // A re-enqueue can carry the one-shot reset or the rework marker the
+      // existing pending row does not have yet; the row is the same work, so
+      // the flags merge rather than being dropped by the coalescer.
+      const merged = continuityFields({
+        rework: existing.rework === true || card.rework === true,
+        carry_from_round: card.carry_from_round ?? existing.carry_from_round,
+        force_fresh: existing.force_fresh === true || card.force_fresh === true,
+      });
+      const changed =
+        merged.rework !== (existing.rework === true) ||
+        merged.carry_from_round !== (existing.carry_from_round ?? null) ||
+        merged.force_fresh !== (existing.force_fresh === true);
+      if (changed) {
+        if (existing.status === "processing") {
+          // An in-flight row is not rewritten; the flag waits for the next
+          // round instead of being swallowed by a turn already running.
+          return { ok: true, coalesced: true, replaced: false, superseded: true, error: null };
+        }
+        const index = value.cards.indexOf(existing);
+        value.cards[index] = { ...existing, ...merged };
+        const written = writeCards(stateDir, value);
+        return {
+          ok: written.ok,
+          coalesced: true,
+          replaced: false,
+          superseded: false,
+          merged: true,
+          error: written.error,
+        };
+      }
       return { ok: true, coalesced: true, replaced: false, superseded: false, error: null };
     }
     if (existing.status === "processing") {
@@ -503,7 +551,7 @@ function retireLegacyDispatchedUnlocked(stateDir) {
  *
  * @param {string} stateDir
  * @param {string[]} ids
- * @param {{status?: "done"|"failed", error?: string|null}} [options]
+ * @param {{status?: "done"|"failed"|"interrupted", error?: string|null, now?: string}} [options]
  */
 export function completeCards(stateDir, ids, options = {}) {
   return locked(stateDir, { ok: false, error: null }, () =>
@@ -730,10 +778,10 @@ function timeoutCardsUnlocked(stateDir, ids, options = {}) {
  *
  * @param {string} stateDir
  * @param {{isAlive?: (pid: number) => boolean, now?: number, maxAgeMs?: number, maxAttempts?: number, isResumableWorker?: (row: object) => boolean}} [options]
- * @returns {{ok: boolean, recovered: number, failed: number, error: string|null}}
+ * @returns {{ok: boolean, recovered: number, failed: number, failedRows: {id: string, card: string}[], error: string|null}}
  */
 export function recoverStaleCards(stateDir, options = {}) {
-  return locked(stateDir, { ok: false, recovered: 0, failed: 0, error: null }, () =>
+  return locked(stateDir, { ok: false, recovered: 0, failed: 0, failedRows: [], error: null }, () =>
     recoverStaleCardsUnlocked(stateDir, options),
   );
 }
@@ -804,7 +852,9 @@ function recoverStaleCardsUnlocked(stateDir, options = {}) {
   const isResumableWorker =
     typeof options.isResumableWorker === "function" ? options.isResumableWorker : null;
   const read = readCards(stateDir);
-  if (read.error !== null) return { ok: false, recovered: 0, failed: 0, reowned: 0, error: read.error };
+  if (read.error !== null) {
+    return { ok: false, recovered: 0, failed: 0, failedRows: [], reowned: 0, error: read.error };
+  }
   const value = read.value;
   const liveDirs = liveOwnerDirs(stateDir, isAlive);
   const liveLedger = liveLedgerRows(stateDir);
@@ -845,15 +895,20 @@ function recoverStaleCardsUnlocked(stateDir, options = {}) {
       ok: reowned.ok,
       recovered: 0,
       failed: 0,
+      failedRows: [],
       reowned: reowned.cards.length,
       error: reowned.error,
     };
   }
   const result = requeueCards(stateDir, stale, { maxAttempts, error: "stale claim recovered" });
+  const failedIds = new Set(result.failedIds.map(String));
   return {
     ok: result.ok && reowned.ok,
     recovered: result.requeued,
     failed: result.failed,
+    failedRows: value.cards
+      .filter((entry) => failedIds.has(String(entry.id)))
+      .map((entry) => ({ id: String(entry.id), card: String(entry.card ?? "") })),
     reowned: reowned.cards.length,
     error: result.error ?? reowned.error,
   };

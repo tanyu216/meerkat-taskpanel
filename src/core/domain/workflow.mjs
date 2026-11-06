@@ -1611,20 +1611,24 @@ export function planWorkflowTick(input = {}) {
     now: input.now ?? null,
   });
   const heldRefs = new Set(breakers.actions.map((action) => action.original_ref));
+  // The stop signal wins over an outcome planned from the same snapshot: at the
+  // rework bound the pass emits `hold_card`, and an `approve` for the same card
+  // would land it and un-park it in the same tick. `autoAccept` already reads
+  // `heldRefs`; the review outcomes must too.
+  const outcomeActions = outcomes.actions.filter(
+    (action) => !heldRefs.has(action.originalRef),
+  );
 
   const autoAcceptPlan = planAutoAccept({
     tasks,
     reportsByRef: input.reportsByRef ?? {},
     config,
     boardTruncated: input.boardTruncated === true,
-    skipRefs: new Set([
-      ...outcomes.actions.map((action) => action.originalRef),
-      ...heldRefs,
-    ]),
+    skipRefs: new Set([...outcomeActions.map((action) => action.originalRef), ...heldRefs]),
   });
 
   const handled = new Set(
-    [...heldRefs, ...[...outcomes.actions, ...autoAcceptPlan.actions].map((action) => action.originalRef)],
+    [...heldRefs, ...[...outcomeActions, ...autoAcceptPlan.actions].map((action) => action.originalRef)],
   );
   const dispatch = planReviewDispatch({
     tasks,
@@ -1639,7 +1643,7 @@ export function planWorkflowTick(input = {}) {
   // Holds come first: a backlog of reviews must never starve the stop signal.
   const planned = [
     ...breakers.actions,
-    ...outcomes.actions,
+    ...outcomeActions,
     ...autoAcceptPlan.actions,
     ...dispatch.actions,
   ];
@@ -1661,7 +1665,7 @@ export function planWorkflowTick(input = {}) {
       type: "actions_capped",
       cap,
       dropped,
-      outcomes: outcomes.actions.length,
+      outcomes: outcomeActions.length,
       autoAccept: autoAcceptPlan.actions.length,
       dispatch: dispatch.actions.length,
       dedupKey: alertKey("actions_capped", cap),

@@ -808,7 +808,7 @@ export const SYSTEM_KIND = "system";
  * (create the review card, apply the verdict, close the review card). The kind
  * those writes carry is `SYSTEM_KIND`; the *identity* is `Board`, so a reader
  * sees one automation author and `system`/`Orchestrator` are identities no
- * longer (ADR 0017). Keeping the loop's writes out of the first worker's record
+ * longer (ADR 0018). Keeping the loop's writes out of the first worker's record
  * still matters: a review's verdict author may not close the card it reviewed.
  */
 export const BOARD_ACTOR_ID = "Board";

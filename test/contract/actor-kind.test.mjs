@@ -15,7 +15,7 @@
  * trusts a kind any more, because acceptance is decided by the review evidence
  * (an independent current-round APPROVE, never by the actor who wrote it).
  *
- * A kind is not an identity. Since ADR 0017 the board's one automation identity
+ * A kind is not an identity. Since ADR 0018 the board's one automation identity
  * is the actor id `Board`; `system` is only the kind those writes carry, and the
  * loop no longer signs `Orchestrator`. The second scan here is the grep guard for
  * that rule: a write path may not name either retired id.
@@ -62,7 +62,7 @@ const BANNED = [
 ];
 
 /**
- * The identity rule (ADR 0017): `system` is a kind, never an actor id, and the
+ * The identity rule (ADR 0018): `system` is a kind, never an actor id, and the
  * loop no longer signs `Orchestrator`. Each pattern is an identity position a
  * writer actually uses — a CLI argv, a JS actor object, or the retired constant —
  * so prose and the one-off repair script may still name the old rows.

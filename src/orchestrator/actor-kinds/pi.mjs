@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 
+import { piAllowedTools } from "../../foundation/role-tools.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
@@ -72,15 +73,7 @@ export function sessionArgs(input = {}) {
  * @returns {string}
  */
 export function allowedToolsFor(role) {
-  switch (role) {
-    case "director":
-      return "read,bash";
-    case "reviewer":
-      return "read,bash";
-    case "worker":
-    default:
-      return "read,bash,edit,write";
-  }
+  return piAllowedTools(String(role ?? "worker"));
 }
 
 /** The text an assistant message event carries. */
@@ -126,7 +119,10 @@ class PiSession {
     this.child.stdout.on("data", lineSplitter((line) => this.handleLine(line)));
     this.child.stderr.on("data", lineSplitter((line) => this.log(`pi[${this.cwd}] ${line}`)));
     this.child.on("error", (err) => {
-      this.log(`pi[${this.cwd}] spawn error: ${err.message}`);
+      this.log(`pi[${this.cwd}] spawn error: ${err.message}`, {
+        level: "error",
+        event: "turn_spawn_failed",
+      });
       this.finish({
         ok: false,
         resumeFailed: this.resumeId !== null && !this.sawSettled,

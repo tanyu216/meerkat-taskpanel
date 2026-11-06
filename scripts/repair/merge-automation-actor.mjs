@@ -4,7 +4,7 @@
  *
  * Why this exists
  * ---------------
- * Until ADR 0017 the board's automated writes used two actor ids: `system` for
+ * Until ADR 0018 the board's automated writes used two actor ids: `system` for
  * core board events (rollup, the label GC, agent sessions) and `Orchestrator`
  * for the loop's workflow pass. Both recorded kind `system`, so the roster and
  * the comment/report trail showed two automation authors. The identity is now

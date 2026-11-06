@@ -39,7 +39,6 @@ import { reviewIdentityOf } from "./review-identity.mjs";
 import {
   renderReviewerProtocol,
   renderRoleDecision,
-  renderRoleLayerOne,
   renderRoleSelfCheck,
   renderRoleWorkflow,
 } from "./role-prompt.mjs";
@@ -855,8 +854,9 @@ export function wakeCommand(input = {}) {
  * worker's own cwd, resolved locally.
  *
  * Optional team-role fields (`role`, `roleWorkflowPath`, `selfCheckPath`,
- * `decisionPolicyPath`) append the role layer; without them the text is the
- * pre-roles handoff, byte for byte.
+ * `decisionPolicyPath`) append the plan-file convention, the role skill and
+ * self-check paths, and the decision policy — never the role's catalog fields.
+ * Without them the text is the pre-roles handoff, byte for byte.
  *
  * @param {{card?: object, agent: string, actorKind: string, sessionId?: string|null, role?: object|null, roleWorkflowPath?: string|null, selfCheckPath?: string|null, decisionPolicyPath?: string|null}} input
  * @returns {string}
@@ -929,12 +929,12 @@ export function buildHandoff(input) {
     "",
     `Keep the claim alive (<=10 minutes): taskctl issue heartbeat <card> <flags>`,
     `Deliver with a report (a draft may live under ${processDir}/report.md): taskctl issue deliver <card> --report-file - <flags>`,
+    "Before you deliver, merge the project's integration branch into this lane and re-run the checks. Never merge the lane back, rebase or push — landing is the loop's.",
     "Rules: after a split, the heartbeat and delivery apply to the claimed CHILD, not the epic.",
     `On resume, re-read ${brief} before acting; the loop owns it.`,
     `${acceptanceRule} Carry the flags above on every write.`,
   ];
   if (input.role) {
-    lines.push("", ...renderRoleLayerOne(input.role));
     lines.push(
       "",
       "## Plan file",
@@ -970,7 +970,6 @@ export function buildReviewHandoff(input) {
   const ref = card.identifier;
   const original = card.review_of ?? "<card under review>";
   const round = card.review_round ?? "the round recorded on the review card";
-  const project = card.project ?? "<project id>";
   const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.actorKind}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   const flags = attribution.join(" ");
@@ -980,13 +979,11 @@ export function buildReviewHandoff(input) {
     : null;
   const originalBrief = originalRef === null ? null : cardFileRel(originalRef);
   const lines = [
-    `You are the reviewer for the ${project} project — one delivered card.`,
     `Review card: ${ref}`,
     `Card under review: ${original} (round ${round})`,
     `Review brief: ${brief} — exported by the loop; read it after the live check, it is authoritative.`,
     ...(originalBrief === null ? [] : [`Original brief: ${originalBrief} (when present; also authoritative).`]),
-    `Read a card.md as the loop's export; the loop owns it and refreshes it from the board. This lane is read-only: deliver the verdict as the report and keep evidence where the board can read it (a report item or a comment), not in a file.`,
-    `Your working directory is this project's directory; stay inside it and leave other projects' paths untouched.`,
+    "Your working directory is this project's directory; stay inside it and leave other projects' paths untouched.",
     "The loop already claimed this review card for you: keep the claim with a heartbeat.",
     "",
     "Step 0 — the review_not_ready check; do it before reading anything else:",
@@ -1000,16 +997,10 @@ export function buildReviewHandoff(input) {
     `  taskctl report list ${original} ${flags}`,
     `  taskctl comment list ${original} --limit 200 --json ${flags}`,
     `  taskctl relation list ${original} ${flags}     # an epic's children`,
-    "Audit the description, every acceptance item, the delivery report for this round and its",
-    "evidence, the comment trail (unresolved decision/defect entries), and — for an epic — the",
-    "rollup report and each child's state.",
-    "If the original's meta.acceptance_derived is `yes`, its acceptance list was derived by the",
-    "worker at claim: check it covers every requirement in the description and comments — a list",
-    "that narrows the card is grounds for `VERDICT: REJECT`. For an epic, check the children cover",
-    "the epic's description.",
+    "Audit the acceptance list, this round's report and evidence, and the comment trail; when",
+    "meta.acceptance_derived=yes re-derive it — a narrowed acceptance list missing a requirement is a REJECT.",
     "Verify what was delivered, not the live tree: take this round's report `commit` anchor and",
-    "read it with `git -C <project dir> show <sha>:<path>` / `git diff <sha> -- <path>`. A claim",
-    "visible only in the working tree is unverified; if the tree has moved, say so in the report.",
+    "read it with `git -C <project dir> show <sha>:<path>`; if the tree has moved, say so.",
     "The original's baseline already carries every earlier round's findings — answer each one.",
     "",
     "Deliver:",
@@ -1017,12 +1008,10 @@ export function buildReviewHandoff(input) {
     `  taskctl issue deliver ${ref} --report-file - ${flags}`,
     "The report's FIRST line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.",
     "Put the findings after that line and in `leftovers`.",
-    "",
-    `On resume, re-read ${brief} before acting; the loop owns it.`,
+    `On resume, re-read ${brief}; the loop owns it.`,
     "Rules: heartbeat only this review card; the card under review keeps its own holder.",
     "Leave both cards where they are: the loop applies the verdict and closes this card.",
-    "Stay in the review turn — a review ends in a verdict; if the evidence is insufficient,",
-    "REJECT and write the findings. Carry the attribution flags above on every write.",
+    "Stay in the review turn: insufficient evidence is a REJECT with the findings.",
   ];
   if (input.reviewerPrompt || input.reviewerPromptPath) {
     const block = renderReviewerProtocol(input.reviewerPrompt ?? null, input.reviewerPromptPath ?? null);
@@ -1032,7 +1021,6 @@ export function buildReviewHandoff(input) {
     }
   }
   if (input.role) {
-    lines.push("", ...renderRoleLayerOne(input.role));
     if (input.roleWorkflowPath) lines.push("", ...renderRoleWorkflow(input.role, input.roleWorkflowPath));
     const originalDir = originalRef === null ? "<original>" : cardDirRel(originalRef);
     lines.push(
@@ -1040,11 +1028,8 @@ export function buildReviewHandoff(input) {
       "## Reference material",
       `  ${originalDir}/plan.md — the worker's plan (if it exists)`,
       `  ${originalDir}/ — notes, evidence, report drafts, attachments`,
-      "Omission check: every requirement in the description, comments and plan must map to",
-      "an acceptance item and evidence, or be explicitly deferred. A narrowed acceptance list,",
-      "an unexplained deviation from the plan, or a missing requirement is grounds for",
-      "`VERDICT: REJECT`. If plan.md does not exist, say so and fall back to the description",
-      "and acceptance snapshot; absence alone is not a reject.",
+      "Omission check: every requirement, comment and plan step must map to an acceptance item and",
+      "evidence, or be explicitly deferred; a narrowed acceptance list is a REJECT.",
     );
     if (input.decisionPolicyPath) lines.push("", `Decision policy: ${input.decisionPolicyPath}`);
   }
@@ -1090,6 +1075,7 @@ export function buildResidentEnvelope(input) {
     "the loop moves it to done and holds the claim for you.",
     `  taskctl issue heartbeat ${ref} <flags>`,
     `  taskctl issue deliver ${ref} --report-file - <flags>`,
+    "Before you deliver, merge the project's integration branch into this lane and re-run the checks. Never merge the lane back, rebase or push — landing is the loop's.",
     "The frozen acceptance is in the brief; changing an existing item is E2. Route a question",
     "to the director:",
     `  taskctl comment add ${ref} --kind question --body "..." <flags>`,
@@ -1102,11 +1088,13 @@ export function buildResidentEnvelope(input) {
 }
 
 /**
- * The lean envelope for a **review** card's resident session. The reviewer
- * skill was loaded when the session opened, so this message carries the
- * review's own moves and nothing of the role layer or the protocol text.
+ * The thin envelope for a **review** card's resident session. The card system
+ * prompt was injected at session open and owns identity, briefs and Flags; the
+ * role skill loaded there owns the audit floor. This message carries only the
+ * concrete refs, Step 0, the board reads and the verdict format — the pieces
+ * that change per card.
  *
- * @param {{card?: object, flags?: string|null}} input
+ * @param {{card?: object}} input
  * @returns {string}
  */
 export function buildReviewEnvelope(input) {
@@ -1118,51 +1106,21 @@ export function buildReviewEnvelope(input) {
       : null;
   const original = reviewed ?? "<card under review>";
   const round = card.review_round ?? "the round recorded on the review card";
-  const project = card.project ?? "<project id>";
-  const brief = cardFileRel(ref);
-  const originalBrief = reviewed === null ? null : cardFileRel(reviewed);
-  const flags = typeof input.flags === "string" && input.flags !== "" ? input.flags : null;
   return [
-    `You are the reviewer for the ${project} project — one delivered card.`,
-    `Review card: ${ref}`,
-    `Card under review: ${original} (round ${round})`,
-    `Review brief: ${brief} — exported by the supervisor; read it, it is authoritative.`,
-    ...(originalBrief === null
-      ? []
-      : [`Original brief: ${originalBrief} (when present; also authoritative).`]),
-    "Read a card.md as the supervisor's export; the supervisor owns it and refreshes it.",
-    ...(flags === null
-      ? ["Carry the session opener's Flags on every write."]
-      : [`Flags: ${flags}`, "Carry these Flags on every write."]),
-    "",
-    "Step 0 — the review_not_ready check; do it before reading anything else:",
+    `Review card: ${ref}; card under review: ${original} (round ${round}).`,
+    "Step 0 — the review_not_ready check:",
     `  taskctl issue get ${original} --json <flags>`,
-    "  If its status is not in_review, or its delivery_round is not the round above: leave a",
-    `  note on ${ref} and stop before a verdict; the loop closes this review card.`,
-    "",
-    `Read (start with ${brief}; taskctl is the live view):`,
+    `  If its status is not in_review, or its delivery_round is not the round above: note it on ${ref} and stop; the loop closes this card.`,
+    "Board:",
     `  taskctl issue get ${ref} --json <flags>`,
     `  taskctl report list ${original} <flags>`,
     `  taskctl comment list ${original} --limit 200 --json <flags>`,
     `  taskctl relation list ${original} <flags>     # an epic's children`,
-    "Audit every acceptance item, this round's delivery report and its evidence, the comment",
-    "trail, and — for an epic — the rollup report and each child's state. The original's",
-    "baseline already carries every earlier round's findings: answer each one.",
-    "Verify what was delivered, not the live tree: take this round's report `commit` anchor and",
-    "read it with `git -C <project dir> show <sha>:<path>`. A claim visible only in the working",
-    "tree is unverified; if the tree has moved, say so in the report.",
-    "",
-    "Deliver one verdict on THIS review card:",
-    `  taskctl report template ${ref}   # fill it in, then:`,
-    `  taskctl issue deliver ${ref} --report-file - <flags>`,
-    "The report's FIRST line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`; put the",
+    "Deliver one verdict on this card: first line exactly `VERDICT: APPROVE` or `VERDICT: REJECT`;",
     "findings after it and in `leftovers`.",
-    "",
-    "Board: heartbeat only this review card; the card under review keeps its own holder.",
-    "Leave both cards where they are: the loop applies the verdict and closes this one. Stay",
-    "in the review turn — a review ends in a verdict; if the evidence is insufficient, REJECT",
-    "with the findings.",
-    "Your role skill is already loaded; read the branch file it names once and follow it.",
+    `  taskctl report template ${ref}`,
+    `  taskctl issue deliver ${ref} --report-file - <flags>`,
+    "Your loaded role skill owns the audit floor; follow the branch file it names.",
   ].join("\n");
 }
 

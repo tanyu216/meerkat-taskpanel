@@ -27,7 +27,8 @@ A worker does not decide an unauthorized question. It asks one question for the 
 waits for the answer. The director decides what it can and records the decision, then releases
 the card; the release concludes the question, and a note alone does not. Only the director may
 move a card to `awaiting`, and only for an E1–E5 decision it cannot make. Only a human-authored
-comment resumes it.
+comment resumes it — the release leaves the claim cycle, so the next claim is a **new worker**
+that re-reads the comments (ADR 0017).
 
 ## The director decides
 

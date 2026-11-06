@@ -116,6 +116,20 @@ describe("storage/sqlite-errors — constraint failures", () => {
     assert.deepEqual(mapped.details.columns, ["t.a", "t.b"]);
   });
 
+  it("maps FULL, IOERR and CANTOPEN to a 503 DB_UNAVAILABLE, never a 400", () => {
+    // node:sqlite reports the **extended** result code; its low byte is the
+    // primary class. Both shapes must land on the same code.
+    for (const errcode of [10, 13, 14, 10 + (1 << 8), 13 + (1 << 8), 14 + (1 << 8)]) {
+      const mapped = mapSqliteError(sqliteFailure(errcode, "unable to open database file"));
+      assert.equal(mapped.code, "DB_UNAVAILABLE", `errcode ${errcode}`);
+      assert.equal(mapped.http, 503, `errcode ${errcode} keeps its 503 class`);
+      assert.equal(mapped.details.sqlite.errcode, errcode);
+      assert.match(mapped.message, /unavailable/i);
+    }
+    // Contention keeps its own answer: the write is safe to repeat.
+    assert.equal(mapSqliteError(sqliteFailure(SQLITE_ERRCODE.BUSY, "database is locked")).code, "DB_BUSY");
+  });
+
   it("maps the CHECK texts that express an invariant", () => {
     const self = mapSqliteError(
       sqliteFailure(SQLITE_ERRCODE.CHECK, "CHECK constraint failed: source_task_id <> target_task_id"),
@@ -247,6 +261,9 @@ describe("storage/sqlite-errors — constraint failures", () => {
         // R2: not a constraint, but the same mapper — a raw `SQLITE_BUSY` from
         // either the lock or the commit lands here.
         "DB_BUSY",
+        // The same seam again: the engine cannot use the file at all
+        // (`SQLITE_FULL`/`IOERR`/`CANTOPEN`).
+        "DB_UNAVAILABLE",
       ]),
     );
     const unreachable = SQL_CONSTRAINT_CODES.filter((code) => !reachable.has(code));

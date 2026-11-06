@@ -1,4 +1,4 @@
-# 0017 — The board has one automation identity: `Board`, kind `system`
+# 0018 — The board has one automation identity: `Board`, kind `system`
 
 - **Status:** Accepted (2026-11-06)
 - **Context:** ADR 0004 made the board's writes `kind=system`, and the loop's workflow

@@ -198,7 +198,10 @@ TASKD_SLA_LEADER_STALLED_FURTHER_MIN=360
   `CLAIM_STALE_ANY_MS`, but an override changes when the **alert** fires, not when a claim
   becomes re-claimable. Recovery is the claim's own rule and is independent by design. The
   loop's own 5-minute card pulse (`CARD_HEARTBEAT_MS`) keeps a long turn inside this window,
-  so a legitimate 60-minute turn no longer reads as a stale claim.
+  so a legitimate 60-minute turn no longer reads as a stale claim. Since TP-0125 a **refused**
+  pulse is also the interrupt backstop when no subscriber or workflow pass wrote a marker: a
+  refusal whose `details.status` is outside the claim cycle, or `EXECUTION_ACTIVE`, aborts the
+  turn (ADR 0017). The alert threshold itself is unchanged.
 - **`question_stale` is the ladder's watchdog.** It fires on an `in_progress` card whose
   newest **agent** question has no later **status change** (a director `note` alone, or a
   human comment, is not a release), and on an `awaiting` card with no human answer. On an

@@ -359,14 +359,24 @@ Two narrow field rules sit before the actor suppression (`CONDITIONAL_EVENTS` na
   turn on a card already `awaiting`; the event payload carries no card status and a status
   fetch per event would cost more than the wake, so one coalesced continue turn is accepted.
 - `task_moved` with `from: "in_progress"` and `to: "todo"` wakes even when this loop authored it:
-  that is the director releasing a card, and the same-round resume should not wait for the next
+  that is the director releasing a card, and the re-dispatch should not wait for the next
   continue clock. A move to `awaiting` is not a wake — the worker is parked and only a human
   comment resumes the card.
 
 `task_resumed` wakes a turn: a human answer moves an `awaiting` card to `todo` in the same
-transaction, and the worker session resumes with the answer. The loop's own resume remains a
-local fact (the stored session id in `sessions.state.json`) and emits no board event — see
+transaction. Both events are **claim-cycle exits**, so the subscriber also writes an interrupt
+request under `<stateDir>/interrupts/` (TP-0125 · ADR 0017): the pool stops the parked turn and
+the next claim is a fresh session, which re-reads the answer from the comments. It is a state
+file, not a board write. A session resume **inside the claim** (rework, crash recovery) remains
+a local fact (the stored session id in `sessions.state.json`) and emits no board event — see
 [`scheduling.md` §Resume and replay](scheduling.md#the-resident-session-pool).
+
+The loop does write the **board** session row, though: every turn boundary goes through
+`taskctl session set|close`, which emits `session_registered` / `session_closed` (§6). One
+stable row per card per segment means a rework round updates `meta.round` on the same row
+instead of emitting a new conversation. Both events are excluded from the human feed (§5.3)
+and drive the drawer's `sessions` refetch (`web/src/lib/events.js`); the audit trail keeps
+them, which is what makes the Sessions tab live.
 
 Everything else is named in `IGNORED_EVENTS`. `epic_auto_start` is board-authored (`Board`),
 which actor suppression already ignores; listing it as a dispatch was a contradiction, not a
@@ -378,7 +388,7 @@ A name neither list knows is a newer board and is ignored, never an error.
 
 - a `human` event is never suppressed;
 - events authored by the board itself (`actor_id` is `Board`, kind `system`) are ignored;
-  `system` is the kind those writes carry, never an actor id (ADR 0017);
+  `system` is the kind those writes carry, never an actor id (ADR 0018);
 - events authored by the decision lane (`actor_id` is `Director`) are ignored, except the
   `in_progress → todo` release, which is that lane's answer and wakes the worker;
 - events authored by this loop's own agents (`actor_id ∈ --agent`, non-human) are ignored, which
@@ -665,7 +675,7 @@ the label GC, the loop's workflow pass). What used to be `--actor-kind taskd` wa
 tell from an agent.
 
 A kind is not an identity. Every automated write carries the kind `system` under the actor id
-**`Board`** (ADR 0017); `system` and the loop's former `Orchestrator` are no actor ids at all.
+**`Board`** (ADR 0018); `system` and the loop's former `Orchestrator` are no actor ids at all.
 The record's job is to tell a person from an agent from the board — the kind does that, and the
 id names the one automation author.
 
