@@ -399,8 +399,11 @@ The executor sequences each one so a crash leaves a recoverable, re-plannable st
   the comment so a crash between them is recovered by the `held` marker instead of re-posting the
   note on every pass. When the loop runs with
   per-card worktree lanes, a **landing** step runs first: the lane branch is merged into the
-  project's current branch, and a dirty checkout or a merge conflict keeps the card in
-  `in_review` with its verdict recorded (see [scheduling.md](scheduling.md)). The acceptance
+  project's current branch. A **content conflict** is deterministic — re-planning re-runs the
+  same merge — so the card is routed back for a merge-resolution round (see below); the
+  environmental failures (a dirty or detached checkout, an unreadable tree) keep the card in
+  `in_review` with its verdict recorded and retry on the next tick (see
+  [scheduling.md](scheduling.md)). The acceptance
   then records that merge as `meta.landed_sha` / `landed_at`; a card with no **registered**
   lane has nothing to merge, so it carries neither key — absence means unknown, and
   `loop doctor` reports the ones git still finds outside the branch. An `auto_accept`
@@ -435,6 +438,17 @@ card in place and raises an alert; the next tick re-plans.
 | the review card is not `in_review` (todo / in_progress / blocked / awaiting) past the aging threshold | `review_aging` |
 | the re-dispatch bound (`meta.review_retry`, default two) is exhausted | `review_retries_exhausted`, left for a human |
 | the board refuses the acceptance: the original's delivery report cannot close the card | `acceptance_blocked`, routed back as a new round (below) |
+| the lane merge conflicts while landing an `approve` / `auto_accept` | `landing_conflict`, routed back as a new round (below) |
+
+**A landing conflict is rework, not a retry.** The merge is aborted before any acceptance
+marker is written, and the same two trees and hunks re-plan to the same failure. The executor
+comments the conflicting files on the original with `kind=change`, writes
+`meta.rework_round = round + 1`, reopens it through the same two-hop
+`in_review → in_progress → todo` `reject_task` uses, and closes the review card. The marker is
+the round the card is on **after** the first hop: it is what lets the planner finish a
+half-applied route, and what makes the next round reuse the same worktree and branch — the
+place the worker resolves the merge. An environmental landing failure (dirty, detached or
+unreadable checkout) is not a conflict and keeps the card in `in_review` for the next tick.
 
 **A refused acceptance is routed, not retried.** `ACCEPTANCE_INCOMPLETE` on an `approve` /
 `auto_accept` is not a plan race: the delivery report binds its round, so re-planning produces

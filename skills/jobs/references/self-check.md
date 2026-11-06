@@ -91,7 +91,8 @@ When `.meerkat/<id>/prd.md` exists, check it and `design/prds/<content-slug>.md`
 4. A split prototype card's handoff names its product card or brief, questions, verdict, path,
    evidence, rejected variants, commit, limitations and open questions.
 5. The delivered tree is committed on the card's branch and the report carries the `commit` anchor;
-   `nothing was merged, rebased or pushed`.
+   the integration branch was merged into the lane before delivery (conflicts resolved, checks
+   re-run), and `nothing was merged, rebased or pushed` from this card.
 6. The director creates downstream cards; the handoff proposes their shape. One card delivers
    once unless the flow is split.
 

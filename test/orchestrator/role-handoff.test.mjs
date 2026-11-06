@@ -221,9 +221,12 @@ describe("handoffs without a role stay byte-identical", () => {
     // Re-pinned for 0002: the card vocabulary is `off | auto | human`.
     // Re-pinned for TP-0109: the card-session prompts read as positive actions
     // (the same rules, stated as what to do and who owns the boundary).
+    // Re-pinned for the pre-delivery lane merge: the worker merges the
+    // integration branch into its lane before delivering, so landing on an
+    // approved, stale tree stops conflicting.
     assert.equal(
       hash(buildHandoff(WORKER_INPUT)),
-      "435d6fc814532aeafe8b71666c4dd17d73f81fb25a2f90fb127bdc996fff1244",
+      "76cf722cc1cec194d688196b01376d210e9d365e7c4305d0ef0ec86117ed5a86",
     );
   });
 

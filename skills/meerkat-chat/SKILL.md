@@ -242,7 +242,7 @@ announces waiting cards only; health stays a one-shot read or an answer to a dir
 | `undispatched_claims` | a stale claim whose handoff rows are all terminal (or absent) | show the last row's status/attempts/error; only a human move frees the card |
 | `blocked_acceptance` | the board refused the close | show the refusal; offer a release only when the human says the blocker is gone |
 | `handoff_unconsumed` | an accepted producer's required handoff has no decision for its round | report; the director creates the proposed card, or the human records that none is needed |
-| `looping` | rework rounds, review reopens, dispatch retries, failed subagents, and `held` cards the loop already parked | explain the loop; the fix is a decision (reject, cut scope, reassign), not a retry — a held card is released only by an explicit human move |
+| `looping` | rework rounds, review reopens, dispatch retries, failed subagents, landing conflicts, and `held` cards the loop already parked | explain the loop; the fix is a decision (reject, cut scope, reassign), not a retry — a held card is released only by an explicit human move; a landing conflict is already back in the worker's hands |
 | `unlanded` | a `done` card whose lane branch is not in the project's current branch | report it; the fix is a git merge, not a board write |
 | `workers` | blocked, stale or missing-worktree worker records | report; do not restart daemons |
 | `queue` | failed dispatch rows | report; the loop retries within its own budget |

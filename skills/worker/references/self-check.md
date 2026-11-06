@@ -28,5 +28,8 @@ skill's — this file audits the work, not those contracts.
 - **W8.** The tree is committed and the report carries the `commit` anchor.
 - **W9.** The report maps each acceptance item to its evidence, names every command run, and
   records any waiver with who granted it.
-- **W10.** The card is at `in_review`; nothing was moved to `done`, merged, rebased or pushed.
-- **W11.** The report is a digest, not a transcript; links point at the committed tree.
+- **W10.** The project's integration branch was merged into this lane, the conflicts (if any)
+  resolved, and the checks re-run on the result.
+- **W11.** The card is at `in_review`; nothing was moved to `done`, and the lane was not merged
+  back into the integration branch, rebased or pushed — landing is the loop's.
+- **W12.** The report is a digest, not a transcript; links point at the committed tree.

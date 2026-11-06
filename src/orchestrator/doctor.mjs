@@ -8,7 +8,7 @@
  * together and adds the facts the answers do not carry: whether the patrol is
  * still *completing*, which cards are stuck, and which cards keep going round
  * the same loop (rework rounds, review reopens, dispatch retries, failed
- * subagents).
+ * subagents, landing conflicts the loop routed back as rework).
  *
  * **It is not a pass.** It claims nothing, dispatches nothing, starts no process,
  * writes no state and opens no logger — an inspection that changed the thing it
@@ -95,6 +95,12 @@ export const LOOP_DISPATCH_ROWS_MIN = 5;
 export const LOOP_DISPATCH_FAILED_MIN = 2;
 /** Three failed subagent rows for one card inside the ledger's 7-day retention. */
 export const LOOP_SUBAGENT_FAILED_MIN = 3;
+/**
+ * Two landing conflicts on one card is a cycle, not the cost of a moving
+ * integration branch: the loop routed the card back for a merge-resolution round
+ * and it conflicted again.
+ */
+export const LOOP_LANDING_CONFLICT_MIN = 2;
 
 /** Ledger statuses that mean the subagent did not finish its work. */
 const LEDGER_FAILURE_STATUSES = new Set(["failed", "interrupted", "stale"]);
@@ -488,6 +494,57 @@ function ledgerLoopFindings(rows, boardByRef) {
   return findings;
 }
 
+/**
+ * Landing conflicts the loop routed back as rework.
+ *
+ * The workflow ledger holds one key per conflict **round**
+ * (`landing_conflict|<action>|<ref>|r<round>`), and each one became a fresh
+ * delivery round on the board. One conflict is the cost of a moving integration
+ * branch; two on the same card is a cycle — the row makes it visible before the
+ * rework cap parks the card. A card the board knows is finished is history.
+ */
+function landingLoopFindings(seen, boardByRef, nowMs) {
+  const groups = new Map();
+  for (const [key, entry] of Object.entries(seen ?? {})) {
+    const parts = String(key).split("|");
+    if (parts.length !== 4 || parts[0] !== "landing_conflict") continue;
+    const ref = parts[2].trim();
+    const roundMatch = /^r(\d+)$/.exec(parts[3].trim());
+    if (ref === "" || roundMatch === null) continue;
+    if (knownTerminal(ref, boardByRef)) continue;
+    if (!groups.has(ref)) groups.set(ref, []);
+    const firstSeen = typeof entry?.first_seen === "string" ? entry.first_seen : null;
+    groups.get(ref).push({
+      round: Number(roundMatch[1]),
+      first_seen: firstSeen,
+      last_seen: typeof entry?.last_seen === "string" ? entry.last_seen : firstSeen,
+    });
+  }
+  const findings = [];
+  for (const [ref, group] of groups) {
+    const rounds = [...new Set(group.map((row) => row.round))].sort((left, right) => left - right);
+    if (rounds.length < LOOP_LANDING_CONFLICT_MIN) continue;
+    const firstAt = group.map((row) => row.first_seen).filter(Boolean).sort()[0] ?? null;
+    const lastAt = group.map((row) => row.last_seen).filter(Boolean).sort().at(-1) ?? null;
+    const board = boardByRef.get(ref) ?? null;
+    findings.push({
+      ref,
+      title: board?.title ?? null,
+      status: board?.status ?? null,
+      conflicts: rounds.length,
+      rounds,
+      last_round: rounds.at(-1),
+      first_at: firstAt,
+      last_at: lastAt,
+      age_ms: ageSince(firstAt, nowMs),
+    });
+  }
+  findings.sort(
+    (left, right) => right.conflicts - left.conflicts || left.ref.localeCompare(right.ref),
+  );
+  return findings;
+}
+
 function patrolReport(opts, nowMs) {
   const markerPath = opts.slaLastOk ?? null;
   const marker = readPeerMarker(markerPath);
@@ -787,11 +844,13 @@ export function doctorReport(opts, env = process.env, deps = {}) {
   // evidence is the log. `workflow_action_failed|` is the exact prefix — the
   // `_escalated` sibling is the same failure re-sent, not a second one.
   const workflowActions = [];
+  let workflowLedgerSeen = null;
   try {
     const read = readJsonFile(statePathsForDir(stateDir).workflowLedger, null);
     if (read.error !== null) errors.push(`workflow_ledger: ${read.error}`);
     const seen = read.value?.seen;
     if (seen !== null && typeof seen === "object" && !Array.isArray(seen)) {
+      workflowLedgerSeen = seen;
       for (const [key, entry] of Object.entries(seen)) {
         if (!key.startsWith("workflow_action_failed|")) continue;
         workflowActions.push({
@@ -1032,6 +1091,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     question_lane: questionLane,
     unowned: unownedCards,
     orphaned: orphanedRows,
+    landing_conflicts: landingLoopFindings(workflowLedgerSeen, boardByRef, nowMs),
     total: 0,
   };
   // One card, one count: a card may be named by more than one list, and the
@@ -1048,6 +1108,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     looping.question_lane,
     looping.unowned,
     looping.orphaned,
+    looping.landing_conflicts,
   ]) {
     for (const card of list) {
       if (typeof card.ref === "string" && card.ref !== "") loopRefs.add(card.ref);
@@ -1427,6 +1488,7 @@ function humanReport(report) {
     ["question-lane", report.looping.question_lane.length],
     ["unowned", report.looping.unowned.length],
     ["orphaned", report.looping.orphaned.length],
+    ["landing", report.looping.landing_conflicts.length],
   ];
   const loopListed = loopKinds.reduce((sum, [, count]) => sum + count, 0);
   lines.push(
@@ -1517,6 +1579,13 @@ function humanReport(report) {
     lines.push(
       `  ${card.ref ?? "?"}  orphaned  pid ${card.pid}  ${age} > ${minutes(card.bound_ms)}` +
         `  ${card.title ?? ""}`.trimEnd(),
+    );
+  }
+  for (const card of report.looping.landing_conflicts) {
+    const age = card.age_ms === null ? "?" : minutes(card.age_ms);
+    lines.push(
+      `  ${card.ref}  landing  ${card.conflicts} round(s), last r${card.last_round}` +
+        `  ${card.status ?? "?"}  ${age}  ${card.title ?? ""}`.trimEnd(),
     );
   }
   if (report.workspaces.stale.length > 0) {
