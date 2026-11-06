@@ -99,7 +99,9 @@ async function throughBothHalves(input, overrides = {}) {
     createReview: async (action) => (order.push(`createReview:${action.idem}`), { ok: true, ref: "PROJ-0003" }),
     createFixChild: async (action) => (order.push(`createFixChild:${action.original_ref}`), { ok: true, ref: "PROJ-0004" }),
     linkFixChild: async (epic, child) => (order.push(`linkFixChild:${epic}:${child}`), { ok: true }),
-    move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+    move:
+      overrides.move ??
+      (async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true })),
     comment: async (ref, { kind, body }) => (
       comments.push({ ref, kind, body }),
       order.push(`comment:${ref}:${kind}`),
@@ -122,7 +124,7 @@ async function throughBothHalves(input, overrides = {}) {
       return { ok: true };
     },
     notify: (alert) => notes.push(alert),
-    now: () => NOW,
+    now: overrides.now ?? (() => NOW),
     log: () => {},
   });
   return { plan, wirePlan, order, result, appends, metas, comments, notes };
@@ -435,6 +437,52 @@ describe("workflow plan → execution", () => {
       "comment:PROJ-0001:question",
       "move:PROJ-0001:blocked",
     ]);
+  });
+
+  it("stamps the hold marker at execution time, so a refused move is retried", async () => {
+    const LATER = "2026-10-08T00:06:00.000Z";
+    const original = card({ meta: { review_rejects: "3" } });
+    const review = reviewCard(original);
+    const { metas, result } = await throughBothHalves(
+      { tasks: [original, review], verdicts: { "PROJ-0002": verdict("REJECT", "1. fix it") } },
+      {
+        now: () => LATER,
+        move: async (ref, to) =>
+          to === "blocked"
+            ? { ok: false, error: "the move was refused", code: "VERSION_CONFLICT" }
+            : { ok: true },
+      },
+    );
+    assert.equal(result.failed, 1, "the refused hold move is a failed action");
+    const marker = metas.find((entry) => entry.meta?.loop_hold_code === "rework_cap")?.meta;
+    assert.ok(marker, "the hold marker was written before the move");
+    assert.equal(marker.loop_hold_at, LATER, "the marker carries the executor's clock");
+    assert.ok(Date.parse(marker.loop_hold_at) > Date.parse(NOW), "…after the reject's move to todo");
+
+    // The next tick over the crash state must retry the move, not read a human release.
+    const crashed = card({
+      status: "todo",
+      delivery_round: 2,
+      status_changed_at: NOW,
+      meta: {
+        rework_round: "2",
+        review_rejects: "4",
+        loop_hold_code: "rework_cap",
+        loop_hold_round: "2",
+        loop_hold_retry_base: "4",
+        loop_hold_at: marker.loop_hold_at,
+      },
+    });
+    const next = planWorkflowTick({
+      tasks: [crashed],
+      verdicts: {},
+      reportsByRef: {},
+      config: CONFIG,
+      now: NOW,
+    });
+    const hold = next.actions.find((action) => action.type === "hold_card");
+    assert.ok(hold, "the interrupted hold is re-emitted");
+    assert.equal(hold.held, true, "only the move is retried");
   });
 
   it("routes a landing conflict back for a merge-resolution round", async () => {

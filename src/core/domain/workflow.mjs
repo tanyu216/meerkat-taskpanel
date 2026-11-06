@@ -127,13 +127,16 @@ function holdQuestionFor({ ref, code, round, base, rejects = null }) {
  *
  * @param {object|null|undefined} task
  * @param {object} [config]
- * @returns {{rejects: number, base: number, max: number, releasedByHuman: boolean, hasCounter: boolean}}
+ * @returns {{rejects: number, base: number, max: number, releasedByHuman: boolean}}
  */
 export function reviewRejectEpoch(task, config = {}) {
   const meta = task?.meta ?? {};
   const count = intOrNull(meta.review_rejects);
   const rejects = count ?? 0;
-  const rawBase = count === null ? 0 : (intOrNull(meta.loop_hold_retry_base) ?? 0);
+  // `loop_hold_retry_base` is a retry count for `review_reopen_exhausted`; only a
+  // `rework_cap` hold wrote it as a reject-count epoch.
+  const epochHold = String(meta.loop_hold_code ?? "") === "rework_cap";
+  const rawBase = count === null || !epochHold ? 0 : (intOrNull(meta.loop_hold_retry_base) ?? 0);
   const heldAt = Date.parse(String(meta.loop_hold_at ?? ""));
   const changedAt = Date.parse(String(task?.status_changed_at ?? ""));
   const releasedByHuman =
@@ -146,7 +149,7 @@ export function reviewRejectEpoch(task, config = {}) {
     Number.isFinite(config.reworkMaxRounds) && config.reworkMaxRounds > 0
       ? config.reworkMaxRounds
       : DEFAULT_REWORK_MAX_ROUNDS;
-  return { rejects, base, max, releasedByHuman, hasCounter: count !== null };
+  return { rejects, base, max, releasedByHuman };
 }
 
 /**

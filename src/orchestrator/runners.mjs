@@ -1026,7 +1026,12 @@ export async function runWorkflowTick(deps) {
           // the review close — the same recoverable order as `reject_task`.
           // `held:true` is a crash recovery: only the move is retried.
           if (action.held !== true) {
-            await step(setMeta, "setMeta", action.original_ref, action.marker ?? {});
+            // Stamp the marker at execution time, after the reject's move to
+            // `todo`. The planner's clock can predate that move, and a crash
+            // between this write and the move would then read as a human
+            // release on the next tick — losing the hold and the bound.
+            const marker = { ...(action.marker ?? {}), loop_hold_at: now() };
+            await step(setMeta, "setMeta", action.original_ref, marker);
             await step(comment, "comment", action.original_ref, {
               kind: "question",
               body:

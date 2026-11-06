@@ -188,7 +188,7 @@ wedge, SIGKILLs on a later ping if the pool survives, and the service manager re
 board's plan; the review card's assignee selects the reviewer role, and `--reviewer` is a
 deprecated no-op;
 `--workflow-max-actions` and `--review-aging-minutes` bound workflow execution and
-silent-review escalation, and `--rework-max-rounds` sets how many delivery rounds since the
+silent-review escalation, and `--rework-max-rounds` sets how many review rejections since the
 last hold before the loop parks a card as `blocked`/`decision`. `--workspace <worktree|shared>` says where a card runs: its own
 worktree and lane branch (the default) or the project checkout. `--allow-all-tools` gives
 spawned agents the unrestricted tool set and **requires** a non-empty

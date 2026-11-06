@@ -13,7 +13,8 @@
  *     verdict produces an alert and no write;
  *   * **`autoAcceptReviews` gates only the review card** — the verdict on the
  *     original is always applied;
- *   * **bounded** — one pass performs at most `maxActions` writes.
+ *   * **bounded** — one pass performs at most `maxActions` writes, plus the
+ *     holds paired with rejects the cap admitted (the pair is atomic).
  *
  * Pure: no clock, no board, no filesystem.
  */
