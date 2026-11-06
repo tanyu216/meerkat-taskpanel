@@ -85,6 +85,8 @@ async function throughBothHalves(input, overrides = {}) {
   const order = [];
   const appends = [];
   const metas = [];
+  const comments = [];
+  const notes = [];
   const result = await runWorkflowTick({
     plan: wirePlan,
     config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
@@ -98,7 +100,11 @@ async function throughBothHalves(input, overrides = {}) {
     createFixChild: async (action) => (order.push(`createFixChild:${action.original_ref}`), { ok: true, ref: "PROJ-0004" }),
     linkFixChild: async (epic, child) => (order.push(`linkFixChild:${epic}:${child}`), { ok: true }),
     move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
-    comment: async (ref, { kind }) => (order.push(`comment:${ref}:${kind}`), { ok: true }),
+    comment: async (ref, { kind, body }) => (
+      comments.push({ ref, kind, body }),
+      order.push(`comment:${ref}:${kind}`),
+      { ok: true }
+    ),
     setMeta: async (ref, meta) => (
       metas.push({ ref, meta }),
       order.push(`setMeta:${ref}:${JSON.stringify(meta)}`),
@@ -109,11 +115,11 @@ async function throughBothHalves(input, overrides = {}) {
       order.push(`appendAcceptance:${ref}:${items.length}`);
       return { ok: true };
     },
-    notify: () => {},
+    notify: (alert) => notes.push(alert),
     now: () => NOW,
     log: () => {},
   });
-  return { plan, wirePlan, order, result, appends, metas };
+  return { plan, wirePlan, order, result, appends, metas, comments, notes };
 }
 
 const APPROVE_ORDER = [
@@ -386,22 +392,152 @@ describe("workflow plan → execution", () => {
     });
   }
 
-  it("keeps the card out of done when the lane branch cannot be merged", async () => {
+  it("routes a landing conflict back for a merge-resolution round", async () => {
     const original = card();
     const review = reviewCard(original);
     const landing = [];
-    const { order, result } = await throughBothHalves(
+    const { order, result, comments, notes } = await throughBothHalves(
       { tasks: [original, review], verdicts: { "PROJ-0002": verdict("APPROVE") } },
       {
         land: async (action) => (
           landing.push(action.original_ref),
-          { ok: false, error: "WORKSPACE_MERGE_CONFLICT: conflict" }
+          {
+            ok: false,
+            error: "WORKSPACE_MERGE_CONFLICT: merging lane/PROJ-0001 into /p conflicted",
+            code: "WORKSPACE_MERGE_CONFLICT",
+            details: {
+              branch: "lane/PROJ-0001",
+              project_dir: "/p",
+              conflicts: ["src/a.mjs", "docs/events.md"],
+            },
+          }
         ),
       },
     );
-    assert.equal(result.failed, 1);
+    assert.equal(result.failed, 0, "a routed conflict is not a failure");
+    assert.equal(result.blocked, 1);
     assert.deepEqual(landing, ["PROJ-0001"], "landing is attempted first");
-    assert.deepEqual(order, [], "no acceptance write happens before the landing");
+    assert.deepEqual(
+      order,
+      [
+        'setMeta:PROJ-0001:{"rework_round":"2"}',
+        "comment:PROJ-0001:change",
+        "move:PROJ-0001:in_progress",
+        "move:PROJ-0001:todo",
+        "comment:PROJ-0002:note",
+        "move:PROJ-0002:done",
+      ],
+      "the conflict reopens the card through the rework two-hop, review card last",
+    );
+    const change = comments.find((entry) => entry.ref === "PROJ-0001" && entry.kind === "change");
+    assert.match(change.body, /src\/a\.mjs/);
+    assert.match(change.body, /docs\/events\.md/);
+    assert.match(change.body, /integration branch/);
+    assert.deepEqual(notes.map((alert) => alert.type), ["landing_conflict"]);
+    assert.equal(notes[0].dedupKey, "landing_conflict|approve|PROJ-0001|r1");
+  });
+
+  it("retries environmental landing failures instead of reopening the card", async () => {
+    for (const code of [
+      "WORKSPACE_TARGET_DIRTY",
+      "WORKSPACE_TARGET_UNREADABLE",
+      "WORKSPACE_MERGE_TARGET_MISMATCH",
+      "WORKSPACE_DETACHED_HEAD",
+    ]) {
+      const original = card();
+      const review = reviewCard(original);
+      const { order, result, notes } = await throughBothHalves(
+        { tasks: [original, review], verdicts: { "PROJ-0002": verdict("APPROVE") } },
+        { land: async () => ({ ok: false, error: `${code}: not this card's fault`, code }) },
+      );
+      assert.equal(result.failed, 1, code);
+      assert.equal(result.blocked, 0, code);
+      assert.deepEqual(order, [], `${code}: no acceptance write before the landing`);
+      assert.deepEqual(notes.map((alert) => alert.type), ["workflow_action_failed"], code);
+    }
+  });
+
+  it("routes a landing conflict on an auto_accept, with no review card to close", async () => {
+    const record = [];
+    const plan = planWorkflowTick({
+      tasks: [card({ acceptance_mode: "off" })],
+      config: CONFIG,
+      now: NOW,
+    });
+    const result = await runWorkflowTick({
+      plan: workflowToWire(plan),
+      config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
+      dryRun: false,
+      land: async () => ({
+        ok: false,
+        error: "WORKSPACE_MERGE_CONFLICT: conflicted",
+        code: "WORKSPACE_MERGE_CONFLICT",
+        details: { conflicts: [] },
+      }),
+      createReview: async () => ({ ok: true }),
+      createFixChild: async () => ({ ok: true }),
+      linkFixChild: async () => ({ ok: true }),
+      move: async (ref, to) => (record.push(`move:${ref}:${to}`), { ok: true }),
+      comment: async (ref, { kind }) => (record.push(`comment:${ref}:${kind}`), { ok: true }),
+      setMeta: async (ref, meta) => (record.push(`setMeta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+      appendAcceptance: async () => ({ ok: true }),
+      notify: () => {},
+      now: () => NOW,
+      log: () => {},
+    });
+    assert.equal(result.blocked, 1);
+    assert.deepEqual(record, [
+      'setMeta:PROJ-0001:{"rework_round":"2"}',
+      "comment:PROJ-0001:change",
+      "move:PROJ-0001:in_progress",
+      "move:PROJ-0001:todo",
+    ]);
+  });
+
+  it("does not notify the same landing conflict twice when the reopen failed", async () => {
+    const original = card();
+    const review = reviewCard(original);
+    const plan = planWorkflowTick({
+      tasks: [original, review],
+      verdicts: { "PROJ-0002": verdict("APPROVE") },
+      config: CONFIG,
+      now: NOW,
+    });
+    const deps = (notes) => ({
+      plan: workflowToWire(plan),
+      config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
+      dryRun: false,
+      land: async () => ({
+        ok: false,
+        error: "WORKSPACE_MERGE_CONFLICT: conflicted",
+        code: "WORKSPACE_MERGE_CONFLICT",
+        details: { conflicts: ["src/a.mjs"] },
+      }),
+      move: async (ref, to) => {
+        if (ref === "PROJ-0001" && to === "in_progress") {
+          return { ok: false, error: "PROJ-0001 cannot move", code: "INVALID_TRANSITION" };
+        }
+        return { ok: true };
+      },
+      comment: async () => ({ ok: true }),
+      setMeta: async () => ({ ok: true }),
+      createReview: async () => ({ ok: true }),
+      createFixChild: async () => ({ ok: true }),
+      linkFixChild: async () => ({ ok: true }),
+      appendAcceptance: async () => ({ ok: true }),
+      notify: (alert) => notes.push(alert),
+      now: () => NOW,
+      log: () => {},
+    });
+    const firstNotes = [];
+    const first = await runWorkflowTick(deps(firstNotes));
+    assert.equal(first.failed, 1, "a failed reopen is a failure");
+    assert.deepEqual(firstNotes.map((alert) => alert.type), ["landing_conflict"]);
+    assert.equal(firstNotes[0].route_error, "PROJ-0001 cannot move");
+
+    const secondNotes = [];
+    await runWorkflowTick({ ...deps(secondNotes), ledger: first.ledger });
+    assert.deepEqual(secondNotes, [], "the same round does not notify twice");
   });
 
   it("a refused `done` is routed back for a new round instead of retried for ever", async () => {

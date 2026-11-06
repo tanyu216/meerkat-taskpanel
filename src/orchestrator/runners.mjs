@@ -755,6 +755,54 @@ export async function runWorkflowTick(deps) {
   };
 
   /**
+   * The lane no longer merges into the integration branch. Unlike a refusal,
+   * nothing was written to the board: the merge was aborted before any
+   * acceptance marker. Re-planning re-runs the same two trees and the same
+   * hunks, so the conflict is a **rework** signal, not a retry — the worker
+   * merges the integration branch into the lane and delivers again.
+   *
+   * `meta.rework_round` is the round the card is on **after** the move out of
+   * `in_review`; writing it here is what lets the planner's `reworkApplied`
+   * crash recovery finish a half-applied route, and what makes the next round
+   * reuse the same worktree and branch. `accepted_by` is deliberately not
+   * written: no acceptance happened.
+   */
+  const routeLandingConflict = async (action, err) => {
+    const ref = action.original_ref ?? action.review_ref;
+    const details = err.details ?? {};
+    const files = (Array.isArray(details.conflicts) ? details.conflicts : []).filter(
+      (file) => typeof file === "string" && file !== "",
+    );
+    const list =
+      files.length === 0
+        ? "(git named no files — re-run the merge in the lane to see what it reports)"
+        : files.map((file) => `- ${file}`).join("\n");
+    const where =
+      typeof details.branch === "string" && typeof details.project_dir === "string"
+        ? `Landing \`${details.branch}\` into \`${details.project_dir}\``
+        : "Landing the lane branch into the project's integration branch";
+    const body =
+      `${where} conflicted and the merge was aborted; nothing landed.\n\n` +
+      `Conflicting files:\n${list}\n\n` +
+      "Merge the project's integration branch into this lane, resolve these conflicts, " +
+      "re-run the checks, and deliver a new round. This is rework — the next round is " +
+      "reviewed again.";
+    await step(setMeta, "setMeta", ref, { rework_round: String(Number(action.round) + 1) });
+    await step(comment, "comment", ref, { kind: "change", body });
+    // `in_review → in_progress` bumps the delivery round; the second hop frees
+    // the card for dispatch. Same order as `reject_task`.
+    await step(move, "move", ref, "in_progress");
+    await step(move, "move", ref, "todo");
+    if (action.type === "approve") {
+      await closeReviewCard(
+        action,
+        `Loop closed this review card because landing ${ref} conflicted; the card is back ` +
+          "for a merge-resolution round.",
+      );
+    }
+  };
+
+  /**
    * The landing marker for the acceptance write, or nothing.
    *
    * A card worked in a tree the loop did not create has no lane to merge, so
@@ -1025,6 +1073,46 @@ export async function runWorkflowTick(deps) {
         ]);
         continue;
       }
+      // A content conflict at landing is deterministic: the same two trees, the
+      // same hunks, forever. Retrying it is the livelock this route removes; the
+      // lane is the only side that can resolve it.
+      if (
+        err.code === "WORKSPACE_MERGE_CONFLICT" &&
+        (action.type === "approve" || action.type === "auto_accept")
+      ) {
+        const key = `landing_conflict|${action.type}|${ref}|r${action.round}`;
+        const conflicts = Array.isArray(err.details?.conflicts) ? err.details.conflicts : [];
+        const alert = {
+          type: "landing_conflict",
+          action: action.type,
+          ref,
+          round: action.round,
+          branch: err.details?.branch ?? null,
+          conflicts,
+          error: err.message,
+          dedupKey: key,
+        };
+        try {
+          await routeLandingConflict(action, err);
+        } catch (routeErr) {
+          failed += 1;
+          log(
+            `workflow: ${action.type} landing conflicted for ${ref} (${err.message}), and the ` +
+              `reopen failed (${routeErr.message}) — the next pass retries`,
+            { level: "error" },
+          );
+          notifyBatch([{ ...alert, route_error: routeErr.message }]);
+          continue;
+        }
+        blocked += 1;
+        log(
+          `workflow: ${action.type} landing conflicted for ${ref} (${err.message}) — reopened ` +
+            "for a merge-resolution round",
+          { level: "warn" },
+        );
+        notifyBatch([alert]);
+        continue;
+      }
       if (EXPECTED_ACCEPTANCE_SKIP_CODES.has(err.code)) {
         skipped += 1;
         log(`workflow: ${action.type} skipped for ${ref} (${err.code}: ${err.message})`);
@@ -1135,6 +1223,8 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   "workflow_action_failed_escalated",
   // Same reason: the refused-acceptance route notifies directly.
   "acceptance_blocked",
+  // Same reason: the landing-conflict route notifies directly.
+  "landing_conflict",
 ]);
 
 function describeWorkflowAlert(alert) {

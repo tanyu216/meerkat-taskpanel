@@ -224,9 +224,12 @@ failures in `deferrals.json` — the card is never enqueued, so no queue row can
 round it was held at and its age — the loop already stopped, so this is the human's queue),
 **awaiting** cards (reason and age), **question-lane** cards (a director row that exhausted
 its two attempts, with the last error and lane), **unowned** `todo` cards past the route
-window, and **orphaned** rows (a processing handoff whose agent child is alive past twice the
-turn timeout — read-only, because re-dispatching under it is exactly what must not happen). A
-card the board snapshot knows is `done`/`canceled` is dropped from the three local halves;
+window, **orphaned** rows (a processing handoff whose agent child is alive past twice the
+turn timeout — read-only, because re-dispatching under it is exactly what must not happen), and
+**landing conflicts** (two or more `landing_conflict` rounds for one live card in the workflow
+ledger — the loop already reopened it for a merge-resolution round; the fix is the worker's
+merge). A card the board snapshot knows is `done`/`canceled` is dropped from the three local
+halves;
 when the board cannot be read those halves still report, and a truncated board
 read makes the two board-derived lists a lower bound (the board line says `TRUNCATED`).
 A `workspaces.json` record for a non-terminal card whose worktree is not a checkout **and**
@@ -686,8 +689,16 @@ record. A surviving branch holds unmerged work and is never discarded by the swe
 
 The per-project cap counts a project's worktrees as one project (`--project-concurrency`),
 not one directory. Acceptance **lands** the work: the lane branch is merged into the
-project's current branch before the card reaches `done`; a dirty project checkout or a
-merge conflict keeps the card in `in_review` and leaves the worktree and branch for a human.
+project's current branch before the card reaches `done`. The two failures are not alike:
+
+- **A content conflict is rework.** The merge is deterministic, so the loop comments the
+  conflicting files on the card, routes it back through the rework two-hop and closes the
+  review card (`landing_conflict`); the worker merges the integration branch into the lane and
+  delivers again. The rework cap bounds the cycle.
+- **An environmental failure retries.** A dirty, detached or unreadable project checkout is
+  not the lane's fault and can clear by itself; the card stays `in_review` and the next tick
+  retries.
+
 Cleanup (worktree first, then the merged branch) happens only when the card is terminal.
 A card a human closes directly is merged by the patrol before cleanup, under the same
 `merge_ref` check; a project on another branch, or with no registered target, keeps the
@@ -1064,6 +1075,12 @@ the container; with it, the container stays `in_progress` and names the child bl
   counts it `blocked` (beside `executed` / `failed` / `skipped`), comments the refused items,
   reopens the card through the same two-hop `reject_task` uses, closes the review card and
   notifies `acceptance_blocked` once per round. `docs/lifecycle.md` §4.5 has the order.
+- **A landing conflict is rework, not a retry.** `WORKSPACE_MERGE_CONFLICT` from the landing
+  step is deterministic — the same trees, the same hunks — so the tick counts it `blocked`,
+  comments the conflicting files, writes `meta.rework_round`, reopens the card through the same
+  two-hop, closes the review card and notifies `landing_conflict` once per round. The
+  environmental codes (dirty, detached or unreadable checkout) stay on the generic failure
+  path and retry.
 - **Idempotent.** Deterministic `--idem` keys plus the SQLite partial unique index; both
   `done` and `canceled` release the key (the index excludes both terminal statuses). The
   planner's policy is what differs: a `canceled` review is recreated, while a `done` review
