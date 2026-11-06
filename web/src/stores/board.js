@@ -121,13 +121,20 @@ export function isAwaiting(task) {
  * that edge is audited (it requires a reason), so it must not ride the generic
  * move menu or a drag-and-drop, which cannot ask for one. The drawer's
  * dedicated Reopen control (`reopenTask` below) is its UI.
+ *
+ * TP-0125 adds the two claim-cycle exits a person drives: release from
+ * `in_progress` to `canceled|todo|backlog`, and cancel a delivered card from
+ * `in_review` in one move. `in_progress → in_review|done` deliberately stays
+ * out: delivery is the agent's `taskctl` act, and the board has no deliver
+ * write. A `canceled` target asks for confirmation first (see `stores/confirm.js`).
  */
 export const UI_TRANSITIONS = Object.freeze({
   backlog: Object.freeze(["todo", "canceled"]),
   todo: Object.freeze(["backlog", "canceled"]),
-  in_progress: Object.freeze([]),
+  // TP-0125 — `in_review`/`done` are absent on purpose: only `taskctl` delivers.
+  in_progress: Object.freeze(["canceled", "todo", "backlog"]),
   awaiting: Object.freeze([]),
-  in_review: Object.freeze(["done", "in_progress"]),
+  in_review: Object.freeze(["done", "in_progress", "canceled"]),
   blocked: Object.freeze([]),
   done: Object.freeze([]),
   canceled: Object.freeze([]),

@@ -42,6 +42,7 @@ import {
 import { statePathsForDir } from "../foundation/loop-state.mjs";
 
 import { beginBootHealth } from "./boot-health.mjs";
+import { isInterruptActivity, requestInterrupt } from "./interrupts.mjs";
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./options.mjs";
 import { createLogger, saveSubscribeState, streamCli, subscribeStatePath } from "./runtime.mjs";
 import { runContinueOnce } from "./runners.mjs";
@@ -505,6 +506,31 @@ export async function runSubscribe(opts, env = process.env, deps = {}) {
           state.lastEventAt = new Date(now()).toISOString();
           state.lastEventId = cursor;
           flushState(false);
+          // TP-0125 — a card that left its claim cycle has an orphaned turn in
+          // the pool. The marker is written **unconditionally**: `classify` is
+          // only consulted while dispatch is enabled, and `isOwnWrite` would
+          // suppress the loop's own cancellation — both would leave a turn
+          // running after its card stopped being claimed. It is written before
+          // `scheduler.notify()` so the continue turn sees it; a write failure
+          // is a debug line, never a broken event stream.
+          if (stateDir !== null && stateDir !== undefined && stateDir !== "" && isInterruptActivity(data)) {
+            const written = requestInterrupt(stateDir, {
+              taskId: typeof data.task_id === "string" ? data.task_id : null,
+              card: null,
+              from: data.changes?.from ?? null,
+              to: data.changes?.to ?? null,
+              round: Number.isInteger(data.changes?.deliveryRound) ? data.changes.deliveryRound : null,
+              reason: "claim-cycle exit",
+              requestedBy: "subscribe",
+              requestedAt:
+                typeof data.created_at === "string" && data.created_at !== ""
+                  ? data.created_at
+                  : new Date(now()).toISOString(),
+            });
+            if (!written.ok) {
+              log(`subscribe: could not write an interrupt request: ${written.error}`, { level: "debug" });
+            }
+          }
           if (dispatchEnabled && classify(data, { agents: opts.agents }) === "dispatch") {
             scheduler.notify();
           }

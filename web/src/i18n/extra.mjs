@@ -38,6 +38,13 @@ export const EXTRA = {
     "conflict.hint": "Your change was not applied. Reload the task to see the current version, then try again.",
     "conflict.reload": "Reload task",
     "conflict.dismiss": "Dismiss",
+    // TP-0125 — the shared confirmation dialog. Implementation-only: the
+    // prototype has no destructive move, so it has no copy for one.
+    "confirm.cancelCard.title": "Cancel this card?",
+    "confirm.cancelCard.body":
+      "If the loop is running it, the turn is interrupted and the next claim starts a fresh session. Canceled work can be reopened to the queue.",
+    "confirm.cancelCard.action": "Cancel card",
+    "confirm.keep": "Keep card",
     // TP-0092 — the board's working-set banner. The prototype has no network, so
     // it cannot demonstrate a truncated read; these states are implementation
     // only. The hint states the project's real size; the active line is reserved
@@ -283,6 +290,12 @@ export const EXTRA = {
     "conflict.hint": "你的修改未生效。请重新载入该任务以获取最新版本，然后再试一次。",
     "conflict.reload": "重新载入任务",
     "conflict.dismiss": "忽略",
+    // TP-0125 —— 共享确认框；原型没有破坏性移动，所以没有对应文案。
+    "confirm.cancelCard.title": "取消这张卡？",
+    "confirm.cancelCard.body":
+      "若 loop 正在执行，它的 turn 会被中断，下次认领会使用全新会话。已取消的卡可以重开到待办。",
+    "confirm.cancelCard.action": "取消卡片",
+    "confirm.keep": "保留卡片",
     "board.truncated.title": "看板只显示工作集，不是全部卡片",
     "board.truncated.hint": "显示全部活动卡 + 最新的 done/canceled；项目共 %s 个未归档任务。",
     "board.truncated.active": "活动卡未能完整读取 —— 等你回复与验收可能不完整。",

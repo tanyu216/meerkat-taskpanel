@@ -126,8 +126,10 @@ Two execution shapes serve the same model:
 - **resident** (default on launchd/systemd): `taskctl loop session` runs a long-lived *session
   pool* — one *session per card* (a review card gets its own reviewer session) and a director
   lane per project. Poll claims a card and **enqueues** the handoff; the pool opens or resumes
-  the card's own session, so a same-round re-dispatch continues the worker that already holds
-  the context.
+  the card's own session, so a same-round re-dispatch **inside one claim** (a rework, a crash
+  recovery) continues the worker that already holds the context. A card that leaves the claim
+  cycle is the exception: its turn is interrupted, the session is discarded, and the next claim
+  starts fresh (ADR 0017).
 - **one-shot** (cron, or an agent kind with no session service): each tick cadence runs the
   passes in-process but, with no resident pool, poll claims nothing and worker/reviewer
   dispatch is paused — see [No resident pool: what still runs](#no-resident-pool-what-still-runs).
@@ -307,7 +309,9 @@ subscriber wakes a continue turn within its one-minute floor (the plain 10-minut
 clock remains the fallback when the subscriber is not installed). That delay is the event
 floor, not a new clock. The same holds for a worker's own `question`: `comment_added` with
 `kind: "question"` wakes the question lane immediately, and the director's release
-(`in_progress → todo`) wakes the worker's same-round resume.
+(`in_progress → todo`) **interrupts the held turn** and enqueues a fresh claim. The subscriber
+also writes an interrupt marker for that move, so the pool stops the turn on its 1 s clock
+rather than waiting for the heartbeat refusal (TP-0125 · ADR 0017).
 
 ## Liveness bounds: every cycle has a stop
 
@@ -516,8 +520,8 @@ backpressure, not a stuck card, and are not counted. Three consecutive failures 
 
 The tick itself costs **no model turn**: it is deterministic code, and the claim gate above
 decides whether any conversation is opened. The worker session's turn — one per card — is
-the cost, and it buys a conversation that starts, and on a same-round re-dispatch resumes,
-in the card's own workspace. The director is the only other LLM lane, and it runs only when
+the cost, and it buys a conversation that starts, and on a same-round re-dispatch inside the
+claim resumes, in the card's own workspace. A claim-cycle exit discards it (ADR 0017). The director is the only other LLM lane, and it runs only when
 a question, route or escalation row exists. `--dry-run` prints the plan and starts neither a
 claim nor a session.
 
@@ -528,7 +532,8 @@ subagent takes no per-call directory (Claude's `Agent` ignores `cwd`), and a mai
 that `cd`s later does not move the subagents it already spawned. One board-wide session
 cannot give two cards two workspaces — so the pool keeps **one top-level worker session per
 card**, opened in the card's own worktree, and resumes that same session when the card
-comes back. A review card gets a **reviewer session in the same directory**, opened with
+comes back **inside its claim** (a rework, a crash). A card released out of the claim cycle
+comes back as a new session. A review card gets a **reviewer session in the same directory**, opened with
 the `reviewer` role: the allowlist that excludes `Write` is per session.
 
 ```text
@@ -600,11 +605,13 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   once, at session open (`/meerkat-director` on Claude, developer instructions on Codex, an
   appended system prompt on Pi), so each later turn carries only the rows. A missing skill
   falls back to naming the decision-policy path in every prompt.
-- **Resume and replay** — a same-round re-dispatch (a human answer to an `awaiting`
-  question, crash recovery) opens the stored session id **in the same actor kind** and
-  sends a **resume** prompt carrying the answer or reason, in the same workspace. A
-  **round bump**, a recreated workspace or a role migrated to another platform is a new
-  generation: the old record is retired and the card starts fresh. When the native
+- **Resume and replay** — a same-round re-dispatch that stays **inside the claim** (a rework
+  or unblock, crash recovery) opens the stored session id **in the same actor kind** and sends
+  a **resume** prompt carrying the answer or reason, in the same workspace. A **claim-cycle
+  exit** (a release, a cancel, an answer to `awaiting`, a terminal move) is not a resume: it
+  interrupts the turn and deletes the record and transcript, so the next claim is fresh
+  (ADR 0017). A **round bump**, a recreated workspace or a role migrated to another platform
+  is likewise a new generation: the old record is retired and the card starts fresh. When the native
   session is gone (expired, deleted, or the resume is rejected), the pool replays a
   **bounded, supervisor-owned transcript** — the last 12 worker turns, at most 8 000
   characters — into a fresh session in the same workspace and marks the record
@@ -753,7 +760,7 @@ Every dependency's failure is named; nothing degrades silently.
 | board unreachable | the pass logs the error and claims nothing |
 | worker crashed | the next tick resumes the session by id, or replays a bounded transcript; three failed recoveries park the card |
 | worker session cannot be restored | row failed, claim released, card `blocked/resource` with a question — never a 30-minute re-dispatch loop |
-| handoff turn timeout | transient: its own `timeouts` counter, 2/4/8-minute backoff; after three, re-read the card and release it to `todo` with a note — never `blocked` (ADR [0016](adr/0016-turn-timeouts-are-transient.md)) |
+| handoff turn timeout | transient: its own `timeouts` counter, 2/4/8-minute backoff; after three, re-read the card and release it to `todo` with a note — never `blocked` (ADR [0016](adr/0016-turn-timeouts-are-transient.md)). The release drops the session, so the next claim is fresh (TP-0125) |
 | dispatch failed after the claim | the claim is handed back to `todo` immediately; at three consecutive failures the card is parked |
 | a card keeps coming back | the board's plan emits `hold_card`; the card is `blocked/decision` with a question, and a human move starts a fresh epoch |
 | resident pool wedged | `loop doctor`/`status` report `wedged`; one minute later the ping clock SIGTERMs it once and SIGKILLs on a later ping if needed (`--recover-wedged=no` opts out) |
@@ -768,7 +775,7 @@ enforces exactly them.
 
 | Heartbeat age | Meaning | What the supervisor does |
 |---|---|---|
-| every 5 min while a turn runs | the loop pulses the card as its holder | the claim stays fresh even when a 60-minute turn cannot reach the board itself; a refused pulse stops the timer and never affects the turn |
+| every 5 min while a turn runs | the loop pulses the card as its holder | the claim stays fresh even when a 60-minute turn cannot reach the board itself. A refused pulse stops the timer; since TP-0125 it is also the **interrupt backstop**: `details.status` outside the claim cycle, or `EXECUTION_ACTIVE`, aborts the turn and forgets its session (ADR 0017). Any other refusal never affects the turn. |
 | ≤ 30 min | live | nothing — the poll will not see a claimable card, and patrol stays quiet |
 | > 30 min | stale | patrol **escalates**: a log line and, if configured, `--notify <cmd>` |
 | unreadable / absent | a corrupt or half-written claim | patrol reports it (`heartbeat-unreadable`) — **never** swallowed |
@@ -1193,14 +1200,14 @@ worker turn, and routing from it would serialize the answer behind the very hold
 The full timeline is [the question lane, end to end](#the-question-lane-end-to-end).
 
 The wait's `answered` returns only when the card is **released**; a `note` (the director's or
-the worker's own) is shown but does not end the hold. The worker continues **in the same
-turn** and re-claims the card if the release left it `todo`. `escalated`, `moved`, `timeout`
-and `error` end the call; the worker may re-invoke one bounded wait, then parks and the
-**same worker session** is resumed with the answer when it lands. The director turn is
-verified against the board: a `note` without a release is requeued after a 30 s backoff and
-retried once, never a silent completion. Any human comment resumes an awaiting card, whatever
-its kind, and the
-resumed worker judges from its content whether it is a complete decision.
+the worker's own) is shown but does not end the hold. A release leaves the claim cycle, so the
+pool **interrupts the held turn** and discards the worker session (ADR 0017); the next claim is
+a **fresh worker** that reads the answer from the card's comments. `escalated`, `moved`,
+`timeout` and `error` end the call; the worker may re-invoke one bounded wait, then parks. The
+director turn is verified against the board: a `note` without a release is requeued after a 30 s
+backoff and retried once, never a silent completion. Any human comment resumes an awaiting card,
+whatever its kind; that `awaiting → todo` move interrupts too, and the new worker judges from
+the comment's content whether it is a complete decision.
 
 A director row is not a card handoff: it is never claimed, it opens no reviewer session, and
 does not consume a worker slot. The read is bounded by `--board-limit` and costs one
@@ -1314,13 +1321,13 @@ The sequence below is the implemented one — `src/orchestrator/runners.mjs` (en
     │                         │                         │ (max 2 turns)           │
     │ (8a) released: todo     │                         │                         │
     │◀───────wait: answered───┤                         │                         │
-    │ re-claims, same turn    │                         │                         │
+    │ turn interrupted        │                         │                         │
     │ (8b) escalated: awaiting│                         │                         │
     │◀──────wait: escalated───┤                         │                         │
     │ worker parks; id kept   │                         │                         │
   (8c) human comment ─────────▶│ awaiting → todo        │                         │
     │                         │                         │ (9) ticks on the event  │
-    │◀────────────────────────┼─resume worker session───┤                         │
+    │◀────────────────────────┼─fresh worker session────┤                         │
 ```
 
 **What each step pins** (the numbers are the diagram's):
@@ -1351,17 +1358,21 @@ The sequence below is the implemented one — `src/orchestrator/runners.mjs` (en
    escalation). A note-only turn is requeued after 30 s, at most two turns; past that the
    row fails and the question is left for the human.
 8. **The two endings.**
-   - **Released (`todo`).** `issue wait` returns `answered` with the bounded answer trail
-     (≤ 2 000 characters); the worker re-claims and continues **in the same turn**. Poll
-     skips a card whose worker session is running, so no duplicate prompt is queued; a
-     handoff already queued waits and is dropped if the worker moved the card first.
+   - **Released (`todo`).** `issue wait` may return `answered` with the bounded answer trail
+     (≤ 2 000 characters), but the release has already left the claim cycle: the subscriber
+     writes an interrupt marker, the pool aborts the turn on its 1 s clock and discards the
+     session (ADR 0017). A race in which the wait returns first is still stopped by the
+     settlement token. The next claim is a **fresh worker** that reads the answer from the
+     comments.
    - **Escalated (`awaiting`).** `issue wait` returns `escalated`; the worker parks and its
-     session id is kept. A human comment is the board's own resume (`awaiting → todo`,
-     migration 0034), and the answer then takes the ordinary dispatch path.
-9. **Resume rides the event.** The release that follows a human answer reaches the worker
-   the same way a new card does: `comment_added` wakes the subscriber, a dispatch tick
-   claims the card, and the pool resumes the **same** worker session with the answer in the
-   resume prompt. The 600-second tick is the fallback when no subscriber is installed.
+     session id is kept **while the card stays `awaiting`**. A human comment is the board's
+     own move (`awaiting → todo`, migration 0034); it interrupts the parked turn, and the answer
+     then takes the ordinary dispatch path as a fresh session.
+9. **The answer rides the event.** The release that follows a human answer reaches the card
+   the same way a new card does: `comment_added` wakes the subscriber, which also writes the
+   interrupt marker, and a dispatch tick claims the card and opens a **new** worker session.
+   The 600-second tick is the fallback when no subscriber is installed; without either writer,
+   the heartbeat refusal is the ≤5-minute backstop.
 
 Outside the diagram, `question_stale` in [`sla.md`](sla.md) watches the same wait on either
 status — a 60-minute normal limit, a 1440-minute escalation — and is notify-only: it never

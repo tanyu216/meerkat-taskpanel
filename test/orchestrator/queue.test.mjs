@@ -22,6 +22,7 @@ import {
   questionDispatches,
   rowDispatches,
   retireLegacyDispatched,
+  resumeCards,
   timeoutCards,
   TIMEOUT_BACKOFF_MS,
   TIMEOUT_MAX_ATTEMPTS,
@@ -565,6 +566,56 @@ describe("card queue", () => {
     assert.equal(retired.retired, 0);
     const statuses = readCards(dir).value.cards.map((row) => row.status).sort();
     assert.deepEqual(statuses, ["pending", "processing"]);
+  });
+});
+
+describe("card queue interrupted rows (TP-0125)", () => {
+  function claimedRow(dir, ref = "T-1") {
+    enqueueCard(dir, { card: ref, role: "worker", agent: "alice", target_dir: "/work/app" });
+    const [row] = claimCards(dir, { claimedBy: "/work/app", pid: process.pid, limit: 1 }).cards;
+    return row;
+  }
+
+  it("is terminal: no mutator resurrects it and no counter moves", (t) => {
+    const dir = dirFor(t);
+    const row = claimedRow(dir);
+    const completed = completeCards(dir, [row.id], { status: "interrupted", error: "claim cycle exited" });
+    assert.equal(completed.ok, true);
+    let [live] = readCards(dir).value.cards;
+    assert.equal(live.status, "interrupted");
+    assert.equal(live.attempts, 0);
+    assert.equal(live.timeouts, 0);
+    assert.equal(live.recoveries, 0);
+
+    // A later mutator sees a terminal row and leaves it alone — including the
+    // requeue that would otherwise spend an attempt.
+    requeueCards(dir, [row.id], { error: "late failure" });
+    resumeCards(dir, [row.id], {});
+    timeoutCards(dir, [row.id], { now: Date.now() });
+    claimCards(dir, { claimedBy: "/work/other", limit: 1 });
+    [live] = readCards(dir).value.cards;
+    assert.equal(live.status, "interrupted");
+    assert.equal(live.attempts, 0);
+    assert.equal(live.timeouts, 0);
+    assert.equal(live.recoveries, 0);
+  });
+
+  it("a new handoff for the same card is a fresh pending row", (t) => {
+    const dir = dirFor(t);
+    const row = claimedRow(dir);
+    completeCards(dir, [row.id], { status: "interrupted" });
+    enqueueCard(dir, { card: "T-1", role: "worker", agent: "alice", target_dir: "/work/app", round: 2 });
+    const rows = readCards(dir).value.cards;
+    assert.equal(rows.length, 2, "the terminal history is kept; the new attempt is a new row");
+    assert.deepEqual(rows.map((entry) => entry.status).sort(), ["interrupted", "pending"]);
+  });
+
+  it("is dropped by the ordinary retention prune", (t) => {
+    const dir = dirFor(t);
+    enqueueCard(dir, { card: "T-1", role: "worker", enqueuedAt: "2026-01-01T00:00:00.000Z" });
+    completeCards(dir, ["T-1-worker"], { status: "interrupted", now: "2026-01-01T00:30:00.000Z" });
+    const pruned = pruneCards(dir, { now: Date.parse("2026-01-02T00:00:00.000Z"), ttlMs: 60_000 });
+    assert.equal(pruned.dropped, 1);
   });
 });
 

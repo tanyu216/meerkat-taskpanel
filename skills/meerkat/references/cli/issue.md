@@ -215,6 +215,5 @@ Four creation invariants (`VALIDATION_FAILED`): `review_of` must name a card tha
 `in_review` (deliver the original first); `review_of` may not name another review card;
 `review_round` may not be stale or future; and a review card is `kind=review` (the marker
 forces it; an epic cannot be claimed, so an epic review card would never be woken). A review card in `in_review`
-cannot be moved directly to `canceled`; cancel it with
-`in_review → in_progress → canceled`. Detection and the two-round model:
+is canceled in one move: `in_review → canceled` (TP-0125). Detection and the two-round model:
 [`review-protocol.md`](../review-protocol.md).

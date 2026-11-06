@@ -4,6 +4,11 @@
 
 Accepted — 2026-11-01.
 
+> **Note (2026-11-05):** **Superseded in part by ADR 0017.** The hold and the release-as-settle
+> remain; the "release resumes the same session" consequence does not. A release leaves the
+> claim cycle, so it interrupts the held turn and the next claim is a fresh worker that reads
+> the answer from the comments.
+
 ## Context
 
 ADR 0006 gave every card its own worker session, resumed by id in the same round. That made

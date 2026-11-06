@@ -12,6 +12,9 @@
   claim and skip the routing lock.
 - **Held** in `in_progress`, `awaiting`, `in_review` and `blocked`; the write reaching
   `todo`, `backlog`, `done` or `canceled` releases it. No unclaim command.
+- **A release interrupts the turn.** Any move out of the claim cycle stops the turn, records the
+  queue row `interrupted` (no attempt, timeout or recovery), and discards the session and
+  transcript — the next claim is **fresh** (ADR 0017).
 - **Heartbeat only in `in_progress`, only from the holder.** It refreshes `heartbeat_at` and
   nothing else.
 

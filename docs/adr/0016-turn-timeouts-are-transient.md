@@ -1,6 +1,11 @@
 # 0016 — A turn timeout is transient, never an execution hold
 
 - **Status:** Accepted
+  - **Note (2026-11-05):** **Superseded in part by ADR 0017.** "A refused pulse never changes
+    the turn's outcome" no longer holds: a refusal whose `details.status` is outside the claim
+    cycle (or `EXECUTION_ACTIVE`) aborts the turn and forgets its session. The timeout counter,
+    backoff and release rules here are unchanged; the terminal release also drops the session,
+    so the next claim is fresh.
 - **Context:** A handoff turn that exceeded `--session-turn-timeout` was counted
   against the card's attempt budget; three consecutive timeouts parked the card
   `blocked/resource`. The loop could not restart a legitimate long turn without a

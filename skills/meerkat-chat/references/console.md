@@ -35,7 +35,8 @@ The human-owned queue, already filtered to what is actually unanswered.
 }
 ```
 
-- `kind: "awaiting"` — the card is parked on a human question. A human comment resumes it.
+- `kind: "awaiting"` — the card is parked on a human question. A human comment resumes it: the
+  turn is interrupted and the next claim is fresh (ADR 0017).
 - `kind: "agent-question"` — an `in_progress` card carries a worker question the director has
   not settled. The card needs a requeue after the answer (see
   [`answering.md`](answering.md#answer-an-in_progress-agent-question)).
