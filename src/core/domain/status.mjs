@@ -24,6 +24,13 @@
  *     round's report cannot satisfy the gate for the next delivery.
  *   - Leaving `in_review` (to `in_progress` or `blocked`) starts a new delivery
  *     round (F3), so the previous round's report can no longer satisfy the gate.
+ *     The terminal exits (`→ done`, `→ canceled`) do not: the card is finished
+ *     and a reopen is what starts a round.
+ *   - TP-0125 adds two direct exits — `in_progress → backlog` and
+ *     `in_review → canceled` — so leaving the work does not have to pass through
+ *     another claimed state. Exiting the claim cycle is one fact,
+ *     {@link leavesClaimCycle}, and the orchestrator's interrupt machinery keys
+ *     on it.
  *
  * M1 adds one first-class status, `awaiting` (the card is running but has asked
  * a human — design §2/§6). Three properties of it are load-bearing and are
@@ -66,6 +73,10 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
     STATUS.IN_REVIEW,
     STATUS.BLOCKED,
     STATUS.TODO,
+    // TP-0125 — a direct exit to the queue. The `todo` hop re-enters the
+    // dispatch cycle; a card released for later must not be re-claimed on the
+    // way out.
+    STATUS.BACKLOG,
     STATUS.CANCELED,
     // M1 — the single entry into `awaiting` (design §2.1/§6).
     STATUS.AWAITING,
@@ -78,7 +89,10 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
   // delivery gate demands. `awaiting → todo` is not a reopen: the round does not
   // move and the claim is released.
   [STATUS.AWAITING]: Object.freeze([STATUS.IN_PROGRESS, STATUS.TODO, STATUS.CANCELED]),
-  [STATUS.IN_REVIEW]: Object.freeze([STATUS.DONE, STATUS.IN_PROGRESS, STATUS.BLOCKED]),
+  // TP-0125 — a terminal exit in one move. The old path (`→ in_progress →
+  // canceled`) briefly re-entered the work cycle and re-armed dispatch; the
+  // terminal move is not a rework, so it does not bump the round.
+  [STATUS.IN_REVIEW]: Object.freeze([STATUS.DONE, STATUS.IN_PROGRESS, STATUS.BLOCKED, STATUS.CANCELED]),
   [STATUS.BLOCKED]: Object.freeze([STATUS.TODO, STATUS.IN_PROGRESS, STATUS.IN_REVIEW, STATUS.CANCELED]),
   // The reopen edge. `todo` is the only target on purpose: `in_progress` is a
   // *claimed* state, and a reopened card has no claim holder — landing there
@@ -217,6 +231,28 @@ export const CLAIM_HOLDING_STATUSES = Object.freeze([
  */
 export function holdsClaim(status) {
   return CLAIM_HOLDING_STATUSES.includes(/** @type {string} */ (status));
+}
+
+/**
+ * Does moving `from → to` take the card out of its claim cycle?
+ *
+ * This is the **one predicate** the interrupt writers share (TP-0125): a card
+ * that stops holding its claim has no executor — the turn still running in the
+ * old attempt is an orphan and must be interrupted, and the next claim must
+ * start a fresh session. It is deliberately derived from {@link holdsClaim}
+ * rather than an edge list, so a status added to the cycle is classified
+ * without a second table.
+ *
+ * A terminal move from `in_review` (`→ done`, `→ canceled`) also matches. That
+ * is benign: the card is finished, so the writer finds no live turn and only
+ * forgets the finished session (ADR 0017 records it).
+ *
+ * @param {unknown} from
+ * @param {unknown} to
+ * @returns {boolean}
+ */
+export function leavesClaimCycle(from, to) {
+  return holdsClaim(from) && !holdsClaim(to);
 }
 
 /** @param {unknown} value */

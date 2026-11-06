@@ -52,6 +52,9 @@ export const STATE_FILES = Object.freeze({
   // ping is one-shot, so the consecutive `/health` failure count has to outlive
   // the process that measured it.
   boardHealth: "board-health.json",
+  // TP-0125 · the cross-process turn-interrupt channel (`orchestrator/
+  // interrupts.mjs`). A directory, not a file: one request per card target.
+  interrupts: "interrupts",
 });
 
 /** Statuses a legacy ledger row may carry while it still claims a concurrency slot. */
@@ -439,7 +442,7 @@ export function wedgeKillAction(input = {}) {
  * The state siblings that live beside `continue.state.json`.
  *
  * @param {string} stateDir
- * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string, poolWedge: string, health: string}}
+ * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string, poolWedge: string, health: string, interrupts: string}}
  */
 export function statePathsForDir(stateDir) {
   const dir = String(stateDir);
@@ -452,5 +455,6 @@ export function statePathsForDir(stateDir) {
     poolWedge: join(dir, STATE_FILES.poolWedge),
     health: join(dir, STATE_FILES.health),
     boardHealth: join(dir, STATE_FILES.boardHealth),
+    interrupts: join(dir, STATE_FILES.interrupts),
   };
 }

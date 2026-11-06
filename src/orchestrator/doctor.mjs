@@ -607,6 +607,9 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     done: 0,
     failed: 0,
     dispatched: 0,
+    // TP-0125 — a claim-cycle exit the loop acted on. It is terminal, but an
+    // operator needs to see how often turns are stopped this way.
+    interrupted: 0,
     total: 0,
     error: null,
   };
@@ -624,6 +627,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     queue.done = cards.filter((card) => card?.status === "done").length;
     queue.failed = cards.filter((card) => card?.status === "failed").length;
     queue.dispatched = cards.filter((card) => card?.status === "dispatched").length;
+    queue.interrupted = cards.filter((card) => card?.status === "interrupted").length;
     queue.depth = queue.pending + queue.processing;
   } catch (error) {
     queue.error = error.message;

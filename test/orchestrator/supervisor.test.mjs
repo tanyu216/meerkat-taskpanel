@@ -2026,7 +2026,7 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-2:done", "T-3:canceled"]);
   });
 
-  it("cancels an in-review review card through in_progress, never done", async () => {
+  it("cancels a review card in one move and interrupts its turn, never done", async () => {
     const order = [];
     await runWorkflowTick(
       baseDeps({
@@ -2041,14 +2041,21 @@ describe("runWorkflowTick (injected deps)", () => {
         },
         comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
         move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+        requestInterrupt: (request) => {
+          order.push(`interrupt:${request.card}:${request.from}:${request.to}`);
+          return { ok: true };
+        },
       }),
     );
+    // TP-0125 — `in_review → canceled` is one hop; the marker is written after
+    // the move so the pool can stop a reviewer turn that is still running.
     assert.deepEqual(order, [
       "comment:T-3:note",
-      "move:T-3:in_progress",
       "move:T-3:canceled",
+      "interrupt:T-3:in_review:canceled",
       "comment:T-4:note",
       "move:T-4:canceled",
+      "interrupt:T-4:in_progress:canceled",
     ]);
     assert.equal(order.includes("move:T-3:done"), false, "a canceled review is never recorded as accepted");
   });

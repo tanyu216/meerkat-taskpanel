@@ -44,8 +44,13 @@ import {
   canTransition,
   holdsClaim,
   isTerminalStatus,
+  leavesClaimCycle,
   transitionReasonCode,
 } from "../../src/core/domain/status.mjs";
+// The orchestrator cannot import `src/core` (layering), so it keeps its own
+// copy of the claim vocabulary. This is the one test that makes the copy
+// provably equal: a status added to either side without the other is red.
+import { CLAIM_HOLDING, leavesClaimCycle as orchestratorLeavesClaimCycle } from "../../src/orchestrator/interrupts.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
 import { TS, TS2, cleanupTempDirs, ensureActor, insertProject, insertReport, insertTask, reasonCode, withBoard } from "../helpers/sqlite-fixture.mjs";
 
@@ -152,6 +157,21 @@ const move = (db, taskId, to) =>
   );
 
 describe("contract/state-machine — every pair, two paths", () => {
+  it("the orchestrator's claim vocabulary is the domain's, pair for pair", () => {
+    assert.deepEqual(
+      [...CLAIM_HOLDING].sort(),
+      STATUSES.filter(holdsClaim).sort(),
+      "claim-holding statuses",
+    );
+    for (const [from, to] of PAIRS) {
+      assert.equal(
+        orchestratorLeavesClaimCycle(from, to),
+        leavesClaimCycle(from, to),
+        `leavesClaimCycle(${from}, ${to})`,
+      );
+    }
+  });
+
   it("covers statuses² ordered pairs, with exactly one row per status", () => {
     assert.equal(PAIRS.length, STATUS_COUNT ** 2, "every ordered pair is walked");
     assert.deepEqual(

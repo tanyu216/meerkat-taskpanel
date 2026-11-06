@@ -43,6 +43,7 @@ import {
   uploadAttachment,
 } from "../../stores/board.js";
 import { acceptanceRowsFor, deliverySummaryOf } from "../../lib/acceptance.js";
+import { askConfirm } from "../../stores/confirm.js";
 import { reviewRoundsFor } from "../../lib/review.js";
 import { isAcceptanceWaiting } from "../../lib/waiting-queue.js";
 import { resolveDetailTab } from "../../lib/activity-feed.js";
@@ -818,6 +819,18 @@ function closePropMenus() {
 async function chooseStatus(to) {
   closePropMenus();
   if (to === status.value || !statusTargets.value.includes(to)) return;
+  // TP-0125 — cancelling is destructive and carries the claim-cycle exit, so it
+  // asks once. The write is still `runCommit`, which owns the error panel and
+  // the toast; the dialog rethrows, it never swallows.
+  if (to === "canceled") {
+    askConfirm({
+      titleKey: "confirm.cancelCard.title",
+      bodyKey: "confirm.cancelCard.body",
+      actionKey: "confirm.cancelCard.action",
+      run: () => runCommit(() => saveDetailField("status", "canceled")),
+    });
+    return;
+  }
   await runCommit(() => saveDetailField("status", to));
 }
 

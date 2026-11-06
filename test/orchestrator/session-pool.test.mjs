@@ -32,7 +32,13 @@ import {
   readCards,
 } from "../../src/orchestrator/queue.mjs";
 import { readLedger, upsertSubagent, writeLedger } from "../../src/orchestrator/ledger.mjs";
-import { appendWorkerTurn, transcriptFile, workerKey } from "../../src/orchestrator/worker-session.mjs";
+import { requestInterrupt } from "../../src/orchestrator/interrupts.mjs";
+import {
+  appendWorkerTurn,
+  readWorkerSessions,
+  transcriptFile,
+  workerKey,
+} from "../../src/orchestrator/worker-session.mjs";
 import {
   POOL_HEARTBEAT_MS,
   POOL_STALE_MS,
@@ -88,8 +94,22 @@ function fakePool({ behavior, idPrefix = "sid" } = {}) {
         skillPath: skillPath ?? null,
         systemPrompt: systemPrompt ?? null,
         sessionId: sessionId ?? `${idPrefix}-${next++}`,
+        // The native id the pool asked to resume (null = fresh), kept apart
+        // from the id the fake invents so a test can prove `fresh`.
+        resumeId: sessionId ?? null,
+        pid: process.pid,
+        interruptCalls: 0,
         closed: false,
         prompts: [],
+        /**
+         * A blocking test turn parks on `handle.release`; `interrupt()` is the
+         * only thing that settles it, exactly the adapter contract the pool
+         * relies on.
+         */
+        async interrupt() {
+          this.interruptCalls += 1;
+          this.release?.();
+        },
         async send(prompt) {
           this.prompts.push(prompt);
           const result = (await behavior?.({ handle: this, prompt })) ?? {};
@@ -216,6 +236,68 @@ const heartbeatCalls = (calls) =>
   calls.filter(
     (argv) => argv.includes("issue") && argv.includes("heartbeat"),
   );
+
+/** The latest queue row for one card (a card can be enqueued more than once). */
+const rowOf = (f, ref) =>
+  readCards(f.dir)
+    .value.cards.slice()
+    .reverse()
+    .find((entry) => entry.card === ref);
+
+/** Resolve true once `predicate()` holds, or false at the deadline. */
+const waitFor = (predicate, timeoutMs = 5000) =>
+  new Promise((resolveWait) => {
+    const deadline = Date.now() + timeoutMs;
+    const tick = () => {
+      if (predicate()) return resolveWait(true);
+      if (Date.now() >= deadline) return resolveWait(false);
+      setTimeout(tick, 20);
+    };
+    tick();
+  });
+
+/**
+ * Write the marker a writer would have written after the card's move.
+ *
+ * `requestedAt` is in the future by a second: a move happens after the handoff
+ * was enqueued, and the guard compares parsed timestamps.
+ */
+function interruptFor(f, ref, { from = "in_progress", to = "canceled" } = {}) {
+  const row = readCards(f.dir).value.cards.find(
+    (entry) => entry.card === ref && entry.status !== "interrupted",
+  );
+  return requestInterrupt(f.dir, {
+    taskId: row?.task_id ?? null,
+    card: ref,
+    from,
+    to,
+    reason: "test",
+    requestedBy: "test",
+    requestedAt: new Date(Date.now() + 1000).toISOString(),
+  });
+}
+
+/**
+ * Install a `taskctl` stub that answers every call with one refusal envelope,
+ * optionally after a delay so a test can race the in-flight pulse.
+ */
+function refusingCli(f, envelope, { delayMs = 0 } = {}) {
+  const calls = join(f.dir, "refuse-calls.jsonl");
+  writeFileSync(
+    join(f.dir, "cli.mjs"),
+    [
+      'import { appendFileSync } from "node:fs";',
+      'import { setTimeout as sleep } from "node:timers/promises";',
+      `appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");`,
+      ...(delayMs > 0 ? [`await sleep(${delayMs});`] : []),
+      `process.stdout.write(${JSON.stringify(JSON.stringify(envelope))});`,
+    ].join("\n"),
+  );
+  return () =>
+    existsSync(calls)
+      ? readFileSync(calls, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line))
+      : [];
+}
 
 /**
  * Put one enqueued row in `processing`, as another pool's in-flight turn would.
@@ -3978,21 +4060,113 @@ describe("the loop's card pulse", () => {
     }
   });
 
-  it("stops the pulse when the board refuses it", async (t) => {
-    const f = fixture(t);
-    const calls = join(f.dir, "refuse-calls.jsonl");
-    writeFileSync(
-      join(f.dir, "cli.mjs"),
+  it("interrupts the turn when the refused pulse is evidence the card left its claim cycle", async (t) => {
+    for (const [label, envelope] of [
       [
-        'import { appendFileSync } from "node:fs";',
-        `appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");`,
-        'process.stdout.write(JSON.stringify({ ok: false, error: { code: "EXECUTION_ACTIVE", message: "not the holder" } }));',
-      ].join("\n"),
+        "details.status",
+        { ok: false, error: { code: "CONFLICT", message: "gone", details: { status: "canceled" } } },
+      ],
+      [
+        "EXECUTION_ACTIVE",
+        { ok: false, error: { code: "EXECUTION_ACTIVE", message: "not the holder" } },
+      ],
+    ]) {
+      const f = fixture(t);
+      const calls = refusingCli(f, envelope);
+      let started;
+      const sendStarted = new Promise((resolveStarted) => {
+        started = resolveStarted;
+      });
+      const fake = fakePool({
+        behavior: async ({ handle }) => {
+          started();
+          return await new Promise((release) => {
+            handle.release = release;
+          });
+        },
+      });
+      const pool = createSessionPool({
+        opts: optsFor(f, { cardHeartbeatMs: 20 }),
+        kindPool: fake,
+      });
+      t.after(() => pool.stop());
+      await pool.start();
+      enqueueCard(join(f.dir), card(f, "T-1", f.app));
+      const running = pool.tick();
+      await sendStarted;
+
+      assert.equal(
+        await waitFor(() => rowOf(f, "T-1").status === "interrupted"),
+        true,
+        `${label}: the refused pulse stops the turn`,
+      );
+      await running;
+
+      const row = rowOf(f, "T-1");
+      assert.equal(row.status, "interrupted", label);
+      assert.equal(row.attempts, 0, `${label}: an interruption is not an attempt`);
+      assert.equal(row.timeouts, 0, `${label}: nor a timeout`);
+      assert.equal(row.recoveries, 0, `${label}: nor a recovery`);
+      assert.equal(fake.opened[0].interruptCalls, 1, `${label}: the adapter is interrupted`);
+      assert.equal(
+        heartbeatCalls(calls()).length,
+        1,
+        `${label}: one refusal stops the pulse; it is not retried`,
+      );
+      await pool.stop();
+    }
+  });
+
+  it("keeps the turn running when the refused pulse is an ordinary board error", async (t) => {
+    for (const [label, envelope] of [
+      ["no details", { ok: false, error: { code: "NOT_FOUND", message: "no such card" } }],
+      [
+        "still in the claim cycle",
+        { ok: false, error: { code: "CONFLICT", message: "busy", details: { status: "in_progress" } } },
+      ],
+    ]) {
+      const f = fixture(t);
+      refusingCli(f, envelope);
+      const fake = fakePool({
+        behavior: async () => {
+          await waitMs(200);
+          return {};
+        },
+      });
+      const pool = createSessionPool({
+        opts: optsFor(f, { cardHeartbeatMs: 20 }),
+        kindPool: fake,
+      });
+      t.after(() => pool.stop());
+      await pool.start();
+      enqueueCard(join(f.dir), card(f, "T-1", f.app));
+      await pool.tick();
+
+      assert.equal(rowOf(f, "T-1").status, "done", `${label}: the turn still completes`);
+      assert.equal(fake.opened[0].interruptCalls, 0, `${label}: a plain board error is not an exit`);
+      await pool.stop();
+    }
+  });
+
+  it("does not interrupt again when the refusal lands with no live entry", async (t) => {
+    const f = fixture(t);
+    // The refusal is slow enough that the marker's own abort removes the entry
+    // before the pulse's result is read: the late refusal must find nothing.
+    const calls = refusingCli(
+      f,
+      { ok: false, error: { code: "EXECUTION_ACTIVE", message: "not the holder" } },
+      { delayMs: 300 },
     );
+    let started;
+    const sendStarted = new Promise((resolveStarted) => {
+      started = resolveStarted;
+    });
     const fake = fakePool({
-      behavior: async () => {
-        await waitMs(200);
-        return {};
+      behavior: async ({ handle }) => {
+        started();
+        return await new Promise((release) => {
+          handle.release = release;
+        });
       },
     });
     const pool = createSessionPool({
@@ -4002,18 +4176,369 @@ describe("the loop's card pulse", () => {
     t.after(() => pool.stop());
     await pool.start();
     enqueueCard(join(f.dir), card(f, "T-1", f.app));
-    await pool.tick();
-    await waitMs(150);
-
-    const recorded = existsSync(calls)
-      ? readFileSync(calls, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line))
-      : [];
-    // The same CLI channel also carries the board-session writes; count only
-    // the heartbeats this test is about.
+    const running = pool.tick();
+    await sendStarted;
     assert.equal(
-      heartbeatCalls(recorded).length,
+      await waitFor(() => heartbeatCalls(calls()).length >= 1),
+      true,
+      "the pulse call is in flight",
+    );
+
+    assert.equal(interruptFor(f, "T-1").ok, true);
+    const drained = await pool.drainInterrupts();
+    assert.equal(drained.interrupted, 1, "the marker's abort owns the exit");
+    await running;
+    // Let the in-flight refusal resolve after the entry is gone.
+    await waitMs(400);
+
+    // `calls` is this fixture's recorder; the same CLI channel also carries the
+    // board-session writes, so count only the heartbeats this test is about.
+    assert.equal(
+      heartbeatCalls(calls()).length,
       1,
       "one refusal stops the pulse; it is not retried on a timer",
+    );
+
+    assert.equal(
+      fake.opened[0].interruptCalls,
+      1,
+      "the late refusal finds no live entry and interrupts nothing",
+    );
+    assert.equal(rowOf(f, "T-1").status, "interrupted");
+    assert.equal(heartbeatCalls(calls()).length, 1);
+    await pool.stop();
+  });
+});
+
+/**
+ * TP-0125 — a card that leaves its claim cycle has no executor. The pool's 1 s
+ * drain is the consumer; the subscriber, the workflow pass and the pulse are
+ * the writers. These cases pin the pool half: the turn really stops, the row is
+ * terminal without spending a counter, the durable session and transcript are
+ * gone, and the next claim opens fresh.
+ */
+describe("a claim-cycle exit stops the turn (TP-0125)", () => {
+  it("interrupts the live turn, spends no counter, and forgets the session", async (t) => {
+    const f = fixture(t);
+    let started;
+    const sendStarted = new Promise((resolve) => {
+      started = resolve;
+    });
+    const fake = fakePool({
+      behavior: async ({ handle }) => {
+        started();
+        return await new Promise((release) => {
+          handle.release = release;
+        });
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    const running = pool.tick();
+    await sendStarted;
+
+    const key = workerKey("T-1", 1);
+    assert.equal(existsSync(transcriptFile(f.dir, key)), true, "a dispatch records its transcript");
+    assert.notEqual(readWorkerSessions(f.dir).workers[key], undefined, "and its session record");
+
+    assert.equal(interruptFor(f, "T-1").ok, true);
+    const drain = await pool.drainInterrupts();
+    await running;
+
+    const row = rowOf(f, "T-1");
+    assert.equal(row.status, "interrupted");
+    assert.equal(row.attempts, 0, "an interruption is not a delivery attempt");
+    assert.equal(row.timeouts, 0, "nor a timeout");
+    assert.equal(row.recoveries, 0, "nor a crash recovery");
+    assert.equal(fake.opened[0].interruptCalls, 1, "the adapter's interrupt is the only lever");
+    assert.equal(drain.interrupted >= 1, true);
+    assert.equal(readWorkerSessions(f.dir).workers[key], undefined, "the next claim is fresh");
+    assert.equal(existsSync(transcriptFile(f.dir, key)), false, "and the replay transcript is gone");
+
+    // The board row is terminal, so the settlement pass did not overwrite it.
+    assert.equal(pool.ledger.subagents.filter((entry) => entry.status === "interrupted").length, 1);
+    await pool.stop();
+  });
+
+  it("interrupts a pending handoff before it is ever sent", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    assert.equal(interruptFor(f, "T-1", { from: "in_progress", to: "backlog" }).ok, true);
+    const drain = await pool.drainInterrupts();
+    assert.equal(drain.pending, 1);
+    assert.equal(rowOf(f, "T-1").status, "interrupted");
+    assert.equal(fake.opened.length, 0, "no opener, no prompt");
+    await pool.stop();
+  });
+
+  it("finalizes a processing row whose owner is gone, even with no live entry", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+
+    const key = workerKey("T-1", 1);
+    enqueueCard(join(f.dir), { ...card(f, "T-1", f.app), worker_key: key });
+    const [row] = claimCards(join(f.dir), {
+      claimedBy: "/work/app",
+      pid: 999_999,
+      limit: 1,
+    }).cards;
+    // A durable record and transcript left by a pool that died mid-turn.
+    mkdirSync(join(f.dir, "worker-transcripts"), { recursive: true });
+    writeFileSync(
+      join(f.dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 1,
+        projects: { [key]: { status: "running", sessionId: "sid-dead", queueId: row.id } },
+      }),
+    );
+    writeFileSync(transcriptFile(f.dir, key), JSON.stringify({ version: 1, turns: [] }));
+
+    assert.equal(interruptFor(f, "T-1").ok, true);
+    const drain = await pool.drainInterrupts();
+    assert.equal(drain.interrupted, 1);
+    assert.equal(rowOf(f, "T-1").status, "interrupted");
+    assert.equal(readWorkerSessions(f.dir).workers[key], undefined);
+    assert.equal(existsSync(transcriptFile(f.dir, key)), false);
+    assert.equal(fake.opened.length, 0);
+    await pool.stop();
+  });
+
+  it("the next claim of the same card and round opens fresh (no resume)", async (t) => {
+    const f = fixture(t);
+    let started;
+    const sendStarted = new Promise((resolve) => {
+      started = resolve;
+    });
+    let releaseFirst = true;
+    const fake = fakePool({
+      behavior: async ({ handle }) => {
+        if (releaseFirst) {
+          releaseFirst = false;
+          started();
+          return await new Promise((release) => {
+            handle.release = release;
+          });
+        }
+        return {};
+      },
+    });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    const running = pool.tick();
+    await sendStarted;
+    assert.equal(interruptFor(f, "T-1").ok, true);
+    await pool.drainInterrupts();
+    await running;
+
+    // A new handoff for the same (card, round): the terminal row is history,
+    // so this is a second pending row with the same deterministic id.
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    assert.equal(fake.opened.length, 2, "a second session is opened for the new attempt");
+    assert.equal(fake.opened[1].resumeId, null, "no native session is resumed");
+    assert.match(fake.opened[1].prompts[0], /^work T-1/, "and the first turn is a dispatch, not a resume");
+    assert.equal(rowOf(f, "T-1").status, "done");
+    await pool.stop();
+  });
+
+  it("does not kill a handoff enqueued after the move", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+
+    const requestedAt = new Date(Date.now() + 1000).toISOString();
+    assert.equal(
+      requestInterrupt(f.dir, {
+        card: "T-1",
+        from: "in_progress",
+        to: "canceled",
+        requestedBy: "test",
+        requestedAt,
+      }).ok,
+      true,
+    );
+    // Reopen/redispatch: the new handoff lands *after* the marker's timestamp.
+    enqueueCard(join(f.dir), {
+      ...card(f, "T-1", f.app),
+      round: 2,
+      enqueuedAt: new Date(Date.parse(requestedAt) + 1000).toISOString(),
+    });
+    const drain = await pool.drainInterrupts();
+    assert.equal(drain.interrupted, 0);
+    assert.equal(
+      readCards(f.dir).value.cards.find((entry) => entry.card === "T-1").status,
+      "pending",
+      "a new attempt is never killed by an older tombstone",
+    );
+    await pool.stop();
+  });
+
+  /**
+   * The settle's own board re-read is an await: a marker can land after the
+   * turn has already failed but before the settle spends its counter. These
+   * cases drive exactly that window — `revalidateCard` writes the marker and
+   * drains it while the settlement is mid-flight.
+   */
+  for (const [label, error] of [
+    ["failure", "turn failed"],
+    ["timeout", "turn timed out after 30000ms"],
+  ]) {
+    it(`a marker that lands during the ${label} settle spends no counter`, async (t) => {
+      const f = fixture(t);
+      let pool;
+      let markerWritten = false;
+      let drainedDuringSettle = false;
+      const fake = fakePool({ behavior: async () => ({ ok: false, error }) });
+      pool = createSessionPool({
+        opts: optsFor(f),
+        kindPool: fake,
+        revalidateCard: async () => {
+          markerWritten = interruptFor(f, "T-1").ok === true;
+          const drained = await pool.drainInterrupts();
+          drainedDuringSettle = drained.interrupted >= 1;
+          return { ok: true, status: "in_progress" };
+        },
+      });
+      t.after(() => pool.stop());
+      await pool.start();
+      enqueueCard(join(f.dir), card(f, "T-1", f.app));
+      await pool.tick();
+
+      assert.equal(markerWritten, true, `${label}: the marker lands during the settle`);
+      assert.equal(drainedDuringSettle, true, `${label}: the drain consumes it`);
+      const row = rowOf(f, "T-1");
+      assert.equal(row.status, "interrupted", `${label}: the exit outranks the settle`);
+      assert.equal(row.attempts, 0, `${label}: no attempt is spent`);
+      assert.equal(row.timeouts, 0, `${label}: no timeout is spent`);
+      assert.equal(row.recoveries, 0, `${label}: no recovery is spent`);
+      assert.equal(fake.opened[0].interruptCalls, 1, `${label}: the adapter is interrupted`);
+      await pool.stop();
+    });
+  }
+
+  it("startup drains markers before reattach can resume them", async (t) => {
+    const f = fixture(t);
+    const home = join(f.dir, "home");
+    for (const name of ["meerkat", "meerkat-director"]) {
+      const dir = join(home, ".claude", "skills", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`);
+    }
+    // A board read that keeps every card workable: reattach's own re-check.
+    writeFileSync(
+      join(f.dir, "cli.mjs"),
+      'process.stdout.write(JSON.stringify({ ok: true, data: { task: { status: "in_progress" } } }));',
+    );
+    const key = workerKey("T-1", 1);
+    const otherKey = workerKey("T-2", 1);
+    enqueueCard(join(f.dir), { ...card(f, "T-1", f.app), worker_key: key });
+    enqueueCard(join(f.dir), { ...card(f, "T-2", f.app), worker_key: otherKey });
+    const claimed = claimCards(join(f.dir), {
+      claimedBy: "/work/app",
+      pid: 999_999,
+      // A dead owner: the drain finalizes T-1 here rather than leaving it to
+      // another live pool.
+      limit: 2,
+    }).cards;
+    const row = claimed.find((entry) => entry.card === "T-1");
+    const otherRow = claimed.find((entry) => entry.card === "T-2");
+    assert.notEqual(row, undefined);
+    assert.notEqual(otherRow, undefined);
+    // Durable records left by the pool that died mid-turn; T-1 also keeps its
+    // transcript. T-2 is the unmarked row whose resume makes reattach visible.
+    writeFileSync(
+      join(f.dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 1,
+        projects: {
+          [key]: { status: "running", sessionId: "sid-old", queueId: row.id },
+          [otherKey]: { status: "running", sessionId: "sid-other", queueId: otherRow.id },
+        },
+      }),
+    );
+    mkdirSync(join(f.dir, "worker-transcripts"), { recursive: true });
+    writeFileSync(transcriptFile(f.dir, key), JSON.stringify({ version: 1, turns: [] }));
+    assert.equal(interruptFor(f, "T-1").ok, true);
+
+    const lines = [];
+    const controller = new AbortController();
+    t.after(() => controller.abort());
+    const fake = fakePool();
+    const running = runSession(
+      { ...optsFor(f), home, actorKind: "claude", sessionPollMs: 10_000 },
+      {
+        log: (line, meta) => lines.push({ line, meta }),
+        kindPool: fake,
+        signal: controller.signal,
+      },
+    );
+    const settled = await waitFor(
+      () =>
+        lines.some((entry) => entry.meta?.event === "turn_interrupted") &&
+        lines.some((entry) => /recovered .* worker session/.test(entry.line)),
+    );
+    assert.equal(settled, true, lines.map((entry) => entry.line).join("\n"));
+
+    const interruptAt = lines.findIndex((entry) => entry.meta?.event === "turn_interrupted");
+    const reattachAt = lines.findIndex((entry) => /recovered .* worker session/.test(entry.line));
+    assert.ok(interruptAt >= 0, "the startup drain recorded the interruption");
+    assert.ok(reattachAt >= 0, "the reattach pass ran");
+    assert.ok(interruptAt < reattachAt, "drain runs before reattach");
+
+    assert.equal(rowOf(f, "T-1").status, "interrupted");
+    assert.equal(readWorkerSessions(f.dir).workers[key], undefined, "the session is forgotten");
+    assert.equal(existsSync(transcriptFile(f.dir, key)), false, "and the transcript is gone");
+    assert.equal(rowOf(f, "T-2").status, "pending", "reattach resumed the unmarked row");
+    assert.equal(fake.opened.length, 0, "the startup pass opens no conversation");
+
+    controller.abort();
+    assert.equal(await running, 0);
+  });
+
+  it("reattach does not resume a row an interrupt marker names", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+
+    const key = workerKey("T-1", 1);
+    enqueueCard(join(f.dir), { ...card(f, "T-1", f.app), worker_key: key });
+    const [row] = claimCards(join(f.dir), {
+      claimedBy: "/work/app",
+      pid: process.pid,
+      limit: 1,
+    }).cards;
+    writeFileSync(
+      join(f.dir, "sessions.state.json"),
+      JSON.stringify({
+        version: 1,
+        projects: { [key]: { status: "running", sessionId: "sid-old", queueId: row.id } },
+      }),
+    );
+    assert.equal(interruptFor(f, "T-1").ok, true);
+    await pool.reattachOnStart();
+    assert.equal(
+      readCards(f.dir).value.cards.find((entry) => entry.id === row.id).status,
+      "processing",
+      "the drain owns the row; reattach leaves it alone",
     );
     await pool.stop();
   });

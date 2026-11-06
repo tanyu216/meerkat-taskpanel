@@ -604,6 +604,10 @@ export async function runWorkflowTick(deps) {
     comment = null,
     setMeta = null,
     appendAcceptance = null,
+    // TP-0125 — write a cross-process interrupt request for a review turn the
+    // loop is about to orphan. Null keeps the old behaviour for a caller that
+    // does not wire the state directory.
+    requestInterrupt = null,
     // Landing runs before a card is moved to `done`: the lane branch is merged
     // into the project's current branch. `null` keeps the old (shared-tree)
     // behaviour for a caller that does not wire it.
@@ -692,9 +696,10 @@ export async function runWorkflowTick(deps) {
   };
 
   // Closing the review card is the last write of every outcome. A cancel is a
-  // two-hop move when the card is `in_review`: the state machine has no direct
-  // `in_review → canceled` edge. `close_review` still ends `done`, because that
-  // is the only terminal an `in_review` card can reach directly.
+  // **one-hop** move (`in_review → canceled`, TP-0125): the old `→ in_progress
+  // → canceled` briefly returned the review card to the work cycle and would
+  // have re-armed dispatch. `close_review` still ends `done`, because that is
+  // the only non-cancel terminal an `in_review` card can reach.
   const closeReviewCard = async (action, note) => {
     // 0038 — the loop always closes the review card it dispatched. `human` is a
     // card mode, not a "leave the review open" flag.
@@ -703,16 +708,30 @@ export async function runWorkflowTick(deps) {
       action.review_status ?? (action.type === "cancel_review" ? "canceled" : "in_review");
     if (status === "done" || status === "canceled") return;
     if (note !== null) await step(comment, "comment", action.review_ref, { kind: "note", body: note });
-    if (status === "in_review") {
-      if (action.type === "cancel_review") {
-        await step(move, "move", action.review_ref, "in_progress");
-        await step(move, "move", action.review_ref, "canceled");
-        return;
-      }
+    if (status === "in_review" && action.type !== "cancel_review") {
       await step(move, "move", action.review_ref, "done");
       return;
     }
     await step(move, "move", action.review_ref, "canceled");
+    // TP-0125 — the reviewer's turn may still be running. The board move is
+    // authoritative; the marker is a request to the pool that owns the turn.
+    // A marker-write failure must not fail the workflow action.
+    if (action.type === "cancel_review" && requestInterrupt !== null) {
+      try {
+        requestInterrupt({
+          taskId: null,
+          card: action.review_ref,
+          from: status,
+          to: "canceled",
+          reason: "cancel_review",
+          requestedAt: now(),
+        });
+      } catch (err) {
+        log(`workflow: could not write the interrupt request for ${action.review_ref}: ${err.message}`, {
+          level: "warn",
+        });
+      }
+    }
   };
 
   /**
