@@ -42,7 +42,9 @@ each row: `sca`, `secret`, `sast`, or `manual`.
 
 ## Tier 3 — OWASP ASVS, chapter level (ASVS 4.0.3; for 5.0 map by chapter name)
 
-Record the level the project targets (L1, L2 or L3) and answer at that depth.
+**Default target level: L2.** Answer every chapter at L2 unless the project records L1 or L3 in
+its own security standard; a recorded level wins. Record the level used with the finding, and
+keep the project's record as the single place a different level is set.
 
 | Chapter | The question at the target level |
 |---|---|
