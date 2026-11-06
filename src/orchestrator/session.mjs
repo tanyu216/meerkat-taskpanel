@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import { cardDirRel, cardFileRel } from "../foundation/card-brief.mjs";
-import { DIRECTOR_ACTOR_ID, ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { BOARD_ACTOR_ID, DIRECTOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { pidMatches, processStartToken } from "../foundation/daemon-state.mjs";
 import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
 import {
@@ -2702,7 +2702,7 @@ export function createSessionPool(input = {}) {
     ].join("\n");
     runCli(
       opts,
-      ORCHESTRATOR_ACTOR_ID,
+      BOARD_ACTOR_ID,
       ["comment", "add", card, "--kind", "note", "--body", body],
       { actorKind: SYSTEM_KIND },
     );

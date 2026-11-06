@@ -20,7 +20,7 @@
  * never blocks a claim, because routing never depends on this projection.
  */
 
-import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { BOARD_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { buildRoleCatalog } from "../foundation/role-catalog.mjs";
 
 import { runCli } from "./runtime.mjs";
@@ -55,7 +55,7 @@ export function syncRoleCatalog({ opts, roleSet, log = () => {}, run = runCli, n
   const payload = roleCatalogPayload(roleSet, now);
   const result = run(
     opts,
-    ORCHESTRATOR_ACTOR_ID,
+    BOARD_ACTOR_ID,
     ["role", "sync", "--file", "-"],
     { input: JSON.stringify(payload), actorKind: SYSTEM_KIND },
   );

@@ -1407,7 +1407,8 @@ export function planReviewOutcomes(input = {}) {
  *
  * This is the `off` half of the 0038 model. Whether an `off` original may be
  * completed is decided by its own acceptance mode, exactly as it is for any
- * other `done` write. The loop executes the plan as `system` (under the automation id `Orchestrator`).
+ * other `done` write. The loop executes the plan under the automation id `Board`
+ * (kind `system`).
  *
  * Guards:
  *
