@@ -26,9 +26,10 @@ export const DEFAULT_TURN_TIMEOUT_MS = 60 * 60 * 1000;
  * @param {string} role
  */
 export function allowedToolsFor(role) {
-  // A card session owns its whole card: nothing spawns a subagent, so no role
-  // carries `Agent`/`Task`. The table lives once in foundation so the installer
-  // renders the same surface (`src/foundation/role-tools.mjs`).
+  // The reviewer lane may spawn one fresh-context review subagent (ADR 0019);
+  // the worker and director lanes own their whole card and carry no subagent
+  // tool. The table lives once in foundation so the installer renders the same
+  // surface (`src/foundation/role-tools.mjs`).
   return claudeAllowedTools(String(role ?? "worker"));
 }
 

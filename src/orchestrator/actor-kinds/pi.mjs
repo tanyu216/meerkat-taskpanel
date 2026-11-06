@@ -67,7 +67,9 @@ export function sessionArgs(input = {}) {
 
 /**
  * The tool surface a role gets when full access is not enabled. A card session
- * owns its whole card, so no role gets a subagent tool.
+ * owns its whole card; the reviewer's one-shot review child (ADR 0019) needs
+ * the `pi-subagents` extension, which this surface does not install, so the
+ * reviewer skill asks the human when spawning is unavailable.
  *
  * @param {string} role
  * @returns {string}

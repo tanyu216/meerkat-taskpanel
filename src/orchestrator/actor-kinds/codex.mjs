@@ -7,8 +7,10 @@
  * JSON-RPC 2.0 over LF-delimited stdio; responses carry the request `id`, and
  * progress arrives as notifications.
  *
- * Subagents are **child threads**: a `collabAgentToolCall` item carries
- * `receiverThreadIds`, which the ledger records for reattach (`thread/resume`).
+ * Subagents are **child threads** (`collabAgentToolCall`). The thread carries no
+ * per-role tool surface, so a reviewer's one-shot review child (ADR 0019) uses
+ * the kind's own mechanism where it exists; the removed ledger no longer tracks
+ * child threads, and a review child is one-shot and never resumed.
  *
  * Verified against codex-cli 0.161.0 (`app-server generate-json-schema`).
  */

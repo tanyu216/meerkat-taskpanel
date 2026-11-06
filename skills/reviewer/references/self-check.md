@@ -14,14 +14,14 @@ remember reading. It moves nothing — the loop applies the verdict. Board opera
    (`git -C <targetDir> show <sha>:<path>`), and a moved tree is stated.
 4. Earlier findings are answered: resolved with evidence or explicitly deferred; none dropped
    or softened into a note.
-5. Gate and scan recorded: declared gate or `n/a — none declared`; every `security-checklist.md`
-   row plus any surface-specific security check is dispositioned; read-only arms carry job + sha.
+5. Gate and scan recorded: declared gate or `n/a — none declared`; a code-changing delivery's
+   verdict carries the `security-checklist.md` row table (every applicable row dispositioned and anchored, no blank row); read-only arms carry job + sha.
 6. A REJECT's must-fix items are numbered, each with file/line, reproduction, expected versus
    actual and the missing case.
 7. The universal floor and every matching shape refinement were walked
    (`SKILL.md`'s universal floor and every matching scenario file); a type no shape names, or a mixed type, is not a skip; every
-   skip has a reason, every extra check recorded; the loop claimed the review card, I did not claim
-   it again, I heartbeated only it, neither card moved, no card awaited, no human decision written.
+   skip has a reason and every extra check is recorded; the verdict is independent — this session, the Step 0 subagent under
+   `independent: delegated`, or a recorded human decision; the loop claimed the review card, I heartbeated only it, no card moved.
 8. First line: `VERDICT: APPROVE` or `VERDICT: REJECT`.
 
 ## What may not be a leftover

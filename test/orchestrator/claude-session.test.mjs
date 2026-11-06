@@ -145,12 +145,14 @@ describe("claude session args", () => {
     assert.match(allowedToolsFor("reviewer"), /Bash\(git \*\)/);
   });
 
-  it("gives no lane the subagent tool", () => {
-    // A card session owns its whole card: worker and review sessions both run
-    // top-level and spawn nothing, so `Agent`/`Task` stay out of every allowlist.
-    for (const role of ["director", "reviewer", "worker"]) {
+  it("gives only the reviewer lane the subagent tool", () => {
+    // ADR 0019: a review turn whose session shares the delivery's context hands
+    // the review to one fresh-context child; the worker and director lanes own
+    // their whole card and spawn nothing.
+    for (const role of ["director", "worker"]) {
       assert.doesNotMatch(allowedToolsFor(role), /\b(Agent|Task)\b/);
     }
+    assert.match(allowedToolsFor("reviewer"), /\bAgent\b/);
   });
 });
 
