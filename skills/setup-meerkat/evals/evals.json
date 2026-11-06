@@ -159,13 +159,14 @@
       "id": 11,
       "name": "init-writes-requirements",
       "prompt": "Set up meerkat here and initialize this project's agent-instruction entry. Use a temporary HOME; do not touch the real one.",
-      "expected_output": "Step 4 writes docs/agents/*.md, declares the project map, then calls the init skill once with the brief: /meerkat is the card entry, board rules live in docs/agents/, and the card scope is stated. The init skill writes the project's CLAUDE.md or AGENTS.md; setup does not edit that file itself, and the file has no marker block.",
+      "expected_output": "Step 4 writes docs/agents/*.md, declares the project map, then calls the init skill once with the brief: /meerkat is the card entry, board rules live in docs/agents/, the card scope is stated, and a task or plan that is not a card still loads the matching role skill (jobs, linus or turing) before the first edit. The init skill writes the project's CLAUDE.md or AGENTS.md; setup does not edit that file itself, and the file has no marker block.",
       "files": [],
       "assertions": [
         "The init skill is called and the call succeeds; it is not replaced by setup writing the entry itself.",
         "The project's CLAUDE.md or AGENTS.md exists after the step and contains /meerkat as the card entry.",
         "The same file points at docs/agents/ and names the project rules there.",
         "The same file states the card scope the user chose in Step 4.",
+        "The same file tells a live session to load the matching role skill (jobs, linus or turing) for a task or plan that is not a card, before the first edit.",
         "The file contains no <!-- meerkat:task-entry --> marker block.",
         "Setup does not use Write/Edit on that instruction file; the init skill is the writer.",
         "The init skill is called once, not once per agent kind."

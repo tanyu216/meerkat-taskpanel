@@ -191,6 +191,9 @@ primary checkout once `docs/agents/worktrees.md` exists.
    card work at the `/meerkat` skill and board rules at `docs/agents/` (`create-card.md`,
    `worktrees.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, `epic-graphs.md`
    when present, and `decision-policy.md` when present), and to state this step's card scope.
+   It must also say that a task or plan which is **not** a card is still role work:
+   load the matching role skill (`jobs`, `linus` or `turing`) before the first edit, not only
+   when a card handoff names it.
    The entry and the rules are project content shared by every platform: call `init` once,
    write the rules once under `docs/agents/`, never copy them per platform, and never write an entry yourself; report `skip` when the host has no `init` skill.
 5. Write `worktrees.md` (see `references/worktree-guard.md`), after every other
