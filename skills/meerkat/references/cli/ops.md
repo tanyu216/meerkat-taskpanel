@@ -26,8 +26,8 @@ board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `session`); the
 | `loop poll` | Scan, admit, claim and enqueue ready cards; writes the queue. |
 | `loop tick [--passes <list>]` | Run `patrol,workflow,poll` (or `--passes` order) in one command — the cron/unit entry. |
 | `loop console` | One read-only question / frontier cycle. |
-| `loop doctor` | One read-only daily-inspection report: supervisor verdict, the resolved scan set, the patrol's last-successful-run marker, the log tail, queue and ledger depth, the cards whose heartbeat is stale or unreadable, the stale claims whose handoff rows are all terminal or absent (`undispatched_claims` — nothing can re-dispatch them; only a human release frees the card), the `in_review` cards waiting on a human (age only — review aging stays the workflow pass's judgement), and the cards carrying an acceptance marker for their current round while still `in_review` (`blocked_acceptance` — the board refused the close), and the `done` cards whose lane branch is not in the project's current branch (`unlanded`), and the cards that keep going round the same loop (`looping`: rework rounds, review reopens, dispatch retries, subagent failures — read-only facts, with the loop's own queue/ledger windows). Writes nothing and exits 0 whenever it produced a report — read `attention` from `--json`. |
-| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict (including `unresponsive` and `wedged`), the pool's tick age, the boot ledger (`lastCrash`, the consecutive failed-start streak, the recent starts), the agent platform (`--actor-kind`), the discovered role platforms and the scan set it resolved; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
+| `loop doctor` | One read-only inspection: supervisor verdict, scan set, patrol marker, log tail, queue/ledger depth, stale heartbeats, stale claims nothing can re-dispatch (`undispatched_claims`; only a human release frees the card), `in_review` cards waiting on a human (age only; review aging is the workflow pass's), cards carrying a current-round acceptance marker while `in_review` (`blocked_acceptance` — the board refused the close), `done` cards whose lane branch is not in the project's branch (`unlanded`), and cards going round the same loop (`looping`: rework rounds, review reopens, dispatch retries, subagent failures, landing conflicts). Writes nothing; exits 0 whenever it produced a report — read `attention` from `--json`. |
+| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict (`unresponsive`, `wedged`), pool tick age, boot ledger (`lastCrash`, failed-start streak, recent starts), agent platform (`--actor-kind`), role platforms and the scan set; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
 | `loop run [--ping-once] [--continue-once]` | The two clocks as a daemon; either `--*-once` runs one pass and exits. |
 | `loop subscribe` | The event subscriber daemon; it requests an early tick. |
 | `loop session` | The resident session pool daemon. |
@@ -38,16 +38,16 @@ verbs a human runs while the daemons are up. Every verb writes its **own** outpu
 loop's JSON, not the `{ok:true,data}` envelope, and none of them adds `token_source`.
 `loop status --json` carries `platform` (`claude|codex|pi`) and `agents` (the resolved scan
 set); the human output prints the same two facts as `platform:` and `scan set:` lines. It
-also carries `pool.tickAgeMs` (the in-flight tick's age, `null` when idle) and `health` —
-the `supervisor.health.json` projection `{startedAt, pid, version, lastCrash, starts,
-bootFailures}`, or `null` when no long-lived entry has ever run. The human output prints
-those as `tick:` and `health:` lines. They are output fields, not new flags.
+also carries `pool.tickAgeMs` (the in-flight tick's age, `null` when idle) and `health` — the
+`supervisor.health.json` projection `{startedAt, pid, version, lastCrash, starts, bootFailures}`,
+`null` before any entry ran; the human output prints `tick:` and `health:`. Output fields, not
+new flags.
 
 
-The retired single-purpose flags are gone: `--once` (bare poll), `--poll-interval`,
-`--ping-only`, `--continue-only`, `--patrol-only`, `--subscribe` and `--session` are the
-verbs (`loop poll`, `loop run --ping-once`, `loop subscribe`, `loop session`). `--state` is
-still accepted; `--state-dir` is the documented spelling.
+The retired single-purpose flags are gone: `--once`, `--poll-interval`, `--ping-only`,
+`--continue-only`, `--patrol-only`, `--subscribe`, `--session` are now the verbs (`loop poll`,
+`loop run --ping-once`, `loop subscribe`, `loop session`). `--state` is still accepted;
+`--state-dir` is the documented spelling.
 
 ## reconcile --workflow — the board's workflow plan
 
@@ -57,12 +57,11 @@ taskctl issue reconcile --workflow --assignee jobs \
 ```
 
 `--json` returns `{dry_run, scanned, actions, workflow}`, where `workflow` is
-`{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the snapshot; a
-truncated snapshot still applies outcomes but dispatches nothing. `--rework-max-rounds`
-bounds the delivery rounds since the last hold before the plan emits a `hold_card` (the card
-is parked as `blocked` with a question; the loop's configured liveness bounds apply).
-The actions are decisions the loop executes, not effects; what each one means, and the
-fail-safe rules behind them, are in
+`{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the snapshot (a
+truncated one applies outcomes but dispatches nothing). `--rework-max-rounds` bounds the rounds
+since the last hold before a `hold_card` (parked as `blocked` with a question; the loop's
+liveness bounds apply). The actions are decisions, not effects; what each means, and the
+fail-safe rules, are in
 [`lifecycle/workflow.md` §11](../lifecycle/workflow.md#11-the-boards-workflow-decisions).
 
 ### `role`

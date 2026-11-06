@@ -921,7 +921,9 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /--actor-kind claude/);
     assert.match(text, /--session-id sid-9/);
     assert.match(text, /report/i);
-    assert.ok(text.length < 3600, "the handoff must be bounded");
+    // Raised once for the pre-delivery lane merge: the handoff gained the one
+    // line that keeps an approved lane landable. `bounded` still means bounded.
+    assert.ok(text.length < 3760, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("places the worker in the project and says the claim is already taken", () => {
@@ -957,7 +959,7 @@ describe("buildHandoff (pure)", () => {
       agent: "alice",
       actorKind: "codex",
     });
-    assert.ok(text.length < 3900, `the handoff must be bounded (was ${text.length})`);
+    assert.ok(text.length < 4070, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("asks the director before splitting an epic, rather than promoting it", () => {
@@ -1030,7 +1032,7 @@ describe("buildHandoff (pure)", () => {
       actorKind: "claude",
       sessionId: "550e8400-e29b-41d4-a716-446655440000",
     });
-    assert.ok(text.length < 3900, `the handoff must be bounded (was ${text.length})`);
+    assert.ok(text.length < 4070, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("points the worker at the reviewer when one is configured", () => {

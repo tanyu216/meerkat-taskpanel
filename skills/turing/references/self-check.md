@@ -45,5 +45,6 @@ Branch deltas:
 The report names the branch, each acceptance status with falsifiable evidence, the coverage
 and every leftover's owner. The tree is committed on the card's branch and the report carries
 the `commit` anchor. The review card runs the project's declared gate; this file is only the
-pre-delivery audit. Nothing was merged, rebased or pushed. Deliver at `in_review`; the
-reviewer issues the verdict.
+pre-delivery audit. The project's integration branch was merged into the lane before delivery,
+with any conflicts resolved and the checks re-run; nothing was merged, rebased or pushed from
+this card — landing is the loop's. Deliver at `in_review`; the reviewer issues the verdict.
