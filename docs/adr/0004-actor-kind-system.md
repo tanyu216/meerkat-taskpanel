@@ -1,6 +1,7 @@
 # 0004 — The board's actor kind is `system`, and acceptance is decided by evidence
 
-- **Status:** Accepted (2026-10-30)
+- **Status:** Superseded by ADR 0018 for the automation identity; the `system` kind and
+  the evidence rule still stand (accepted 2026-10-30)
 
 ## Context
 

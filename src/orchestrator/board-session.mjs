@@ -17,7 +17,7 @@
 
 import { dirname, resolve } from "node:path";
 
-import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { BOARD_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 
 import { isProcessAlive, runCli } from "./runtime.mjs";
 
@@ -68,7 +68,7 @@ export function createBoardSession(input = {}) {
    */
   function call(args, options = {}) {
     if (opts.dryRun === true) return { ok: true, dryRun: true };
-    const result = run(bounded, ORCHESTRATOR_ACTOR_ID, args, { actorKind: SYSTEM_KIND });
+    const result = run(bounded, BOARD_ACTOR_ID, args, { actorKind: SYSTEM_KIND });
     if (result?.ok === true) return result;
     const ignored = Array.isArray(options.ignore) ? options.ignore : [];
     if (ignored.includes(result?.code)) return result;

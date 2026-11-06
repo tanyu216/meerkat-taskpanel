@@ -76,8 +76,8 @@ The **local role catalog** — a host-local projection of the roles the supervis
 | `role sync --file <path\|->` | **Supervisor-only.** Replace the catalog with a discovered set (stdin `-`). Identical content is a no-op; a legacy file is not rewritten while unchanged. A removed role disappears. |
 
 A non-empty catalog checks a card's assignee (`ASSIGNEE_NOT_IN_CATALOG`, exit 1) — a **CLI
-guard**, not a board invariant: an HTTP write bypasses it; the writer (`system`/`Orchestrator`)
-is never exempt. A review card must name a **reviewer-lane** role (`ASSIGNEE_NOT_REVIEWER`); the
+guard**, not a board invariant: an HTTP write bypasses it; the writer (`Board`) is never
+exempt. A review card must name a **reviewer-lane** role (`ASSIGNEE_NOT_REVIEWER`); the
 loop creates it with the catalog's `default_reviewer`, never `--force-create`.
 
 ### `worktree`

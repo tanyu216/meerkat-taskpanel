@@ -8,7 +8,7 @@
  * turn whose attempt budget is exhausted), so the write lives here once.
  */
 
-import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { BOARD_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 
 import { runCli } from "./runtime.mjs";
 
@@ -40,14 +40,14 @@ export function holdCard(opts, log, ref, options = {}) {
         ].join("\n");
   const commented = runCli(
     opts,
-    ORCHESTRATOR_ACTOR_ID,
+    BOARD_ACTOR_ID,
     ["comment", "add", card, "--kind", "question", "--body", body],
     { actorKind: SYSTEM_KIND },
   );
   if (!commented.ok) log(`hold ${card}: comment failed: ${commented.error}`, { level: "warn" });
   const moved = runCli(
     opts,
-    ORCHESTRATOR_ACTOR_ID,
+    BOARD_ACTOR_ID,
     [
       "issue",
       "move",
@@ -91,7 +91,7 @@ export function releaseCard(opts, log, ref, options = {}) {
       : "turn timed out; returned to the queue";
   const moved = runCli(
     opts,
-    ORCHESTRATOR_ACTOR_ID,
+    BOARD_ACTOR_ID,
     ["issue", "move", card, "todo", "--reason", reason],
     { actorKind: SYSTEM_KIND },
   );
@@ -109,7 +109,7 @@ export function releaseCard(opts, log, ref, options = {}) {
         ].join("\n");
   const commented = runCli(
     opts,
-    ORCHESTRATOR_ACTOR_ID,
+    BOARD_ACTOR_ID,
     ["comment", "add", card, "--kind", "note", "--body", body],
     { actorKind: SYSTEM_KIND },
   );

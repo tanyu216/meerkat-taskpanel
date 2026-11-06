@@ -159,7 +159,7 @@ rolls it up; its review reads the children and the rollup, an `APPROVE` yields t
 
 ## 7. Workflow writes
 
-All writes use `--actor-kind system --agent Orchestrator` and are idempotent by their key.
+All writes use `--actor-kind system --agent Board` and are idempotent by their key.
 
 | Capability | Invocation | Keys read |
 |---|---|---|
