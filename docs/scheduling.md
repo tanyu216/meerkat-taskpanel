@@ -333,7 +333,7 @@ policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
 | Admission failure | `deferrals.json` `count` | backoff at 3 (30 s→1 h), hold at 5 | `blocked/external` + `Board` question |
 | Dispatch failure after a claim | `deferrals.json` `DISPATCH_FAILED` | 3 | claim released immediately; `blocked/resource` at the bound |
 | Worker session unrestorable | session record | first failure | row failed, claim released, `blocked/resource` |
-| Worker fallback reassignment refused | `deferrals.json` `REASSIGN_FAILED` | 5 (the default hold bound) | `blocked/external` + `Orchestrator` question |
+| Worker fallback reassignment refused | `deferrals.json` `REASSIGN_FAILED` | 5 (the default hold bound) | `blocked/external` + `Board` (kind `system`) question |
 | Claim cannot be handed back | `deferrals.json` `CLAIM_RELEASE_FAILED` | first failure | immediate `blocked/resource`; the failed hold stays in the ledger |
 | Claim refusal (lost CAS) | `deferrals.json` `claim_refusals` | never holds | counted only; a successful claim clears the entry |
 | Question turn | director row dispatches | 2 | left for the human; `question_stale` + doctor |
