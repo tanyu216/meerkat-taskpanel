@@ -190,9 +190,8 @@ deprecated no-op;
 `--workflow-max-actions` and `--review-aging-minutes` bound workflow execution and
 silent-review escalation, and `--rework-max-rounds` sets how many delivery rounds since the
 last hold before the loop parks a card as `blocked`/`decision`. `--workspace <worktree|shared>` says where a card runs: its own
-worktree and lane branch (the default) or the project checkout. `--allow-all-tools` gives
-spawned agents the unrestricted tool set and **requires** a non-empty
-`--allow-all-tools-reason` naming who authorized it.
+worktree and lane branch (the default) or the project checkout. Every spawned session runs
+with the full tool set; the reviewer lane's write tools are denied.
 
 **SLA, events and notifications.** `--patrol-interval <sec>` sets the SLA measurement
 period; `--patrol-llm` lets the patrol move a card (default: notify only); `--notify <cmd>`

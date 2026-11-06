@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-const { makeTempDir, kindConfigDirFor, runInstall, cleanup } = createInstallHarness({
+const { makeTempDir, runInstall, cleanup } = createInstallHarness({
   prefix: "meerkat-taskpanel-supervisor-",
   installDefaults: {},
 });
@@ -555,20 +555,9 @@ describe("install.sh: enable — launchd", () => {
     const after = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
     assert.match(after.stdout, /^supervisor:   launchd: loaded \(/m);
     assert.match(after.stdout, /^supervisor:   session: not running \(no session state\)$/m);
-    assert.match(after.stdout, /^supervisor:   tools: role allowlists \(full access is off\)$/m);
-
-    // The full-access opt-in is an authorization; status states it and who
-    // recorded it, so a bypass is never invisible.
-    const config = join(kindConfigDirFor(home), ".env.claude");
-    writeFileSync(
-      config,
-      `${readFileSync(config, "utf8")}MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes\n` +
-        "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON=operator authorized unattended runs\n",
-    );
-    const authorized = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
     assert.match(
-      authorized.stdout,
-      /^supervisor:   tools: all enabled \(authorized by: operator authorized unattended runs\)/m,
+      after.stdout,
+      /^supervisor:   tools: full \(reviewer read-only\) — the project directory is not an isolation boundary$/m,
     );
   });
 

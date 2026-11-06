@@ -3046,7 +3046,6 @@ describe("the resident session pool surface", () => {
     assert.equal(opts.projectIdleMs, 30 * 60 * 1000);
     assert.equal(opts.projectConcurrency, opts.maxConcurrency, "a project is not capped below the pool by default");
     assert.equal(opts.sessionState, join(dirname(opts.state), "sessions.state.json"));
-    assert.equal(opts.allowAllTools, false, "full tool access is opt-in");
     assert.equal(opts.subagentBackground, undefined, "background subagents are retired");
   });
 
@@ -3145,25 +3144,19 @@ describe("the resident session pool surface", () => {
     assert.throws(() => parseArgs(["--actor-kind", "claude", "--resident=maybe"], ENV), /auto or no/);
   });
 
-  it("requires a recorded authorization for full tool access", () => {
+  it("retires the full-tool-access opt-in", () => {
+    // Full access is the loop's default now; the flag and its config keys are
+    // gone. An old invocation fails fast instead of silently changing nothing.
     assert.throws(
       () => parseArgs(["--actor-kind", "claude", "--session", "--allow-all-tools"], ENV),
-      /--allow-all-tools-reason/,
+      /unknown option/,
     );
-    const authorized = parseArgs(
-      ["--actor-kind", "claude", "--session", "--allow-all-tools", "--allow-all-tools-reason", "operator authorized unattended runs"],
-      ENV,
-    );
-    assert.equal(authorized.allowAllTools, true);
-    assert.equal(authorized.allowAllToolsReason, "operator authorized unattended runs");
-
     const fromEnv = parseArgs(["--actor-kind", "claude"], {
       ...ENV,
       MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS: "yes",
       MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON: "fleet policy",
     });
-    assert.equal(fromEnv.allowAllTools, true);
-    assert.equal(fromEnv.allowAllToolsReason, "fleet policy");
+    assert.equal("allowAllTools" in fromEnv, false);
   });
 
   it("retires background subagents", () => {

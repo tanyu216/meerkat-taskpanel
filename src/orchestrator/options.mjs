@@ -178,8 +178,6 @@ flag("--workspace", (opts, value) => {
   opts.workspace = mode;
 });
 flag("--project-idle-ms", (opts, value) => { opts.projectIdleMs = number("--project-idle-ms", value); });
-flag("--allow-all-tools", (opts) => { opts.allowAllTools = true; }, "switch");
-flag("--allow-all-tools-reason", (opts, value) => { opts.allowAllToolsReason = value; });
 // Retired: no adapter reports a per-subagent completion, so a background row
 // could never release its slot. `=no` stays accepted for the installed config;
 // anything that asks for the old behavior fails loudly.
@@ -264,8 +262,6 @@ function defaultOptions(env) {
     sessionPoolMax: undefined,
     projectConcurrency: undefined,
     projectIdleMs: undefined,
-    allowAllTools: false,
-    allowAllToolsReason: null,
     // 0034 — who opened this loop. `supervisor` (systemd/launchd/cron) must
     // escalate questions to the board; a human-opened session may ask in its own
     // conversation first.
@@ -500,25 +496,6 @@ export function parseArgs(argv, env = process.env) {
     throw new Error("--control=external requires --session");
   }
   opts.control = control;
-  const allowAll =
-    parseYesNo(opts.allowAllTools === true ? "yes" : undefined) ??
-    parseYesNo(env.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS) ??
-    parseYesNo(opts.configFile.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS) ??
-    false;
-  opts.allowAllTools = allowAll;
-  if (allowAll) {
-    opts.allowAllToolsReason = String(
-      opts.allowAllToolsReason ??
-        env.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON ??
-        opts.configFile.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON ??
-        "",
-    ).trim();
-    if (opts.allowAllToolsReason === "") {
-      throw new Error(
-        '--allow-all-tools requires --allow-all-tools-reason "<who authorized it and why>"',
-      );
-    }
-  }
   // The flag is a retirement shim: `=no` is inert, anything else threw above.
   // Environment/config keep flag > env > config without resurrecting the mode.
   const flagValue = opts.subagentBackground; // undefined, or false from `=no`
@@ -795,10 +772,6 @@ Options:
   --workspace <worktree|shared>
                             Per-card git worktree for a git project (default: worktree).
   --project-idle-ms <ms>    Close an idle lane session after this (default: 1800000).
-  --allow-all-tools         Enable every agent tool. Requires --allow-all-tools-reason;
-                            the session runs with the operator's full OS permissions.
-  --allow-all-tools-reason <text>
-                            Who authorized full tool access, and why.
   --once                    Internal one-shot switch; the documented form is
                             \`taskctl loop run --ping-once|--continue-once\`.
   --ping-only               With --once, prune the worker registry and exit.

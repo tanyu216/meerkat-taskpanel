@@ -1,6 +1,7 @@
 # 0019 — The reviewer may spawn one fresh-context review subagent
 
-- **Status:** Accepted (2026-11-07)
+- **Status:** Accepted (2026-11-07); tool-surface claims superseded by ADR 0020
+  (the reviewer's one-shot independence child stands)
 - **Context:** Independence is enforced by dispatch, not by the reviewing context.
   `self_review_not_independent` (`src/core/domain/workflow.mjs`) refuses a review whose
   actor is the original card's assignee or holder, and every card runs as its own

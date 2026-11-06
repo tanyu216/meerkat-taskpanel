@@ -8,8 +8,8 @@
      card's workspace as its cwd. Without it the tick still runs patrol + workflow,
      but claims nothing.
      `KeepAlive` is the recovery story; project sessions are resumed on demand.
-     Full tool access is opt-in through the per-kind config
-     (MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS + ..._REASON), never a flag here.
+     Every session runs with the full tool set; the reviewer's write tools are
+     denied. The project directory is not an isolation boundary.
      Logs append to {{LOG}}. -->
 <plist version="1.0">
 <dict>

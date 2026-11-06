@@ -17,7 +17,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { piAllowedTools } from "../../foundation/role-tools.mjs";
+import { reviewerDeniedTools } from "../../foundation/role-tools.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
@@ -26,9 +26,10 @@ export const DEFAULT_TURN_TIMEOUT_MS = 60 * 60 * 1000;
 /**
  * The argv for one Pi resident session.
  *
- * `--allow-all-tools` adds `--approve` (trust project-local files); Pi has no
- * sandbox of its own, so the process always carries the user's OS permissions.
- * The role allowlist is applied through `--tools` when full access is off.
+ * `--approve` trusts project-local files; Pi has no sandbox of its own, so the
+ * process always carries the user's OS permissions. With no `--tools` the
+ * session gets Pi's whole builtin set; the reviewer drops its write tools with
+ * `--exclude-tools`.
  *
  * @param {{opts?: object, role?: string, sessionId?: string|null, skillPath?: string|null,
  *   systemPrompt?: string|null}} input
@@ -56,26 +57,11 @@ export function sessionArgs(input = {}) {
   if (typeof input.systemPrompt === "string" && input.systemPrompt !== "") {
     args.push("--append-system-prompt", input.systemPrompt);
   }
-  if (input.opts?.allowAllTools === true) {
-    args.push("--approve");
-  } else {
-    const tools = allowedToolsFor(String(input.role ?? "worker"));
-    if (tools !== "") args.push("--tools", tools);
+  args.push("--approve");
+  if (String(input.role ?? "worker") === "reviewer") {
+    args.push("--exclude-tools", reviewerDeniedTools("pi"));
   }
   return args;
-}
-
-/**
- * The tool surface a role gets when full access is not enabled. A card session
- * owns its whole card; the reviewer's one-shot review child (ADR 0019) needs
- * the `pi-subagents` extension, which this surface does not install, so the
- * reviewer skill asks the human when spawning is unavailable.
- *
- * @param {string} role
- * @returns {string}
- */
-export function allowedToolsFor(role) {
-  return piAllowedTools(String(role ?? "worker"));
 }
 
 /** The text an assistant message event carries. */
