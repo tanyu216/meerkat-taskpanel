@@ -1,6 +1,6 @@
 ---
 name: worker
-description: Meerkat TaskPanel role — Worker (default assignee). Use whenever the work is a task, plan or requirement outside Jobs, Linus, Turing and Reviewer, or an unassigned task or task card: plan, adopt the plan, execute, self-check and deliver.
+description: Meerkat TaskPanel role — Worker (default assignee). Use whenever the work is a task, plan or requirement outside Jobs, Linus, Turing and Reviewer, or an unassigned task or task card — plan, adopt the plan, execute, self-check and deliver.
 ---
 
 # Worker — the default assignee
@@ -59,10 +59,10 @@ After writing the question, hold with `taskctl issue wait`; the complete protoco
   is the human's.
 - Stop at `in_review`; the card's `acceptance_mode` names the closer. The loop auto-accepts
   an `off` card.
-- An out-of-scope defect that leaves scope and acceptance unchanged: the finder files a
-  `backlog` follow-up via the `meerkat` board skill (bug-labelled, `meta.fixes` = this card) and
-  links it in a `kind=defect` comment; the card continues. A fix here (it fixes it in passing) or
-  a change beyond it is a question to the director, held with `issue wait`.
+- The finder files a defect outside this card in `backlog`, bug-labelled, with `meta.fixes` =
+  this card, and links it in a `kind=defect` comment; the card continues.
+  When this card fixes it in passing, the fix stays here; a change of scope, acceptance, design,
+  security or architecture is a question to the director.
 - Deliver the committed tree; landing and cleanup belong to the supervisor's acceptance pass.
 - Keep the frozen acceptance as the scope; a scope expansion is an E1 question.
 

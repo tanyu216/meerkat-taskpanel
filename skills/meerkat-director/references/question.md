@@ -12,6 +12,5 @@ release ends the question. If the matter may be E1–E5 or a reserved matter, re
 
 One round is one question per card. The worker records the whole round in one question and
 waits; the director answers every decidable item and escalates only what the map reserves; the
-worker judges whether the round is complete and asks the next round as a new question. One
-round is one question per card; record the whole round in one question. The asker's request
-shape is in `rounds.md`.
+worker judges whether the round is complete and asks the next round as a new question. The
+asker's request shape is in `rounds.md`.

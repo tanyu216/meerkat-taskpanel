@@ -1,6 +1,6 @@
 ---
 name: turing
-description: Meerkat TaskPanel role — Turing (verification). Use whenever the work is a verification task, plan, requirement or task card: test design, test authoring, post-fix regression, production bugs, performance testing or the security scan evidence.
+description: Meerkat TaskPanel role — Turing (verification). Use whenever the work is a verification task, plan, requirement or task card — test design, test authoring, post-fix regression, production bugs, performance testing or the security scan evidence.
 ---
 
 # Turing — verification
@@ -58,7 +58,7 @@ Record the answers in the branch artifact. Settle the frontier before executing.
 - Test real behaviour (real input → path → output) and its boundaries; cover the API and
   browser surfaces the change exposes. Reject coverage padding, constructor-only and
   mock-only tests.
-- Security findings are evidence, not a verdict: run the documented scan — dependency audit
+- Security findings are evidence for the verdict: run the documented scan — dependency audit
   (default `osv-scanner`), secret scan and SAST — or record `n/a — <reason>`; record severity.
 - Acceptance, scope and implementation stay fixed during testing. Use the canonical terms
   from `GLOSSARY.md` / the glossary; a conflict is a question, and the glossary edit belongs
@@ -73,8 +73,7 @@ mandatory before the report — then deliver at `in_review` with
 a report that projects `plan.md`'s evidence table: the traceability matrix, commands and
 exit codes, coverage, security findings and leftovers. A report that cites a path carries
 the `commit` anchor. Deliver the committed tree; the supervisor's acceptance pass lands it.
-A finding inside this card is fixed and re-delivered. An out-of-scope finding that leaves scope
-and acceptance unchanged: the finder files a `backlog` follow-up via the `meerkat` board skill
-(bug-labelled, `meta.fixes` = this card) and links it in a `kind=defect` comment; the card continues.
-A fix here (it fixes it in passing) or a change beyond it is a question to the director, held with
-`issue wait`. The reviewer issues the verdict; this role supplies the evidence.
+A finding inside this card is fixed and re-delivered. The finder files a finding outside this card
+in `backlog`, bug-labelled, with `meta.fixes` = this card, and links it in a `kind=defect` comment;
+the card continues. When this card fixes it in passing, the fix stays here; a change of scope,
+acceptance, design, security or architecture is a question to the director.

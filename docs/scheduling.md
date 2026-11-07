@@ -1187,12 +1187,13 @@ back to another kind that carries the same role; if none does, the card is left 
 and reported. Installation location is the routing; the only other configuration is that
 preference order — there is no platform-mapping key.
 
-**Role catalog, not prompt text.** The supervisor routes by the card's assignee, but the
-role's `title`, `summary`, `responsibilities` and `boundaries` serve the local role catalog
-and routing only — they are **never injected into a prompt**. A resident worker session has
-the role's `SKILL.md` loaded from the **selected kind's** skill directory at session open,
-and reads `self_check` from the same directory before acting. The inline forms are verified
-against codex-cli 0.161.0 (`developerInstructions`) and pi 1.4.0
+**Role catalog, not prompt text.** The supervisor routes by the card's assignee. The role's
+`title` and `summary` are projected into the local role catalog, its `shapes` generate the
+routing table, and `responsibilities` and `boundaries` are the long-form contract kept in
+`role.json` for authoring and reference. None of them is **injected into a prompt**. A resident
+worker session has the role's `SKILL.md` loaded from the **selected kind's** skill directory at
+session open, and reads `self_check` from the same directory before acting. The inline forms are
+verified against codex-cli 0.161.0 (`developerInstructions`) and pi 1.4.0
 (`--append-system-prompt` reads an existing file path); Claude's `--append-system-prompt`
 needs 2.1.292 or newer. The full review handoff inlines `reviewer-handoff.md`, bounded at
 2,400 characters. Every role is told to write and maintain
