@@ -198,7 +198,7 @@ supervisor 有两个时钟和一个常驻会话池：
 
 ### 和看板对话
 
-`meerkat-chat` 是人的对话台，和其他 skill 一样按描述触发。问它某张卡的进展、有什么等你回复、哪些卡待验收、loop 是否健康；它会先跑一次 `taskctl loop doctor --json` 与 `taskctl loop console --json`，给出摘要，再做细节。
+`meerkat-chat` 是人的对话台，和其他 skill 一样按描述触发。问它某张卡的进展、有什么等你回复、哪些卡待验收、loop 是否健康；它会先跑一次 `taskctl doctor --json` 与 `taskctl console --json`，给出摘要，再做细节。
 
 它一次一张卡地走 `awaiting`：把卡读回来，问完这张卡的全部问题，把准备写入的评论原文给你看，你点头后才以你的身份写下去。你在板上 UI 里回答也算数。它也报告健康状态和每张 `blocked` 卡的原因，按请求放行 `backlog → todo`（唯一的前进边；`in_progress` 属于认领），并且只在展示了当前轮报告与验收覆盖后才关闭已交付的卡。每次写板都先给你看，而且每次写入都是 `--as-human`：评论记录的是你的话，不是模型自己的意见。
 

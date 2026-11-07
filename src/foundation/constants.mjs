@@ -864,7 +864,7 @@ export const DEFAULT_BOARD_LIMIT = 500;
 export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
 
 /** How long an unassigned `todo` card waits for the director before it is the
- * route lane's, and before `loop doctor` reports it as unowned. One number, so
+ * route lane's, and before `taskctl doctor` reports it as unowned. One number, so
  * the lane and the inspection agree on the window. */
 export const ROUTE_UNASSIGNED_MS = 30 * 60 * 1000;
 
@@ -873,7 +873,7 @@ export const ROUTE_UNASSIGNED_MS = 30 * 60 * 1000;
  *
  * Round 1 is the first delivery; every rejection, rework or audited reopen bumps
  * `delivery_round`. Four means the work came back three times — the same number
- * `loop doctor` has always reported as looping. The board decides the hold; the
+ * `taskctl doctor` has always reported as looping. The board decides the hold; the
  * loop only executes it. A human who moves the card back starts a fresh epoch
  * from the round it was held at.
  */

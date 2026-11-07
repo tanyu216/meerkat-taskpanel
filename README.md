@@ -198,7 +198,7 @@ The decision protocol lives in [`skills/meerkat-director/`](skills/meerkat-direc
 
 ### Talk to the board
 
-`meerkat-chat` is the human's console, invoked by description like any other skill. Ask it about a card's progress, what needs an answer, what is waiting for acceptance, or whether the loop is healthy; it opens `taskctl loop doctor --json` and `taskctl loop console --json` once, gives you the digest, then does the detail work.
+`meerkat-chat` is the human's console, invoked by description like any other skill. Ask it about a card's progress, what needs an answer, what is waiting for acceptance, or whether the loop is healthy; it opens `taskctl doctor --json` and `taskctl console --json` once, gives you the digest, then does the detail work.
 
 It walks the `awaiting` cards **one at a time**: it reads the card back, asks that card's whole question, shows the exact comment it is about to write, and records it as your comment once you agree. A board-UI answer counts too. It reports health and every `blocked` card with its reason, releases `backlog → todo` on request — the only forward edge, since `in_progress` belongs to a claim — and closes a delivered card only after showing the current-round report and acceptance coverage. Every board write is shown first, and every write is `--as-human`: the comment is your word, never the model's opinion.
 

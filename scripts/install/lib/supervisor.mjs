@@ -470,13 +470,12 @@ export function cronContentLines(paths) {
   const node = env.TP_NODE || process.execPath;
   const cronPath = env.TP_UNIT_PATH_CRON || unitPath(dirname(node), { scheduler: "cron" });
 
-  // The unit runs `taskctl loop run …`; a bare shim needs no interpreter, a `.mjs`
+  // The unit runs `taskctl run …`; a bare shim needs no interpreter, a `.mjs`
   // entry is named through the pinned node above.
   const line = (schedule, once) =>
     [
       schedule,
       ...(paths.cliNeedsNode ? [node, paths.cli] : [paths.cli]),
-      "loop",
       "run",
       once,
       `--actor-kind ${paths.actorKind}`,

@@ -2,9 +2,9 @@
 /**
  * The loop's deterministic passes — the one entry the tick runs.
  *
- *   taskctl loop patrol      notify-only SLA; never moves a card
- *   taskctl loop workflow    apply the board's workflow plan
- *   taskctl loop poll        scan → atomic claim → enqueue the handoff
+ *   taskctl patrol      notify-only SLA; never moves a card
+ *   taskctl workflow    apply the board's workflow plan
+ *   taskctl poll        scan → atomic claim → enqueue the handoff
  *
  * They are one file because they share one contract: parse the same flags, then
  * run one pass. The order (`patrol → workflow → poll`) belongs to the continue
@@ -86,13 +86,13 @@ import {
 } from "./runtime.mjs";
 import { poolStatus } from "./session.mjs";
 
-const PASS_USAGE = `Usage: taskctl loop <patrol|workflow|poll> [options]
+const PASS_USAGE = `Usage: taskctl <patrol|workflow|poll> [options]
 
   patrol     the notify-only SLA pass; no alert moves a card
   workflow   apply the board's workflow plan (issue reconcile --workflow)
   poll       scan → atomic claim → enqueue the handoff for the session pool
 
-Options are the loop's shared flags; run \`taskctl loop run --help\` for the list.
+Options are the loop's shared flags; run \`taskctl run --help\` for the list.
 `;
 
 /**

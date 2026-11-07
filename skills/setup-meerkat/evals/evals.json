@@ -43,7 +43,7 @@
         "The target copy is written under <home>/.codex/skills/turing/ and includes role.json.",
         "The source <home>/.claude/skills/turing/ is deleted only after the user explicitly agrees; a role the user did not name is never touched.",
         "A re-run of the same move reports unchanged.",
-        "After the move, the scan set in taskctl loop status names Worker and every role whose cards are created.",
+        "After the move, the scan set in taskctl loop names Worker and every role whose cards are created.",
         "A retired meerkat-loop tree (if present) is reported as legacy and not deleted."
       ]
     },

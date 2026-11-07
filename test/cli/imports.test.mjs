@@ -45,7 +45,7 @@ const PLANNED_CLI = [
   "output/json.mjs",
   "output/human.mjs",
   "commands/index.mjs",
-  "commands/status.mjs",
+  "commands/board.mjs",
   "commands/project.mjs",
   "commands/issue.mjs",
   "commands/task-input.mjs",

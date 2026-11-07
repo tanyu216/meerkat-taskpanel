@@ -253,7 +253,7 @@ has no director skill, so it must not receive a role until the team skills are i
 user may decline and keep one platform. The director, chat and setup skills follow the primary
 kind and are not moved by this step.
 
-After a move, refresh the native definitions and read `taskctl loop status`; the scan set
+After a move, refresh the native definitions and read `taskctl loop`; the scan set
 must name Worker and every role whose cards are created. Retired `meerkat-loop` trees are
 reported, never read or deleted. `MEERKAT_TASKPANEL_ROLES_DIR` pointing at directories that
 carry `role.json` is still a valid discovery override, not a retired key.
@@ -320,7 +320,7 @@ and logs a rename warning, and `install.sh --force` refreshes the skill.
    is installed on every kind the user expects to use.
 3. Read-only check only: show the installer's plan with
    `bash <checkout>/install.sh --target <primary-kind> --dry-run` if a plan is needed, and
-   read `taskctl loop status --actor-kind <kind>`: the scan set must name Worker and every
+   read `taskctl loop --actor-kind <kind>`: the scan set must name Worker and every
    role whose cards are created. A name the loop does not scan is a finding, never "ready".
    Do not use `--supervisor=status` as a read-only check: it still walks the install path and
    writes. A daemon starts or is enabled only in Step 1, after a separate explicit yes.

@@ -6,7 +6,7 @@
  * turn is complete, and can be interrupted or closed without exiting the
  * supervisor.
  *
- * The pool is deliberately kind-agnostic. `taskctl loop session` (the pool
+ * The pool is deliberately kind-agnostic. `taskctl pool` (the pool
  * manager) knows about projects, queues and card sessions; it does not know which
  * CLI is underneath. An actor-kind adapter only has to implement this interface.
  *

@@ -37,7 +37,7 @@ per-kind installer run defaults to `<that kind>,<the rest>`.
 kinds carry it, the chain is the primary kind first, then the configured order. Availability is
 the CLI probe, not the directory: an unavailable carrier falls back only to another kind that
 also carries the role; if none is available, the card is not claimed and the gap is reported
-(`taskctl loop status`, `taskctl loop doctor`).
+(`taskctl loop`, `taskctl doctor`).
 
 Changing the order moves the **fallback** preference. Changing the **primary** kind is the
 unit's `--actor-kind` and needs `install.sh … --supervisor=enable` re-run.

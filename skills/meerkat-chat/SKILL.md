@@ -1,6 +1,6 @@
 ---
 name: meerkat-chat
-description: Use this skill whenever a human asks about their Meerkat TaskPanel board in a live agent session — the progress or status of a task card, what is left or what happens next, who is on it, why it is stuck, blocked, looping or otherwise abnormal, what is waiting on them, an awaiting question that needs a reply, a card in `in_review` waiting for acceptance (`in_review → done`) or a review verdict, and the loop's health (`loop doctor`, `loop console`). It can also watch the waiting queue — keep checking and notify the human when a card needs them — without writing anything. It also writes on the human's behalf — reply to an on-card question, accept a delivered card, release backlog work, and triage abnormal cards — showing the exact comment or move before it is written. It replies in the human's language, whichever language that is. Trigger in any language the human writes in, including Chinese, English or a mix, and on a bare card id or title when the human is asking about it. Board operations themselves are the `meerkat` skill's; the decision authority is the supervisor-only `meerkat-director` policy, which humans never invoke.
+description: Use this skill whenever a human asks about their Meerkat TaskPanel board in a live agent session — the progress or status of a task card, what is left or what happens next, who is on it, why it is stuck, blocked, looping or otherwise abnormal, what is waiting on them, an awaiting question that needs a reply, a card in `in_review` waiting for acceptance (`in_review → done`) or a review verdict, and the loop's health (`taskctl doctor`, `taskctl console`). It can also watch the waiting queue — keep checking and notify the human when a card needs them — without writing anything. It also writes on the human's behalf — reply to an on-card question, accept a delivered card, release backlog work, and triage abnormal cards — showing the exact comment or move before it is written. It replies in the human's language, whichever language that is. Trigger in any language the human writes in, including Chinese, English or a mix, and on a bare card id or title when the human is asking about it. Board operations themselves are the `meerkat` skill's; the decision authority is the supervisor-only `meerkat-director` policy, which humans never invoke.
 ---
 
 # Meerkat Chat — the human's console
@@ -23,7 +23,7 @@ to write*, never how the board works.
   decision, or decide an E1–E5 matter. A human-directed reassignment is a board edit under
   §6; the routing decision is still theirs. When a card needs a decision the human has not
   given, ask them — their answer outranks the ladder, but it is still their answer, not yours.
-- **Not the supervisor.** You never run `loop tick`, `loop poll` or `loop run`, edit loop state,
+- **Not the supervisor.** You never run `taskctl tick`, `taskctl poll` or `taskctl run`, edit loop state,
   restart a daemon, or move a card to make the loop look healthy.
 - **Not the integrator.** You never merge a lane branch, clean a worktree or run a gate.
   `unlanded` is a finding to report; integration is the repository's own workflow, not a board
@@ -38,8 +38,8 @@ Before the first board answer in a session, run the two read-only reads. They ar
 no identity, and together they tell you what is waiting and whether the team is healthy:
 
 ```bash
-taskctl loop doctor --json      # health: attention, stuck, looping, workers, queue
-taskctl loop console --json     # what is waiting on a human: questions, pending_acceptance
+taskctl doctor --json      # health: attention, stuck, looping, workers, queue
+taskctl console --json     # what is waiting on a human: questions, pending_acceptance
 ```
 
 Lead with one short digest before answering the specific question:
@@ -90,9 +90,9 @@ derived, not a field: combine the uncovered `acceptance[]` items, the current re
 
 ## 2. Keep the waiting register
 
-`loop console --json` is the human-owned queue. Read `questions[]` — `awaiting` cards plus
+`taskctl console --json` is the human-owned queue. Read `questions[]` — `awaiting` cards plus
 `in_progress` cards carrying an unanswered agent question — and `pending_acceptance[]` for
-`in_review` cards. `loop doctor --json` adds the health rows.
+`in_review` cards. `taskctl doctor --json` adds the health rows.
 
 - **One card at a time.** Present the oldest or most urgent first; the next card opens only
   after this one's answer is recorded. A wall of questions gets a wall of vague answers.
@@ -112,7 +112,7 @@ hold a watch over this register. It is a read-only wait on the board's event clo
 scheduler, a daemon or a second dispatcher, and it is not `taskctl export watch` (that refreshes
 one card's brief).
 
-- **Scope is this register only.** `questions[]` and `pending_acceptance[]`; `loop doctor` stays
+- **Scope is this register only.** `questions[]` and `pending_acceptance[]`; `taskctl doctor` stays
   a one-shot read or an answer to a direct question.
 - **The hold.** One wait is one command:
 
@@ -127,14 +127,14 @@ one card's brief).
   the signal to read the console and announce; the second is the safety read. `--idle` cannot
   express this: the hub's 15-second heartbeat resets it, so any value at or above 15 seconds
   never fires.
-- **The console read.** Read `taskctl loop console --json` for the baseline, after every hold,
+- **The console read.** Read `taskctl console --json` for the baseline, after every hold,
   and after a degraded read. That is the whole cadence; do not poll between holds.
 - **One follower.** Run the hold in the runtime's background execution when it has one, so the
   conversation stays live; otherwise run the same command in the foreground — it bounds itself.
   Never start a second hold while one is running. Never delegate the watch to a subagent or a
   background script: a subagent cannot receive the human's reply or record it. A subagent may
   take one one-shot read, not `events follow`. Unattended notification is the supervisor's
-  `loop patrol` / `loop subscribe` / SLA path, never this skill's; never start one of those.
+  `taskctl patrol` / `taskctl subscribe` / SLA path, never this skill's; never start one of those.
 - **Notify only.** Announce only the changed set (new, changed, resolved); never reprint the
   whole queue, and announce nothing when a hold returns quiet. Never write, accept, claim, move,
   heartbeat, deliver or comment on your own.
@@ -144,7 +144,7 @@ one card's brief).
   inline and the watch continues.
 - **Never talk over the human.** A hold may be running while their message arrives — answer them
   first; announce the changed set after that answer is complete, never in the middle of it.
-- **Identity.** `loop console` is local; `events follow` needs the session's actor identity
+- **Identity.** `taskctl console` is local; `events follow` needs the session's actor identity
   (`--actor-kind` or `TASKCTL_ACTOR_KIND`). It is a read: never `--as-human`.
 - **Dedupe, and fail honestly.** Do not re-raise a shown item. The snapshot lives in the
   conversation, not a state file: after a compaction or a lost snapshot, re-read the console and
@@ -232,7 +232,7 @@ Details: [`references/acceptance.md`](references/acceptance.md).
 
 ## 5. Read the loop's health, and triage what is abnormal
 
-`taskctl loop doctor --json` is one read-only inspection. Start at `attention_reasons`; an empty
+`taskctl doctor --json` is one read-only inspection. Start at `attention_reasons`; an empty
 list is a healthy answer, not a reason to invent one. Health is not part of watch mode: a watch
 announces waiting cards only; health stays a one-shot read or an answer to a direct question.
 

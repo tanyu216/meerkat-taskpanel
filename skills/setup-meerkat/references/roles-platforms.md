@@ -51,7 +51,7 @@ kind.
 
 ## After the move
 
-Read `taskctl loop status --actor-kind <kind>`. The `scan set:` must name Worker and every
+Read `taskctl loop --actor-kind <kind>`. The `scan set:` must name Worker and every
 role whose cards are created, and its role lines must show the effective platform. A name the
 loop does not scan can never claim its cards; that is a finding to report, never "ready".
 

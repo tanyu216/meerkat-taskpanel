@@ -2,27 +2,27 @@
 
 A read-only wait on the board's event clock over the waiting register. It reads; it never writes.
 
-It is not `loop doctor`, not `loop tick` / `loop poll` / `loop run`, not a daemon, not a
+It is not `taskctl doctor`, not `taskctl tick` / `taskctl poll` / `taskctl run`, not a daemon, not a
 scheduler, not a second dispatcher, and not `taskctl export watch` (that refreshes one card's
 brief). `events follow` may ensure the local hub on demand; that is the command's own behavior,
 not something you manage, stop or restart.
 
 The queue is the console's `questions[]` (awaiting cards plus open agent questions) and
-`pending_acceptance[]` (delivered cards). `loop doctor` is not part of the watch: it stays a
+`pending_acceptance[]` (delivered cards). `taskctl doctor` is not part of the watch: it stays a
 one-shot read or an answer to a direct question.
 
 ## Enter
 
 Enter on request only: "watch", "keep checking", "notify me when a card needs me".
 
-1. Read the baseline: `taskctl loop console --json`.
+1. Read the baseline: `taskctl console --json`.
 2. Then start the hold: `taskctl events follow --hold 600000 --event …` (no `--after` on the
    first hold).
 
 Read the baseline first; the hold blocks until a matching event or the bound. An event that lands
 between the two is picked up by the next hold, so the gap delays a report, it never loses state.
 
-`loop console` is local and needs no identity. `events follow` needs the session's actor
+`taskctl console` is local and needs no identity. `events follow` needs the session's actor
 identity (`--actor-kind`, or `TASKCTL_ACTOR_KIND` from the session). It is a read: never pass
 `--as-human`. If no identity resolves, skip the event clock, keep reading the console, and say
 the watch has no live clock.
@@ -46,14 +46,14 @@ the watch owns the session.
 ## No delegation
 
 Never delegate the watch to a subagent or a background script. A subagent may take one one-shot
-read (`taskctl loop console --json` or `taskctl issue get <ref> --json`) and return it, but it
+read (`taskctl console --json` or `taskctl issue get <ref> --json`) and return it, but it
 cannot hold the watch: it never receives the human's reply and cannot record it. `events follow`
 is not a one-shot read.
 
 Running **one** `events follow --hold` in the runtime's background execution is not delegation:
 it is the same single follower, it ends by itself, and its output comes back to this
-conversation. What is forbidden is a second follower: a script, a daemon, `loop patrol`,
-`loop subscribe`, the SLA detectors. Never start one of those, and never start a second hold
+conversation. What is forbidden is a second follower: a script, a daemon, `taskctl patrol`,
+`taskctl subscribe`, the SLA detectors. Never start one of those, and never start a second hold
 while another is running.
 
 ## The hold
@@ -63,7 +63,7 @@ hold.
 
 ```bash
 # baseline; repeat after every hold and after a degraded read
-taskctl loop console --json
+taskctl console --json
 # one hold: the first matching event ends it, or ten minutes with none
 taskctl events follow --after <rev> --hold 600000 \
   --event task_moved:changes.to=awaiting \
@@ -165,9 +165,9 @@ the human still wants it.
 ## Never
 
 Never write, accept, claim, move, heartbeat, deliver, cancel or comment on your own. Never
-delegate the watch to a subagent or a background script, and never start `loop patrol`,
-`loop subscribe`, a daemon or a second follower. Never run two holds at once. Never manage, stop
-or restart a daemon or the hub. Never run `loop tick` / `loop poll` / `loop run`. Never present a
+delegate the watch to a subagent or a background script, and never start `taskctl patrol`,
+`taskctl subscribe`, a daemon or a second follower. Never run two holds at once. Never manage, stop
+or restart a daemon or the hub. Never run `taskctl tick` / `taskctl poll` / `taskctl run`. Never present a
 failed or degraded read as a live queue.
 
 ## More

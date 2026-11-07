@@ -458,7 +458,7 @@ _Avoid_: project session, control lane
 **Chat console**:
 The human's live view of the board — the `meerkat-chat` skill. It reports progress, surfaces
 awaiting questions and pending acceptance, records the human's own answer with `--as-human`,
-and reads `loop doctor`; it never makes a decision, claims a card or delivers one.
+and reads `taskctl doctor`; it never makes a decision, claims a card or delivers one.
 _中文_: 对话台
 _Avoid_: director mode, manual mode
 

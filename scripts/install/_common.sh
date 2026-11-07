@@ -330,8 +330,8 @@ export_tp_env() {
   # derived, never hard-coded, so the unit PATH and the shim cannot disagree.
   TP_SHIM_DIR="${TP_SHIM%/*}"
   TP_HOOK="$(target_home)/$agent_dir/hooks/meerkat-taskpanel-session-start.sh"
-  # The external loop is `taskctl loop …`, shipped by the runtime tree `TP_REPO`
-  # names. Log and state are fixed per agent kind so a user always knows where they
+  # The external loop is the runtime commands (`taskctl run`, `taskctl pool`, …),
+  # shipped by the runtime tree `TP_REPO` names. Log and state are fixed per agent kind so a user always knows where they
   # land (documented in docs/scheduling.md).
   #
   # The units name the CLI entry, not an agent-local copy of the loop body: the

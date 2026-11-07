@@ -133,7 +133,7 @@ export function emptyDeferralLedger() {
  * Read the ledger.
  *
  * A missing file is the fresh-install state and is **not** an error — a fresh
- * state directory must not turn `loop doctor` red. Only an unreadable or
+ * state directory must not turn `taskctl doctor` red. Only an unreadable or
  * malformed file is reported.
  *
  * @param {string} stateDir
@@ -366,7 +366,7 @@ export function deferralCommentBody(entry) {
     `- last seen: ${entry.last_at}`,
     "",
     "It keeps retrying every pass. Check the lane branch and the loop's workspaces.json record; " +
-      "`taskctl loop doctor` reports the same card under `looping`.",
+      "`taskctl doctor` reports the same card under `looping`.",
   ].join("\n");
 }
 

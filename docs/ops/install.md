@@ -13,7 +13,7 @@ place:
   poll / patrol (see [`scheduling.md`](../scheduling.md#openclaw-no-loop-units)). The
   supervisor finds the skill wherever it is installed at runtime; no config records its path.
 - **`meerkat-chat`** (`skills/meerkat-chat/`) — the human's live console: progress, awaiting
-  questions, pending acceptance, `loop doctor` and abnormal-card triage; records the human's
+  questions, pending acceptance, `taskctl doctor` and abnormal-card triage; records the human's
   own words with `--as-human`. Installed beside the director on the primary kind.
 - **`jobs`, `linus`, `turing`, `reviewer`, `worker`** (`skills/<role>/`) — the five
   standalone role skills. Each is a complete role: `SKILL.md`, `role.json` and `references/`.
@@ -138,6 +138,15 @@ under `src/` (it still never touches `.env` or `.data`); `--dry-run` writes noth
 Upgrade by running the installer again (`--force` to refresh managed files). To remove,
 delete the agent-kind skill directories listed below and the tree itself; **keep `.data/` if you
 want the board**: `rm -rf ~/.meerkat-taskpanel` deletes the database with it.
+
+**The runtime commands are top-level now.** The `loop <verb>` spellings are
+retired: `taskctl loop run` is `taskctl run`, `taskctl loop session` is
+`taskctl pool`, and the loop's own read is bare `taskctl loop` (see
+[ADR 0021](../adr/0021-the-loop-cli-is-flat.md)). Installed systemd/launchd/cron
+units still carry the old argv, so an upgraded machine must re-run `install.sh`
+(re-rendering the units) before its next reboot; until then a scheduled job exits
+2 with a migration error that names the replacement. `taskctl status` is
+`taskctl board` for the same reason.
 
 **One loop log, at the config root.** The supervisor log used to sit under the agent
 directory (`<agent-dir>/meerkat-taskpanel/supervisor.log`) and now lands at
@@ -481,8 +490,8 @@ supervisor:   reload it with: install.sh --supervisor=enable --supervisor-actor-
 ```
 
 Enabling installs the resident pool, the two clocks **and the event daemon**: a long-lived
-`taskctl loop session` manager, a $0 ping, one bounded tick per continue cadence that runs
-patrol → workflow → poll in-process, and the `taskctl loop subscribe` daemon on launchd/systemd.
+`taskctl pool` manager, a $0 ping, one bounded tick per continue cadence that runs
+patrol → workflow → poll in-process, and the `taskctl subscribe` daemon on launchd/systemd.
 The daemon is part of that set, not a separate flag: it is the low-latency path, the
 continue cadence remains the fallback, and an event wakes a turn only while the pool is
 live. It is not a closure component — with no pool it skips the turn and the timer still
