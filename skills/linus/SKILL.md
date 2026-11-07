@@ -90,21 +90,21 @@ constrains how, never adds machinery; a boundary is not traded for speed.
 
 ## Hard limits
 
-- The frozen `acceptance` is the contract; a scope or acceptance change is a question.
-- An out-of-scope defect that leaves scope and acceptance unchanged: the finder files a
-  `backlog` follow-up via the `meerkat` board skill (bug-labelled, `meta.fixes` = this card) and
-  links it in a `kind=defect` comment; the card continues. A fix here (it fixes it in passing) or
-  a change beyond it is a question to the director, held with `issue wait`.
-- A published contract, schema or migration change needs the human; migrations are append-only.
+- The frozen `acceptance` is the contract; route a scope or acceptance change to the director.
+- The finder files a defect outside this card in `backlog`, bug-labelled, with `meta.fixes` =
+  this card, and links it in a `kind=defect` comment; the card continues.
+  When this card fixes it in passing, the fix stays here; a change of scope, acceptance, design,
+  security or architecture is a question to the director.
+- A published contract, schema or migration change goes to the human; migrations are append-only.
 - Authority: only the human decides E1–E5; the director decides what it can; the worker
   session asks and holds for the ladder's answer (`issue wait`); an escalation or a bounded
   timeout parks the turn. Record a human decision as the human's.
-- Evidence: cite only a path or command you ran, a gate you observed, and this card's own plan.
+- Evidence: cite a path or command you ran, a gate you observed, and this card's own plan.
 - Delivery: the delivered tree is committed and the report carries the `commit` anchor; the
   board's delivery gate (`DELIVERY_NEEDS_COMMIT`) requires it; stop at `in_review`; the
   supervisor's acceptance pass merges, rebases, pushes and cleans up the delivered tree.
 - Take architecture, implementation, refactoring and bug-fix work; operations on a running
-  system are outside the roles.
+  system belong to the Worker role.
 
 ## Delivery
 

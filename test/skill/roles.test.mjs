@@ -154,7 +154,9 @@ describe("role skills: identity, discovery and model invocation", () => {
       "the identity keeps the reviewer out of ordinary work routing",
     );
     assert.ok(
-      identity.boundaries.some((line) => /not a REJECT merely for being unlisted/i.test(line)),
+      identity.boundaries.some(
+        (line) => /give an unlisted or mixed target type the universal floor/i.test(line),
+      ),
       "an unlisted type is a normal review path, not a reject",
     );
     assert.ok(
@@ -863,7 +865,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     );
     assert.match(
       linus,
-      /operations on a running\s+system are outside the roles/i,
+      /operations on a running\s+system belong to the Worker role/i,
       "operations is routed out of the role",
     );
 
