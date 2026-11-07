@@ -325,7 +325,7 @@ policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
 
 | Cycle | Counter (home) | Bound | At the bound |
 |---|---|---|---|
-| Deliver → review → rework | `delivery_round − meta.loop_hold_round` (board) | `--rework-max-rounds` = 4 | `hold_card`: question + `blocked/decision` + close the review |
+| Deliver → review → rework | `meta.review_rejects − meta.loop_hold_retry_base` (board) | `--rework-max-rounds` = 4 | `hold_card`: question + `blocked/decision` + close the review |
 | Review verdict unappliable | `meta.review_retry − meta.loop_hold_retry_base` (board) | 2 | `hold_card` on the original + `close_review` |
 | Card handoff turn | queue row `attempts` | 3 | row `failed`; execution hold |
 | Handoff turn timeout | queue row `timeouts` | 3 (backoff 2/4/8 min) | below the bound, row pending with `retry_at`; at it, the card is re-read and (still `in_progress`) released to `todo` — never `blocked` |
@@ -361,10 +361,18 @@ level is observe-only for now; `taskctl loop doctor` reports the counts per leve
 that consumes the verdict must pass its own bound (the director lane's question and route rows
 stop at two attempts, not three).
 
-**The hold is an epoch, not a latch.** `meta.loop_hold_round` records the round the card was
-held at; the next hold is due only after another full bound. A human who moves the card back
-therefore gets a fresh bounded run — never an unbounded one — and a `held: true` re-emission
-recovers a crash between the marker and the move.
+**The hold is an epoch, not a latch.** `meta.loop_hold_retry_base` records the rejection count
+the card was held at; the next hold is due only after another full bound. A human who moves the
+card back therefore gets a fresh bounded run — never an unbounded one — and a `held: true`
+re-emission recovers a crash between the marker and the move. `meta.loop_hold_round` stays the
+round marker the crash retry compares against.
+
+**Only a review rejection spends the budget.** `meta.review_rejects` is written by the reject
+path alone (with `meta.rework_round`, in the same marker). A landing conflict, an acceptance
+refusal and a review re-dispatch move the card and bump `delivery_round`, but they do not touch
+the counter. A hold is never *initiated* on a delivered round: the review runs first, and the
+hold follows its verdict — `planReviewOutcomes` emits it in the same tick as a bound-reaching
+rejection, with the breaker as the crash fallback.
 
 **Why `blocked`, not `awaiting`.** `awaiting` is reachable only from `in_progress`, while a
 looping card is normally `todo` or `in_review`; a two-hop move into `in_progress` would
@@ -2213,6 +2221,11 @@ a child does not inherit the card's worktree; subagents are not tracked in a
 supervisor ledger and none is resumed. The reviewer's write deny applies to its
 own session; a child it spawns has its own tool pool. The posture is stated in
 `--supervisor=status`; the installed units carry no tool switch.
+
+When the declared gate is the push-time container gate and the lane cannot run it — the
+branch is unpushed, so no CI run exists — the reviewer records
+`n/a — gate unobservable in lane` and decides it as an E4 matter; the gap is
+environmental and does not become a rework round.
 
 ## The three agent kinds: how each one is triggered
 

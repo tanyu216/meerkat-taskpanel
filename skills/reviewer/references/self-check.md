@@ -14,8 +14,8 @@ remember reading. It moves nothing — the loop applies the verdict. Board opera
 4. Earlier findings are answered — resolved with evidence or explicitly deferred; none dropped
    or softened into a note.
 5. Gate and scan recorded: the declared gate or `n/a — none declared`; a code-changing
-   delivery's verdict carries the `security-checklist.md` row table (every applicable row
-   dispositioned and anchored, no blank row); read-only arms carry job + sha.
+   delivery's verdict carries the `security-checklist.md` row table (rows dispositioned and
+   anchored, no blank); a gate outside the lane's reach is `n/a — gate unobservable in lane` (E4 if needed); arms carry job + sha.
 6. A REJECT's must-fix items are numbered, each with file/line, reproduction, expected versus
    actual and the missing case.
 7. The universal floor and every matching scenario were walked — `SKILL.md`, the protocol and

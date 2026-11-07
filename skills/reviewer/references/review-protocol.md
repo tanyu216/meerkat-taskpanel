@@ -102,7 +102,11 @@ softened into a deferral; a leftover invented to avoid a `REJECT`.
 record the command, exit code and coverage — or `n/a — none declared` plus targeted checks. A
 red gate is a `REJECT` (TS-34), not a note; attribute a failure against the baseline, which
 changes ownership, not the verdict. Host-static checks are corroboration, not the declared gate.
-When the lane has no way to run it, record the CI run for the sha; record only a run you observed. Run
+When the lane has no way to run it, record the CI run for the sha; record only a run you observed.
+**An environmental gap is a decision, not a defect.** When the gate is the push-time container
+gate (TS-34), outside the lane's reach and with the branch unpushed — so no CI run exists —
+record `n/a — gate unobservable in lane` and, if a frozen acceptance item demands it, raise an
+E4 decision instead of a must-fix. A red gate you actually observed is still a `REJECT`. Run
 the documented scans — dependency audit (`osv-scanner` by default), secret scan, SAST — and
 record a read-only arm with its CI job and sha. Check waivers and the target ASVS level the
 project records in its `docs/tech-spec.md` (default **L2** where none is recorded); a valid

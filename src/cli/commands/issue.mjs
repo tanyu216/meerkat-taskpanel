@@ -1130,7 +1130,7 @@ export const COMMANDS = [
         key: "reworkMaxRounds",
         as: "string",
         value: "<n>",
-        summary: "Delivery rounds since the last hold before a card is parked.",
+        summary: "Review rejections since the last hold before a card is parked.",
       },
       {
         flag: "max-actions",

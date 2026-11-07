@@ -519,6 +519,8 @@ export function collectWire() {
             findings: "…",
             // The real planner turns the findings into baseline items.
             mustFix: ["fix the round guard"],
+            // The applied rejection count the executor writes with the marker.
+            reviewRejects: 2,
             // The real planner stamps the fix child's acceptance mode.
             acceptanceMode: "off",
             closeReview: true,

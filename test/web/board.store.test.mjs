@@ -1888,6 +1888,52 @@ describe("board store — the waiting queue is not narrowed by board filters", (
   });
 });
 
+describe("board store — a blocked decision joins the question half", () => {
+  const held = (over = {}) => ({
+    id: "b1",
+    identifier: "TD-B",
+    title: "Held for a decision",
+    status: "blocked",
+    blocked_reason: "decision",
+    version: 1,
+    labels: [],
+    assignee: { display_name: "elon", kind: "claude" },
+    ...over,
+  });
+
+  it("lists a blocked decision, not a resource block, and board filters do not narrow it", async () => {
+    const mod = await freshBoard();
+    mod.board.currentProjectId = "p1";
+    mod.board.loaded = true;
+    mod.board.tasks = [held(), held({ id: "b2", identifier: "TD-C", blocked_reason: "resource" })];
+    assert.deepEqual(mod.waitingTasks.value.map((task) => task.id), ["b1"]);
+    assert.equal(mod.waitingCount.value, 1);
+
+    mod.writeStatusFilter(["todo"]);
+    assert.equal(mod.visibleTasks.value.length, 0, "the status filter owns the board view");
+    assert.deepEqual(mod.waitingTasks.value.map((task) => task.id), ["b1"], "…not the queue");
+    assert.equal(mod.waitingCount.value, 1);
+
+    mod.writeAssigneeFilter("jobs");
+    assert.deepEqual(mod.waitingTasks.value, [], "the assignee condition still applies");
+  });
+
+  it("loads the hold question for the blocked row", async () => {
+    const mod = await freshBoard();
+    mod.board.currentProjectId = "p1";
+    mod.board.loaded = true;
+    mod.writeStatusFilter(["all"]);
+    mod.board.tasks = [held()];
+    const calls = installFetch({
+      "GET /api/v1/tasks/TD-B/comments": () =>
+        ok({ comments: [{ id: "c1", kind: "question", body: "Decide.", created_at: "2026-01-01T00:00:00Z" }] }),
+    });
+    await mod.loadWaitingPayloads();
+    assert.equal(calls.length, 1);
+    assert.equal(mod.board.waitingPayload.b1.body, "Decide.");
+  });
+});
+
 /* --------------------------------- the shared confirmation (TP-0125) */
 
 describe("web/confirm — one destructive gate", () => {

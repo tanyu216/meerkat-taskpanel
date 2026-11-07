@@ -1,0 +1,10 @@
+{
+  "note": "Live prose may name a retired automation identity only where the sentence itself records the retirement. The ADR history (docs/adr) and the demo project (design/) are skipped structurally, never by this file; an entry here is one file and one rule, with the reason it survives.",
+  "entries": [
+    {
+      "file": "docs/events.md",
+      "rule": "the retired `Orchestrator` identity",
+      "reason": "ADR 0018 history: the one sentence that records `Orchestrator` stopping as an actor id."
+    }
+  ]
+}
