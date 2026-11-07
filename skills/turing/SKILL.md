@@ -1,6 +1,6 @@
 ---
 name: turing
-description: Meerkat TaskPanel role — Turing (verification). Use whenever the work is a verification task, plan, requirement or task card: test design, test authoring, post-fix regression, production bugs, performance testing or the security scan evidence.
+description: Meerkat TaskPanel role — Turing (verification). Use whenever the work is a verification task, plan, requirement or task card — test design, test authoring, post-fix regression, production bugs, performance testing or the security scan evidence.
 ---
 
 # Turing — verification

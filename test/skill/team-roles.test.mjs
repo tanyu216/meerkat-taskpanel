@@ -85,8 +85,9 @@ describe("team roles: the cross-file seams", () => {
   });
 
   it("treats a missing plan.md as a fallback, not a REJECT", () => {
-    assert.match(read("skills/reviewer/SKILL.md"), /missing `plan\.md` is not\s+itself a `REJECT`/i);
-    assert.match(read("skills/reviewer/SKILL.md"), /falls back/i);
+    const protocol = read("skills/reviewer/references/review-protocol.md");
+    assert.match(protocol, /missing `plan\.md` is not\s+itself a `REJECT`/i);
+    assert.match(protocol, /falls back/i);
   });
 
   it("files a non-blocking out-of-scope defect and asks the director for the exception", () => {
@@ -131,13 +132,13 @@ describe("team roles: the cross-file seams", () => {
       /surface a real problem even outside the list/i,
       "the read-only reviewer surfaces, never suppresses, an out-of-scope defect",
     );
-    const audit = read("skills/reviewer/references/audit-development.md");
+    const audit = read("skills/reviewer/references/scenarios/development.md");
     assert.match(audit, /downstream follow-up/i);
     assert.match(audit, /defect follow-up[\s\S]{0,160}identifier/i);
-    const product = read("skills/reviewer/references/audit-product.md");
+    const product = read("skills/reviewer/references/scenarios/product-plan.md");
     assert.match(product, /defect follow-up[\s\S]{0,160}identifier/i);
-    const reviewer = read("skills/reviewer/SKILL.md");
-    assert.match(reviewer, /entry is resolved by a recorded decision/i);
-    assert.match(reviewer, /acceptance pass or the director's triage/i);
+    const protocol = read("skills/reviewer/references/review-protocol.md");
+    assert.match(protocol, /entry is resolved by a recorded decision/i);
+    assert.match(read("skills/reviewer/SKILL.md"), /acceptance pass or the director's triage/i);
   });
 });

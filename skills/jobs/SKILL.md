@@ -1,6 +1,6 @@
 ---
 name: jobs
-description: Meerkat TaskPanel role — Jobs (product design). Use whenever the work is a product task, plan, requirement or task card: an evidenced product brief, prototype validation, the PRD, product glossary/ADR, or visual and interaction design.
+description: Meerkat TaskPanel role — Jobs (product design). Use whenever the work is a product task, plan, requirement or task card — an evidenced product brief, prototype validation, the PRD, product glossary/ADR, or visual and interaction design.
 ---
 
 # Jobs — product planning
