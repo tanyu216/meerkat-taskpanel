@@ -283,7 +283,7 @@ A round is what four mechanisms key on, and they must agree:
 4. the SLA suppression (an open review card silences `acceptance_card_creation` for that round
    only).
 
-`loop doctor` reads this counter as one of its `looping` signals: a card whose `delivery_round`
+`taskctl doctor` reads this counter as one of its `looping` signals: a card whose `delivery_round`
 has reached the rework threshold is reported (never moved). The round is also the baseline's
 lock boundary: the acceptance snapshot is append-only and
 frozen in `in_review`/terminal; a rework re-opens it, which is how a rejection's must-fix
@@ -410,7 +410,7 @@ The executor sequences each one so a crash leaves a recoverable, re-plannable st
   [scheduling.md](scheduling.md)). The acceptance
   then records that merge as `meta.landed_sha` / `landed_at`; a card with no **registered**
   lane has nothing to merge, so it carries neither key — absence means unknown, and
-  `loop doctor` reports the ones git still finds outside the branch. An `auto_accept`
+  `taskctl doctor` reports the ones git still finds outside the branch. An `auto_accept`
   lands the same way before its `done` write.
 - **`record_verdict`** — comment, write `meta.review_verdict=approve` with
   `meta.review_verdict_round`, close the review card, stop. The person closes the original

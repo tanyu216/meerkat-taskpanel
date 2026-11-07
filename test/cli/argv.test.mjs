@@ -13,6 +13,18 @@ import test, { describe, it } from "node:test";
 import { parseArgv, tokenize } from "../../src/cli/argv.mjs";
 
 const REGISTRY = {
+  // `loop` is a bare command, exactly like the real flattened surface: the
+  // retired spellings (`taskctl loop`, `taskctl patrol`, …) must be refused from
+  // here, because they are no longer a group and no longer a verb of one.
+  topLevel: [
+    {
+      name: "loop",
+      summary: "The loop's runtime verdict.",
+      usage: "loop [--json]",
+      positionals: [],
+      flags: [{ flag: "stop", key: "stop", as: "boolean" }],
+    },
+  ],
   groups: [
     {
       name: "issue",
@@ -104,6 +116,18 @@ describe("cli/argv — tokenize", () => {
     assert.deepEqual(positionals, ["--not-a-flag", "x"]);
     assert.equal(flags.size, 0);
   });
+
+  it("records the raw argv index beside every positional", () => {
+    // The dispatch bridge strips the command token from the *raw* line, and the
+    // name cannot be searched for: `--roles-dir doctor patrol` has a flag value
+    // that reads exactly like a command. Only the tokenizer knows the boundary.
+    const { positionals, indices } = tokenize(["--roles-dir", "doctor", "patrol", "--dry-run"]);
+    assert.deepEqual(positionals, ["patrol"]);
+    assert.deepEqual(indices, [2]);
+    const all = tokenize(["issue", "get", "PROJ-1"]);
+    assert.deepEqual(all.positionals, ["issue", "get", "PROJ-1"]);
+    assert.deepEqual(all.indices, [0, 1, 2]);
+  });
 });
 
 describe("cli/argv — parseArgv", () => {
@@ -183,5 +207,45 @@ describe("cli/argv — parseArgv", () => {
     const parsed = parseArgv([], REGISTRY);
     assert.equal(parsed.wantedHelp, true);
     assert.equal(parsed.group, null);
+  });
+});
+
+describe("cli/argv — commandIndex and the flattened runtime commands", () => {
+  it("names the raw index of the command token, and null when there is none", () => {
+    // A bare command is at positionals[0]; a group command at positionals[1].
+    assert.equal(parse(["loop"]).commandIndex, 0);
+    assert.equal(parse(["--json", "loop"]).commandIndex, 1);
+    assert.equal(parse(["issue", "get", "PROJ-1"]).commandIndex, 1);
+    assert.equal(parse(["--json", "issue", "get", "PROJ-1"]).commandIndex, 2);
+    // Help, version-only invocations and the implicit default command carry no
+    // command token to strip.
+    assert.equal(parse([]).commandIndex, null);
+    assert.equal(parse(["--help"]).commandIndex, null);
+    assert.equal(parse(["issue"]).commandIndex, null);
+  });
+
+  it("refuses the retired `loop <verb>` spellings with the new command named", () => {
+    const status = usageFailure(["loop", "status"]);
+    assert.match(status.message, /taskctl loop/);
+    assert.match(status.hint.fix, /install\.sh/);
+
+    const patrol = usageFailure(["loop", "patrol"]);
+    assert.match(patrol.message, /taskctl patrol/);
+
+    const session = usageFailure(["loop", "session"]);
+    assert.match(session.message, /taskctl pool/);
+
+    const workflow = usageFailure(["loop", "workflow"]);
+    assert.match(workflow.message, /taskctl workflow/);
+  });
+
+  it("treats an unknown word after `loop` as a usage error, not a migration", () => {
+    const typo = usageFailure(["loop", "compat"]);
+    assert.match(typo.message, /unexpected argument "compat"/);
+  });
+
+  it("refuses the retired bare `status` with the board command named", () => {
+    const moved = usageFailure(["status"]);
+    assert.match(moved.message, /taskctl board/);
   });
 });

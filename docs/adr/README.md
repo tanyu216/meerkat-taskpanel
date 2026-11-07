@@ -39,6 +39,7 @@ what a change must comply with.
 | [0018](0018-board-is-the-one-automation-identity.md) | The board has one automation identity, `Board` (kind `system`); `system` and `Orchestrator` stop being actor ids | Accepted |
 | [0019](0019-the-reviewer-may-spawn-one-review-subagent.md) | The reviewer may spawn one fresh-context, read-only, one-shot review subagent; no ledger returns | Superseded by ADR 0020 (tool-surface claims; the one-shot child stands) |
 | [0020](0020-full-tool-access-by-default.md) | Every dispatched session runs with the full tool set; the reviewer's write tools are denied; the `--allow-all-tools` opt-in is retired | Accepted |
+| [0021](0021-the-loop-cli-is-flat.md) | The `loop` group is flattened into top-level runtime commands; `status` → `board`, `loop session` → `pool`, and old spellings exit 2 with a migration error | Accepted |
 
 ## Writing one
 

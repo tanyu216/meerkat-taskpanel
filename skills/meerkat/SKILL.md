@@ -50,7 +50,7 @@ node scripts/run.mjs --help          # this skill's launcher
 taskctl --help                       # when the shim is on PATH
 ```
 
-`--actor-kind` is required except on `--help`, `--version`, `status` and the `project map`
+`--actor-kind` is required except on `--help`, `--version`, `board` and the `project map`
 actions; a human writes with `--as-human`. Config, flags and exit codes:
 [`references/cli/core.md#configuration-env`](references/cli/core.md#configuration-env),
 [`references/cli.md#global-options`](references/cli.md#global-options).

@@ -30,7 +30,7 @@ import { answeredByHuman, newestQuestion, questionOpen } from "./questions.mjs";
 import { runCli } from "./runtime.mjs";
 import { probeSupervisor } from "./status.mjs";
 
-const USAGE = `Usage: taskctl loop console [--json] [--agent <name>] [--actor-kind <kind>]
+const USAGE = `Usage: taskctl console [--json] [--agent <name>] [--actor-kind <kind>]
          [--state <path>] [--log <path>] [--config <path>]
 
 One read-only cycle: supervisor status, questions waiting for a human, and

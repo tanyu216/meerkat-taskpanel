@@ -39,6 +39,24 @@ const COMMITTED = join(ROOT, SNAPSHOT_FILE);
 const CLI_DOC = join(ROOT, "skills/meerkat/references/cli.md");
 const tempDirs = [];
 
+/**
+ * The ten top-level runtime commands. They document their 46 shared flags once,
+ * in the marked block below; `board` is a bare command too, but it shares none
+ * of them and stays outside the set.
+ */
+const RUNTIME_COMMANDS = new Set([
+  "patrol",
+  "workflow",
+  "poll",
+  "tick",
+  "console",
+  "doctor",
+  "loop",
+  "run",
+  "subscribe",
+  "pool",
+]);
+
 after(async () => {
   await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
 });
@@ -87,7 +105,7 @@ function markedBlock(doc, name) {
  * (`## The awaiting state`, `## Editing a card`) cannot satisfy a gap in the
  * command reference. Inside it, a command's scope is its own table row and, when
  * it has one, its own `####` subsection — never a sibling row or the group's
- * prose. The one deliberate exception is the `loop` group, whose shared flags
+ * prose. The one deliberate exception is the runtime commands, whose shared flags
  * are documented once: that block is marked in the page and added by the caller.
  *
  * @param {string} doc the markdown page
@@ -160,7 +178,19 @@ describe("cli-contract — the committed snapshot describes this tree", () => {
 
   it("freezes the bare commands beside the groups", () => {
     const snapshot = buildSnapshot();
-    assert.deepEqual(snapshot.top_level.map((command) => command.name), ["status"]);
+    assert.deepEqual(snapshot.top_level.map((command) => command.name), [
+      "board",
+      "console",
+      "doctor",
+      "loop",
+      "patrol",
+      "poll",
+      "pool",
+      "run",
+      "subscribe",
+      "tick",
+      "workflow",
+    ]);
     assert.equal(snapshot.schema, 2);
   });
 });
@@ -224,7 +254,7 @@ describe("cli-contract — the skill documents what it freezes", () => {
     const { flagsByPath } = surface();
     const doc = readFileSync(CLI_DOC, "utf8");
 
-    // A bare command is documented by its own name (`taskctl status`).
+    // A bare command is documented by its own name (`taskctl board`).
     const missing = [...flagsByPath.keys()].filter((path) => !doc.includes(path));
     assert.deepEqual(missing, [], "undocumented commands");
   });
@@ -234,19 +264,19 @@ describe("cli-contract — the skill documents what it freezes", () => {
     const doc = readFileSync(CLI_DOC, "utf8");
     const scopes = commandScopes(doc, new Set(flagsByPath.keys()));
 
-    const shared = markedBlock(doc, "shared-flags:loop");
+    const shared = markedBlock(doc, "shared-flags:runtime");
     assert.notEqual(
       shared,
       null,
-      "cli.md must mark the loop verbs' shared flags with <!-- shared-flags:loop:begin/end -->",
+      "cli.md must mark the runtime commands' shared flags with <!-- shared-flags:runtime:begin/end -->",
     );
 
     const problems = [];
     for (const [path, flags] of flagsByPath) {
       const own = (scopes.get(path) ?? []).join("\n");
-      // The loop documents its 46 common flags once, on purpose; every verb's
-      // own row still has to carry the ones only that verb declares.
-      const text = path.startsWith("loop ") ? `${own}\n${shared}` : own;
+      // The runtime commands document their 46 common flags once, on purpose;
+      // every command's own row still has to carry the ones only it declares.
+      const text = RUNTIME_COMMANDS.has(path) ? `${own}\n${shared}` : own;
       for (const flag of flags) {
         if (!mentionsFlag(text, flag.flag)) problems.push(`${path} --${flag.flag}`);
       }
@@ -273,15 +303,15 @@ describe("cli-contract — the skill documents what it freezes", () => {
 
     // The shared block is *exactly* the intersection: a verb-only flag cannot be
     // parked in it, and a common flag cannot be dropped from it.
-    const loopFlags = [...flagsByPath]
-      .filter(([path]) => path.startsWith("loop "))
+    const runtimeFlags = [...flagsByPath]
+      .filter(([path]) => RUNTIME_COMMANDS.has(path))
       .map(([, flags]) => flags.map((flag) => flag.flag));
-    const common = loopFlags[0].filter((flag) => loopFlags.every((list) => list.includes(flag)));
+    const common = runtimeFlags[0].filter((flag) => runtimeFlags.every((list) => list.includes(flag)));
     const marked = [...new Set([...shared.matchAll(/--([a-z0-9][a-z0-9-]*)/g)].map((match) => match[1]))];
     assert.deepEqual(
       [...marked].sort(),
       [...common].sort(),
-      "the marked shared block must be exactly the flags every loop verb declares",
+      "the marked shared block must be exactly the flags every runtime command declares",
     );
 
     assert.ok(snapshot.groups.length >= 10);

@@ -7,7 +7,7 @@
  *
  * The pool manager owns the queues, routing, ledger, concurrency, heartbeat,
  * idle eviction and resume. It never speaks the board's HTTP API: the
- * supervisor's tick runs `taskctl loop patrol|workflow|poll`, the poll pass
+ * supervisor's tick runs `taskctl patrol|workflow|poll`, the poll pass
  * writes the card queue, and the pool's one board write is the card's session
  * row through `taskctl session set|close` (`board-session.mjs`).
  *
@@ -316,7 +316,7 @@ export function poolStatus(input = {}) {
     : [];
   const rawPid = Number(value.poolPid);
   const poolPid = Number.isInteger(rawPid) && rawPid > 0 ? rawPid : null;
-  // One verdict, shared with `loop status` and the installer's pool report: the
+  // One verdict, shared with `taskctl loop` and the installer's pool report: the
   // pid and its start token decide "gone"; the phase and the timestamps decide
   // which kind of live this is. A stale heartbeat never turns a live pid into
   // an absent pool.
@@ -387,7 +387,7 @@ export function createSessionPool(input = {}) {
     ? Number(input.reapGraceMs)
     : REAP_GRACE_MS;
   // `internal` is the installed supervisor; `external` marks a pool started by a
-  // live session (`loop status --take-over`). It is an observational marker only:
+  // live session (`taskctl loop --take-over`). It is an observational marker only:
   // it changes neither the pool's lifetime nor what the pool dispatches, and
   // there is no control turn in either mode — the supervisor's tick runs the
   // passes, the pool dispatches.
@@ -1269,7 +1269,7 @@ export function createSessionPool(input = {}) {
   /**
    * Record one interrupted turn in the ledger. `interrupted` is already part of
    * the ledger's vocabulary; without the row an interruption is invisible in
-   * `loop doctor` and in the reconcile trail.
+   * `taskctl doctor` and in the reconcile trail.
    */
   function recordInterrupt(row, key) {
     const review = String(row?.role ?? "worker") === "reviewer";
@@ -2690,7 +2690,7 @@ export function createSessionPool(input = {}) {
   /**
    * A triage that exhausted its turns. The producer is `done`, so there is no
    * legal move and no question to answer; record the failure on the card and
-   * let `loop doctor` surface the unconsumed handoff.
+   * let `taskctl doctor` surface the unconsumed handoff.
    */
   function noteTriageFailed(ref, reason) {
     const card = String(ref ?? "");
@@ -3339,7 +3339,7 @@ export async function runSession(opts, deps = {}) {
     })();
   }
   // These three timers are the pool's lifetime in every deployment shape: the
-  // installed daemon, a `--take-over` pool, and a hand-run `loop session`. Agent
+  // installed daemon, a `--take-over` pool, and a hand-run `taskctl pool`. Agent
   // children are created lazily, so a fully idle board has none and cannot be
   // relied on to hold the loop. The service manager's KeepAlive / Restart=always
   // is recovery, not residency. `stop()` clears all three synchronously before

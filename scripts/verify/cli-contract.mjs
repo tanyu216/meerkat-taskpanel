@@ -36,7 +36,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { registry } from "../../src/cli/commands/index.mjs";
-import { STATUS_RUNTIME_PROBE, statusPayload } from "../../src/cli/commands/status.mjs";
+import { STATUS_RUNTIME_PROBE, statusPayload } from "../../src/cli/commands/board.mjs";
 import { versionPayload } from "../../src/cli/index.mjs";
 import { errorEnvelope, successEnvelope } from "../../src/cli/output/json.mjs";
 import { DomainError } from "../../src/foundation/errors.mjs";
@@ -46,7 +46,7 @@ export const ROOT = resolve(import.meta.dirname, "../..");
 /**
  * The snapshot layout generation — bumped only by a breaking layout change.
  *
- * 2: `top_level` (bare commands such as `taskctl status`) and the frozen
+ * 2: `top_level` (bare commands such as `taskctl board`) and the frozen
  * `status_data` / `status_runtime` payload keys.
  */
 export const SNAPSHOT_SCHEMA = 2;
@@ -93,7 +93,7 @@ export function buildSnapshot() {
       error_fields: Object.keys(errorProbe.error).sort(),
       success: Object.keys(successEnvelope({})).sort(),
       version_data: Object.keys(versionPayload()).sort(),
-      // `taskctl status --json` is the client's runtime read; its data shape is
+      // `taskctl board --json` is the client's runtime read; its data shape is
       // frozen here so `runtime.{…}` cannot drift under a script.
       status_data: Object.keys(statusPayload(STATUS_RUNTIME_PROBE)).sort(),
       status_runtime: Object.keys(STATUS_RUNTIME_PROBE).sort(),

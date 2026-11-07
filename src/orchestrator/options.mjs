@@ -70,7 +70,7 @@ function readConfigFile(path) {
  *
  * There are two places a supervisor can run from, and they need different answers:
  *
- *   * **from the checkout** (`taskctl loop …`, the documented dev run
+ *   * **from the checkout** (`taskctl …`, the documented dev run
  *     and every test) — the board sits beside the executor, so the relative answer is
  *     the right one and nothing else is consulted. This branch is why a dev run never
  *     depends on the machine's per-kind config.
@@ -141,7 +141,7 @@ function resolvePositive(input, fallback) {
   return fallback;
 }
 
-// `taskctl loop …` forwards the CLI's global `--json`; the loop entries use it
+// Runtime commands forward the CLI's global `--json`; the loop entries use it
 // only where they emit a document (status/console). Accept and ignore it here.
 flag("--json", () => {});
 flag("--agent", (opts, value) => opts.agents.push(...list(value)));
@@ -716,12 +716,11 @@ export function resolveLoopConfig(opts, env = process.env) {
   };
 }
 
-export const USAGE = `Usage: taskctl loop <patrol|workflow|poll|tick|console|doctor|status|run|subscribe|session> [options]
+export const USAGE = `Usage: taskctl <patrol|workflow|poll|tick|console|doctor|loop|run|subscribe|pool> [options]
 
-Run it through \`taskctl loop <verb>\`; this page lists the shared options. The
-verbs map onto the entries below, so the selectors are not part of the public
-surface: \`loop session\` is the resident pool, \`loop subscribe\` the event daemon,
-\`loop run --ping-once\` / \`--continue-once\` one-shot clocks.
+Every runtime command is top-level; this page lists the shared options. The
+names map onto the entries below: \`pool\` is the resident pool, \`subscribe\` the
+event daemon, \`run --ping-once\` / \`--continue-once\` the one-shot clocks.
 
 The loop's scheduler. In its default resident shape it owns a session pool:
   session    long-lived — one card session per card (worker or review, cwd = the
@@ -773,7 +772,7 @@ Options:
                             Per-card git worktree for a git project (default: worktree).
   --project-idle-ms <ms>    Close an idle lane session after this (default: 1800000).
   --once                    Internal one-shot switch; the documented form is
-                            \`taskctl loop run --ping-once|--continue-once\`.
+                            \`taskctl run --ping-once|--continue-once\`.
   --ping-only               With --once, prune the worker registry and exit.
   --continue-only           With --once, run one tick.
   --url <url>               Board URL (default: TASKD_URL in the process env or
@@ -828,8 +827,8 @@ Options:
   -h, --help                Show this help
 
 The deterministic passes are also runnable on their own:
-  taskctl loop patrol     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
-  taskctl loop workflow   apply the board's workflow plan
-  taskctl loop poll       scan → atomic claim → enqueue the handoff;
+  taskctl patrol     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
+  taskctl workflow   apply the board's workflow plan
+  taskctl poll       scan → atomic claim → enqueue the handoff;
                                           the resident pool spawns the worker session`;
 

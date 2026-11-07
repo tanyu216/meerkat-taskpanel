@@ -133,8 +133,8 @@ describe("chat skill: the four things a human asks for", () => {
   const text = readFileSync(join(CHAT_SKILL, "SKILL.md"), "utf8");
 
   it("opens the board once with the two read-only reads", () => {
-    assert.match(text, /taskctl loop doctor --json/);
-    assert.match(text, /taskctl loop console --json/);
+    assert.match(text, /taskctl doctor --json/);
+    assert.match(text, /taskctl console --json/);
     assert.match(text, /read-only|writes nothing|never writes/i);
   });
 
@@ -209,14 +209,14 @@ describe("chat skill: watch mode on the waiting queue", () => {
     assert.match(watchText(), /--after <rev>/);
     assert.match(watchText(), /--hold 600000/);
     assert.match(watchText(), /ten minutes/i);
-    assert.match(watchText(), /taskctl loop console --json/);
+    assert.match(watchText(), /taskctl console --json/);
   });
 
   it("watches only questions and pending acceptance, and leaves doctor one-shot", () => {
     const watch = watchText();
     assert.match(watch, /questions\[\]/);
     assert.match(watch, /pending_acceptance/);
-    assert.match(watch, /loop doctor/);
+    assert.match(watch, /taskctl doctor/);
     assert.match(watch, /one-shot|on request|not part of/i);
   });
 
@@ -270,8 +270,8 @@ describe("chat skill: watch mode on the waiting queue", () => {
     assert.match(watch, /answer them first/i);
     assert.match(watch, /never delegate the watch to a subagent or a background script/i);
     assert.match(watch, /one-shot\s+read/i);
-    assert.match(watch, /loop patrol/);
-    assert.match(watch, /loop subscribe/);
+    assert.match(watch, /taskctl patrol/);
+    assert.match(watch, /taskctl subscribe/);
     assert.match(watch, /never start one of those/i);
     assert.match(watch, /never run two holds at once/i);
     assert.match(watch, /Stopping the watch stops the running hold/i);
