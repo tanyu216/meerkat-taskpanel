@@ -106,8 +106,9 @@ carries it. A second run reports `unchanged`.
 > HOME; do not touch the real one.
 
 Step 4 writes `docs/agents/*.md`, declares the project map, then calls the `init` skill once
-with the brief: `/meerkat` is the card entry, the board rules live in `docs/agents/`, and the
-card scope is stated. The `init` skill writes the project's instruction entry; setup does not
+with the brief: `/meerkat` is the card entry, the board rules live in `docs/agents/`, every
+file under `docs/agents/review-scenarios/` is named when the directory exists, and the card
+scope is stated. The `init` skill writes the project's instruction entry; setup does not
 edit it, and the file has no marker block. This leg is **blocked**, not passed, when the host
 has no `init` skill.
 
@@ -131,3 +132,19 @@ matters: once the marker exists and the guard is active, a primary-checkout writ
 including the entry write. If the guard arms mid-run, the remaining writes move to a session
 worktree. Codex hooks are reported as still needing `/hooks` trust. Skipping the guard leaves
 the rules as prose.
+
+## 14. Project review scenarios are opt-in and setup-written
+
+> Set up meerkat here. Our reviews repeat a few repo-specific checks: every API change must
+> update `test/fixtures/contract/api.snapshot.json`, migrations are append-only, and the
+> design oracle tests self-skip in the container so we check the host run.
+
+Step 4 asks one gate: does the project have review checks that repeat on every card and are
+not already in its standards? The recommended answer is no (skip). On yes, it asks which
+scenario types need project-specific checks and writes
+`docs/agents/review-scenarios/<type>.md` for each selected type the user supplied a check
+for, with an `Applies to:` line, a `## Checks` list and a `## Blocks APPROVE` list. Empty and
+generic files are not written; the reviewer's generic floor already ships with the skill.
+Setup is the only writer of these files. The init brief names the directory and every file in
+it, and the instruction entry the init skill writes lists each file by name. A second run
+reports `written` / `unchanged` / `conflict` and never restates the file.

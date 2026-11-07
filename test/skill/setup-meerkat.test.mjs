@@ -158,6 +158,31 @@ describe("skill frontmatter and the six-step shape", () => {
     assert.match(skill, /never write an entry yourself|never write an entry/i, "setup never writes it");
     assert.match(skill, /no `init` skill|has no `init` skill/i, "the missing-init path is named");
     assert.match(skill, /report `skip`|reports? `skip`/i, "the missing-init outcome is skip");
+    assert.match(skill, /review-scenarios\//, "the entry names the project scenario directory");
+    assert.match(skill, /name \*\*every\*\* scenario file/i, "the entry names every scenario file");
+  });
+
+  it("offers project review scenarios through setup only", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const reference = readFileSync(join(SKILL, "references/board-project.md"), "utf8");
+    for (const text of [skill, reference]) {
+      assert.match(text, /docs\/agents\/review-scenarios\//, "the scenario directory is named");
+      assert.match(text, /reviewer/i, "the reviewer owns the discovery");
+    }
+    assert.match(skill, /references\/scenarios\/README\.md/, "the installed scenario manual is named");
+    assert.match(skill, /No \(recommended\)/, "the gate defaults to skip");
+    assert.match(skill, /only for a type the user selected/i, "only selected types are written");
+    assert.match(skill, /the user's answers only/i, "the file records answers, not a template");
+    assert.match(
+      skill,
+      /augments the reviewer's built-in floors and never weakens/i,
+      "the project file is add-only",
+    );
+    assert.match(skill, /the \*\*only\*\* writer of project scenarios/i, "setup is the only writer");
+    assert.match(reference, /## Checks/, "the template names its checks");
+    assert.match(reference, /## Blocks APPROVE/, "the template names the blocking list");
+    assert.match(reference, /<project>\.md/, "a project-wide file is named after the project");
+    assert.match(reference, /written` \/ `unchanged` \/ `conflict`/, "the re-run outcomes are named");
   });
 
   it("keeps the setup prose free of host instruction filenames", () => {
@@ -313,7 +338,7 @@ describe("skill frontmatter and the six-step shape", () => {
   it("keeps the skill-creator eval prompts parseable", () => {
     const evals = JSON.parse(readFileSync(join(SKILL, "evals", "evals.json"), "utf8"));
     assert.equal(evals.skill_name, "setup-meerkat");
-    assert.equal(evals.evals.length, 13);
+    assert.equal(evals.evals.length, 14);
     for (const entry of evals.evals) {
       assert.equal(typeof entry.prompt, "string");
       assert.ok(entry.prompt.length > 20, `eval ${entry.id}: prompt`);
@@ -329,6 +354,7 @@ describe("skill frontmatter and the six-step shape", () => {
       "card-scope",
       "security-toolchain-belongs-to-linus",
       "init-writes-requirements",
+      "project-review-scenarios",
     ]) {
       assert.ok(names.has(name), `eval ${name} must exist`);
     }
@@ -340,6 +366,8 @@ describe("skill frontmatter and the six-step shape", () => {
     assert.match(text, /card scope/i);
     assert.match(text, /init/i);
     assert.match(text, /role skill/i, "the eval names the card-less role-skill trigger");
+    assert.match(text, /review-scenarios\//, "the eval names the project scenario directory");
+    assert.match(text, /every scenario file/i, "the eval names every scenario file");
 
     const interview = evals.evals.find((entry) => entry.name === "setup-interview");
     const interviewText = interview.assertions.join("\n");

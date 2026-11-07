@@ -1,6 +1,6 @@
 ---
 name: linus
-description: Meerkat TaskPanel role — Linus (engineering). Use whenever the work is an engineering task, plan, requirement or task card: system architecture and project initialization, the security toolchain, implementation, refactoring or a bug fix.
+description: Meerkat TaskPanel role — Linus (engineering). Use whenever the work is an engineering task, plan, requirement or task card — system architecture and project initialization, the security toolchain, implementation, refactoring or a bug fix.
 ---
 
 # Linus — engineering role

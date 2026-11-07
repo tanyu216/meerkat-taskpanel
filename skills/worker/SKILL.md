@@ -1,6 +1,6 @@
 ---
 name: worker
-description: Meerkat TaskPanel role — Worker (default assignee). Use whenever the work is a task, plan or requirement outside Jobs, Linus, Turing and Reviewer, or an unassigned task or task card: plan, adopt the plan, execute, self-check and deliver.
+description: Meerkat TaskPanel role — Worker (default assignee). Use whenever the work is a task, plan or requirement outside Jobs, Linus, Turing and Reviewer, or an unassigned task or task card — plan, adopt the plan, execute, self-check and deliver.
 ---
 
 # Worker — the default assignee
