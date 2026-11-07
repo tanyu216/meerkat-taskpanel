@@ -595,6 +595,8 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     );
     assert.match(check, /docs\/tech-spec\.md/, "the self-check audits the specification");
     assert.match(check, /enforcement point/i, "the self-check audits the enforcement points");
+    assert.match(arch, /ASVS target level/i, "the flow records the review level in the standard");
+    assert.match(arch, /ask the human for it when initializing/i, "the level is asked at initialization");
     assert.match(linusIdentity, /docs\/tech-spec\.md/, "the Linus identity names the specification");
   });
 
@@ -1066,7 +1068,6 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     assert.match(reviewer, /generic items/i);
     assert.match(prompt, /snapshot/i);
     assert.match(prompt, /generic items/i);
-    assert.match(reviewer, /CWE Top 25/i);
     assert.match(reviewer, /OWASP Top 10/i);
     assert.match(reviewer, /OWASP ASVS/i);
     for (const text of [linusCheck, turingCheck]) {
@@ -1087,7 +1088,7 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
       "Turing owns API and browser tests",
     );
     assert.ok(
-      reviewerIdentity.responsibilities.some((line) => /CWE Top 25|OWASP/i.test(line)),
+      reviewerIdentity.responsibilities.some((line) => /OWASP/i.test(line)),
       "the reviewer audits the security standards",
     );
     assert.ok(
@@ -1654,7 +1655,6 @@ describe("security: Linus owns the toolchain, the reviewer owns the checklist", 
     for (const needle of [
       "OWASP Top 10",
       "OWASP ASVS",
-      "CWE Top 25",
       "not_met",
       "n/a —",
       "floor, not a ceiling",
@@ -1664,6 +1664,11 @@ describe("security: Linus owns the toolchain, the reviewer owns the checklist", 
       assert.ok(checklist.includes(needle), `the checklist names ${needle}`);
     }
     assert.match(checklist, /surface[^.]*security check|security check[^.]*surface/i);
+    assert.match(
+      checklist,
+      /`docs\/tech-spec\.md`[\s\S]{0,200}\*\*L2\*\*/,
+      "Tier 3 reads the project's level and defaults to L2",
+    );
     for (let i = 1; i <= 10; i += 1) assert.match(checklist, new RegExp(`A0?${i}\\b`));
     for (let i = 1; i <= 14; i += 1) assert.match(checklist, new RegExp(`\\bV${i}\\b`));
   });
