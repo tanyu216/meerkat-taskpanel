@@ -22,9 +22,9 @@ only home.
    recipe re-run reuses it.
 4. Create every missing stage with the recipe's idempotency convention: the same
    `--parent <epic> --target <stage-id>` pair and `meta.epic_graph` / `meta.epic_stage`. The
-   stage's identity is those two keys; design and verification classification meta belong
-   elsewhere, and a graph stage keeps the graph's own idempotency convention. An adopted
-   producer's existing hints stay as they are.
+   stage's identity is those two keys; design and verification classification lives in the
+   project's `docs/agents/epic-graphs.md` and the role skills, and a graph stage keeps the
+   graph's own idempotency convention. An adopted producer's existing hints stay as they are.
 5. When no graph matches, or the producer matches no stage, keep the per-deliverable behavior:
    one card per deliverable with its accountable role, seeded from the handoff's
    `Acceptance source`.

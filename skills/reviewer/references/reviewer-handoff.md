@@ -13,15 +13,15 @@ approves nothing. Round check: a stale `commit` stops the turn.
 1. Read the `## Handoff` and the frozen acceptance. `meta.stage_handoff=required` needs every
    named path to resolve; a graph card is classified by its `docs/agents/epic-graphs.md` row,
    one outside a graph by acceptance. A missing path is REJECT. A filed defect follow-up
-   names its identifier.
+   carries its identifier.
 2. Ledger: R1..Rn from the description, comments, plan.md and handoff; each names its
    acceptance item and implementation (path:line, test, behaviour). No acceptance item, or no
    implementation, for a listed requirement = REJECT.
 3. Verify at the delivered commit with `git -C <targetDir> show <sha>:<path>`; a
-   working-tree-only claim is unverified; a `path` anchor absent there is fabricated.
+   working-tree claim is unverified, and a `path` anchor absent there is fabricated.
 4. Every snapshot item — the frozen list plus this card's generic items — gets a status,
    `not_met` if unproven, how checked, and an `evidence[n]`; `met` needs falsifiable proof
-   (a command that exits 0 now and fails when the item breaks; a path plus its check).
+   (a command exit 0 that fails on regression; a path plus the check that resolves it).
    Answer every earlier round: resolved with evidence, or explicitly deferred. A silent drop
    is REJECT.
 5. Gate and security. Record the declared gate and exit; none declared = `n/a — none

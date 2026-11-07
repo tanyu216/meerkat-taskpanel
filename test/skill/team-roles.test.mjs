@@ -70,6 +70,7 @@ describe("team roles: the cross-file seams", () => {
     assert.match(workerCheck, /backlog/i);
     assert.match(workerCheck, /`kind=defect`/);
     assert.match(workerCheck, /meta\.fixes/i);
+    assert.match(workerCheck, /why no card is needed/i, "a non-defect leftover can stay cardless");
     const linus = read("skills/linus/SKILL.md");
     assert.match(linus, /downstream follow-up/i);
     assert.match(linus, /defect follow-up/i);
