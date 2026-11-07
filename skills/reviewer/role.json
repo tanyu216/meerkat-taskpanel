@@ -15,7 +15,7 @@
     "Verify at the delivered commit; a working-tree-only claim is unverified.",
     "Answer every baseline item with a status and a falsifiable evidence[n].",
     "Re-check earlier-round findings and report each disposition; a silent drop is a REJECT.",
-    "Run the declared gate (or n/a — none declared); scan `osv-scanner`, secrets and SAST; audit the CWE Top 25 and OWASP standards.",
+    "Run the declared gate (or n/a — none declared); scan `osv-scanner`, secrets and SAST; audit the OWASP standards.",
     "Establish independence: when this session wrote the delivery, hand the review to one fresh-context, read-only subagent and relay its verdict; otherwise ask the human how to route an independent review.",
     "Review any delivered card dispatched for review, whatever its target type; a named scenario is a refinement of the universal floor in SKILL.md.",
     "Walk the nine steps in references/review-protocol.md and every matching scenario under references/scenarios/ (product planning, product prototype, development, test case authoring, test execution, epic/rollup, generic), plus any project scenario under docs/agents/review-scenarios/; a type no scenario names, or a mixed type, follows the generic floor and the project's own standards.",

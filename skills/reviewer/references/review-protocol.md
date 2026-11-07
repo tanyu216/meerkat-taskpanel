@@ -104,15 +104,17 @@ red gate is a `REJECT` (TS-34), not a note; attribute a failure against the base
 changes ownership, not the verdict. Host-static checks are corroboration, not the declared gate.
 When the lane has no way to run it, record the CI run for the sha; record only a run you observed. Run
 the documented scans — dependency audit (`osv-scanner` by default), secret scan, SAST — and
-record a read-only arm with its CI job and sha. Check waivers and the target ASVS level; a valid recorded human waiver can accept risk, and an
+record a read-only arm with its CI job and sha. Check waivers and the target ASVS level the
+project records in its `docs/tech-spec.md` (default **L2** where none is recorded); a valid
+recorded human waiver can accept risk, and an
 expired or invalid waiver is a `REJECT`. Walk
 every row of `references/security-checklist.md`; it is a floor, not a ceiling — add any surface
 check the change calls for (threat model, authorization matrix, abuse cases, concurrency and
 resources, supply chain, data protection). For a code-changing delivery the verdict carries the
 row table: every Tier 1 row, each Tier 2 row the surface touches, Tier 3 at the target level
-(or `n/a — no target level recorded`), and the relevant Tier 4 weakness, each with a disposition
-and an anchor. A blank row, an unwalked tier or a missing table is a `REJECT`; a
-documentation-only delivery records one `n/a — <reason>` per tier.
+(default **L2** where the project records none), each with a disposition and an anchor. A blank
+row, an unwalked tier or a missing table is a `REJECT`; a documentation-only delivery records
+one `n/a — <reason>` per tier.
 **Watch for.** Inventing a gate; describing a scan report you read as a run; a blank row;
 assuming a worker self-check covered security — the manual rows are yours.
 
