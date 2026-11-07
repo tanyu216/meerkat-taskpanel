@@ -170,6 +170,11 @@ describe("role skills: identity, discovery and model invocation", () => {
     const check = read("reviewer", "references/self-check.md");
     assert.match(check, /universal floor and every matching scenario/i);
     assert.match(check, /mixed type, is not a skip/i);
+    assert.match(
+      check,
+      /separate passes, each with its own evidence/i,
+      "the self-check records a scenario's checks as separate passes",
+    );
   });
 
   it("routes every work shape to exactly one role", () => {
@@ -1495,6 +1500,11 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     // Development keeps the code-specific checks; the project scenario keeps the
     // repository's own commands.
     const development = read("reviewer", "references/scenarios/development.md");
+    assert.match(
+      development,
+      /nine independent audit passes/i,
+      "the development floor works its nine checks as nine passes",
+    );
     for (const [subject, pattern] of [
       ["unit tests", /unit test/i],
       ["integration tests", /integration test/i],

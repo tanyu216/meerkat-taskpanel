@@ -18,10 +18,10 @@ remember reading. It moves nothing — the loop applies the verdict. Board opera
    dispositioned and anchored, no blank row); read-only arms carry job + sha.
 6. A REJECT's must-fix items are numbered, each with file/line, reproduction, expected versus
    actual and the missing case.
-7. The universal floor and every matching scenario were walked — `SKILL.md`,
-   `references/review-protocol.md`, the built-in router, and any project scenario under
-   `docs/agents/review-scenarios/`; a type no scenario names, or a mixed type, is not a skip;
-   every skip has a reason and every extra check is recorded.
+7. The universal floor and every matching scenario were walked — `SKILL.md`, the protocol and
+   any project scenario under `docs/agents/review-scenarios/`; a type no scenario names, or a
+   mixed type, is not a skip; every skip and extra check is recorded; a matching scenario's
+   checks are separate passes, each with its own evidence.
 8. The verdict is independent — this session, the Step 0 subagent under `independent:
    delegated`, or a recorded human decision; the loop claimed the review card, I heartbeated
    only it, no card moved.
