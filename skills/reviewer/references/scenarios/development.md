@@ -19,6 +19,9 @@ complete and its paths resolving.
 
 ### Implementation / development
 
+Walk these nine checks as nine independent audit passes — one check per pass, each recording its
+own evidence in the report — and still return one verdict.
+
 - **TDD and regression evidence.** Red before green: the test fails when the change is
   reverted; a bug fix is red at the parent and green at the delivery. A read-only reviewer uses
   the worker's before/after output, the parent-sha CI run, or `git archive <parent>` into a
