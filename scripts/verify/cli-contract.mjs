@@ -46,7 +46,7 @@ export const ROOT = resolve(import.meta.dirname, "../..");
 /**
  * The snapshot layout generation — bumped only by a breaking layout change.
  *
- * 2: `top_level` (bare commands such as `taskctl status`) and the frozen
+ * 2: `top_level` (bare commands such as `taskctl board`) and the frozen
  * `status_data` / `status_runtime` payload keys.
  */
 export const SNAPSHOT_SCHEMA = 2;

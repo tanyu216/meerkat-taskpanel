@@ -7,7 +7,8 @@
  * loads it, so the installer prints the exact load command instead of running
  * `launchctl` / `systemctl` / `crontab`.
  *
- * The unit names `taskctl loop …` — the loop ships with the toolkit. What used to be
+ * The units name `taskctl run`, `taskctl pool` and `taskctl subscribe` — the loop ships
+ * with the toolkit. What used to be
  * an agent-local copy of the execution body is gone (and a re-run removes one left by
  * an older install).
  *
@@ -318,7 +319,7 @@ describe("install.sh: scheduling units", () => {
 // own AUTOMATIONS.md, not a number restated here); two supervisors on one board would only
 // race each other for the same cards.
 //
-// The skill carries decisions, not an execution body: `taskctl loop …` is the body.
+// The skill carries decisions, not an execution body: `taskctl run` is the body.
 // ---------------------------------------------------------------------------
 
 /** Agent kinds the installer can place a skill in, the dot-directory, and the CLI name. */

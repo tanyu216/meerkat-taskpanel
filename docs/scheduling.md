@@ -7,7 +7,7 @@ only run when a session starts them.
 
 The design stance, in four sentences:
 
-- The **supervisor** lives **outside** the agent application: `taskctl loop …`
+- The **supervisor** lives **outside** the agent application: `taskctl run`
   (`src/orchestrator/`) ships with the toolkit, and the application is only ever the worker
   that gets woken. The collaboration decisions are the
   **[`meerkat-director`](../skills/meerkat-director/SKILL.md) skill**; the human's live view
@@ -1533,7 +1533,7 @@ The supervisor cannot live inside the agent application, because Claude Code and
 
 | Option | Shape |
 |---|---|
-| `taskctl loop …` (this tree) | the supervisor: `taskctl run --ping-once` / `--continue-once` for the clocks, `taskctl pool` for the resident pool, `taskctl run` for its own daemon clocks |
+| `taskctl run` (this tree) | the supervisor: `taskctl run --ping-once` / `--continue-once` for the clocks, `taskctl pool` for the resident pool, `taskctl run` for its own daemon clocks |
 | the installed runtime tree | what `install.sh` deploys; the units name `<tree>/src/cli/index.mjs run …`, and an agent-only install names the checkout |
 | the local `taskd` process | a natural home for the same supervisor in a future milestone |
 | the OpenClaw agent framework | on OpenClaw, the framework itself is the supervisor |
@@ -2281,7 +2281,7 @@ Installers also install the **director skill** at `<agent-dir>/skills/meerkat-di
 **chat console** at `<agent-dir>/skills/meerkat-chat/` and the five **role skills** beside
 them (`jobs`, `linus`, `turing`, `reviewer`, `worker`) — the operator's documentation, the
 decision protocol, the human's console and the role workflows. They are always copies:
-`--link` names the board skill only. The execution body is `taskctl loop …`, not a file the
+`--link` names the board skill only. The execution body is `taskctl run`, not a file the
 skills carry.
 
 Installers write per-agent kind units under `<agent-dir>/scheduling/{launchd,systemd,cron}`,

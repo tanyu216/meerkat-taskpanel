@@ -719,7 +719,7 @@ load-bearing in the same conversations and are easy to mistake for board vocabul
 
 **Per-kind config**:
 `<program root>/.env.<actor-kind>` (for example `.env.claude`) — the file `taskctl` reads as
-a per-agent default layer and `taskctl loop …` reads for loop policy. It lives beside the
+a per-agent default layer and `taskctl run` reads for loop policy. It lives beside the
 board `.env`, not under the agent directory, and is selected by `--actor-kind`.
 _Avoid_: loop config, agent config
 

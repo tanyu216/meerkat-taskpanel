@@ -388,7 +388,7 @@ export function supervisorPaths(options) {
     env,
     home,
     loopDir: join(agentBase, "meerkat-taskpanel"),
-    // The loop is `taskctl loop …`, shipped by the runtime tree. `install.sh` exports
+    // The loop is `taskctl run`, shipped by the runtime tree. `install.sh` exports
     // `TP_CLI` (the CLI entry) so the cron preview matches the rendered unit; without
     // it the agent-local shim is the honest fallback (it needs no interpreter).
     cli: env.TP_CLI || join(agentBase, "bin", "taskctl"),

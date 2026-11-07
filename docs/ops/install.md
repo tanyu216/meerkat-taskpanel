@@ -38,7 +38,7 @@ There are three layers, and it is worth keeping them straight:
    skill, symlinked) into the agent's skill directory by `install.sh`. This is
    deterministic, offline, and needs no agent tooling. The board skill is what makes the
    agent able to drive `taskctl`; the role skills carry each role's workflow, and the
-   supervisor itself runs as `taskctl loop …`.
+   supervisor itself runs as `taskctl run`.
 2. **The agent bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
    deploys the rest of that agent's setup too, not just the skill: the agent's own settings
    (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
@@ -230,7 +230,7 @@ plugin/bundle that agent's own plugin system reads in place.
 `--link` applies to the **board** skill only. The director, chat console and role skills are
 always copied: they are small and standalone (docs plus decisions), and a symlink would put a
 checkout into the load path of a skill meant to read the same in every install. The
-supervisor's execution body is not in the skill at all — it is `taskctl loop …`, shipped
+supervisor's execution body is not in the skill at all — it is `taskctl run`, shipped
 with the runtime tree.
 
 **Every agent kind gets a `taskctl` shim**, at `<agent-dir>/bin/taskctl`
@@ -321,7 +321,7 @@ claimable.
 
 | Artefact | Where | What |
 |---|---|---|
-| director skill | `<primary-agent-dir>/skills/meerkat-director/` | the decision hub as a skill: its `SKILL.md` plus the decision policy and operator view. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked; the runtime finds it wherever it is installed |
+| director skill | `<primary-agent-dir>/skills/meerkat-director/` | the decision hub as a skill: its `SKILL.md` plus the decision policy and operator view. The execution body is `taskctl run` in the runtime tree, not a copy. Always **copied**, never symlinked; the runtime finds it wherever it is installed |
 | chat skill | `<primary-agent-dir>/skills/meerkat-chat/` | the human's console as a skill: its `SKILL.md` plus the console, answering and acceptance references. It carries no execution body; every write is the `meerkat` board skill's command. Always **copied**, never symlinked |
 | setup skill | `<primary-agent-dir>/skills/setup-meerkat/` | `/setup-meerkat`: detect, repair, and move a role between kinds. Always **copied**, never symlinked |
 | role skills | `<agent-dir>/skills/<role>/` for every discovered role (the standard five are jobs, linus, turing, reviewer, worker) | each role's workflow, `role.json` and references. The list is data (`scripts/install/lib/role-skills.mjs`), not a hard-coded set. Always **copied**; where a role is installed is the platform that runs it |
@@ -405,7 +405,7 @@ an explicit list still narrows the action, and both default to every loop kind i
 `--target`. A kind outside `--target` is named and dropped (its installer never runs). The
 flag selects *which* kinds an action applies to, rather than naming the kind the installer
 itself runs as, which is why it is not called `--actor-kind` here: that name is the
-per-command identity flag (`taskctl loop … --actor-kind claude|codex|pi`). **`openclaw` is rejected** in this list
+per-command identity flag (`taskctl run --actor-kind claude|codex|pi`). **`openclaw` is rejected** in this list
 (reason on stderr, exit 2) — it has no loop supervisor to enable (see
 [`scheduling.md §OpenClaw: no loop units`](../scheduling.md#openclaw-no-loop-units)).
 

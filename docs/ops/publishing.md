@@ -458,7 +458,7 @@ claude plugin validate <path>       # validates the plugin + marketplace manifes
 ```
 
 Nothing under `skills/` is a generated copy, and there is no generated loop payload: the
-loop is `src/orchestrator/` (reached through `taskctl loop …`) and the skills are source.
+loop is `src/orchestrator/` (reached through `taskctl run`) and the skills are source.
 Editing a skill or the loop is an ordinary source edit.
 
 ## 5. OpenClaw
@@ -515,7 +515,8 @@ pi list
 Every manifest points at the repository's one `skills/` tree, so the npm whitelist ships the
 skills directly and no bundle carries a generated copy of its own (see
 [CLAUDE.md](../../CLAUDE.md)). The loop needs no payload step: it is `src/orchestrator/`
-inside the published tree, and the units run `taskctl loop …`.
+inside the published tree, and the units run `taskctl run`, `taskctl pool` and
+`taskctl subscribe`.
 
 The `files` whitelist must also name each dot-directory the plugins live in
 (`.claude-plugin`, `.pi`): npm does not include dot files by

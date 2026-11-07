@@ -254,7 +254,7 @@ describe("cli-contract — the skill documents what it freezes", () => {
     const { flagsByPath } = surface();
     const doc = readFileSync(CLI_DOC, "utf8");
 
-    // A bare command is documented by its own name (`taskctl status`).
+    // A bare command is documented by its own name (`taskctl board`).
     const missing = [...flagsByPath.keys()].filter((path) => !doc.includes(path));
     assert.deepEqual(missing, [], "undocumented commands");
   });
