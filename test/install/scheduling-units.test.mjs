@@ -94,10 +94,10 @@ describe("install.sh: scheduling units", () => {
       assert.ok(existsSync(path), `${name} missing at ${path}`);
     }
 
-    // One loop log for every kind, at the config root the harness pinned; the state
-    // stays under the agent kind.
+    // One loop log and one loop state, at the config root the harness pinned; the
+    // state is no longer under the agent kind.
     const logPath = join(kindConfigDirFor(home), "logs", "supervisor.log");
-    const stateDir = join(home, ".claude", "meerkat-taskpanel");
+    const stateDir = join(kindConfigDirFor(home), "loop");
     // An agent-only install has no materialized runtime tree, so the unit names the
     // checkout's CLI entry. A combined install (`--target all`, npm/npx) points
     // `MEERKAT_TASKPANEL_REPO` at `~/.meerkat-taskpanel` instead — same template.
@@ -111,7 +111,7 @@ describe("install.sh: scheduling units", () => {
     assert.ok(pingPlist.includes("--ping-once"), "the ping unit runs the liveness pass only");
     assert.ok(!pingPlist.includes("--once"), "the retired --once is gone");
     assert.ok(pingPlist.includes(logPath), "the fixed log path must be rendered in");
-    assert.ok(pingPlist.includes(stateDir), "the state directory stays under the agent kind");
+    assert.ok(pingPlist.includes(stateDir), "the state directory is at the config root");
 
     const continuePlist = readFileSync(paths.continuePlist, "utf8");
     assert.match(continuePlist, /<key>StartInterval<\/key>\s*<integer>600<\/integer>/);

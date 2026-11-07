@@ -2855,7 +2855,9 @@ describe("worker session resume", () => {
     assert.ok(set.includes("worker"), "the stable segment is the lane, not the round");
     assert.ok(set.includes("alice"));
     assert.ok(set.includes("claude"));
-    assert.ok(set.some((arg) => arg === `loop=${resolve(f.dir)}`), "the row names its loop");
+    const loopId = readFileSync(join(f.dir, "loop.id"), "utf8").trim();
+    assert.ok(set.some((arg) => arg === `loop=${loopId}`), "the row names its loop");
+    assert.ok(loopId !== "", "the loop identity is stable and stored, not its path");
     assert.ok(
       recorded.some((argv) => argv.includes("session") && argv.includes("close") && argv.includes("worker")),
       "the turn's terminal branch closes the row",
@@ -2911,11 +2913,12 @@ describe("worker session resume", () => {
     writeFileSync(
       join(f.dir, "cli.mjs"),
       [
-        'import { appendFileSync } from "node:fs";',
+        'import { appendFileSync, readFileSync } from "node:fs";',
         "const argv = process.argv.slice(2);",
         "appendFileSync(process.env.TP_SENTINEL, JSON.stringify(argv) + '\\n');",
         'if (argv.includes("list")) {',
-        "  process.stdout.write(JSON.stringify({ ok: true, data: { sessions: [{ task_id: 'uuid-old', seg: 'worker', owner: 'alice', pid: 999999, meta: { loop: process.env.TP_LOOP, kind: 'card-session' } }] } }));",
+        "  const loopId = readFileSync(process.env.TP_LOOP + '/loop.id', 'utf8').trim();",
+        "  process.stdout.write(JSON.stringify({ ok: true, data: { sessions: [{ task_id: 'uuid-old', seg: 'worker', owner: 'alice', pid: 999999, meta: { loop: loopId, kind: 'card-session' } }] } }));",
         "} else {",
         "  process.stdout.write(JSON.stringify({ ok: true, data: {} }));",
         "}",

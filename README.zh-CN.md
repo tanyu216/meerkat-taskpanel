@@ -131,7 +131,7 @@ npx meerkat-taskpanel install --target claude,server,pi  # server + 这两个 ag
 npx meerkat-taskpanel install --no-server                # 只装 agent kind 的 skills
 ```
 
-安装器会把运行时放到 `~/.meerkat-taskpanel/`：`src/`、构建好的 `web/dist`、`bin/taskd`、`bin/taskctl`、一份 `.env`、每个已安装 kind 一份 `.env.<actor-kind>`，以及 `.data`。把 `~/.meerkat-taskpanel/bin` 加入 `PATH`，或使用全局 npm 安装。`npx` 需要包已发布。`--prefix <home>` 可改安装根，`--force` / `--dry-run` 与源码安装一致。
+安装器会把运行时放到 `~/.meerkat-taskpanel/`：`src/`、构建好的 `web/dist`、`bin/taskd`、`bin/taskctl`、一份 `.env`、每个已安装 kind 一份 `.env.<actor-kind>`、`.data`（看板数据库），以及 `loop/`（supervisor 的队列、会话记录、锁与 transcript）。把 `~/.meerkat-taskpanel/bin` 加入 `PATH`，或使用全局 npm 安装。`npx` 需要包已发布。`--prefix <home>` 可改安装根，`--force` / `--dry-run` 与源码安装一致。
 
 在终端里**不带任何参数**运行，会进入交互向导，逐项询问安装根、安装模式（完整 / 仅 skills / 仅 server）、agent 种类、你在看板上的名字、链接还是复制、认领/工作流策略以及可选的 supervisor。`-i` / `--interactive` 强制进入向导；`--yes` / `--non-interactive` 全部接受默认值、完全不提问，适合 CI 或管道。管道输入与 `--dry-run` 也从不提问。
 

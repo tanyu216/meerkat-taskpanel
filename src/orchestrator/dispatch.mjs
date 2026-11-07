@@ -13,7 +13,14 @@
  * it with the in-process operations layer.
  */
 
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+
+import { resolveKindConfigPath } from "../foundation/agent-paths.mjs";
+import { STATE_FILES } from "../foundation/loop-state.mjs";
+import { parseEnvFile } from "../foundation/scheduling.mjs";
+import { resolveLoopState } from "../foundation/state-dir.mjs";
 
 import * as consoleEntry from "./console.mjs";
 import * as doctorEntry from "./doctor.mjs";
@@ -73,6 +80,20 @@ function takeSwitch(args, name) {
   };
 }
 
+/** Read `--name value` / `--name=value` without removing it. */
+function peekValue(args, name) {
+  const at = args.indexOf(`--${name}`);
+  if (at !== -1 && at + 1 < args.length) return args[at + 1];
+  const prefix = `--${name}=`;
+  const match = args.find((token) => token.startsWith(prefix));
+  return match === undefined ? undefined : match.slice(prefix.length);
+}
+
+/** Whether a bare switch is present, without removing it. */
+function peekSwitch(args, name) {
+  return args.includes(`--${name}`);
+}
+
 /**
  * @param {object} ctx the local CLI context (`argv`, `env`, `flags`, `out`, `err`)
  * @param {string} verb one of `VERBS`
@@ -99,6 +120,44 @@ export async function runLoopVerb(ctx, verb) {
   for (const forbidden of ["--as-human", "--session-id", "--if-version"]) {
     if (rest.some((token) => token === forbidden || token.startsWith(`${forbidden}=`))) {
       io.err(`loop: ${forbidden} is not valid for the loop\n`);
+      return { streamed: true, exit: 2 };
+    }
+  }
+
+  // The state directory is resolved before the verb runs. A legacy-only
+  // directory is readable (with a stderr warning) but never writable: moving the
+  // state is the installer's job, and two live directories would split the queue.
+  const actorKind = peekValue(rest, "actor-kind") ?? ctx.flags?.actorKind ?? null;
+  const home = peekValue(rest, "home") ?? env.HOME ?? env.USERPROFILE ?? homedir();
+  const configPath = peekValue(rest, "config") ?? resolveKindConfigPath({ actorKind, env });
+  let config = {};
+  if (typeof configPath === "string" && configPath !== "") {
+    try {
+      config = parseEnvFile(readFileSync(configPath, "utf8"));
+    } catch {
+      // An absent/unreadable per-kind config is the normal agent-only fallback.
+    }
+  }
+  const stateFile =
+    stateDir.value !== undefined && stateDir.value !== ""
+      ? join(stateDir.value, STATE_FILES.supervisor)
+      : peekValue(rest, "state");
+  const loopState = resolveLoopState({ stateFile, home, actorKind, env, config });
+  const readOnlyVerb =
+    verb === "console" ||
+    verb === "doctor" ||
+    (verb === "status" && !peekSwitch(rest, "take-over") && !peekSwitch(rest, "stop"));
+  if (loopState.source === "legacy") {
+    if (readOnlyVerb) {
+      io.err(
+        `loop: warning — reading the legacy loop state at ${loopState.dir}; ` +
+          "re-run install.sh to migrate it to the config root\n",
+      );
+    } else {
+      io.err(
+        `loop: refusing to write to the legacy loop state at ${loopState.dir}; ` +
+          "re-run install.sh to migrate it (or pass --state-dir explicitly)\n",
+      );
       return { streamed: true, exit: 2 };
     }
   }

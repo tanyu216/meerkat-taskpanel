@@ -1593,7 +1593,7 @@ never by drift.
 # cron: ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 PATH=/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
 
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.meerkat-taskpanel/loop >/dev/null 2>&1
 ```
 
 (Both are rendered for the agent CLI you installed *for*, and only for it: a unit that wakes
@@ -2114,7 +2114,8 @@ checkout path in a unit. What the installer creates beside the skill is the supe
 directory**:
 
 ```text
-<home>/<agent-dir>/meerkat-taskpanel/
+<config root>/loop/
+├── loop.id                       runtime (stable loop identity; board rows key on it)
 ├── supervisor.state.json         runtime (legacy worker registry)
 ├── sessions.state.json           runtime (pool: pid, heartbeat, session ids per actor kind)
 ├── continue.state.json           runtime (the single-flight tick lock)
@@ -2147,12 +2148,13 @@ Every line carries `actor_kind=<kind>`, so one file is still readable per kind:
 time=2026-10-30T14:47:32.174Z level=info component=supervisor msg="ping: 0 live, no write" actor_kind=claude
 ```
 
-The state directory belongs to the **primary kind**: one supervisor per machine, so one
-queue, one lock and one ledger. Session records inside it carry the actor kind of the
-conversation they describe, so a multi-kind pool never confuses two platforms. Only the log
-is shared across primary kinds, because reading one machine's history should not require the
-agent-kind → dot-directory table. A spawned session's own stderr is appended to the same file
-as raw bytes, so those lines carry no `actor_kind=` field.
+The state directory belongs to the **board installation**, not to an agent kind: one
+supervisor per machine, so one queue, one lock and one ledger at the config root. Session
+records inside it carry the actor kind of the conversation they describe, so a multi-kind pool
+never confuses two platforms. The state is deliberately **not** under the board's `.data`:
+the database and the loop have independent backup, teardown and permission lifecycles. Two
+boards on one machine must have separate config roots; sharing one would share the queue and
+lock.
 
 The units name the runtime tree's CLI entry, not this directory:
 
@@ -2167,12 +2169,21 @@ program: <absolute node> <runtime>/src/cli/index.mjs loop run --ping-once
 it, so moving the tree is a re-install — no `launchctl` / `systemctl` / `crontab` reload,
 because the unit never hard-codes a versioned body path.
 
-`--state-dir <dir>` is the documented spelling; the supervisor derives every state file above from
-it. `--state <file>` still names the registry file explicitly, and `--log` the log (its
-default is the config root's `logs/supervisor.log`). The installer
-removes an execution body left by an older install (`<state>/scripts/`, `<state>/templates/`,
-`<state>/manifest.txt`) on its next run, so an upgrade leaves no second implementation
-behind.
+`--state-dir <dir>` is the documented spelling; the supervisor derives every state file above
+from it. The default is `<config root>/loop`; `MEERKAT_TASKPANEL_STATE_DIR` (process env, then
+the per-kind config) names another, and `--state <file>` still names the registry file
+explicitly. `--log` is the log (its default is the config root's `logs/supervisor.log`).
+
+The pre-migration directory was `<home>/<agent-dir>/meerkat-taskpanel`. `install.sh
+--supervisor=enable` moves it once: it stops every loaded loop kind, waits for the pool,
+subscriber, tick and queue locks to quiesce, copies the durable files (excluding logs and stale
+pid/lock artifacts), writes `loop.id`, and keeps the old directory as
+`meerkat-taskpanel.migrated-<timestamp>`. If the state sits under more than one actor kind, the
+migration refuses instead of merging the queues and asks the operator to archive the ones that do
+not belong to this board. A plain install with legacy state does **not** migrate under a
+possibly-live pool; it prints the enable command. A failed relocation fails the install. A write
+verb refuses a legacy-only directory and points at the migration; `loop status`/`doctor`/`console`
+read it with a warning on stderr.
 
 ## Headless permission boundary
 
@@ -2322,7 +2333,7 @@ long-lived process — so a cron deployment stays on the continue cadence.
 An event-triggered turn requires a **live resident pool**. With no pool it could not
 dispatch anything, so the subscriber logs and skips the turn; the continue timer still runs
 patrol + workflow. The subscriber is observable: it publishes
-`<agent-dir>/meerkat-taskpanel/subscribe.state.json`, and `--supervisor=status` reports
+`<config root>/loop/subscribe.state.json`, and `--supervisor=status` reports
 `streaming`, `reconnecting`, `starting`, or `not running` from it. To run without the
 daemon, take its unit down with the service manager (`launchctl bootout …` /
 `systemctl --user disable --now meerkat-taskpanel-subscribe.service`); status then reports
@@ -2528,8 +2539,8 @@ it is idempotent and cleanly removable:
 ```cron
 # >>> meerkat-taskpanel (~/.claude) >>>
 PATH=/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
-*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --continue-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.meerkat-taskpanel/loop >/dev/null 2>&1
+*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --continue-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.meerkat-taskpanel/loop >/dev/null 2>&1
 # <<< meerkat-taskpanel (~/.claude) <<<
 ```
 
@@ -2588,7 +2599,7 @@ the full tool set and the reviewer's write tools are denied.
   every actor kind, each line tagged `actor_kind=<kind>` — written and rotated by the supervisor
   itself. The units do **not** redirect their stdout/stderr into it — that would duplicate
   every line; cron sends the same output to `/dev/null` because `--log` already writes it.
-- **State.** `<agent-dir>/meerkat-taskpanel/supervisor.state.json` — the running registry.
+- **State.** `<config root>/loop/supervisor.state.json` — the running registry.
 - **Working directory.** A woken worker still `cd`s to the directory the map names for
   the card's project (`local_path ?? run_dir`), resolved by the poll pass from the
   config-root `projects.json`; enabling changes nothing here (see
@@ -2676,7 +2687,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin — both the legacy heartbeat alert and the SLA tuple |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--log <path>` | `<config root>/logs/supervisor.log` | where the tick log appends (one file for every actor kind) |
-| `--state <path>` | `<home>/<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
+| `--state <path>` | `<config root>/loop/supervisor.state.json` | the running registry |
 | `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
 | `--workflow-ledger <path>` | `workflow-ledger.json` beside `--state` | the workflow alert de-duplication ledger; an unreadable one suppresses nothing |
 | `--sla-leader <id>` | from `$MEERKAT_TASKPANEL_SLA_LEADER`, else unset | the author id the leader writes under, for the `leader_stalled` attribution set; unset ⇒ the board's own decision authority (`author_kind = "human"`). Set the **same** identity on both mechanisms |
@@ -2686,7 +2697,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
 | `--config <path>` | `<program root>/.env.<actor-kind>` (or `MEERKAT_TASKPANEL_CONFIG_DIR`) | per-kind config: the supervisor's claim default and concurrency cap, `MEERKAT_TASKPANEL_REPO`, and — on the board path — the per-agent identity |
 | `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber's `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
-| `--home <path>` | `$HOME` | base for the agent directories (state, skills — not the log) |
+| `--home <path>` | `$HOME` | base for the agent skill/role directories — not the log or the loop state |
 
 The project map is not a flag: the poll pass and `taskctl project dir` read the same
 `<config root>/projects.json` ([Where a worker runs](#where-a-worker-runs)).
@@ -2695,7 +2706,8 @@ The project map is not a flag: the poll pass and `taskctl project dir` read the 
 who wants to know why a card did not start reads one file,
 `~/.meerkat-taskpanel/logs/supervisor.log` for a combined install (the config
 root's `logs/` for an agent-only one); its lines name their `actor_kind=`. The state
-stays per kind: `~/.claude/meerkat-taskpanel/` (or `.codex/`, `.agents/`).
+lives once per board installation at `<config root>/loop/` (`MEERKAT_TASKPANEL_STATE_DIR`
+overrides it).
 
 ## The claim-unassigned policy
 

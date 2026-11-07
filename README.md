@@ -131,7 +131,7 @@ npx meerkat-taskpanel install --target claude,server,pi  # server + those two ag
 npx meerkat-taskpanel install --no-server                # agent-kind skills only
 ```
 
-The installer materializes the runtime at `~/.meerkat-taskpanel/` — `src/`, the built `web/dist`, `bin/taskd`, `bin/taskctl`, one `.env`, a per-kind `.env.<actor-kind>` per installed kind, and `.data`. Add `~/.meerkat-taskpanel/bin` to `PATH`, or use the global npm install. `npx` needs the package to be published. `--prefix <home>` relocates the tree, and `--force` / `--dry-run` behave as in the source installer.
+The installer materializes the runtime at `~/.meerkat-taskpanel/` — `src/`, the built `web/dist`, `bin/taskd`, `bin/taskctl`, one `.env`, a per-kind `.env.<actor-kind>` per installed kind, `.data` (the board database), and `loop/` (the supervisor's queue, session records, locks and transcripts). Add `~/.meerkat-taskpanel/bin` to `PATH`, or use the global npm install. `npx` needs the package to be published. `--prefix <home>` relocates the tree, and `--force` / `--dry-run` behave as in the source installer.
 
 Run it in a terminal with **no options** and an interactive wizard asks every setting — install root, install mode (full / skills only / server only), agent kinds, your board name, link-or-copy, the claim/workflow policies and the optional supervisor. `-i` / `--interactive` forces the wizard; `--yes` / `--non-interactive` accepts every default without prompting, which is the form for CI or a pipe. Neither piped input nor `--dry-run` ever prompts.
 

@@ -498,17 +498,19 @@ describe("the loop's default paths", () => {
     "--home", dir,
   ];
 
-  it("gives every actor kind the same log and its own state directory", () => {
+  it("gives every actor kind the same log and the same state directory at the config root", () => {
     const dir = tempDir();
-    const claude = parseArgs(argv(dir, "claude"), { HOME: dir });
-    const codex = parseArgs(argv(dir, "codex"), { HOME: dir });
+    const env = { HOME: dir, MEERKAT_TASKPANEL_CONFIG_DIR: dir };
+    const claude = parseArgs(argv(dir, "claude"), env);
+    const codex = parseArgs(argv(dir, "codex"), env);
 
     assert.equal(claude.log, codex.log);
     assert.match(claude.log, /\/logs\/supervisor\.log$/);
-    // The state stays per kind: two pools must never share a queue or a lock.
-    assert.notEqual(dirname(claude.state), dirname(codex.state));
-    assert.match(claude.state, /\.claude\//);
-    assert.match(codex.state, /\.codex\//);
+    // One supervisor, one queue, one lock per board installation; session records
+    // inside carry the actor kind.
+    assert.equal(dirname(claude.state), dirname(codex.state));
+    assert.equal(dirname(claude.state), join(dir, "loop"));
+    assert.match(claude.state, /\/loop\/supervisor\.state\.json$/);
   });
 
   it("still lets --log override the one file", () => {

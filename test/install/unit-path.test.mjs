@@ -336,7 +336,7 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
     const path = `${bin}:${process.env.PATH}`;
-    const loop = join(home, ".claude", "meerkat-taskpanel");
+    const loop = join(home, ".meerkat-taskpanel", "loop");
     const log = join(home, ".meerkat-taskpanel", "logs", "supervisor.log");
     const expected = [
       `PATH=${unitPath(NODE_DIR, { cliDir: bin, shimDir: join(home, ".claude", "bin"), scheduler: "cron" })}`,

@@ -2448,7 +2448,8 @@ describe("parseArgs — the project map", () => {
   });
 
   it("defaults the SLA ledger beside the state file, and follows a custom one", () => {
-    assert.equal(parseArgs(["--actor-kind", "claude", "--once"], ENV).slaLedger, "/home/alice/.claude/meerkat-taskpanel/sla-ledger.json");
+    const cfg = { ...ENV, MEERKAT_TASKPANEL_CONFIG_DIR: "/maps" };
+    assert.equal(parseArgs(["--actor-kind", "claude", "--once"], cfg).slaLedger, "/maps/loop/sla-ledger.json");
     const moved = parseArgs(["--actor-kind", "claude", "--once", "--state", "/tmp/state.json"], ENV);
     assert.equal(moved.slaLedger, "/tmp/sla-ledger.json", "one directory remembers everything");
     assert.equal(parseArgs(["--actor-kind", "claude", "--once", "--sla-ledger=/tmp/l.json"], ENV).slaLedger, "/tmp/l.json");
@@ -2456,8 +2457,8 @@ describe("parseArgs — the project map", () => {
 
   it("defaults the workflow ledger beside the state file, and follows a custom one", () => {
     assert.equal(
-      parseArgs(["--actor-kind", "claude", "--once"], ENV).workflowLedger,
-      "/home/alice/.claude/meerkat-taskpanel/workflow-ledger.json",
+      parseArgs(["--actor-kind", "claude", "--once"], { ...ENV, MEERKAT_TASKPANEL_CONFIG_DIR: "/maps" }).workflowLedger,
+      "/maps/loop/workflow-ledger.json",
     );
     const moved = parseArgs(["--actor-kind", "claude", "--once", "--state", "/tmp/state.json"], ENV);
     assert.equal(moved.workflowLedger, "/tmp/workflow-ledger.json");

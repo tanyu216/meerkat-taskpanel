@@ -31,6 +31,9 @@ web/dist
 # the loop's per-task process directories (card.md, notes, attachments) — never image input
 .meerkat
 
+# the loop's runtime state at the config root — never build input
+/loop
+
 # the install-root config file — it may hold TASKD_TOKEN, and `COPY . .` would
 # otherwise bake it into the image. Compose points MEERKAT_TASKPANEL_ENV_FILE at
 # the writable data volume instead.

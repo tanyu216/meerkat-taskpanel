@@ -107,8 +107,10 @@ these matter:
   different tree: the npm release tree written by `scripts/build.mjs`, never served. `web/dist`
   is gitignored yet in the npm `files` whitelist.
 - `.meerkat/<identifier>/` is the loop's per-task process directory under a project's working
-  directory (`card.md` is hub-maintained, never hand-edited). `dist/`, `.data/`,
-  `node_modules/`, `coverage/` and `.meerkat/` are build/runtime output, never committed.
+  directory (`card.md` is hub-maintained, never hand-edited); `loop/` at the config root is
+  the loop's own runtime state (queue, session records, locks, transcripts). `dist/`, `.data/`,
+  `node_modules/`, `coverage/`, `.meerkat/` and `loop/` are build/runtime output, never
+  committed.
 
 ## Constraints
 
