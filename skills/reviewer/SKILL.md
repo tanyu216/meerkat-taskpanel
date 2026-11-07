@@ -109,5 +109,5 @@ is a `REJECT`; a leftover lies only outside the frozen acceptance.
 - Product, scope, acceptance, design, security and architecture decisions belong to the ladder;
   `REJECT` and record it. Any read-only method is in scope.
 
-Security is a gate for code: walk `references/security-checklist.md` (CWE Top 25, OWASP Top 10,
-OWASP ASVS), and add any surface security check the change calls for.
+Security is a gate for code: walk `references/security-checklist.md` (OWASP Top 10, OWASP ASVS),
+and add any surface security check the change calls for.

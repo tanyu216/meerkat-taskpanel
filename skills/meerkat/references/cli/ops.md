@@ -60,8 +60,8 @@ taskctl issue reconcile --workflow --assignee jobs \
 
 `--json` returns `{dry_run, scanned, actions, workflow}`, where `workflow` is
 `{alerts, actions, changes, summary}` in snake_case. `--board-limit` bounds the snapshot (a
-truncated one applies outcomes but dispatches nothing). `--rework-max-rounds` bounds the rounds
-since the last hold before a `hold_card` (parked as `blocked` with a question; the loop's
+truncated one applies outcomes but dispatches nothing). `--rework-max-rounds` bounds the review
+rejections since the last hold before a `hold_card` (parked as `blocked` with a question; the loop's
 liveness bounds apply). The actions are decisions, not effects; what each means, and the
 fail-safe rules, are in
 [`lifecycle/workflow.md` §11](../lifecycle/workflow.md#11-the-boards-workflow-decisions).

@@ -2011,6 +2011,7 @@
         "original_title": "string",
         "project_id": "string",
         "review_ref": "string",
+        "review_rejects": "number",
         "review_status": "string",
         "rework_round": "number",
         "round": "number",

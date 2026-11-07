@@ -48,6 +48,10 @@ records `n/a` and does not run them.
 | Mocks | only at http / websocket / db / redis and comparable external boundaries; internal modules stay real |
 | Security scan | the project's documented scan — dependency audit (default `osv-scanner`), secret scan, SAST — each arm with the command the standard records or its recorded `n/a — <reason>`; no unaddressed high/critical |
 
+A gate outside the lane's reach — the push-time container gate (TS-34) with an unpushed branch
+and no CI run — is recorded as `n/a — gate unobservable in lane`. Record it, deliver the rest
+of the evidence, and leave the push-time run to the pre-push hook.
+
 ## Architecture branch
 
 - **A1.** Every quality attribute and constraint maps to the architecture document or an ADR;

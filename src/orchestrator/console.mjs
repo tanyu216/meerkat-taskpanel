@@ -11,7 +11,10 @@
  *   * `awaiting` cards — a human answer resumes them;
  *   * `in_progress` cards with an agent `question` that has not been **released**
  *     (a director `note` alone leaves the card open; a human answer is shown
- *     with `answered_pending_release`).
+ *     with `answered_pending_release`);
+ *   * `blocked` cards whose `blocked_reason` is `decision` and whose hold
+ *     question is still unanswered — the loop's rework/exhaustion holds land
+ *     here, and a board comment alone does not move a blocked card.
  * `in_review` cards are listed as pending acceptance. The card's own
  * `acceptance_mode` says who closes it — the loop for `off`/`auto`, a person
  * for `human` — so the list is a reading, not a claim about who owes the act.
@@ -111,6 +114,31 @@ export async function consoleCycle(opts, deps = {}) {
       age_ms: ageMs(question.created_at),
       answered_pending_release: answeredByHuman(comments, question),
       kind: "agent-question",
+    });
+  }
+
+  // The loop parks a card it cannot decide (`blocked` + `blocked_reason=decision`)
+  // and posts its question there. A board comment does not resume a blocked
+  // card, so an answered hold is shown only through the human's own move.
+  const blocked = await tasksWithStatus(opts, agent, "blocked");
+  if (blocked.error !== null) errors.push(`blocked: ${blocked.error}`);
+  for (const task of blocked.tasks) {
+    // A dependency/resource block is not the human's decision.
+    if (task.blocked_reason !== "decision") continue;
+    const { comments, error } = await commentsFor(opts, agent, task.identifier);
+    if (error !== null) errors.push(`${task.identifier} comments: ${error}`);
+    const question = newestQuestion(comments);
+    if (question === null || answeredByHuman(comments, question)) continue;
+    questions.push({
+      ref: task.identifier,
+      title: task.title ?? null,
+      status: "blocked",
+      blocked_reason: "decision",
+      question: question.body ?? null,
+      asked_at: question.created_at ?? null,
+      age_ms: ageMs(question.created_at),
+      answered_pending_release: false,
+      kind: "blocked-decision",
     });
   }
 

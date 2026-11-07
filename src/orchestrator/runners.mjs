@@ -695,6 +695,17 @@ export async function runWorkflowTick(deps) {
     await step(appendAcceptance, "appendAcceptance", action.original_ref, items);
   };
 
+  // The rejection marker: the round the card lands on and the applied rejection
+  // count, written together so a crash cannot separate them. `review_rejects`
+  // is the budget the breaker counts; `rework_round` stays the round marker.
+  const rejectionMeta = (action) => {
+    const meta = { rework_round: String(action.rework_round) };
+    if (Number.isInteger(action.review_rejects)) {
+      meta.review_rejects = String(action.review_rejects);
+    }
+    return meta;
+  };
+
   // Closing the review card is the last write of every outcome. A cancel is a
   // **one-hop** move (`in_review → canceled`, TP-0125): the old `→ in_progress
   // → canceled` briefly returned the review card to the work cycle and would
@@ -941,7 +952,7 @@ export async function runWorkflowTick(deps) {
           // Marker first, note second: a refused move below is retried on the
           // next pass (`held`) without re-posting the same rejection.
           if (action.held !== true) {
-            await step(setMeta, "setMeta", action.original_ref, { rework_round: String(action.rework_round) });
+            await step(setMeta, "setMeta", action.original_ref, rejectionMeta(action));
             await step(comment, "comment", action.original_ref, { kind: "change", body });
           }
           await step(move, "move", action.original_ref, "in_progress");
@@ -968,7 +979,7 @@ export async function runWorkflowTick(deps) {
           // Marker first, note second (see `reject_task`): `held` retries the
           // reopen without re-posting the rejection.
           if (action.held !== true) {
-            await step(setMeta, "setMeta", action.original_ref, { rework_round: String(action.rework_round) });
+            await step(setMeta, "setMeta", action.original_ref, rejectionMeta(action));
             await step(comment, "comment", action.original_ref, { kind: "change", body });
           }
           await step(move, "move", action.original_ref, "in_progress");
@@ -1015,7 +1026,12 @@ export async function runWorkflowTick(deps) {
           // the review close — the same recoverable order as `reject_task`.
           // `held:true` is a crash recovery: only the move is retried.
           if (action.held !== true) {
-            await step(setMeta, "setMeta", action.original_ref, action.marker ?? {});
+            // Stamp the marker at execution time, after the reject's move to
+            // `todo`. The planner's clock can predate that move, and a crash
+            // between this write and the move would then read as a human
+            // release on the next tick — losing the hold and the bound.
+            const marker = { ...(action.marker ?? {}), loop_hold_at: now() };
+            await step(setMeta, "setMeta", action.original_ref, marker);
             await step(comment, "comment", action.original_ref, {
               kind: "question",
               body:

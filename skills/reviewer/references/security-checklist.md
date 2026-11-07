@@ -46,7 +46,9 @@ each row: `sca`, `secret`, `sast`, or `manual`.
 
 ## Tier 3 — OWASP ASVS, chapter level (ASVS 4.0.3; for 5.0 map by chapter name)
 
-Record the level the project targets (L1, L2 or L3) and answer at that depth.
+Read the target level the project records in `docs/tech-spec.md` (project-level design) and
+answer at that depth. Where the project records none, answer at **L2** and record the default
+as the reason; the project's recorded level always wins.
 
 | Chapter | The question at the target level |
 |---|---|
@@ -64,11 +66,6 @@ Record the level the project targets (L1, L2 or L3) and answer at that depth.
 | V12 | Files and resources — upload, download, path handling? |
 | V13 | API and web service — authentication, method and content-type rules? |
 | V14 | Configuration — dependency inventory, secrets, build and deploy hardening? |
-
-## Tier 4 — CWE Top 25
-
-https://cwe.mitre.org/top25/ is the shared vocabulary: name a weakness (`CWE-79`) and its
-rank in the finding. It is not a second pass.
 
 ## Recording a finding
 

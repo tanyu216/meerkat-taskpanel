@@ -7,9 +7,9 @@ scheduler, not a second dispatcher, and not `taskctl export watch` (that refresh
 brief). `events follow` may ensure the local hub on demand; that is the command's own behavior,
 not something you manage, stop or restart.
 
-The queue is the console's `questions[]` (awaiting cards plus open agent questions) and
-`pending_acceptance[]` (delivered cards). `taskctl doctor` is not part of the watch: it stays a
-one-shot read or an answer to a direct question.
+The queue is the console's `questions[]` (awaiting cards, open agent questions, and blocked
+`decision` holds) and `pending_acceptance[]` (delivered cards). `taskctl doctor` is not part of the
+watch: it stays a one-shot read or an answer to a direct question.
 
 ## Enter
 

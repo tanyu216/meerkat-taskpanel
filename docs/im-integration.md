@@ -59,6 +59,7 @@ When any of these appears, push an IM message:
 |---|---|---|
 | `awaiting` | `taskctl console` `questions[]` with `kind: awaiting` | ref, title, E1–E5 reason, question |
 | Agent question | `questions[]` with `kind: agent-question` | ref, title, question |
+| Blocked decision | `questions[]` with `kind: blocked-decision` | ref, title, question; answering does not resume the card — release it `blocked → todo` |
 | Pending acceptance | `pending_acceptance[]` | ref, title, accept/reject hint |
 
 `taskctl console --json` is the projection. `pending_acceptance[]` is **mode-agnostic**, so the

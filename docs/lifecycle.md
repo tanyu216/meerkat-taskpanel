@@ -69,10 +69,12 @@ A card has three independent axes:
 | `canceled` | Abandoned. Terminal, with the same one exit. |
 
 A `blocked` card may also be **a loop hold**: the board's workflow plan parks a card that
-kept coming back (`blocked_reason=decision`, plus a `question` comment and
-`meta.loop_hold_round`), and the loop parks a card it repeatedly failed to run
-(`resource`/`external`). A hold is cleared only by a human moving the card back
-(`blocked → todo|in_progress`); it never auto-resumes. See
+kept coming back (`blocked_reason=decision`, plus a `question` comment,
+`meta.loop_hold_round` and the reject-count epoch in `meta.loop_hold_retry_base`), and the
+loop parks a card it repeatedly failed to run (`resource`/`external`). The rework hold counts
+**review rejections only** (`meta.review_rejects`); landing conflicts and acceptance refusals
+do not spend it, and a delivered round is always reviewed before a hold. A hold is cleared only
+by a human moving the card back (`blocked → todo|in_progress`); it never auto-resumes. See
 [ADR 0009](adr/0009-a-cycle-stops-at-a-human-decision.md) and
 [scheduling.md](scheduling.md#liveness-bounds-every-cycle-has-a-stop).
 
@@ -374,7 +376,9 @@ report (`no_anchor` / `dangling_anchor` are `ACCEPTANCE_INCOMPLETE`), and the re
 at least one `command` anchor, because the reviewer runs the gate itself
 (`details.reason = "no_command_evidence"`). The gate is the project's declared one
 (`project.meta.review_gate`, copied into the review card's description) when there is one;
-otherwise the reviewer runs the targeted checks and records `n/a — none declared`. For an epic,
+otherwise the reviewer runs the targeted checks and records `n/a — none declared`. A gate the
+lane cannot run and cannot observe in CI — the push-time container gate (TS-34) on an unpushed
+branch — is `n/a — gate unobservable in lane`: an environmental gap, not a must-fix REJECT. For an epic,
 the current-round rollup must still match the children (`rollup_unverified` / `rollup_stale`).
 
 A `REJECT` is never checked for coverage — `partial` / `not_met` is its normal shape — but its

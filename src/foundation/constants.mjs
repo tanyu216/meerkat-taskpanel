@@ -869,13 +869,16 @@ export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
 export const ROUTE_UNASSIGNED_MS = 30 * 60 * 1000;
 
 /**
- * How many delivery rounds one card may run before the board parks it.
+ * How many **review rejections** one card may take before the board parks it.
  *
- * Round 1 is the first delivery; every rejection, rework or audited reopen bumps
- * `delivery_round`. Four means the work came back three times — the same number
- * `taskctl doctor` has always reported as looping. The board decides the hold; the
- * loop only executes it. A human who moves the card back starts a fresh epoch
- * from the round it was held at.
+ * The counter is `meta.review_rejects`, incremented only when an independent
+ * review actually rejects a delivery. A landing conflict, an acceptance refusal,
+ * a review re-dispatch and the hold itself never increment it, so an
+ * environmental round cannot consume the budget. Four means four failed reviews.
+ *
+ * The board decides the hold; the loop only executes it. The hold writes the
+ * count it parked at in `meta.loop_hold_retry_base`, so a human who moves the
+ * card back starts a fresh epoch of the same size — never an unbounded one.
  */
 export const DEFAULT_REWORK_MAX_ROUNDS = 4;
 
