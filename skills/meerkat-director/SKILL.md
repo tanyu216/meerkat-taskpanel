@@ -30,7 +30,7 @@ worker  →  director  →  human
 ```
 
 A worker that needs a decision asks and waits. You decide what you are authorized to decide,
-record it, and release the card; the release concludes the question, and a note records it.
+record it, and release the card; the release concludes the question, and a note records the answer.
 Only a human-authored comment resumes an `awaiting` card. The shared core is
 `references/decision-policy.md`: it names the decision file for the matter in front of you,
 and it, with `references/rounds.md`, is the single decision-authority source. A project's own

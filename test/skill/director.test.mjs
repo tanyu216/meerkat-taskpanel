@@ -95,6 +95,7 @@ describe("director skill: SKILL.md", () => {
     assert.match(text, /stay with the board and the roles/i);
     assert.match(text, /Claims, execution and closure belong to the roles, the board and the human/i);
     assert.match(text, /the decision and the release/i);
+    assert.match(text, /a note records the answer/i, "the release concludes; the note records");
     assert.doesNotMatch(
       text,
       /deterministic passes|patrol|workflow|poll|queue|row|attempt|retry|session|prompt/i,
@@ -143,6 +144,11 @@ describe("director skill: references", () => {
     assert.match(question, /worker/i);
     assert.match(question, /escalates only the items the decision map[\s\S]*leaves to the human/i);
     assert.match(question, /one round is one question per card/i);
+    assert.equal(
+      (question.match(/one round is one question per card/gi) ?? []).length,
+      1,
+      "the rule is stated once",
+    );
   });
 
   it("puts the route rule in route.md", () => {
@@ -162,6 +168,11 @@ describe("director skill: references", () => {
   it("reads the project graph, adopts a producer and only fills what is missing", () => {
     const triage = ref("triage.md");
     assert.match(triage, /docs\/agents\/epic-graphs\.md/, "the project graph is the content source");
+    assert.match(
+      triage,
+      /classification lives in the\s+project's `docs\/agents\/epic-graphs\.md`/i,
+      "classification meta's home is named",
+    );
     assert.match(triage, /adopt the delivered producer\s+as its matching stage/i);
     assert.match(triage, /fill only what is missing/i);
     assert.match(triage, /--parent <epic> --target <stage-id>/, "the recipe's idempotency convention");
