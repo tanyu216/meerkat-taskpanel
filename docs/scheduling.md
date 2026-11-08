@@ -1278,7 +1278,7 @@ assignee, and never appears in the scan set.
 |---|---|---|
 | `question` | a worker wrote an agent `question` and is waiting | answer with an agent `note` and **release** the card to `todo`; or escalate. A note without the release is retried |
 | `route` | an unassigned `todo` card past 30 minutes | assign the one role the generated routing table names. A card assigned to an agent no worker lane can claim is the workflow's `assignee_not_scanned` finding, not a route decision |
-| `triage` | an accepted producer carries `meta.stage_handoff=required` and has no decision for its delivery round | read the current report's `## Handoff`; create/seed/link the proposed cards, or record `handoff_declined_round`; record `handoff_consumed_round` on the producer |
+| `triage` | an accepted producer carries `meta.stage_handoff=required` and has no decision for its delivery round | read the current report's `## Handoff`, its `leftovers` and that round's review observations; give every open item one disposition — reuse, create, decline, escalate — then create/seed/link the proposed cards or record `handoff_declined_round`, and record `handoff_consumed_round` on the producer |
 | escalation | the director cannot decide | `issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."` |
 
 The skill loads once, at session open: Claude opens with `/meerkat-director` + a `Flags:`
@@ -1299,7 +1299,9 @@ recipe (`--parent <epic> --target <stage-id>`); when no graph matches, the per-d
 behavior applies. The supervisor never sequences roles.
 A triage row is enqueued **after** the question and route rows: it is post-acceptance work
 and never displaces a held worker. Its completion is the marker on the producer, not a linked
-child; a producer that moved off `done` makes the row stale. A triage that exhausts its two
+child; the marker follows a completed ledger — every open item the delivery records has an
+existing card, a created card, a recorded decline with its reason, or an escalation — and a
+producer that moved off `done` makes the row stale. A triage that exhausts its two
 attempts records a note on the `done` producer and becomes a `taskctl doctor`
 `handoff_unconsumed` finding; it is never parked. Both the triage read and that finding
 look back over the archive window (seven days): an older accepted handoff is not re-offered,
