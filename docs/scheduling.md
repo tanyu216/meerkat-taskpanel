@@ -170,8 +170,9 @@ finds the director by scanning the installed skills trees, never from a config v
 
 The supervisor is a **scheduler**. It owns two clocks and performs no board **API**
 I/O outside the deterministic passes; the ping's one outbound call is the read-only
-`/health` liveness probe. The passes — poll, patrol, workflow — live in separate
-`taskctl loop` verbs, and the supervisor runs them **in process**.
+`/health` liveness probe. The passes — poll, patrol, workflow — are separate top-level
+commands (`taskctl patrol`, `taskctl poll`, `taskctl workflow`), and the supervisor runs
+them **in process**.
 
 | | **ping** | **tick** | **session** |
 |---|---|---|---|
@@ -2356,7 +2357,7 @@ The console is its own skill ([`meerkat-chat`](../skills/meerkat-chat/SKILL.md))
 mode of the director. The director remains command-only and supervisor-opened; its manual
 agenda moved to the console, and its decision authority did not.
 
-`status.mjs --json` reports `running | busy | starting | unresponsive | wedged |
+`taskctl loop --json` reports `running | busy | starting | unresponsive | wedged |
 configured-idle | partial | absent` (the first five are the pool's own verdict — a live pid is
 never `absent`); `--take-over` starts the pool only when the verdict is `absent` (with no control
 turn there is nothing to take over), and `--stop` stops only what it started. `--control` is
