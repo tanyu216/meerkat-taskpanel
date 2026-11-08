@@ -104,7 +104,7 @@ describe("install.sh: scheduling units", () => {
     // `MEERKAT_TASKPANEL_REPO` at `~/.meerkat-taskpanel` instead — same template.
     const cliPath = join(ROOT, "src", "cli", "index.mjs");
 
-    // launchd — ping every 60s, continue every 600s, both pointing at `taskctl loop`.
+    // launchd — ping every 60s, continue every 600s, both one-shot `taskctl run`.
     const pingPlist = readFileSync(paths.pingPlist, "utf8");
     assert.match(pingPlist, /<key>StartInterval<\/key>\s*<integer>60<\/integer>/);
     assert.ok(pingPlist.includes(cliPath), "the ping unit names the CLI entry");
