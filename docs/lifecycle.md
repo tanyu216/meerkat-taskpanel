@@ -74,7 +74,7 @@ kept coming back (`blocked_reason=decision`, plus a `question` comment,
 loop parks a card it repeatedly failed to run (`resource`/`external`). The rework hold counts
 **review rejections only** (`meta.review_rejects`); landing conflicts and acceptance refusals
 do not spend it, and a delivered round is always reviewed before a hold. A hold is cleared only
-by a human moving the card back (`blocked → todo|in_progress`); it never auto-resumes. See
+by a human moving the card back (`blocked → todo|backlog|in_progress`); it never auto-resumes. See
 [ADR 0009](adr/0009-a-cycle-stops-at-a-human-decision.md) and
 [scheduling.md](scheduling.md#liveness-bounds-every-cycle-has-a-stop).
 
@@ -86,7 +86,7 @@ todo        → backlog, in_progress, blocked, canceled        (an epic also →
 in_progress → in_review, blocked, todo, backlog, canceled, awaiting
 awaiting    → in_progress, todo, canceled
 in_review   → done, in_progress, blocked, canceled
-blocked     → todo, in_progress, in_review, canceled
+blocked     → todo, backlog, in_progress, in_review, canceled
 done        → todo
 canceled    → todo
 ```
@@ -584,8 +584,9 @@ The same rules are enforced wherever a writer can enter:
 
 The **web UI** is a narrower writer, not a fourth enforcement layer: it offers only the
 human-facing subset — release (`backlog ↔ todo`), abandon (`backlog`/`todo`/`in_progress`/
-`in_review` → `canceled`, confirmed first), release from a claimed card
-(`in_progress → todo|backlog`), the audited reopen (`done`/`canceled → todo`) and
+`in_review`/`blocked` → `canceled`, confirmed first), release from a claimed card
+(`in_progress → todo|backlog`), unqueue a blocked card (`blocked → todo|backlog`), the audited
+reopen (`done`/`canceled → todo`) and
 acceptance/send-back (`in_review → done` / `in_progress`) — and disables every other status
 row. `in_progress → in_review|done` is deliberately absent: delivery is the agent's `taskctl`
 act. It never widens what the three layers above permit; `src/core/domain/status.mjs` remains

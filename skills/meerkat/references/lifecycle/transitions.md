@@ -63,7 +63,7 @@ todo        → backlog, in_progress, blocked, canceled        (an epic also →
 in_progress → in_review, blocked, todo, backlog, canceled, awaiting
 awaiting    → in_progress, todo, canceled
 in_review   → done, in_progress, blocked, canceled
-blocked     → todo, in_progress, in_review, canceled
+blocked     → todo, backlog, in_progress, in_review, canceled
 done        → todo
 canceled    → todo
 ```

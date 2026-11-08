@@ -132,6 +132,13 @@ export function isAwaiting(task) {
  * `in_review` in one move. `in_progress → in_review|done` deliberately stays
  * out: delivery is the agent's `taskctl` act, and the board has no deliver
  * write. A `canceled` target asks for confirmation first (see `stores/confirm.js`).
+ *
+ * TP-0127 gives a `blocked` card its exits: `todo` (back to the ready queue),
+ * `backlog` (unqueue it again — the domain gained the edge for this) and
+ * `canceled`. The two work-cycle exits the domain also allows (`in_progress`,
+ * `in_review`) stay with the loop: they are the unblock and the review-time
+ * repair, not a person's acts. Leaving `blocked` asks for no reason, so none of
+ * the three needs a prompt beyond the shared cancel confirmation.
  */
 export const UI_TRANSITIONS = Object.freeze({
   backlog: Object.freeze(["todo", "canceled"]),
@@ -140,7 +147,11 @@ export const UI_TRANSITIONS = Object.freeze({
   in_progress: Object.freeze(["canceled", "todo", "backlog"]),
   awaiting: Object.freeze([]),
   in_review: Object.freeze(["done", "in_progress", "canceled"]),
-  blocked: Object.freeze([]),
+  // TP-0127 — a blocked card gets the three person-facing exits: back to the
+  // queue, release without blocking, abandon. `in_progress`/`in_review` stay
+  // CLI/loop moves (the unblock and the review-time repair), exactly as the
+  // work-cycle targets are withheld from a `todo` card.
+  blocked: Object.freeze(["todo", "backlog", "canceled"]),
   done: Object.freeze([]),
   canceled: Object.freeze([]),
 });
