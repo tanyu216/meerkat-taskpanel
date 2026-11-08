@@ -168,10 +168,10 @@ The loop's verbs are top-level commands: `loop` is one of them, not their parent
 | `subscribe` | See [cli/ops.md](cli/ops.md). |
 | `pool` | See [cli/ops.md](cli/ops.md). |
 <!-- shared-flags:runtime:begin -->
-**Paths and state.** `--state-dir <dir>` places the loop's runtime state — `supervisor.state.json`,
+**Paths and state.** `--state-dir <dir>` places the loop's runtime state (default `<config root>/loop`) — `supervisor.state.json`,
 the queue, the ledger, `session.lock`, `continue.state.json`; `--state <file>` is the older
 explicit spelling of the registry file. `--roles-dir <dir>` names an explicit custom-team directory (a directory of role directories; it replaces discovery for this loop);
-`--home <dir>` the home the agent directories derive from; `--repo <dir>` the board checkout the loop drives; `--cli <path>`
+`--home <dir>` the home the agent skill/role directories derive from (it does not select the log or the loop state — that is `<config root>/loop`, or `MEERKAT_TASKPANEL_STATE_DIR`); `--repo <dir>` the board checkout the loop drives; `--cli <path>`
 the `taskctl` entry its child calls use; `--config <file>` the per-kind config (`<program root>/.env.<actor-kind>`);
 `--log <file>` the loop log; `--continue-state`, `--session-state`, `--sla-ledger`,
 `--workflow-ledger`, `--sla-last-ok` and `--sla-peer` override the individual state files.

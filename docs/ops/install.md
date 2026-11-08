@@ -115,7 +115,8 @@ The server target materializes a self-contained runtime at `<home>/.meerkat-task
 ├── .env                  # 0600, seeded from the template; never overwritten
 ├── .env.<actor-kind>     # umask default; one per installed kind, policy not secrets
 ├── .data/                # 0700, the SQLite board; never deleted
-└── logs/                 # 0700, the loop's supervisor.log for every actor kind
+├── logs/                 # 0700, the loop's supervisor.log for every actor kind
+└── loop/                 # 0700, the loop's queue, session records, locks and transcripts
 ```
 
 The tree is self-locating: `src/` resolves `.env`, `.env.<actor-kind>`, `.data` and `web/dist` from its own
@@ -153,6 +154,17 @@ directory (`<agent-dir>/meerkat-taskpanel/supervisor.log`) and now lands at
 `<program root>/logs/supervisor.log`, one file for every actor kind. The installer does not
 move the old file: a re-run repoints the units, and the old
 `<agent-dir>/meerkat-taskpanel/supervisor.log*` is dead weight you may delete by hand.
+
+**One loop state, at the config root.** The loop's queue, session records, locks and worker
+transcripts used to live at `<agent-dir>/meerkat-taskpanel/`; they now live at
+`<config root>/loop/`. `install.sh --supervisor=enable` performs the one-time move: it stops
+every loaded loop kind, waits for the pool, subscriber, tick and queue locks to quiesce, copies
+the durable files, writes a stable `loop.id`, and keeps the old directory as
+`meerkat-taskpanel.migrated-<timestamp>`. A relocation that cannot finish (a live holder, an
+ambiguous source, a failed copy) fails the install rather than reporting a loop that never moved.
+A plain install with legacy state prints the enable command instead of moving it under a
+possibly-live pool. `MEERKAT_TASKPANEL_STATE_DIR` names a non-default location (the installer
+writes it into the per-kind config when it was explicit).
 
 **Where the per-kind config lives.** `<program root>/.env.<actor-kind>` (for example
 `.env.claude`), beside the board `.env`, not under the agent directory. A combined install
@@ -325,7 +337,7 @@ claimable.
 | chat skill | `<primary-agent-dir>/skills/meerkat-chat/` | the human's console as a skill: its `SKILL.md` plus the console, answering and acceptance references. It carries no execution body; every write is the `meerkat` board skill's command. Always **copied**, never symlinked |
 | setup skill | `<primary-agent-dir>/skills/setup-meerkat/` | `/setup-meerkat`: detect, repair, and move a role between kinds. Always **copied**, never symlinked |
 | role skills | `<agent-dir>/skills/<role>/` for every discovered role (the standard five are jobs, linus, turing, reviewer, worker) | each role's workflow, `role.json` and references. The list is data (`scripts/install/lib/role-skills.mjs`), not a hard-coded set. Always **copied**; where a role is installed is the platform that runs it |
-| loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, worker transcripts, `continue.state.json` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
+| loop state | `<config root>/loop/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, worker transcripts, `continue.state.json` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
 | launchd | `<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
 | systemd | `<agent-dir>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
 | cron | `<agent-dir>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue — **no pool**: no worker dispatch |
@@ -341,10 +353,10 @@ installer says so and renders the shim directory and node's alone rather than gu
 See [`scheduling.md` §What the loop's units run with](../scheduling.md#what-the-loops-units-run-with).
 | per-kind config | `<program root>/.env.<actor-kind>` | the loop's policy: claiming, stale recovery, where `taskctl` lives (`MEERKAT_TASKPANEL_REPO`), the workflow channel, the clocks, the concurrency cap, the session pool and the role kind preference (`MEERKAT_TASKPANEL_AGENT_KIND_ORDER`). **Every key, its default and its allowed values are inventoried once in [`.env.example`](../../.env.example)** (`docs/tech-spec.md` TS-26). Every session runs with the full tool set; the reviewer's write tools are denied |
 | log (runtime) | `<program root>/logs/supervisor.log` | the supervisor's tick log — **one file for every actor kind**, each line carrying `actor_kind=<kind>`; `~/.meerkat-taskpanel/logs/supervisor.log` for a combined install |
-| state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
-| state (runtime) | `<agent-dir>/meerkat-taskpanel/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
-| state (runtime) | `<agent-dir>/meerkat-taskpanel/subscribe.state.json` | the event daemon's pid, last connection/event and pending reconnect — what `--supervisor=status` reports |
-| state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.health.json` | the long-lived entries' boot ledger (`startedAt`, `pid`, `version`, `lastCrash`, `starts`, `bootFailures`) — the input to the 5/15/60/300 s restart ladder |
+| state (runtime) | `<config root>/loop/supervisor.state.json` | the running registry (legacy one-shot path) |
+| state (runtime) | `<config root>/loop/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
+| state (runtime) | `<config root>/loop/subscribe.state.json` | the event daemon's pid, last connection/event and pending reconnect — what `--supervisor=status` reports |
+| state (runtime) | `<config root>/loop/supervisor.health.json` | the long-lived entries' boot ledger (`startedAt`, `pid`, `version`, `lastCrash`, `starts`, `bootFailures`) — the input to the 5/15/60/300 s restart ladder |
 
 `<agent-dir>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these, and no
 `meerkat-director`, `meerkat-chat` or role skills** — it installs the board skill only and uses the
@@ -892,7 +904,9 @@ rm -rf ~/.claude/skills/meerkat ~/.claude/skills/{meerkat-director,meerkat-chat}
        ~/.claude/skills/setup-meerkat \
        ~/.claude/commands/{board,claim,deliver}.md \
        ~/.claude/hooks/meerkat-taskpanel-session-start.sh ~/.claude/bin/taskctl \
-       ~/.claude/scheduling ~/.claude/meerkat-taskpanel
+       ~/.claude/scheduling
+# The loop state moved to <config root>/loop (the pre-migration
+# ~/.claude/meerkat-taskpanel is a backup after the one-time migration).
 ```
 
 ### OpenClaw
@@ -1138,8 +1152,10 @@ rm -rf ~/.codex/skills/{meerkat,meerkat-director,meerkat-chat,setup-meerkat,jobs
 rm -rf ~/.agents/skills/{meerkat,meerkat-director,meerkat-chat,setup-meerkat,jobs,linus,turing,reviewer,worker} # pi
 ```
 
-Nothing is written outside those directories, and nothing is sent over the network — see
-[`PRIVACY.md`](../../PRIVACY.md).
+The loop's runtime state is separate: it lives at `<config root>/loop/`, so deleting the
+install tree removes it for a combined install; an agent-only install keeps it in its
+checkout/package config root. Back it up (or delete it) explicitly. Nothing is written outside
+those directories, and nothing is sent over the network — see [`PRIVACY.md`](../../PRIVACY.md).
 
 ## Troubleshooting
 

@@ -682,7 +682,8 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     role("codex", "turing", "Turing");
     mkdirSync(join(home, ".claude", "skills", "tdd"), { recursive: true });
     writeFileSync(join(home, ".claude", "skills", "tdd", "SKILL.md"), "# tdd\n");
-    mkdirSync(join(home, ".claude", "meerkat-taskpanel"), { recursive: true });
+    mkdirSync(join(configDir, "loop"), { recursive: true });
+    writeFileSync(join(configDir, "loop", "sessions.state.json"), "{}\n");
     writeFileSync(
       join(configDir, ".env.claude"),
       "MEERKAT_TASKPANEL_AGENT_KIND_ORDER=claude,codex,pi\n",
@@ -707,6 +708,8 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     assert.ok(claude.skills.names.includes("tdd"), "the installed skill names are reported");
     assert.ok(claude.skills.names.includes("jobs"), "the installed role skill is named");
     assert.equal(claude.loopState.installed, true);
+    assert.equal(claude.loopState.path, join(fixture.configDir, "loop"));
+    assert.equal(claude.loopState.legacy, null, "the state moved to the config root");
     assert.equal(typeof claude.supervisor.installed, "boolean");
     assert.deepEqual(claude.roles.sort(), ["Jobs", "Linus", "Reviewer"]);
     assert.deepEqual(claude.config.kindOrder, ["claude", "codex", "pi"]);
@@ -721,6 +724,28 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
 
     // No director skill on pi, so it cannot host a supervisor.
     assert.equal(result.body.platforms.pi.available, false);
+  });
+
+  it("reports a pre-migration state directory as legacy, never installed", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    const configDir = temp(t);
+    const legacy = join(home, ".claude", "meerkat-taskpanel");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(legacy, "cards.queue.json"), '{"cards":[]}\n');
+    const result = runJson(
+      t,
+      DETECT,
+      ["--home", home, "--project", project, "--actor-kind", "claude", "--no-network"],
+      {
+        cwd: project,
+        env: { HOME: home, PATH: temp(t), MEERKAT_TASKPANEL_CONFIG_DIR: configDir },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.loopState.installed, false);
+    assert.equal(result.body.loopState.legacy, legacy);
+    assert.equal(result.body.loopState.path, legacy, "the read path names the old directory");
   });
 
   it("accepts a custom team from an explicit roles directory", (t) => {

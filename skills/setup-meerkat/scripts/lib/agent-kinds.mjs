@@ -93,8 +93,13 @@ export function skillDir(home, kind, skill) {
   return join(agentBase(home, kind), "skills", skill);
 }
 
-/** The loop's per-agent state directory (queue, ledger, locks, status files). */
-export function loopStateDir(home, kind) {
+/** The loop's state directory at the config root (queue, ledger, locks, status files). */
+export function loopStateDir(programRoot) {
+  return join(programRoot, "loop");
+}
+
+/** The pre-migration per-kind state directory, reported as legacy and never written. */
+export function legacyLoopStateDir(home, kind) {
   return join(agentBase(home, kind), "meerkat-taskpanel");
 }
 

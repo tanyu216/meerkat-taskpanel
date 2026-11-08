@@ -7,8 +7,10 @@ Meerkat TaskPanel is **local-first** by design.
   analytics, no update check, and no remote logging.
 - **Runtime data stays local.** Task data lives in `.data/` inside the running program's
   root (e.g. `.data/taskboard.sqlite`) — the checkout, `/app` in the container, or
-  `~/.meerkat-taskpanel/.data` for an npm/npx install. That directory is gitignored, is
-  never packaged, and is never deleted or overwritten by an upgrade.
+  `~/.meerkat-taskpanel/.data` for an npm/npx install. The loop's own state (queue, session
+  ids, locks and bounded worker transcripts) lives beside it at `<config root>/loop/`, not in
+  `.data`. Both are gitignored, never packaged, and never deleted or overwritten by an
+  upgrade.
 - **Installs are file copies.** `install.sh` copies or symlinks the skill into your own
   agent directories (`~/.claude/skills`, `~/.openclaw/skills`, `~/.codex/skills`,
   `~/.agents/skills`). It sends nothing anywhere.

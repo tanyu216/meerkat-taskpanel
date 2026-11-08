@@ -49,7 +49,8 @@ new flags.
 The retired single-purpose flags are gone: `--once`, `--poll-interval`, `--ping-only`,
 `--continue-only`, `--patrol-only`, `--subscribe`, `--session` are now the verbs (`taskctl poll`,
 `taskctl run --ping-once`, `taskctl subscribe`, `taskctl pool`). `--state` is still accepted;
-`--state-dir` is the documented spelling.
+`--state-dir` is the documented spelling; its default is `<config root>/loop`
+(`MEERKAT_TASKPANEL_STATE_DIR` names another).
 
 ## reconcile --workflow — the board's workflow plan
 

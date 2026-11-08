@@ -246,7 +246,10 @@ The daemon's `/health` is unauthenticated and always 200 (`src/server/index.mjs`
 The `503`-capable `/health` in `docs/ops/observability.md` is the **metrics sidecar's** SLO
 verdict, a different process on a different port — do not read the two as one endpoint.
 
-The board's runtime state lives in the **named volume** `taskd-data` → `/app/.data`.
+The board's runtime state lives in the **named volume** `taskd-data` → `/app/.data`. The
+loop's own state (queue, session records, locks, transcripts) is not in this volume: a host
+loop keeps it at `<config root>/loop/`, and a loop running inside the container must point
+`MEERKAT_TASKPANEL_STATE_DIR` at a persistent volume or it is ephemeral.
 It is a named volume rather than a bind mount of `../.data` because a first `up` on a
 fresh checkout has no `../.data`: Docker creates the bind source root-owned, the daemon
 runs as `node`, and it could neither write there nor chmod it to 0700 — `taskd` died with

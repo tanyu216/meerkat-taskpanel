@@ -17,7 +17,7 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
@@ -139,6 +139,76 @@ describe("cli/commands/loop — the runtime verdict", () => {
     assert.equal(result.status, 2, result.stderr);
     assert.match(result.stderr, /taskctl loop\b/);
     assert.match(result.stderr, /install\.sh/);
+  });
+});
+
+describe("cli/commands/loop — the legacy state directory", () => {
+  /** A home with the pre-migration loop state, and an empty config root. */
+  function legacyWorld() {
+    const home = makeTempDir("meerkat-taskpanel-legacy-home-");
+    const configRoot = makeTempDir("meerkat-taskpanel-legacy-config-");
+    const legacy = join(home, ".claude", "meerkat-taskpanel");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(legacy, "cards.queue.json"), '{"cards":[]}\n');
+    return { home, configRoot, legacy };
+  }
+
+  it("reads it with a warning on stderr, leaving stdout valid JSON", () => {
+    const { home, configRoot, legacy } = legacyWorld();
+    const result = runCli(["loop", "--json"], {
+      actorKind: "claude",
+      noUrl: true,
+      env: {
+        HOME: home,
+        MEERKAT_TASKPANEL_CONFIG_DIR: configRoot,
+        TASKD_NO_AUTOSTART: "1",
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /legacy loop state/);
+    // stdout is still the one machine-readable answer; the warning must not
+    // corrupt it.
+    const data = parseJson(result);
+    assert.equal(data.pool.file, join(legacy, "sessions.state.json"));
+  });
+
+  it("refuses every write verb instead of splitting the queue", () => {
+    const { home, configRoot, legacy } = legacyWorld();
+    const env = {
+      HOME: home,
+      MEERKAT_TASKPANEL_CONFIG_DIR: configRoot,
+      TASKD_NO_AUTOSTART: "1",
+    };
+    for (const argv of [
+      ["patrol", "--dry-run"],
+      ["run", "--ping-once"],
+      // `loop` is a read until it takes over or stops the pool.
+      ["loop", "--take-over"],
+      ["loop", "--stop"],
+    ]) {
+      const result = runCli(argv, { actorKind: "claude", noUrl: true, env });
+      assert.equal(result.status, 2, `${argv.join(" ")}: ${result.stderr}`);
+      assert.match(result.stderr, /refusing to write to the legacy loop state/);
+      assert.match(result.stderr, /re-run install\.sh/);
+      assert.ok(result.stderr.includes(legacy), `names the directory it refuses: ${result.stderr}`);
+    }
+  });
+
+  it("treats an explicit --state-dir as the answer, not as legacy", () => {
+    const { home, configRoot } = legacyWorld();
+    const named = makeTempDir("meerkat-taskpanel-legacy-named-");
+    const result = runCli(["loop", "--json", "--state-dir", named], {
+      actorKind: "claude",
+      noUrl: true,
+      env: {
+        HOME: home,
+        MEERKAT_TASKPANEL_CONFIG_DIR: configRoot,
+        TASKD_NO_AUTOSTART: "1",
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stderr, /legacy loop state/);
+    assert.equal(parseJson(result).pool.file, join(named, "sessions.state.json"));
   });
 });
 

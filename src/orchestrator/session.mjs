@@ -14,7 +14,8 @@
  * Node builtins only; no network, no dependencies.
  */
 
-import { existsSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -109,10 +110,12 @@ export {
   POOL_WEDGE_MARGIN_MS,
   SESSION_DEFAULTS,
   SESSION_LOCK_FILE,
+  STATE_FILES,
   killDeadlineMs,
   poolVerdict,
   sendDeadlineMs,
 } from "../foundation/loop-state.mjs";
+import { resolveLoopState } from "../foundation/state-dir.mjs";
 import {
   OPENER_TIMEOUT_MS,
   POOL_HEARTBEAT_MS,
@@ -120,6 +123,7 @@ import {
   POOL_STALE_MS,
   SESSION_DEFAULTS,
   SESSION_LOCK_FILE,
+  STATE_FILES,
   STOP_DRAIN_MS,
   effectiveTurnTimeoutMs,
   poolVerdict,
@@ -285,7 +289,11 @@ export function poolStatus(input = {}) {
   const opts = input.opts ?? {};
   const isAlive = input.isAlive ?? isProcessAlive;
   const now = input.now ?? Date.now;
-  const stateDir = dirname(String(opts.state ?? join(process.cwd(), "supervisor.state.json")));
+  const resolvedState =
+    typeof opts.state === "string" && opts.state !== ""
+      ? opts.state
+      : join(resolveLoopState({ home: opts.home, actorKind: opts.actorKind, env: process.env }).dir, STATE_FILES.supervisor);
+  const stateDir = dirname(String(resolvedState));
   const file = opts.sessionState ?? sessionsFile(stateDir);
   const empty = {
     live: false,
@@ -415,6 +423,17 @@ export function createSessionPool(input = {}) {
   const sessions = new Map();
   // The board-visible session row (one stable row per card and segment). The
   // writes are best-effort: a board that is down must never fail a turn.
+  // One stable loop identity in the state directory. A relocated checkout keeps
+  // its board rows; a pre-id directory falls back to the path identity.
+  const loopIdFile = join(stateDir, STATE_FILES.loopId);
+  if (!existsSync(loopIdFile)) {
+    try {
+      mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+      writeFileSync(loopIdFile, `${randomUUID()}\n`, { encoding: "utf8", mode: 0o600 });
+    } catch {
+      // The path identity remains the fallback; a failed write is not fatal.
+    }
+  }
   const boardSession = createBoardSession({ opts, log, isAlive });
   const stateRead = readSessionsState(stateDir);
   const state = stateRead.value;
@@ -1239,7 +1258,33 @@ export function createSessionPool(input = {}) {
       if (typeof taskId !== "string" || taskId === "" || typeof owner !== "string" || owner === "") continue;
       liveKeys.add(`${taskId}|${boardSegmentOf(entry)}|${owner}`);
     }
-    return boardSession.reconcile({ loopId: boardSession.loopId, liveKeys, deadline });
+    const current = await boardSession.reconcile({ loopId: boardSession.loopId, liveKeys, deadline });
+
+    // A relocated loop left its old board rows `running`: the old loop id is
+    // the old state directory. The installer writes this marker once; close
+    // those rows with the same reconciler, then drop it. A board that is down
+    // keeps the marker for the next start.
+    const marker = join(stateDir, STATE_FILES.legacyLoopIds);
+    const legacy = readJsonFile(marker, null);
+    const dirs = Array.isArray(legacy.value) ? legacy.value.filter((dir) => typeof dir === "string" && dir !== "") : [];
+    let legacyOk = current.ok === true;
+    for (const dir of dirs) {
+      const previous = createBoardSession({
+        opts: { ...opts, state: join(dir, STATE_FILES.supervisor) },
+        log,
+        isAlive,
+      });
+      const outcome = await previous.reconcile({ loopId: previous.loopId, liveKeys, deadline });
+      if (outcome.ok !== true) legacyOk = false;
+    }
+    if (legacyOk && dirs.length > 0) {
+      try {
+        rmSync(marker, { force: true });
+      } catch {
+        // A marker we cannot remove is retried on the next start.
+      }
+    }
+    return current;
   }
 
   /**
@@ -2977,7 +3022,10 @@ export function createSessionPool(input = {}) {
   let lockToken = null;
 
   async function acquireLock() {
-    ensureStateDir(stateDir);
+    const ready = ensureStateDir(stateDir);
+    if (!ready.ok) {
+      return { ok: false, holder: null, error: `state directory is not writable — ${ready.error}` };
+    }
     // The same `wx` lock the queue uses: the pool lock is never stolen from a
     // live pid, so a wedged-but-alive pool is one process, not two. A dead
     // holder (a crash) is reclaimed without waiting for a timeout.
