@@ -41,7 +41,7 @@ describe("core/bootstrap — openBoard", () => {
       pointerUrl: undefined,
     });
     try {
-      assert.deepEqual(board.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005"]);
+      assert.deepEqual(board.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006"]);
       assert.equal(board.schema.ok, true);
       assert.match(board.version, /^\d+\.\d+\.\d+$/);
       assert.equal(board.dbPath, join(dataDir, "board.sqlite"));
@@ -96,7 +96,7 @@ describe("core/bootstrap — openBoard", () => {
     const second = await openBoard({ dataDir, pointerPath, env: {} });
     try {
       assert.deepEqual(second.migration.applied, []);
-      assert.deepEqual(second.migration.skipped, ["0001", "0002", "0003", "0004", "0005"]);
+      assert.deepEqual(second.migration.skipped, ["0001", "0002", "0003", "0004", "0005", "0006"]);
       assert.equal(second.token.created, false);
       assert.equal(readFileSync(join(dataDir, "token"), "utf8").trim(), token, "the token survives a restart");
       assert.equal(second.schema.ok, true);
@@ -127,7 +127,7 @@ describe("core/bootstrap — openBoard", () => {
     const stale = await openBoard({ dataDir, pointerPath, env: {}, readonly: true, allowStale: true });
     try {
       assert.equal(stale.schema.ok, false);
-      assert.deepEqual(stale.schema.missing, ["0001", "0002", "0003", "0004", "0005"]);
+      assert.deepEqual(stale.schema.missing, ["0001", "0002", "0003", "0004", "0005", "0006"]);
       assert.equal(stale.migration.applied.length, 0, "a read-only open never migrates");
       // The repositories would build statements against tables that do not
       // exist yet, so they name the real problem instead.
@@ -146,7 +146,7 @@ describe("core/bootstrap — openBoard", () => {
     // apply" — and says exactly which file it applied.
     const upgraded = await openBoard({ dataDir, pointerPath, env: {} });
     try {
-      assert.deepEqual(upgraded.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005"]);
+      assert.deepEqual(upgraded.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006"]);
       assert.equal(upgraded.schema.ok, true);
     } finally {
       upgraded.close();

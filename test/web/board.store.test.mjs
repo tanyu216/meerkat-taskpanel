@@ -427,7 +427,10 @@ describe("web/board — the human-facing move table", () => {
     in_progress: ["canceled", "todo", "backlog"],
     awaiting: [],
     in_review: ["done", "in_progress", "canceled"],
-    blocked: [],
+    // TP-0127 — a blocked card has an exit on the board: release, unqueue, or
+    // abandon. The work-cycle targets (`in_progress`, `in_review`) stay
+    // CLI/loop-only, exactly as they were for a `todo` card.
+    blocked: ["todo", "backlog", "canceled"],
     done: [],
     canceled: [],
   };
@@ -461,6 +464,15 @@ describe("web/board — the human-facing move table", () => {
     assert.equal(allowedTargets("in_progress").includes("done"), false);
     // The domain has the `off` direct-done edge; the board must not surface it.
     assert.equal(canTransition("in_progress", "done", null, "off"), true, "the domain keeps the edge");
+  });
+
+  it("gives a blocked card three exits and no work-cycle entry (TP-0127)", async () => {
+    const { allowedTargets } = await freshBoard();
+    assert.deepEqual([...allowedTargets("blocked")], ["todo", "backlog", "canceled"]);
+    // The domain allows `in_progress` / `in_review`; those are the loop's
+    // unblock/repair moves, not a person's.
+    assert.equal(canTransition("blocked", "in_progress"), true, "the domain keeps the repair edges");
+    assert.equal(canTransition("blocked", "in_review"), true);
   });
 });
 

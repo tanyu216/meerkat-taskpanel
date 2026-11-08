@@ -2708,8 +2708,9 @@ export async function run() {
     // so the expected row count is read off the card the menu was opened on; a
     // card with no target keeps a disabled kebab and never opens a menu.
     // TP-0125 — `in_progress` gains three human exits and `in_review` three
-    // (including `canceled`). The count is the number of targets, not cards.
-    const MOVE_ROWS = { backlog: 2, todo: 2, in_progress: 3, awaiting: 0, in_review: 3, blocked: 0, done: 0, canceled: 0 };
+    // (including `canceled`). TP-0127 — `blocked` gains its three (todo, the
+    // queue, abandon). The count is the number of targets, not cards.
+    const MOVE_ROWS = { backlog: 2, todo: 2, in_progress: 3, awaiting: 0, in_review: 3, blocked: 3, done: 0, canceled: 0 };
     const moveMenu = await page.evaluate((rows) => {
       const card = [...document.querySelectorAll("[data-card]")].find((el) => (rows[el.getAttribute("data-status")] ?? 0) > 0);
       card?.querySelector("[data-card-menu]")?.click();
@@ -2741,11 +2742,12 @@ export async function run() {
     };
     moveMenu.inProgressTargets = await menuTargetsFor("in_progress");
     moveMenu.inReviewTargets = await menuTargetsFor("in_review");
+    moveMenu.blockedTargets = await menuTargetsFor("blocked");
     // A status with no human-facing target keeps the kebab (the part set is
-    // invariant) but disables it, so an empty menu cannot open. `blocked` still
-    // has no target; `in_progress` no longer is one (TP-0125).
+    // invariant) but disables it, so an empty menu cannot open. `done` is still
+    // one; `blocked` is not any more (TP-0127).
     moveMenu.locked = await page.evaluate(() => {
-      const card = [...document.querySelectorAll("[data-card]")].find((el) => el.getAttribute("data-status") === "blocked");
+      const card = [...document.querySelectorAll("[data-card]")].find((el) => el.getAttribute("data-status") === "done");
       const kebab = card?.querySelector("[data-card-menu]");
       if (!kebab) return null;
       kebab.click();
@@ -5264,6 +5266,8 @@ export async function run() {
       // TP-0125 — the two claim-cycle menus, in their exact offered order.
       moveMenuProgress: moveMenu.inProgressTargets.join(",") === "canceled,todo,backlog",
       moveMenuReview: moveMenu.inReviewTargets.join(",") === "done,in_progress,canceled",
+      // TP-0127 — a blocked card's menu in its exact offered order.
+      moveMenuBlocked: moveMenu.blockedTargets.join(",") === "todo,backlog,canceled",
       statusMenuFiltered:
         statusOptions.length === 7 &&
         statusOptions.filter((option) => !option.disabled).map((option) => option.value).join(",") === "todo,canceled",
@@ -8915,6 +8919,7 @@ if (isEntryPoint) run().then(
       report.interactions.moveMenuLocked &&
       report.interactions.moveMenuProgress &&
       report.interactions.moveMenuReview &&
+      report.interactions.moveMenuBlocked &&
       report.interactions.statusMenuFiltered &&
       report.interactions.themeCycleReturns &&
       report.interactions.langZh &&

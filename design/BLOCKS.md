@@ -496,7 +496,7 @@ remains the document's only **horizontal** scroll container.
 **Implementation supplement — the human-facing move subset.** 〔原型菜单不过滤；这是记录在案的收紧〕
 The prototype's card menu and drawer status combo list all seven statuses and filter nothing
 (`app.js#moveCard`), because the prototype owns the control's **structure**, not the lifecycle. In
-the shipped board the person drives only four acts, so `web/src/stores/board.js#UI_TRANSITIONS`
+the shipped board the person drives only five acts, so `web/src/stores/board.js#UI_TRANSITIONS`
 narrows every human-facing status surface to:
 
 | from | offered targets |
@@ -505,7 +505,8 @@ narrows every human-facing status surface to:
 | `todo` | `backlog`, `canceled` |
 | `in_progress` | `canceled`, `todo`, `backlog` (TP-0125 — leaving the work) |
 | `in_review` | `done`, `in_progress` (Accept / Send back), `canceled` |
-| `awaiting`, `blocked`, `done`, `canceled` | none |
+| `blocked` | `todo`, `backlog` (TP-0127 — unqueue), `canceled` |
+| `awaiting`, `done`, `canceled` | none |
 
 `in_progress → in_review|done` is deliberately absent: delivery is the agent's `taskctl` act,
 and the board has no deliver write. `canceled → backlog` is deliberately absent: `canceled` is

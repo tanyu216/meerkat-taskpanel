@@ -31,6 +31,10 @@
  *     another claimed state. Exiting the claim cycle is one fact,
  *     {@link leavesClaimCycle}, and the orchestrator's interrupt machinery keys
  *     on it.
+ *   - TP-0127 adds `blocked → backlog`: a card parked on an external stop may
+ *     re-enter the queue as unreleased work. It is the same shape as the two
+ *     above — one exit with no reason and no round bump — and the browser
+ *     exposes exactly `todo`, `backlog`, `canceled` of the four.
  *
  * M1 adds one first-class status, `awaiting` (the card is running but has asked
  * a human — design §2/§6). Three properties of it are load-bearing and are
@@ -93,7 +97,19 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
   // canceled`) briefly re-entered the work cycle and re-armed dispatch; the
   // terminal move is not a rework, so it does not bump the round.
   [STATUS.IN_REVIEW]: Object.freeze([STATUS.DONE, STATUS.IN_PROGRESS, STATUS.BLOCKED, STATUS.CANCELED]),
-  [STATUS.BLOCKED]: Object.freeze([STATUS.TODO, STATUS.IN_PROGRESS, STATUS.IN_REVIEW, STATUS.CANCELED]),
+  // TP-0127 — `backlog` is the exit that does not re-enter the dispatch cycle:
+  // a blocked card can go back to the queue as unreleased work again. The other
+  // three stay: `in_progress` is the unblock (the same executor resumes),
+  // `in_review` is the repair edge for a blocker found at review time, and
+  // `canceled` abandons it. All four exits clear `blocked_reason`, release the
+  // claim (none of them holds it) and leave the delivery round alone.
+  [STATUS.BLOCKED]: Object.freeze([
+    STATUS.TODO,
+    STATUS.BACKLOG,
+    STATUS.IN_PROGRESS,
+    STATUS.IN_REVIEW,
+    STATUS.CANCELED,
+  ]),
   // The reopen edge. `todo` is the only target on purpose: `in_progress` is a
   // *claimed* state, and a reopened card has no claim holder — landing there
   // would create an `in_progress` row with `claimed_by IS NULL`, the corruption
