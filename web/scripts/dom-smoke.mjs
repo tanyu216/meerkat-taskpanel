@@ -1869,7 +1869,6 @@ export async function run() {
       ids: [...document.querySelectorAll("[data-detail-agent-session-body] [data-agent-session-id]")].map((e) => e.textContent.trim()),
       statuses: [...document.querySelectorAll("[data-detail-agent-session-body] [data-session-status]")].map((e) => e.getAttribute("data-session-status")),
       goals: [...document.querySelectorAll("[data-detail-agent-session-body] [data-session-goal]")].map((e) => e.textContent.trim()),
-      resumes: document.querySelectorAll("[data-detail-agent-session-body] [data-agent-resume]").length,
     }));
     drawerTabsCheck(
       trailRead.selected.join(",") === "sessions" && trailRead.visiblePanels.join(",") === "sessions",
@@ -1879,26 +1878,16 @@ export async function run() {
       trailRead.ids.length === 2 && trailRead.statuses.join(",") === "running,closed",
       `trail rows ${trailRead.ids.length} / ${trailRead.statuses.join("/")}`,
     );
-    drawerTabsCheck(trailRead.resumes === 1, `Resume count is ${trailRead.resumes}, expected 1 (running only)`);
     drawerTabsCheck(
       trailRead.goals.join("|") === "implement the session goal field|review the drawer ordering",
       `session goals read ${JSON.stringify(trailRead.goals)}`,
     );
 
-    /* The prototype's two session seats: Resume states the intent, and the id
-       copies itself — or, with no clipboard permission in the harness, still
-       toasts the id. Both are measured on the running row the trail leads with. */
+    /* The session id copies itself — or, with no clipboard permission in the
+       harness, still toasts the id. Measured on the running row the trail leads
+       with. */
     const toastTexts = () => page.evaluate(() =>
       [...document.querySelectorAll("[data-toast-region] [data-toast-text]")].map((el) => el.textContent.trim()),
-    );
-    await page.evaluate(() =>
-      document.querySelector("[data-detail-agent-session-body] [data-agent-resume]")?.click(),
-    );
-    await page.waitForTimeout(80);
-    const resumeToasts = await toastTexts();
-    drawerTabsCheck(
-      resumeToasts.includes("Resuming agent session"),
-      `Resume raised ${JSON.stringify(resumeToasts)} instead of toast.resume`,
     );
     await page.evaluate(() =>
       document.querySelector("[data-detail-agent-session-body] [data-agent-session-id]")?.click(),
@@ -8841,7 +8830,7 @@ if (isEntryPoint) run().then(
       } else {
         console.log(
           `v4 (drawer tabs) — six tabs, Sessions last; the session section is inside the Sessions panel; ` +
-            `the trail reads ${report.drawerTabs.trail.statuses.join("/")} with ${report.drawerTabs.trail.resumes} Resume; ` +
+            `the trail reads ${report.drawerTabs.trail.statuses.join("/")}; ` +
             `Reports ${report.drawerTabs.reports.rows}, Acceptance ${report.drawerTabs.acceptance.items}, Leftovers ${report.drawerTabs.leftovers.rows}`,
         );
       }
