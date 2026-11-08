@@ -91,6 +91,14 @@ describe("director skill: SKILL.md", () => {
     assert.match(text, /E1[–-]E5/);
   });
 
+  it("names the triage close-out and its four dispositions", () => {
+    assert.match(text, /close it out/i);
+    assert.match(text, /one disposition per open item/i);
+    for (const disposition of ["existing card", "created card", "recorded decline", "escalation"]) {
+      assert.match(text, new RegExp(disposition, "i"), `the ${disposition} disposition`);
+    }
+  });
+
   it("states the decision boundary without restating the scheduler", () => {
     assert.match(text, /stay with the board and the roles/i);
     assert.match(text, /Claims, execution and closure belong to the roles, the board and the human/i);
@@ -163,6 +171,21 @@ describe("director skill: references", () => {
     assert.match(triage, /handoff_consumed_round/, "the triage marker has one home");
     assert.match(triage, /handoff_declined_round/);
     assert.match(triage, /create it only if the map gives E1 to the[\s\S]*director/i);
+  });
+
+  it("closes out every open item before recording the round marker", () => {
+    const triage = ref("triage.md");
+    assert.match(triage, /close-out/i);
+    assert.match(triage, /the report's `leftovers`/i, "the report leftovers are a ledger input");
+    assert.match(triage, /review cards of the same round/i);
+    assert.match(triage, /observations/i);
+    assert.match(triage, /backlog/i);
+    assert.match(triage, /meta\.fixes/);
+    assert.match(triage, /exactly one disposition/i);
+    for (const disposition of ["owned", "created", "declined", "escalated"]) {
+      assert.match(triage, new RegExp(`\\*\\*${disposition}\\*\\*`), `the ${disposition} disposition`);
+    }
+    assert.match(triage, /leaves the round open/i, "an un-dispositioned item keeps the round open");
   });
 
   it("reads the project graph, adopts a producer and only fills what is missing", () => {

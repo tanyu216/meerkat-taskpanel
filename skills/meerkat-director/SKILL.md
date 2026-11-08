@@ -16,7 +16,7 @@ you run — including its exact spelling and flags.
 |---|---|---|---|
 | `question` | a worker needs a choice outside the card's authorization | record the decision and release the card; or escalate | `references/decision-policy.md` + `references/question.md` |
 | `route` | a card has no accountable role | assign exactly one role from the routing table | `references/decision-policy.md` + `references/route.md` |
-| `triage` | an accepted card carries a required handoff | create, seed and link the proposed downstream cards; or record that none is needed | `references/decision-policy.md` + `references/triage.md` |
+| `triage` | an accepted card carries a required handoff | close it out: one disposition per open item — an existing card, a created card, a recorded decline, or an escalation — then the round marker | `references/decision-policy.md` + `references/triage.md` |
 | escalation | the matter is E1–E5 or reserved, and the decision map leaves it to the human | escalate with the reason and the question | `references/decision-policy.md` + `references/escalation.md` |
 
 Claims, execution and closure belong to the roles, the board and the human; your writes are

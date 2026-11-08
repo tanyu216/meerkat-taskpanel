@@ -47,6 +47,10 @@ is a **new worker** that re-reads the comments (ADR 0017).
   the fix on the current card (reported, acceptance unchanged); a defect that would change
   scope, acceptance, design, security or architecture follows the decision map — the human
   decides it unless the project delegates that entry.
+- Closing a required handoff: the delivery's open items — the handoff's proposed work and
+  open questions, the report's `leftovers`, the review's observations — each get one
+  disposition: a card, a recorded decline with its reason, or an escalation. The round marker
+  follows the completed ledger.
 
 Ordering belongs to the board; concurrency, timeouts and other configuration belong to the
 human; the project directory is a registered map the human maintains; scope, the acceptance
