@@ -308,17 +308,12 @@ const sessions = computed(() => detail.value?.sessions ?? []);
 const hasSessions = computed(() => sessions.value.length > 0);
 
 /**
- * The session trail's two seats, matching the prototype (`design/prototype/app.js`
- * `data-agent-session-id` / `data-agent-resume`):
+ * The session trail's copy seat, matching the prototype (`design/prototype/app.js`
+ * `data-agent-session-id`): the id copies itself through a throwaway textarea +
+ * `execCommand`, because the Clipboard API is unavailable in a non-secure
+ * context and a failed permission must still tell the reader what the id was.
  *
- *   * the id copies itself through a throwaway textarea + `execCommand`, because
- *     the Clipboard API is unavailable in a non-secure context and a failed
- *     permission must still tell the reader what the id was;
- *   * Resume is a statement, not a control — the agent runtime owns the actual
- *     resume, so the board only confirms the intent.
- *
- * Neither adds a hook or a style: the seats and their geometry are the B16
- * contract's own.
+ * It adds no hook or style: the seat and its geometry are the B16 contract's own.
  */
 function copySessionId(value) {
   const text = String(value ?? "").trim();
@@ -338,9 +333,6 @@ function copySessionId(value) {
   pushToast(copied ? `${t("toast.copied")}: ${text}` : text, copied ? "success" : "info");
 }
 
-function resumeSession() {
-  pushToast(t("toast.resume"), "info");
-}
 const tabs = computed(() =>
   TAB_ORDER.map((name) => ({
     name,
@@ -2174,16 +2166,13 @@ async function submitComment() {
           <div data-detail-agent-session-body>
             <!-- The trail: running first, then newest-first. The first row
                  carries B16's platform seat; historical rows name their own
-                 owner kind in a plain badge. Resume is stated only for a running
-                 session (kept in the DOM with v-show so the contract's hook
-                 survives a card whose sessions have all closed). -->
+                 owner kind in a plain badge. -->
             <div v-for="(row, index) in sessionTrail" :key="row.id" class="td-session" :class="{ 'mt-2': index > 0 }" data-agent-session>
               <div class="flex items-center gap-2">
                 <span v-if="index === 0" class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : row.ownerKind }}</span>
                 <span v-else class="badge badge-xs td-agent-badge">{{ row.ownerKind }}</span>
                 <span class="td-mono text-xs text-(--brand-text-2)" :data-agent-platform-value="index === 0 ? platform || row.ownerKind : undefined">{{ index === 0 ? (platform || row.ownerKind) : row.ownerKind }}</span>
                 <span class="badge badge-xs" :data-session-status="row.status">{{ $t(`drawer.session.status.${row.status}`) }}</span>
-                <button v-if="index === 0" v-show="row.running" type="button" class="btn btn-outline btn-xs ms-auto" data-agent-resume data-i18n="drawer.resume" @click="resumeSession">{{ $t("drawer.resume") }}</button>
               </div>
               <div class="mt-2 flex items-center gap-2">
                 <span class="text-xs text-(--brand-text-3)" data-i18n="session.id">{{ $t("session.id") }}</span>
@@ -2205,7 +2194,6 @@ async function submitComment() {
               <div class="flex items-center gap-2">
                 <span class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : "" }}</span>
                 <span class="td-mono text-xs text-(--brand-text-2)" data-agent-platform-value>{{ platform }}</span>
-                <button type="button" class="btn btn-outline btn-xs ms-auto" data-agent-resume data-i18n="drawer.resume">{{ $t("drawer.resume") }}</button>
               </div>
               <div class="mt-2 flex items-center gap-2">
                 <span class="text-xs text-(--brand-text-3)" data-i18n="session.id">{{ $t("session.id") }}</span>

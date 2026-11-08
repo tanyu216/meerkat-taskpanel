@@ -1075,9 +1075,7 @@ rendered from the card's session list (`GET /api/v1/tasks/:ref/sessions`), with
 `[data-agent-platform]`, `[data-agent-platform-value]` (the card's **platform
 id**, e.g. `claude` — `[data-agent-platform]` is the id's badge; the prototype's
 static sample renders a CLI-style declaration there, a prototype-only expression
-registered in `design/fidelity-r14.md` §8.3 `DF-4`), `[data-agent-session-id]`
-and `[data-agent-resume]` (the running row only; the hook stays in the DOM,
-hidden, when no row is running).
+registered in `design/fidelity-r14.md` §8.3 `DF-4`) and `[data-agent-session-id]`.
 
 The trail is ordered **running first, then `ts` descending**. Visibility is
 **data-driven** (`sessions.length > 0`): the section and the Sessions tab are
@@ -1086,6 +1084,13 @@ switch — a human-assigned card can carry real session rows, and the server
 enforces no assignee/session relationship. Historical rows name their own
 `owner_kind` in a plain badge; the `data-agent-platform` seat states the card's own
 platform.
+
+The prototype also carries `[data-agent-resume]` (the running row only; the hook
+stays in the DOM, hidden, when no row is running). The shipped app no longer
+renders it — Terry's ruling of 2026-11-08: the board cannot resume a session (the
+agent runtime owns that), so the control was a toast with no transport. The hook
+and its strings (`drawer.resume`, `toast.resume`) stay in the prototype as a
+prototype-only demonstration.
 
 ## B17 · Error state
 
