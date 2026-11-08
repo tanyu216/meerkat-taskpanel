@@ -330,8 +330,8 @@ export_tp_env() {
   # derived, never hard-coded, so the unit PATH and the shim cannot disagree.
   TP_SHIM_DIR="${TP_SHIM%/*}"
   TP_HOOK="$(target_home)/$agent_dir/hooks/meerkat-taskpanel-session-start.sh"
-  # The external loop is `taskctl loop …`, shipped by the runtime tree `TP_REPO`
-  # names. Log and state are fixed per agent kind so a user always knows where they
+  # The external loop is the runtime commands (`taskctl run`, `taskctl pool`, …),
+  # shipped by the runtime tree `TP_REPO` names. Log and state are fixed per agent kind so a user always knows where they
   # land (documented in docs/scheduling.md).
   #
   # The units name the CLI entry, not an agent-local copy of the loop body: the
@@ -1074,7 +1074,7 @@ ensure_agent_config_keys() {
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE_INTERVAL" "$TP_CONTINUE_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE" "$TP_CONTINUE"
   # A relocated loop state must be named in the per-kind config too: the units
-  # carry `--state-dir`, but a manual `taskctl loop status` reads the config, and
+  # carry `--state-dir`, but a manual `taskctl loop` reads the config, and
   # the two answering differently is exactly the drift this key prevents.
   if [ -n "${TP_STATE_DIR_EXPLICIT:-}" ] && [ "$TP_STATE_DIR" != "$TP_CONFIG_DIR/loop" ]; then
     if [ -f "$TP_ENV" ] && grep -q "^MEERKAT_TASKPANEL_STATE_DIR=" "$TP_ENV"; then

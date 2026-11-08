@@ -5,7 +5,7 @@
  * `install.sh` asks the question when stdin is a TTY and no flag was given,
  * defaults to **yes** everywhere else, and persists the answer as
  * `<program root>/.env.<actor-kind>` (`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=…`) —
- * the file `taskctl loop …` reads as its default. OpenClaw is the one
+ * the file `taskctl run` reads as its default. OpenClaw is the one
  * agent kind that gets no such file, because it does not build its own supervisor
  * (it installs openclaw-team, whose poll/patrol already implement the design).
  * The legacy `<agent-dir>/meerkat-taskpanel.env` is migrated once by the installer.

@@ -333,7 +333,7 @@ into one lighter row, and counts what the reader can see. The drawer's activity 
 shows every event with a localised sentence for the known vocabulary and a generic fallback for an
 unknown name.
 
-### 5.4 The loop subscriber (`taskctl loop subscribe`)
+### 5.4 The loop subscriber (`taskctl subscribe`)
 
 Included in every launchd/systemd supervisor; cron cannot host a long-lived process. It consumes
 `taskctl events follow` — NDJSON from the local hub — and never speaks the board's HTTP API. Board

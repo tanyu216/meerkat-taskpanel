@@ -5,18 +5,18 @@ are local, and neither needs `--actor-kind` or a session identity. Run them with
 human output is for a person reading a terminal, not for a decision.
 
 ```bash
-taskctl loop console --json   # questions waiting on a human + delivered cards
-taskctl loop doctor --json    # the daily inspection: attention, stuck, looping, workers
+taskctl console --json   # questions waiting on a human + delivered cards
+taskctl doctor --json    # the daily inspection: attention, stuck, looping, workers
 ```
 
-## `loop console --json`
+## `taskctl console --json`
 
 The human-owned queue, already filtered to what is actually unanswered.
 
 ```json
 {
   "ok": true,
-  "supervisor": { "...": "the same verdict `loop status` prints" },
+  "supervisor": { "...": "the same verdict `taskctl loop` prints" },
   "questions": [
     {
       "ref": "PROJ-0042",
@@ -57,7 +57,7 @@ The human-owned queue, already filtered to what is actually unanswered.
 A question answered in the board UI is already settled. If a stale snapshot still lists it,
 `comment list` shows the human comment; do not ask again.
 
-## `loop doctor --json`
+## `taskctl doctor --json`
 
 One read-only inspection. Start with `attention` and `attention_reasons`; read the specific rows
 only for what the human asks about or what the reasons name.

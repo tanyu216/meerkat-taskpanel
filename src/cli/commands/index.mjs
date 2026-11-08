@@ -8,7 +8,7 @@
  * The groups are the card's vocabulary (§A1): `project`, `issue`, `comment`,
  * `relation`, `attachment`, `session`, `actors`, `labels`, `report`,
  * `export`, `token`, plus `sla` — the board's computed SLA read, which is also
- * the loop patrol's transport. `attachment` is T-20261014-212017-4's: the drawer's file
+ * the patrol pass's transport. `attachment` is T-20261014-212017-4's: the drawer's file
  * surface needed a writer, and the CLI is the board's second front door.
  * Note what is *not* here: `actors add`, `actors rm`, `actors rename`.
  * The dictionary has no management surface by design, so those are not "not
@@ -17,6 +17,7 @@
 
 import { GLOBAL_FLAGS } from "../argv.mjs";
 import { COMMANDS as attachmentCommands } from "./attachment.mjs";
+import { COMMANDS as boardCommands } from "./board.mjs";
 import { COMMANDS as commentCommands } from "./comment.mjs";
 import { COMMANDS as actorCommands } from "./dict.mjs";
 import { COMMANDS as eventCommands } from "./events.mjs";
@@ -30,7 +31,6 @@ import { COMMANDS as reportCommands } from "./report.mjs";
 import { COMMANDS as roleCommands } from "./role.mjs";
 import { COMMANDS as sessionCommands } from "./session.mjs";
 import { COMMANDS as slaCommands } from "./sla.mjs";
-import { COMMANDS as statusCommands } from "./status.mjs";
 import { COMMANDS as tokenCommands } from "./token.mjs";
 import { COMMANDS as worktreeCommands } from "./worktree.mjs";
 
@@ -62,11 +62,6 @@ export const groups = Object.freeze([
     commands: eventCommands,
   },
   {
-    name: "loop",
-    summary: "The external loop: passes, daemons and status.",
-    commands: loopCommands,
-  },
-  {
     name: "role",
     summary: "The local role catalog the supervisor discovers (never board state).",
     commands: roleCommands,
@@ -81,13 +76,19 @@ export const groups = Object.freeze([
 /**
  * Commands that are one word, not `group command`.
  *
- * `status` belongs here because it reads the *client's* view of the board (the
+ * `board` belongs here because it reads the *client's* view of the board (the
  * runtime pointer) without talking to it — there is no group it would honestly
  * sit inside, and inventing one (`taskd`) would name the server process for a
- * read the server never sees. The parser matches this list before `groups`, so a
- * name may not appear in both; the registry test pins that.
+ * read the server never sees.
+ *
+ * The loop's ten verbs are here for the same reason after the flattening: they
+ * were a `loop` group with no second caller, sat beside the board read, and each
+ * is a subject of its own (`patrol`, `workflow`, `poll`, …). `loop` itself stays
+ * a command — it is the one word covering supervisor, pool, subscriber and
+ * units — and reads the loop's runtime verdict. The parser matches this list
+ * before `groups`, so a name may not appear in both; the registry test pins that.
  */
-export const topLevel = Object.freeze([...statusCommands]);
+export const topLevel = Object.freeze([...boardCommands, ...loopCommands]);
 
 export const registry = Object.freeze({ globals: GLOBAL_FLAGS, groups, topLevel });
 
@@ -104,7 +105,7 @@ export function allCommands() {
   ];
 }
 
-/** `taskctl status` / `taskctl issue get` — the spelling shared by both shapes. */
+/** `taskctl board` / `taskctl issue get` — the spelling shared by both shapes. */
 export function commandPath(group, command) {
   return group === null ? command.name : `${group.name} ${command.name}`;
 }

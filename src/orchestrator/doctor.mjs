@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `taskctl loop doctor` — one read-only daily-inspection report.
+ * `taskctl doctor` — one read-only daily-inspection report.
  *
  * The loop's other read verbs each answer one question (`status`: is the process
  * up; `console`: what is waiting on a human). A human keeping a team alive has to
@@ -108,7 +108,7 @@ const LEDGER_FAILURE_STATUSES = new Set(["failed", "interrupted", "stale"]);
 /** The peer-marker rule: a marker older than this many cadences means "stalled". */
 const PEER_LIVENESS_K = 3;
 
-export const USAGE = `Usage: taskctl loop doctor [--state <path>] [--log <path>] [--config <path>]
+export const USAGE = `Usage: taskctl doctor [--state <path>] [--log <path>] [--config <path>]
 
 One read-only inspection: the supervisor verdict, the resolved scan set, the
 patrol's last-successful-run marker, the tail of the loop log, the dispatch queue
@@ -1364,7 +1364,7 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     supervisor,
     agents,
     // Where each discovered role is installed and where it will run; the same
-    // report `loop status` prints, carried here so a daily inspection can see a
+    // report `taskctl loop` prints, carried here so a daily inspection can see a
     // role stranded on a kind whose CLI cannot start.
     roles: Array.isArray(supervisor?.roles) ? supervisor.roles : [],
     patrol,
@@ -1399,7 +1399,7 @@ function minutes(ms) {
 }
 
 function humanReport(report) {
-  const lines = [`loop doctor  ${report.generated_at}`];
+  const lines = [`taskctl doctor  ${report.generated_at}`];
 
   const pool = report.supervisor?.pool;
   for (const line of report.roles ?? []) lines.push(`  ${line}`);

@@ -7,7 +7,8 @@
  * loads it, so the installer prints the exact load command instead of running
  * `launchctl` / `systemctl` / `crontab`.
  *
- * The unit names `taskctl loop …` — the loop ships with the toolkit. What used to be
+ * The units name `taskctl run`, `taskctl pool` and `taskctl subscribe` — the loop ships
+ * with the toolkit. What used to be
  * an agent-local copy of the execution body is gone (and a re-run removes one left by
  * an older install).
  *
@@ -107,7 +108,8 @@ describe("install.sh: scheduling units", () => {
     const pingPlist = readFileSync(paths.pingPlist, "utf8");
     assert.match(pingPlist, /<key>StartInterval<\/key>\s*<integer>60<\/integer>/);
     assert.ok(pingPlist.includes(cliPath), "the ping unit names the CLI entry");
-    assert.ok(pingPlist.includes("<string>loop</string>"), "the ping unit runs a loop verb");
+    assert.ok(!pingPlist.includes("<string>loop</string>"), "the flat CLI has no loop prefix");
+    assert.ok(pingPlist.includes("<string>run</string>"), "the ping unit runs the top-level run command");
     assert.ok(pingPlist.includes("--ping-once"), "the ping unit runs the liveness pass only");
     assert.ok(!pingPlist.includes("--once"), "the retired --once is gone");
     assert.ok(pingPlist.includes(logPath), "the fixed log path must be rendered in");
@@ -119,7 +121,7 @@ describe("install.sh: scheduling units", () => {
 
     // The event daemon: a long-lived unit, not an interval one.
     const subscribePlist = readFileSync(paths.subscribePlist, "utf8");
-    assert.ok(subscribePlist.includes("<string>subscribe</string>"), "the subscriber runs the daemon verb");
+    assert.ok(subscribePlist.includes("<string>subscribe</string>"), "the subscriber runs the top-level subscribe command");
     assert.match(subscribePlist, /<key>KeepAlive<\/key>\s*<true\/>/);
     // launchd never gives up; 10 s is its floor, not a policy this project chose.
     assert.match(subscribePlist, /<key>ThrottleInterval<\/key>\s*<integer>10<\/integer>/);
@@ -127,7 +129,7 @@ describe("install.sh: scheduling units", () => {
 
     // The resident session pool: another daemon, and the loop's dispatcher.
     const sessionPlist = readFileSync(paths.sessionPlist, "utf8");
-    assert.ok(sessionPlist.includes("<string>session</string>"), "the pool runs the session verb");
+    assert.ok(sessionPlist.includes("<string>pool</string>"), "the pool runs the top-level pool command");
     assert.ok(sessionPlist.includes(cliPath), "the pool names the CLI entry");
     assert.match(sessionPlist, /<key>KeepAlive<\/key>\s*<true\/>/);
     assert.match(sessionPlist, /<key>ThrottleInterval<\/key>\s*<integer>10<\/integer>/);
@@ -138,10 +140,10 @@ describe("install.sh: scheduling units", () => {
     assert.match(readFileSync(paths.pingTimer, "utf8"), /OnUnitActiveSec=60s/);
     assert.match(readFileSync(paths.continueTimer, "utf8"), /OnUnitActiveSec=600s/);
     assert.match(readFileSync(paths.pingService, "utf8"), /Type=oneshot/);
-    assert.match(readFileSync(paths.pingService, "utf8"), /loop run --ping-once/);
-    assert.match(readFileSync(paths.continueService, "utf8"), /loop run --continue-once/);
+    assert.match(readFileSync(paths.pingService, "utf8"), / run --ping-once/);
+    assert.match(readFileSync(paths.continueService, "utf8"), / run --continue-once/);
     const subscribeService = readFileSync(paths.subscribeService, "utf8");
-    assert.match(subscribeService, /loop subscribe/);
+    assert.match(subscribeService, / subscribe /);
     assert.match(subscribeService, /Type=simple/);
     assert.match(subscribeService, /Restart=always/);
     // Restart in 2 s and never give up: an explicit zero interval writes the
@@ -150,7 +152,7 @@ describe("install.sh: scheduling units", () => {
     assert.match(subscribeService, /StartLimitIntervalSec=0/);
     assert.match(subscribeService, /RestartPreventExitStatus=78/);
     const sessionService = readFileSync(paths.sessionService, "utf8");
-    assert.match(sessionService, /loop session/);
+    assert.match(sessionService, / pool /);
     assert.match(sessionService, /Type=simple/);
     assert.match(sessionService, /Restart=always/);
     assert.match(sessionService, /RestartSec=2/);
@@ -160,8 +162,8 @@ describe("install.sh: scheduling units", () => {
 
     // cron — a 1-minute ping line and a 10-minute continue line.
     const cron = readFileSync(paths.cron, "utf8");
-    assert.match(cron, /^\* \* \* \* \* .*loop run --ping-once/m);
-    assert.match(cron, /^\*\/10 \* \* \* \* .*loop run --continue-once/m);
+    assert.match(cron, /^\* \* \* \* \* .* run --ping-once/m);
+    assert.match(cron, /^\*\/10 \* \* \* \* .* run --continue-once/m);
     assert.ok(cron.includes(cliPath));
     assert.ok(!cron.includes("--patrol-only"));
     assert.doesNotMatch(cron, /supervisor\.mjs/, "the retired executor must not be named");
@@ -317,7 +319,7 @@ describe("install.sh: scheduling units", () => {
 // own AUTOMATIONS.md, not a number restated here); two supervisors on one board would only
 // race each other for the same cards.
 //
-// The skill carries decisions, not an execution body: `taskctl loop …` is the body.
+// The skill carries decisions, not an execution body: `taskctl run` is the body.
 // ---------------------------------------------------------------------------
 
 /** Agent kinds the installer can place a skill in, the dot-directory, and the CLI name. */

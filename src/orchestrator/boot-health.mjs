@@ -35,8 +35,8 @@
  * {@link blockingSleep} because it runs inside a dying process whose own timebox
  * must still cover the delay.
  *
- * The record is shared by the loop's long-lived entries (`loop session`,
- * `loop subscribe`, the daemon clocks): there is one supervisor per machine, and
+ * The record is shared by the loop's long-lived entries (`taskctl pool`,
+ * `taskctl subscribe`, the daemon clocks): there is one supervisor per machine, and
  * the record describes the most recent long-lived start. The one-shot
  * ping/continue entries exit on every tick and do not arm it.
  *

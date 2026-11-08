@@ -105,7 +105,7 @@ export function resolveLoopState(input = {}) {
 
 /**
  * The default state directory, for callers that only need the path (the
- * installer's status probes, the `loop status` fallback).
+ * installer's status probes, the `loop` fallback).
  *
  * @param {{env?: NodeJS.ProcessEnv, home?: string|null, actorKind?: string|null, exists?: (path: string) => boolean}} [input]
  * @returns {{dir: string, source: "explicit"|"env"|"config"|"default"|"legacy", legacyDir: string|null}}

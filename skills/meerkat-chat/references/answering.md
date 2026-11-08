@@ -27,7 +27,7 @@ taskctl comment list <ref> --limit 20 --json
   the parked turn is interrupted and the next claim is a **fresh worker** that re-reads the
   comments (ADR 0017).
 
-`loop console --json` already applies these predicates; use `comment list` to read the body and
+`taskctl console --json` already applies these predicates; use `comment list` to read the body and
 to confirm an answer that arrived in the board UI.
 
 ## Read the whole round first
@@ -84,7 +84,7 @@ taskctl --as-human issue move <ref> todo
 ```
 
 Show both commands before running them. If the director already answered, the question is
-settled and `loop console` no longer lists it — do not answer a second time.
+settled and `taskctl console` no longer lists it — do not answer a second time.
 
 ### The answer arrived in the board UI
 

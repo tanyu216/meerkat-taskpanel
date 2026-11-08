@@ -57,12 +57,12 @@ When any of these appears, push an IM message:
 
 | Class | Source | Push content |
 |---|---|---|
-| `awaiting` | `loop console` `questions[]` with `kind: awaiting` | ref, title, E1–E5 reason, question |
+| `awaiting` | `taskctl console` `questions[]` with `kind: awaiting` | ref, title, E1–E5 reason, question |
 | Agent question | `questions[]` with `kind: agent-question` | ref, title, question |
 | Blocked decision | `questions[]` with `kind: blocked-decision` | ref, title, question; answering does not resume the card — release it `blocked → todo` |
 | Pending acceptance | `pending_acceptance[]` | ref, title, accept/reject hint |
 
-`loop console --json` is the projection. `pending_acceptance[]` is **mode-agnostic**, so the
+`taskctl console --json` is the projection. `pending_acceptance[]` is **mode-agnostic**, so the
 host MUST enrich `in_review` refs with `issue list --status in_review --json` and filter by
 `acceptance_mode`: only a `human` card awaits a person, while an `auto` card is reviewed and
 closed by the loop. If enrichment fails, acceptance pushes fail closed.
@@ -103,11 +103,11 @@ Deterministic commands answer without a model:
 |---|---|
 | `/status <ref>` | `issue get` + `report list` + `comment list --limit 1` |
 | `/list [status]` | `issue list --limit 10` |
-| `/pending` | `loop console --json` |
+| `/pending` | `taskctl console --json` |
 | `/help` | local |
 
 Free text with no deterministic answer goes to a **resident IM session** (R6). The session is
-**board-wide / cross-project**: `loop console` is board-wide and refs are globally unique
+**board-wide / cross-project**: `taskctl console` is board-wide and refs are globally unique
 (project prefix). It does not bind to a project directory and does not edit files.
 
 ### R4 — Plugin host + `channel-kit`
@@ -149,7 +149,7 @@ adapter processes.
 
 ### R7 — Supervisor observability and lifecycle
 
-- The host writes a heartbeat and its plugin/session state; `loop status` / `loop console`
+- The host writes a heartbeat and its plugin/session state; `taskctl loop` / `taskctl console`
   report `im: live | stale | absent`, per-plugin `ready/restarts/lastError`, and session
   state.
 - `ping` logs `channel_stale` when the heartbeat is old; the OS unit’s `KeepAlive` restarts
@@ -235,7 +235,7 @@ webhook/remote/multi-tenant adapters. It is not implemented in this design recor
 
 ### Needs-human projection
 
-`taskctl loop console --json` (raw object, not `{ok,data}`) is the only projection covering
+`taskctl console --json` (raw object, not `{ok,data}`) is the only projection covering
 all three classes. Other reads (`issue get/list`, `report list`, `comment list`) use the
 normal `{ok,data}` envelope; two parsers are required.
 

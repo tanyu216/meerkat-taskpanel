@@ -19,8 +19,7 @@
   <array>
     <string>{{NODE}}</string>
     <string>{{CLI}}</string>
-    <string>loop</string>
-    <string>session</string>
+    <string>pool</string>
     <string>--actor-kind</string>
     <string>{{ACTOR_KIND}}</string>
     <string>--agent</string>

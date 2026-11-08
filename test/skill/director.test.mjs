@@ -234,7 +234,7 @@ describe("director skill: references", () => {
     for (const [name, body] of files) {
       assert.doesNotMatch(
         body,
-        /meerkat-chat|human console|TASKCTL_HUMAN|--as-human|loop doctor|loop console/i,
+        /meerkat-chat|human console|TASKCTL_HUMAN|--as-human|taskctl doctor|taskctl console/i,
         `${name}: the human console is not the director's`,
       );
       assert.doesNotMatch(

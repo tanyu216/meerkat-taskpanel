@@ -4,7 +4,7 @@ This is the **contract index**: every command and every declared flag. The prose
 each group is in the detail pages below; the index stays the frozen surface the CLI
 contract test reads.
 
-- [cli/core.md](cli/core.md) — configuration, board start, `status`, `project`, `session`, `token`, `sla`, `events`.
+- [cli/core.md](cli/core.md) — configuration, board start, `board`, `project`, `session`, `token`, `sla`, `events`.
 - [cli/issue.md](cli/issue.md) — cards, create, claim, deliver, the gate, awaiting/blocked, review.
 - [cli/files.md](cli/files.md) — comments, relations, attachments, reports, export, editing.
 - [cli/ops.md](cli/ops.md) — the loop, the workflow plan, `--json` and what each command returns.
@@ -18,7 +18,7 @@ contract test reads.
 | `--url <url>` | The board to talk to, as a **pin**: never probed, never autostarted. |
 | `--token <token>` | Access token. Priority: `--token` > `$TASKD_TOKEN` > `$TASKD_TOKEN_FILE` > the pointer's token file > none (loopback needs no token). Never echoed. |
 | `--if-version <n>` | Optimistic concurrency: refuse the write with `VERSION_CONFLICT` if the task moved on. |
-| `--actor-kind <name>` | The platform (`claude`, `codex`, `openclaw`, `pi`; automation uses `system`). **Required on every command that talks to the board** — `--help`, `--version`, the local read `status`, and every `project map` action need none. `human` is reserved and refused; use `--as-human`. |
+| `--actor-kind <name>` | The platform (`claude`, `codex`, `openclaw`, `pi`; automation uses `system`). **Required on every command that talks to the board** — `--help`, `--version`, the local read `board`, and every `project map` action need none. `human` is reserved and refused; use `--as-human`. |
 | `--as-human` | Write as the configured human (`$TASKCTL_HUMAN`). Use it when you are in a conversation with the human or the instruction explicitly came from them; never for the loop's or your own writes. Also satisfies the identity requirement. |
 | `--session-id <id>` | Agent session identifier. Requires `--actor-kind`. |
 | `--agent <name>` | The role/person recorded on writes (`jobs`, `linus`, `turing`, …). Defaults to `$TASKCTL_AGENT` / `$USER`; a team passes it per call. |
@@ -31,9 +31,9 @@ a missing skill, an unsupported Node) — a service manager must not restart it.
 
 ## Commands
 
-### `status` (no group)
+### `board` (no group)
 
-| `status [--url <url>] [--json]` | See [cli/core.md](cli/core.md). |
+| `board [--url <url>] [--json]` | See [cli/core.md](cli/core.md). |
 
 ### `project`
 
@@ -151,21 +151,23 @@ a missing skill, an unsupported Node) — a service manager must not restart it.
 | `events hub --stop` | See [cli/core.md](cli/core.md). |
 | `events follow [--after <rev>] [--idle <ms>] [--hold <ms>] [--event <name>[:<path>=<value>]]…` | See [cli/core.md](cli/core.md). |
 | `events tail [--after <rev>] [--idle <ms>]` | See [cli/core.md](cli/core.md). |
-### `loop`
+### Runtime commands (no group)
+
+The loop's verbs are top-level commands: `loop` is one of them, not their parent.
 
 | Command | Purpose |
 |---|---|
-| `loop patrol` | See [cli/ops.md](cli/ops.md). |
-| `loop workflow` | See [cli/ops.md](cli/ops.md). |
-| `loop poll` | See [cli/ops.md](cli/ops.md). |
-| `loop tick [--passes <list>]` | See [cli/ops.md](cli/ops.md). |
-| `loop console` | See [cli/ops.md](cli/ops.md). |
-| `loop doctor` | See [cli/ops.md](cli/ops.md). |
-| `loop status [--take-over] [--stop] [--json]` | See [cli/ops.md](cli/ops.md). |
-| `loop run [--ping-once] [--continue-once]` | See [cli/ops.md](cli/ops.md). |
-| `loop subscribe` | See [cli/ops.md](cli/ops.md). |
-| `loop session` | See [cli/ops.md](cli/ops.md). |
-<!-- shared-flags:loop:begin -->
+| `patrol` | See [cli/ops.md](cli/ops.md). |
+| `workflow` | See [cli/ops.md](cli/ops.md). |
+| `poll` | See [cli/ops.md](cli/ops.md). |
+| `tick [--passes <list>]` | See [cli/ops.md](cli/ops.md). |
+| `console` | See [cli/ops.md](cli/ops.md). |
+| `doctor` | See [cli/ops.md](cli/ops.md). |
+| `loop [--take-over] [--stop]` | See [cli/ops.md](cli/ops.md). |
+| `run [--ping-once] [--continue-once]` | See [cli/ops.md](cli/ops.md). |
+| `subscribe` | See [cli/ops.md](cli/ops.md). |
+| `pool` | See [cli/ops.md](cli/ops.md). |
+<!-- shared-flags:runtime:begin -->
 **Paths and state.** `--state-dir <dir>` places the loop's runtime state (default `<config root>/loop`) — `supervisor.state.json`,
 the queue, the ledger, `session.lock`, `continue.state.json`; `--state <file>` is the older
 explicit spelling of the registry file. `--roles-dir <dir>` names an explicit custom-team directory (a directory of role directories; it replaces discovery for this loop);
@@ -201,7 +203,7 @@ liveness markers. `--sse-idle-ms`, `--event-debounce-ms`, `--event-debounce-max-
 `--event-continue <yes|no>` and `--event-continue-min-ms` tune the subscriber.
 `--board-limit` and `--trail-limit` cap the board snapshot and comment-trail reads, and
 `--dry-run` plans every write-only verb without writing anything.
-<!-- shared-flags:loop:end -->
+<!-- shared-flags:runtime:end -->
 
 ### `role`
 

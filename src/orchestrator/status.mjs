@@ -56,7 +56,7 @@ const SUPERVISOR = join(HERE, "supervisor.mjs");
 const SESSION_RECORD = "supervisor.session.json";
 const UNITS = Object.freeze(["session", "ping", "continue", "subscribe"]);
 
-const USAGE = `Usage: taskctl loop status [--json] [--agent <name>] [--actor-kind <kind>]
+const USAGE = `Usage: taskctl loop [--json] [--agent <name>] [--actor-kind <kind>]
          [--state <path>] [--log <path>] [--config <path>]
          [--take-over | --stop]
 

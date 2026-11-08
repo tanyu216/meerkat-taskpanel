@@ -340,8 +340,8 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
     const log = join(home, ".meerkat-taskpanel", "logs", "supervisor.log");
     const expected = [
       `PATH=${unitPath(NODE_DIR, { cliDir: bin, shimDir: join(home, ".claude", "bin"), scheduler: "cron" })}`,
-      `* * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log ${log} --state-dir ${loop} >/dev/null 2>&1`,
-      `*/10 * * * * ${NODE} ${ROOT}/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log ${log} --state-dir ${loop} >/dev/null 2>&1`,
+      `* * * * * ${NODE} ${ROOT}/src/cli/index.mjs run --ping-once --actor-kind claude --agent alice --log ${log} --state-dir ${loop} >/dev/null 2>&1`,
+      `*/10 * * * * ${NODE} ${ROOT}/src/cli/index.mjs run --continue-once --actor-kind claude --agent alice --log ${log} --state-dir ${loop} >/dev/null 2>&1`,
     ];
 
     const dry = runInstall(
@@ -356,7 +356,7 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
       .map((line) => line.trim())
       .filter((line) => line.startsWith("supervisor: would run:"))
       .map((line) => line.slice("supervisor: would run:".length).trim())
-      .filter((line) => line.startsWith("PATH=") || /^\*.*\* .*loop run/.test(line));
+      .filter((line) => line.startsWith("PATH=") || /^\*.*\* .* run /.test(line));
     assert.deepEqual(previewed, expected, `the preview must show the setting line and both jobs:\n${dry.stdout}`);
 
     // The real install writes the same three lines into the unit file.
@@ -367,7 +367,7 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
     const written = readFileSync(join(home, ".claude", "scheduling", "cron", "meerkat-taskpanel.cron"), "utf8")
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.startsWith("PATH=") || /^\*.*\* .*loop run/.test(line));
+      .filter((line) => line.startsWith("PATH=") || /^\*.*\* .* run /.test(line));
     assert.deepEqual(written, expected);
   });
 });

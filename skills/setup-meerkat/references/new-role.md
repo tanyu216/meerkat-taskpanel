@@ -116,7 +116,7 @@ The role is installed in an agent kind's skills tree, which is the routing. Let 
 supervisor rebuild the catalog:
 
 ```bash
-taskctl loop status --actor-kind <kind>
+taskctl loop --actor-kind <kind>
 taskctl role list --json
 ```
 

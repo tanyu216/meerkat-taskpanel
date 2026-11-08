@@ -1,11 +1,16 @@
 /**
- * `taskctl loop …` — the external loop, now part of the toolkit.
+ * The loop's runtime commands — top-level since the flattening.
  *
- * The commands are `local: true`: the loop resolves its own board/token through
- * the moved entries, and `loop status` must work with the board down. The raw
+ * Each command is `local: true`: the loop resolves its own board/token through
+ * the moved entries, and `taskctl loop` must work with the board down. The raw
  * command line is forwarded to the moved entries (see
  * `src/orchestrator/dispatch.mjs`), so the flag declarations here are the one
  * source the CLI validates and the help prints.
+ *
+ * The CLI name and the dispatch verb are separate on purpose: dispatch still
+ * keys on the loop's original verbs (`status`, `session`) until the in-process
+ * operations layer replaces the bridge, while the user-facing names are
+ * `loop` and `pool`.
  */
 
 import { runLoopVerb } from "../../orchestrator/dispatch.mjs";
@@ -80,38 +85,45 @@ const LIMITS = [
 
 const LOOP_FLAGS = [...PATHS, ...POLICY, ...LIMITS];
 
-/** One verb; the move keeps the old entries' argv shape. */
-function verb(name, summary, extra = []) {
+/**
+ * One command; the move keeps the old entries' argv shape.
+ *
+ * @param {string} name the top-level CLI name
+ * @param {string} loopVerb the dispatch key (the loop's original verb)
+ * @param {string} summary help text
+ * @param {object[]} [extra] flags only this command declares
+ */
+function verb(name, loopVerb, summary, extra = []) {
   return {
     name,
     summary,
-    usage: `loop ${name} [options]`,
+    usage: `${name} [options]`,
     positionals: [],
     flags: [...LOOP_FLAGS, ...extra],
     local: true,
     async run(ctx) {
-      return runLoopVerb(ctx, name);
+      return runLoopVerb(ctx, loopVerb, name);
     },
   };
 }
 
 export const COMMANDS = [
-  verb("patrol", "One notify-only SLA/heartbeat pass."),
-  verb("workflow", "Apply the board's workflow plan."),
-  verb("poll", "Scan, admit, claim and enqueue."),
-  verb("tick", "Run patrol → workflow → poll in one command.", [
+  verb("patrol", "patrol", "One notify-only SLA/heartbeat pass."),
+  verb("workflow", "workflow", "Apply the board's workflow plan."),
+  verb("poll", "poll", "Scan, admit, claim and enqueue."),
+  verb("tick", "tick", "Run patrol → workflow → poll in one command.", [
     str("passes", "passes", "<list>", "Ordered pass list (default: patrol,workflow,poll)."),
   ]),
-  verb("console", "One read-only question/frontier cycle."),
-  verb("doctor", "One read-only daily-inspection report."),
-  verb("status", "Report the loop's runtime verdict; take over or stop the pool.", [
+  verb("console", "console", "One read-only question/frontier cycle."),
+  verb("doctor", "doctor", "One read-only daily-inspection report."),
+  verb("loop", "status", "Report the loop's runtime verdict; take over or stop the pool.", [
     bool("take-over", "takeOver", "Start the pool in external-control mode."),
     bool("stop", "stop", "Stop the pool this session started."),
   ]),
-  verb("run", "The two clocks (daemon); one-shot with --ping-once/--continue-once.", [
+  verb("run", "run", "The two clocks (daemon); one-shot with --ping-once/--continue-once.", [
     bool("ping-once", "pingOnce", "Run one ping pass and exit."),
     bool("continue-once", "continueOnce", "Run one continue pass and exit."),
   ]),
-  verb("subscribe", "The event subscriber daemon (it dispatches continues)."),
-  verb("session", "The resident session pool daemon."),
+  verb("subscribe", "subscribe", "The event subscriber daemon (it dispatches continues)."),
+  verb("pool", "session", "The resident session pool daemon."),
 ];

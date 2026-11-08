@@ -1,6 +1,6 @@
 # taskctl — configuration, global context and operational reads
 
-> The prose behind the command index in `../cli.md`: configuration, board start, `status`,
+> The prose behind the command index in `../cli.md`: configuration, board start, `board`,
 > `project`, `session`, `token`, `sla` and `events`. The frozen flag table is `../cli.md`.
 
 ## Configuration (`.env`)
@@ -39,9 +39,9 @@ running, `taskctl` starts one (detached, logging to `<dataDir>/logs/taskd.log`) 
 `/health`; `TASKD_NO_AUTOSTART=1` forbids that.
 
 
-### `status` (no group)
+### `board` (no group)
 
-`taskctl status [--url <url>] [--json]` — where this `taskctl` believes the board is, and whether
+`taskctl board [--url <url>] [--json]` — where this `taskctl` believes the board is, and whether
 it answers. A **local read**: it reads the runtime pointer and probes `/health`; it never starts a
 board, never resolves a token, and needs no `--actor-kind`. `--url` is a pin — the pointer is not
 consulted behind it. Output: `{runtime: {pointer, data_dir, pid, url, running, note}, version,

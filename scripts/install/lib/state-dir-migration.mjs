@@ -8,8 +8,8 @@
  *     tick or queue lock refuses the move — a running process writes by path and
  *     would recreate the old directory after the rename;
  *   * stale pid/lock artifacts are **not** copied (`supervisor.session.json`,
- *     `subscribe.state.json`, `*.lock`, `continue.state.json`): `loop status
- *     --stop` signals the pid it reads, and a recycled pid must not be signalled;
+ *     `subscribe.state.json`, `*.lock`, `continue.state.json`): `loop --stop` signals
+ *     the pid it reads, and a recycled pid must not be signalled;
  *   * the source directory is renamed to `<legacy>.migrated-<timestamp>`, never
  *     deleted, so an operator can roll back;
  *   * a partial copy is staged in `<to>.tmp-<pid>` and renamed only after the

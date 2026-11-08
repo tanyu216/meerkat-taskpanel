@@ -1,9 +1,9 @@
 /**
  * One advisory interprocess lock for the loop's state files.
  *
- * The supervisor runs as more than one process: the tick (`taskctl loop run
- * --continue-once`) enqueues handoffs while the resident pool (`taskctl loop
- * session`) claims and requeues them, and both write `cards.queue.json`. The
+ * The supervisor runs as more than one process: the tick (`taskctl run
+ * --continue-once`) enqueues handoffs while the resident pool (`taskctl
+ * pool`) claims and requeues them, and both write `cards.queue.json`. The
  * file's writes are atomic (temp + rename), but a read-modify-write is not: two
  * writers can each read the old list and the last rename wins, deleting the
  * other's row. This module is the smallest thing that closes that window

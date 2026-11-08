@@ -452,7 +452,7 @@ describe("install.sh: enable — launchd", () => {
     const sessionLabel = "com.meerkat-taskpanel.alice.claude.session";
     writeFileSync(
       manager.argsFile(sessionLabel),
-      ["/usr/bin/node", "/x/cli.mjs", "loop", "session", "--actor-kind", "claude", "--agent", "Worker"].join("\n") + "\n",
+      ["/usr/bin/node", "/x/cli.mjs", "pool", "--actor-kind", "claude", "--agent", "Worker"].join("\n") + "\n",
       "utf8",
     );
 
@@ -516,7 +516,7 @@ describe("install.sh: enable — launchd", () => {
       installEnv(home, manager, { MEERKAT_TASKPANEL_STATE_DIR: stateDir }),
     );
     assert.equal(run.status, 0, run.stderr);
-    // The units carry `--state-dir`; a manual `taskctl loop status` reads the
+    // The units carry `--state-dir`; a manual `taskctl loop` reads the
     // config, and the two must name the same directory.
     const config = readFileSync(join(kindConfigDirFor(home), ".env.claude"), "utf8");
     assert.ok(config.includes(`MEERKAT_TASKPANEL_STATE_DIR=${stateDir}`), config);
@@ -825,8 +825,8 @@ describe("install.sh: enable — cron", () => {
     // PATH line sits *inside* the block, so `disable` takes it away with the block.
     const blockLines = table.split("# >>> meerkat-taskpanel (~/.claude) >>>\n")[1].split("\n");
     assert.match(blockLines[0], /^PATH=\S+$/);
-    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --ping-once --actor-kind claude --agent alice --log .* >\/dev\/null 2>&1$/);
-    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --continue-once --actor-kind claude --agent alice /);
+    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs run --ping-once --actor-kind claude --agent alice --log .* >\/dev\/null 2>&1$/);
+    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs run --continue-once --actor-kind claude --agent alice /);
     assert.equal(blockLines[3], "# <<< meerkat-taskpanel (~/.claude) <<<");
     assert.match(table, /^# <<< meerkat-taskpanel \(~\/\.claude\) <<<$/m);
 
@@ -1267,7 +1267,7 @@ describe("install.sh: reload after a take-down race", () => {
     // A loaded unit whose definition changed → the drift path boots it out first.
     writeFileSync(
       manager.argsFile("com.meerkat-taskpanel.alice.claude.session"),
-      ["/usr/bin/node", "/x/cli.mjs", "loop", "session", "--agent", "Worker"].join("\n") + "\n",
+      ["/usr/bin/node", "/x/cli.mjs", "pool", "--agent", "Worker"].join("\n") + "\n",
       "utf8",
     );
 

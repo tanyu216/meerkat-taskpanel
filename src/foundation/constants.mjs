@@ -865,7 +865,7 @@ export const DEFAULT_BOARD_LIMIT = 500;
 export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
 
 /** How long an unassigned `todo` card waits for the director before it is the
- * route lane's, and before `loop doctor` reports it as unowned. One number, so
+ * route lane's, and before `taskctl doctor` reports it as unowned. One number, so
  * the lane and the inspection agree on the window. */
 export const ROUTE_UNASSIGNED_MS = 30 * 60 * 1000;
 

@@ -1,4 +1,4 @@
-# 0021 — The loop state lives at the config root, not the agent home
+# 0022 — The loop state lives at the config root, not the agent home
 
 - **Status:** Proposed
 - **Context:** The supervisor's runtime state (queue, `sessions.state.json`, locks,

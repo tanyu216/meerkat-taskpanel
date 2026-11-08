@@ -1,42 +1,44 @@
 # taskctl — the loop, the workflow plan and the JSON envelope
 
-> The prose behind the command index in `../cli.md`: the loop verbs, the board's workflow
-> plan, `--json` and what each command returns. The frozen flag table is `../cli.md`.
+> The prose behind the command index in `../cli.md`: the runtime commands, the board's
+> workflow plan, `--json` and what each command returns. The frozen flag table is
+> `../cli.md`.
 
-### `loop`
+### Runtime commands (no group)
 
 The external loop: the process that makes the board move on its own. It patrols SLA and
 heartbeats, applies the board's workflow plan, claims ready cards and hands them to agent
 CLIs, and keeps a resident session pool. The implementation lives in the toolkit
 (`src/orchestrator/`), not in the agent skill — the skill carries decisions, `taskctl`
-carries the machinery.
+carries the machinery. The verbs are **top-level commands** now; `loop` is one of them, and
+it reports the loop's own runtime verdict.
 
-Every verb is **local** (`local: true`): it resolves its own board context from `--url` /
+Every command is **local** (`local: true`): it resolves its own board context from `--url` /
 `--env-file` / the runtime pointer, and its runtime state lives in the loop state directory.
 `--as-human`, `--session-id` and `--if-version` are refused with `CLI_USAGE` (exit 2) — the
 loop is never a human, never inherits a caller's session and never uses the CLI's
-optimistic-concurrency guard. `--actor-kind` is required on every verb that writes to the
-board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `session`); the reads
-(`console`, `doctor`, `status`) work without it, and `status` needs no board at all.
+optimistic-concurrency guard. `--actor-kind` is required on every command that writes to the
+board (`patrol`, `workflow`, `poll`, `tick`, `run`, `subscribe`, `pool`); the reads
+(`console`, `doctor`, `loop`) work without it, and `loop` needs no board at all.
 
 | Command | Purpose |
 |---|---|
-| `loop patrol` | One SLA / heartbeat pass. Notify-only unless `--patrol-llm` is set. |
-| `loop workflow` | Apply the board's `issue reconcile --workflow` plan. |
-| `loop poll` | Scan, admit, claim and enqueue ready cards; writes the queue. |
-| `loop tick [--passes <list>]` | Run `patrol,workflow,poll` (or `--passes` order) in one command — the cron/unit entry. |
-| `loop console` | One read-only question / frontier cycle. |
-| `loop doctor` | One read-only inspection: supervisor verdict, scan set, patrol marker, log tail, queue/ledger depth, stale heartbeats, stale claims nothing can re-dispatch (`undispatched_claims`; only a human release frees the card), `in_review` cards waiting on a human (age only; review aging is the workflow pass's), cards carrying a current-round acceptance marker while `in_review` (`blocked_acceptance` — the board refused the close), `done` cards whose lane branch is not in the project's branch (`unlanded`), and cards going round the same loop (`looping`: rework rounds, review reopens, dispatch retries, subagent failures, landing conflicts). Writes nothing; exits 0 whenever it produced a report — read `attention` from `--json`. |
-| `loop status [--take-over] [--stop] [--json]` | Report the loop's runtime verdict (`unresponsive`, `wedged`), pool tick age, boot ledger (`lastCrash`, failed-start streak, recent starts), agent platform (`--actor-kind`), role platforms and the scan set; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
-| `loop run [--ping-once] [--continue-once]` | The two clocks as a daemon; either `--*-once` runs one pass and exits. |
-| `loop subscribe` | The event subscriber daemon; it requests an early tick. |
-| `loop session` | The resident session pool daemon. |
+| `taskctl patrol` | One SLA / heartbeat pass. Notify-only unless `--patrol-llm` is set. |
+| `taskctl workflow` | Apply the board's `issue reconcile --workflow` plan. |
+| `taskctl poll` | Scan, admit, claim and enqueue ready cards; writes the queue. |
+| `taskctl tick [--passes <list>]` | Run `patrol,workflow,poll` (or `--passes` order) in one command — the cron/unit entry. |
+| `taskctl console` | One read-only question / frontier cycle. |
+| `taskctl doctor` | One read-only inspection: supervisor verdict, scan set, patrol marker, log tail, queue/ledger depth, stale heartbeats, stale claims nothing can re-dispatch (`undispatched_claims`; only a human release frees the card), `in_review` cards waiting on a human (age only; review aging is the workflow pass's), cards carrying a current-round acceptance marker while `in_review` (`blocked_acceptance` — the board refused the close), `done` cards whose lane branch is not in the project's branch (`unlanded`), and cards going round the same loop (`looping`: rework rounds, review reopens, dispatch retries, subagent failures, landing conflicts). Writes nothing; exits 0 whenever it produced a report — read `attention` from `--json`. |
+| `taskctl loop [--take-over] [--stop] [--json]` | Report the loop's runtime verdict (`unresponsive`, `wedged`), pool tick age, boot ledger (`lastCrash`, failed-start streak, recent starts), agent platform (`--actor-kind`), role platforms and the scan set; `--take-over` starts the pool in external-control mode, `--stop` stops the pool this session started. |
+| `taskctl run [--ping-once] [--continue-once]` | The two clocks as a daemon; either `--*-once` runs one pass and exits. |
+| `taskctl subscribe` | The event subscriber daemon; it requests an early tick. |
+| `taskctl pool` | The resident session pool daemon. |
 
-`loop tick` stops at the first failing pass and returns its exit code. `loop run` refuses
-`--ping-once` together with `--continue-once`. `loop status`, `loop console` and `loop doctor` are the
-verbs a human runs while the daemons are up. Every verb writes its **own** output: `loop status --json` is the
+`taskctl tick` stops at the first failing pass and returns its exit code. `taskctl run` refuses
+`--ping-once` together with `--continue-once`. `taskctl loop`, `taskctl console` and `taskctl doctor` are the
+commands a human runs while the daemons are up. Every runtime command writes its **own** output: `taskctl loop --json` is the
 loop's JSON, not the `{ok:true,data}` envelope, and none of them adds `token_source`.
-`loop status --json` carries `platform` (`claude|codex|pi`) and `agents` (the resolved scan
+`taskctl loop --json` carries `platform` (`claude|codex|pi`) and `agents` (the resolved scan
 set); the human output prints the same two facts as `platform:` and `scan set:` lines. It
 also carries `pool.tickAgeMs` (the in-flight tick's age, `null` when idle) and `health` — the
 `supervisor.health.json` projection `{startedAt, pid, version, lastCrash, starts, bootFailures}`,
@@ -45,9 +47,10 @@ new flags.
 
 
 The retired single-purpose flags are gone: `--once`, `--poll-interval`, `--ping-only`,
-`--continue-only`, `--patrol-only`, `--subscribe`, `--session` are now the verbs (`loop poll`,
-`loop run --ping-once`, `loop subscribe`, `loop session`). `--state` is still accepted;
-`--state-dir` is the documented spelling; its default is `<config root>/loop` (`MEERKAT_TASKPANEL_STATE_DIR` names another).
+`--continue-only`, `--patrol-only`, `--subscribe`, `--session` are now the verbs (`taskctl poll`,
+`taskctl run --ping-once`, `taskctl subscribe`, `taskctl pool`). `--state` is still accepted;
+`--state-dir` is the documented spelling; its default is `<config root>/loop`
+(`MEERKAT_TASKPANEL_STATE_DIR` names another).
 
 ## reconcile --workflow — the board's workflow plan
 
@@ -147,7 +150,7 @@ Everything is local (loopback only); data lives in `<dataDir>/board.sqlite` (def
 `data` is one object; these are its keys. **Every board-backed command also carries
 `token_source`** (`flag` · `env` · `file` · `none`, never the value). The local commands —
 `status`, `project map …`, and `project dir --require-dir` — do not, and the streamed ones
-(`events …`, a foreground `export watch`, every `loop` verb) write their own output rather than
+(`events …`, a foreground `export watch`, every runtime command) write their own output rather than
 this envelope.
 
 | Command | `data` keys |
@@ -193,7 +196,7 @@ this envelope.
 | `sla list` / `sla get` | `generated_at`, `board_truncated`, `trails_truncated`, `config`, `alerts[]`, `warnings[]` |
 | `events hub --stop` | `stopped`, `pid`, `reason` (`no-pointer` · `not-running` · `owner-mismatch` is an error · `stopped`) |
 | `events tail` / `events follow` / `export watch` (foreground) | NDJSON lines, not this envelope |
-| every `loop` verb | its own streamed output, not this envelope |
+| every runtime command | its own streamed output, not this envelope |
 
 The card object itself — every key of `data.task`, its nested actor refs and the relation
 between the wire and the markdown card — is [`schema/wire.md`](../schema/wire.md#reading-a-card-as-json).

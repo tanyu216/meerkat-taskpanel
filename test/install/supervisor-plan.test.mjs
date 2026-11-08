@@ -353,7 +353,7 @@ describe("supervisor: the discovered scan set and the machine-level view", () =>
     mkdirSync(unitDir, { recursive: true });
     writeFileSync(
       join(unitDir, "meerkat-taskpanel-session.service"),
-      "[Service]\nExecStart=/usr/bin/node /repo/src/cli/index.mjs loop session --actor-kind codex\n",
+      "[Service]\nExecStart=/usr/bin/node /repo/src/cli/index.mjs pool --actor-kind codex\n",
     );
     const run = (command, args) => {
       const enabled = command === "systemctl" && args[0] === "--user" && args[1] === "is-enabled";
@@ -430,8 +430,8 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
     const built = cronContentLines(paths);
     assert.equal(built.length, 3);
     assert.match(built[0], /^PATH=\S+$/);
-    assert.match(built[1], /^\* \* \* \* \* \/home\/op\/\.claude\/bin\/taskctl loop run --ping-once --actor-kind claude --agent alice /);
-    assert.match(built[2], /^\*\/10 \* \* \* \* .* loop run --continue-once /);
+    assert.match(built[1], /^\* \* \* \* \* \/home\/op\/\.claude\/bin\/taskctl run --ping-once --actor-kind claude --agent alice /);
+    assert.match(built[2], /^\*\/10 \* \* \* \* .* run --continue-once /);
     assert.match(built[1], />\/dev\/null 2>&1$/);
 
     // Exported by `install.sh` before it calls this module: the preview then carries the
@@ -451,8 +451,8 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
     exported.cronFile = join(makeTempDir(), "meerkat-taskpanel.cron");
     assert.deepEqual(cronContentLines(exported), [
       "PATH=/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
-      "* * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --ping-once --actor-kind claude --agent alice --log /home/op/.meerkat-taskpanel/logs/supervisor.log --state-dir /home/op/.meerkat-taskpanel/loop >/dev/null 2>&1",
-      "*/10 * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs loop run --continue-once --actor-kind claude --agent alice --log /home/op/.meerkat-taskpanel/logs/supervisor.log --state-dir /home/op/.meerkat-taskpanel/loop >/dev/null 2>&1",
+      "* * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs run --ping-once --actor-kind claude --agent alice --log /home/op/.meerkat-taskpanel/logs/supervisor.log --state-dir /home/op/.meerkat-taskpanel/loop >/dev/null 2>&1",
+      "*/10 * * * * /opt/node/bin/node /opt/repo/src/cli/index.mjs run --continue-once --actor-kind claude --agent alice --log /home/op/.meerkat-taskpanel/logs/supervisor.log --state-dir /home/op/.meerkat-taskpanel/loop >/dev/null 2>&1",
     ]);
 
     // Once the installer has written the unit, that file is the source: the enable path
