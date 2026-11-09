@@ -2196,7 +2196,7 @@ describe("session pool", () => {
 
   /**
    * The same pool, but through the entry the service manager runs:
-   * `taskctl loop session`. The CLI dispatcher installs the one crash boundary
+   * `taskctl pool`. The CLI dispatcher installs the one crash boundary
    * for every command, so its own stream-error rule must know this process is
    * long-lived — `supervisor.mjs` alone cannot say so.
    */
@@ -2210,8 +2210,7 @@ describe("session pool", () => {
     }
     const args = [
       join(import.meta.dirname, "../../src/cli/index.mjs"),
-      "loop",
-      "session",
+      "pool",
       "--actor-kind", "claude",
       "--agent", "alice",
       "--home", home,
