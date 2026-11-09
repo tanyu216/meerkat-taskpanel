@@ -50,7 +50,7 @@ describe("board session writer", () => {
     assert.equal(result.ok, true);
     assert.equal(calls.length, 1);
     const { opts, agent, args, options } = calls[0];
-    assert.equal(agent, "Orchestrator");
+    assert.equal(agent, "Board");
     assert.equal(options.actorKind, "system");
     assert.equal(opts.cliTimeoutMs, 5000, "a board write is bounded even when the loop's CLI is not");
     assert.deepEqual(args.slice(0, 8), [

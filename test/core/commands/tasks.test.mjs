@@ -919,7 +919,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
         JSON.stringify([{ text: "child done", status: "met", ref: "PROJ-0098" }]),
         JSON.stringify([{ kind: "path", path: "x" }]),
         "system",
-        ensureActor(db, "system", "system"),
+        ensureActor(db, "Board", "system"),
         TS,
       );
 
@@ -2152,7 +2152,7 @@ describe("commands/tasks — acceptance authority (the card's mode)", () => {
 
       const bySystem = delivered(commands, "off");
       assert.equal(
-        commands.moveStatus({ id: bySystem.id, to: "done", actor: { kind: "system", id: "system" } }).status,
+        commands.moveStatus({ id: bySystem.id, to: "done", actor: { kind: "system", id: "Board" } }).status,
         "done",
       );
     });
@@ -2855,6 +2855,38 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
     });
   });
 
+  // TP-0125 — the direct edge exists so the exit does not re-enter the work
+  // cycle on its way to the queue.
+  it("walks in_progress → backlog directly, releasing the lock in the same write", async () => {
+    await board(async ({ db, commands }) => {
+      const task = await claimed(commands);
+      const backlog = commands.moveStatus({ id: task.id, to: "backlog", actor: HUMAN });
+      assert.equal(backlog.status, "backlog");
+      assert.equal(backlog.claimedBy, null);
+      assert.equal(backlog.claimedAt, null);
+      assert.equal(backlog.heartbeatAt, null);
+      assert.equal(
+        db.prepare("SELECT claimed_by FROM tasks WHERE id = ?").get(task.id).claimed_by,
+        null,
+      );
+    });
+  });
+
+  it("cancels a delivered card in one move, without bumping its round (TP-0125)", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      const delivered = commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
+      assert.equal(delivered.task.status, "in_review");
+      assert.equal(actorName(db, delivered.task.claimedBy), "linus", "review keeps the same executor's claim");
+
+      const canceled = commands.moveStatus({ id: task.id, to: "canceled", actor: HUMAN });
+      assert.equal(canceled.status, "canceled");
+      assert.equal(canceled.claimedBy, null, "a finished card is nobody's");
+      assert.equal(canceled.deliveryRound, 1, "in_review → canceled is terminal, not a rework");
+    });
+  });
+
   it("releases the lock for the terminal pair too, so a finished card is nobody's", async () => {
     await board(async ({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });
@@ -2942,10 +2974,27 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
       assert.equal(actorName(db, unblocked.claimedBy), "linus");
     });
   });
+
+  it("leaves a blocked card for the queue with no reason, releasing the claim (TP-0127)", async () => {
+    await board(async ({ commands }) => {
+      const task = await claimed(commands);
+      const blocked = commands.moveStatus({ id: task.id, to: "blocked", actor: AGENT, blockedReason: "dependency" });
+
+      // The pre-check is the whitelist: `backlog` is a legal exit, and the move
+      // needs no `reason` (unlike a reopen) and no `blocked_reason`.
+      const released = commands.moveStatus({ id: task.id, to: "backlog", actor: AGENT });
+      assert.equal(released.status, "backlog");
+      assert.equal(released.claimedBy, null, "backlog can hold no claim");
+      assert.equal(released.blockedReason, null, "the class described the block, and the block ended");
+      assert.equal(released.blockedAt, blocked.blockedAt, "the stop's timestamp is history and stays");
+      assert.equal(released.deliveryRound, blocked.deliveryRound, "leaving blocked is not a new round");
+      assert.equal(released.version, blocked.version + 1, "one CAS write");
+    });
+  });
 });
 
 describe("commands/tasks — the acceptance mode and the two terminality gates", () => {
-  const SYSTEM = { kind: "system", id: "system" };
+  const SYSTEM = { kind: "system", id: "Board" };
 
   /** Put a card in `in_review` the legal way (claim, then deliver). */
   const deliverCard = (commands, task, actor = AGENT) => {
@@ -3769,7 +3818,7 @@ describe("commands/tasks — the acceptance mode and the two terminality gates",
 // ---------------------------------------------------------------------------
 
 describe("commands/tasks — review decision (0031)", () => {
-  const SYSTEM = { kind: "system", id: "board" };
+  const SYSTEM = { kind: "system", id: "Board" };
 
   /** Create, claim and deliver a card; returns the delivered in_review row. */
   function deliverOne(commands, projectId, title, actor = AGENT) {
@@ -4542,7 +4591,7 @@ describe("commands/tasks — acceptance snapshot (0032)", () => {
 });
 
 describe("commands/tasks — a claim must point at its evidence", () => {
-  const SYSTEM = { kind: "system", id: "system" };
+  const SYSTEM = { kind: "system", id: "Board" };
   const AGENT_ACTOR = { kind: "agent", id: "linus" };
   const REVIEWER = { kind: "agent", id: "jobs" };
 

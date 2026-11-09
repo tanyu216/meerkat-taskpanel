@@ -83,6 +83,11 @@ describe("director triage: the prompt", () => {
     assert.match(prompt, /taskctl relation add/);
     assert.match(prompt, /handoff_consumed_round=2/);
     assert.match(prompt, /handoff_declined_round=2/);
+    assert.match(prompt, /close-out ledger/, "the ledger is the close-out's input");
+    assert.match(prompt, /leftovers/, "the report leftovers join the ledger");
+    assert.match(prompt, /review observations/, "the round's review observations join the ledger");
+    assert.match(prompt, /--review-of P-1/, "the review card that carries them is named");
+    assert.match(prompt, /reuse, create, decline or escalate/, "every ledger item gets one disposition");
     assert.match(prompt, /must not be reopened or moved/);
     assert.doesNotMatch(prompt, /status is not `in_progress`/);
     assert.doesNotMatch(prompt, /release the card to the queue/);

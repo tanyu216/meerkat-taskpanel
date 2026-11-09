@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { allowedToolsFor, createClaudePool, sessionArgs } from "../../src/orchestrator/actor-kinds/claude.mjs";
+import { createClaudePool, sessionArgs } from "../../src/orchestrator/actor-kinds/claude.mjs";
 
 const FAKE = `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -101,8 +101,9 @@ describe("claude session args", () => {
     assert.ok(args.includes("--resume"));
     assert.equal(args[args.indexOf("--resume") + 1], "sid-1");
     assert.equal(args.includes("--bare"), false);
-    assert.ok(args.includes("--allowedTools"));
-    assert.match(args[args.indexOf("--allowedTools") + 1], /Edit/);
+    assert.equal(args[args.indexOf("--permission-mode") + 1], "bypassPermissions");
+    assert.equal(args.includes("--allowedTools"), false);
+    assert.equal(args.includes("--disallowedTools"), false, "a full lane passes no deny list");
   });
 
   it("appends the card system prompt when one is given, and leaves the argv alone otherwise", () => {
@@ -116,40 +117,44 @@ describe("claude session args", () => {
     );
   });
 
-  it("switches to bypassPermissions when all tools are authorized", () => {
-    const args = sessionArgs({ opts: { allowAllTools: true }, role: "worker" });
-    assert.equal(args[args.indexOf("--permission-mode") + 1], "bypassPermissions");
-    assert.equal(args.includes("--allowedTools"), false);
+  it("runs every lane with permissions bypassed by default", () => {
+    for (const role of ["director", "worker", "reviewer"]) {
+      const args = sessionArgs({ opts: {}, role });
+      assert.equal(
+        args[args.indexOf("--permission-mode") + 1],
+        "bypassPermissions",
+        `${role} runs unattended with the full tool set`,
+      );
+      assert.equal(args.includes("--allowedTools"), false, "no lane carries an allow list");
+    }
   });
 
-  it("keeps the reviewer read-only and the control session to the passes", () => {
-    assert.doesNotMatch(allowedToolsFor("reviewer"), /Edit|Write/);
-    assert.doesNotMatch(allowedToolsFor("director"), /Edit|Write/);
-    assert.match(allowedToolsFor("worker"), /Edit/);
+  it("denies only the reviewer's write tools", () => {
+    const reviewer = sessionArgs({ opts: {}, role: "reviewer" });
+    assert.equal(
+      reviewer[reviewer.indexOf("--disallowedTools") + 1],
+      "Edit,Write,NotebookEdit",
+    );
+    for (const role of ["worker", "director"]) {
+      assert.equal(
+        sessionArgs({ opts: {}, role }).includes("--disallowedTools"),
+        false,
+        `${role} keeps every tool`,
+      );
+    }
   });
 
-  it("permits the director lane the command its prompt actually names", () => {
-    // The decision/tick prompt names `node <cli> loop <pass>` and the same command
-    // for its board reads. An allowlist entry that matches neither form leaves
-    // the control turn unable to run a single pass (the 127/denied loop).
-    assert.match(allowedToolsFor("director"), /Bash\(node \*\)/);
-    assert.match(allowedToolsFor("director"), /Bash\(taskctl \*\)/);
-  });
-
-  it("lets the reviewer run the gate it is told to re-run", () => {
-    // The reviewer role requires re-running the project's gate. A lane without
-    // `npm`/`node` makes that rule unexecutable, which is how gate-checking
-    // silently decayed into reading the delivery report.
-    assert.match(allowedToolsFor("reviewer"), /Bash\(npm run \*\)/);
-    assert.match(allowedToolsFor("reviewer"), /Bash\(node \*\)/);
-    assert.match(allowedToolsFor("reviewer"), /Bash\(git \*\)/);
-  });
-
-  it("gives no lane the subagent tool", () => {
-    // A card session owns its whole card: worker and review sessions both run
-    // top-level and spawn nothing, so `Agent`/`Task` stay out of every allowlist.
-    for (const role of ["director", "reviewer", "worker"]) {
-      assert.doesNotMatch(allowedToolsFor(role), /\b(Agent|Task)\b/);
+  it("leaves the subagent tool available to every lane", () => {
+    // ADR 0020: a card session may spawn subagents. The reviewer's deny list
+    // removes only the write tools, so `Agent` survives there too.
+    const reviewer = sessionArgs({ opts: {}, role: "reviewer" });
+    assert.doesNotMatch(reviewer[reviewer.indexOf("--disallowedTools") + 1], /\bAgent\b/);
+    for (const role of ["director", "worker", "reviewer"]) {
+      assert.equal(
+        sessionArgs({ opts: {}, role }).includes("--allowedTools"),
+        false,
+        "no lane enumerates tools, so nothing can omit Agent",
+      );
     }
   });
 });
@@ -159,7 +164,7 @@ describe("claude resident session", () => {
     const f = fixture(t);
     const events = [];
     const pool = createClaudePool({
-      opts: { allowAllTools: true },
+      opts: {},
       bin: f.bin,
       log: f.log,
       onEvent: (event) => events.push(event),

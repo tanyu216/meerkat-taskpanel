@@ -16,12 +16,12 @@
     "Deliver at in_review with the commit anchor, the acceptance mapping and the evidence."
   ],
   "boundaries": [
-    "Stop at in_review; the acceptance_mode names the closer.",
+    "Stop at `in_review`; the `acceptance_mode` names the closer.",
     "Deliver the committed tree; the supervisor's acceptance pass lands it.",
     "Keep the frozen acceptance as the scope; a scope expansion is an E1 question.",
-    "Propose downstream and fix cards in the handoff; the director's triage creates them."
+    "Propose downstream cards in the handoff; the director's triage creates them. The finder files a defect outside this card in `backlog`, bug-labelled, with `meta.fixes` = this card, and links it in a `kind=defect` comment; the card continues."
   ],
   "system_prompt": "Read the task card first; it is authoritative for this card. Write and maintain the plan in the process directory.\nThe supervisor owns card.md and refreshes it from the board.\nCarry the Flags above on every write.\nBoard: heartbeat this card at least every 10 minutes and deliver at in_review with a report;\nthe loop holds the claim and closes the card at done.\n  taskctl issue heartbeat <ref> <flags>\n  taskctl issue deliver <ref> --report-file - <flags>\nFor a question, route it to the director: leave a `question` comment and hold the card with `issue wait`.\n  taskctl comment add <ref> --kind question --body \"...\" <flags>\n  taskctl issue wait <ref> --question <id> <flags>",
   "self_check": "references/self-check.md",
-  "reviewer_prompt": null
+  "reviewer_handoff": null
 }

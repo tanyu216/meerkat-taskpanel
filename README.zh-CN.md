@@ -67,7 +67,7 @@ Meerkat TaskPanel 是为 AI Agent 团队而生的任务看板。它关注的是 
 
 Meerkat TaskPanel 是三层薄结构，依赖方向始终向内。`src/cli` 与 `src/server` 是入口。`src/core` 持有领域模型、SQLite 存储与用例。`src/foundation` 是它们共享的 DTO 与辅助函数。
 
-**supervisor**（`taskctl loop …`）不属于这三层：它通过 `taskctl` 驱动看板并执行确定性 pass，而 **director** skill 负责协作决策；角色 skill（`jobs`、`linus`、`turing`、`reviewer`、`worker`）按平台发现。见 [supervisor 与 director](#supervisor-与-director)。想为自己的 agent kind 安装 skill/插件，见[安装（agent kind 细节）](#安装agent-kind-细节)。
+**supervisor**（`taskctl run`）不属于这三层：它通过 `taskctl` 驱动看板并执行确定性 pass，而 **director** skill 负责协作决策；角色 skill（`jobs`、`linus`、`turing`、`reviewer`、`worker`）按平台发现。见 [supervisor 与 director](#supervisor-与-director)。想为自己的 agent kind 安装 skill/插件，见[安装（agent kind 细节）](#安装agent-kind-细节)。
 
 系统记录见 [docs/architecture.md](docs/architecture.md)：边界、数据模型、契约、配置、安全与权威目录树。一次改动必须满足的规则见 [docs/tech-spec.md](docs/tech-spec.md)；哪份文档拥有哪个领域，见 [docs/README.md](docs/README.md)。
 
@@ -131,7 +131,7 @@ npx meerkat-taskpanel install --target claude,server,pi  # server + 这两个 ag
 npx meerkat-taskpanel install --no-server                # 只装 agent kind 的 skills
 ```
 
-安装器会把运行时放到 `~/.meerkat-taskpanel/`：`src/`、构建好的 `web/dist`、`bin/taskd`、`bin/taskctl`、一份 `.env`、每个已安装 kind 一份 `.env.<actor-kind>`，以及 `.data`。把 `~/.meerkat-taskpanel/bin` 加入 `PATH`，或使用全局 npm 安装。`npx` 需要包已发布。`--prefix <home>` 可改安装根，`--force` / `--dry-run` 与源码安装一致。
+安装器会把运行时放到 `~/.meerkat-taskpanel/`：`src/`、构建好的 `web/dist`、`bin/taskd`、`bin/taskctl`、一份 `.env`、每个已安装 kind 一份 `.env.<actor-kind>`、`.data`（看板数据库），以及 `loop/`（supervisor 的队列、会话记录、锁与 transcript）。把 `~/.meerkat-taskpanel/bin` 加入 `PATH`，或使用全局 npm 安装。`npx` 需要包已发布。`--prefix <home>` 可改安装根，`--force` / `--dry-run` 与源码安装一致。
 
 在终端里**不带任何参数**运行，会进入交互向导，逐项询问安装根、安装模式（完整 / 仅 skills / 仅 server）、agent 种类、你在看板上的名字、链接还是复制、认领/工作流策略以及可选的 supervisor。`-i` / `--interactive` 强制进入向导；`--yes` / `--non-interactive` 全部接受默认值、完全不提问，适合 CI 或管道。管道输入与 `--dry-run` 也从不提问。
 
@@ -178,11 +178,11 @@ bash install.sh --target claude|openclaw|codex|pi|server|all
 
 常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，默认 `Worker`；它同时种入随包 shim 与每个调度单元的 `--agent`，让 loop 的写入可归属；既有值不加 `--force` 会保留）、`--target claude,codex,pi`（顺序即 loop kind 优先级：第一个 loop kind 是 supervisor 的主 kind，并写入 `MEERKAT_TASKPANEL_AGENT_KIND_ORDER`）、`--no-automation`（跳过 Codex 调度单元与 taskd guard）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 —— 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
-**看板配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的 `.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于两者。`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每个 actor kind 还有一份**按 kind 的配置** —— `<program root>/.env.<actor-kind>`（例如 `.env.claude`）—— `taskctl` 会把它作为 per-agent 默认层读取（身份、引擎位置），`taskctl loop …` 则从同一份文件读 loop 策略。旁边还有**一份**机器本地的 `projects.json`：项目 → 目录映射，所有 agent kind 共用，只能通过 `taskctl project map` 维护（从不进看板）。它不是看板配置，loader 也拒绝把 loop 策略键写进 `.env`。每条 `taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其中的键搬进 `.env`。详见 [`docs/ops/install.md`](docs/ops/install.md) 与 [`docs/maintenance/development.md`](docs/maintenance/development.md)。
+**看板配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的 `.env`，取看板 URL、客户端 token、allow-list 与 SLA 阈值（`TASKD_SLA_*`，由看板校验并通过 `GET /api/v1/sla` 发布）。进程环境逐键优先，CLI 参数再优先于两者。`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每个 actor kind 还有一份**按 kind 的配置** —— `<program root>/.env.<actor-kind>`（例如 `.env.claude`）—— `taskctl` 会把它作为 per-agent 默认层读取（身份、引擎位置），`taskctl run` 则从同一份文件读 loop 策略。旁边还有**一份**机器本地的 `projects.json`：项目 → 目录映射，所有 agent kind 共用，只能通过 `taskctl project map` 维护（从不进看板）。它不是看板配置，loader 也拒绝把 loop 策略键写进 `.env`。每条 `taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其中的键搬进 `.env`。详见 [`docs/ops/install.md`](docs/ops/install.md) 与 [`docs/maintenance/development.md`](docs/maintenance/development.md)。
 
 ## supervisor 与 director
 
-`meerkat-taskpanel` 是看板与记录。`taskctl` 是 Agent 和 supervisor 使用的 CLI。`taskd` 是 CLI 自动启动、给看板 UI 用的本地 HTTP/SSE 服务。**supervisor**（`taskctl loop …`）跑在 agent 应用之外，在没人看着时让看板继续转，并自己执行确定性 pass。**director**（`meerkat-director`）是唯一的 LLM 决策通道：派单、回答 worker 提问、把 E1–E5 升级给人。**对话台**（`meerkat-chat`）是人在同一块看板上的实时视图：进展、等你回复的问题、验收与 loop 健康。
+`meerkat-taskpanel` 是看板与记录。`taskctl` 是 Agent 和 supervisor 使用的 CLI。`taskd` 是 CLI 自动启动、给看板 UI 用的本地 HTTP/SSE 服务。**supervisor**（`taskctl run`）跑在 agent 应用之外，在没人看着时让看板继续转，并自己执行确定性 pass。**director**（`meerkat-director`）是唯一的 LLM 决策通道：派单、回答 worker 提问、把 E1–E5 升级给人。**对话台**（`meerkat-chat`）是人在同一块看板上的实时视图：进展、等你回复的问题、验收与 loop 健康。
 
 看板负责算 workflow 决策，supervisor 负责执行。它只通过 `taskctl` 跟看板打交道，从不调用 HTTP API。
 
@@ -194,11 +194,11 @@ supervisor 有两个时钟和一个常驻会话池：
 - **tick**，每 600 秒（安装单元名仍是 `continue`）：在进程内按顺序跑三个确定性 pass，一把锁。没有模型回合。
 - **会话池**，常驻：每张卡一个 worker 会话、每个目录一个 reviewer lane、每个项目一个 director lane。池可以同时持有多个 agent kind 的会话；角色在它 skill 所安装的平台上运行。
 
-决策协议在 [`skills/meerkat-director/`](skills/meerkat-director/SKILL.md)；角色工作流是五个独立 skill：`jobs`、`linus`、`turing`、`reviewer`、`worker`。执行体属于工具链（[`src/orchestrator/`](src/orchestrator/)），以 `taskctl loop …` 运行。
+决策协议在 [`skills/meerkat-director/`](skills/meerkat-director/SKILL.md)；角色工作流是五个独立 skill：`jobs`、`linus`、`turing`、`reviewer`、`worker`。执行体属于工具链（[`src/orchestrator/`](src/orchestrator/)），以 `taskctl run` 运行。
 
 ### 和看板对话
 
-`meerkat-chat` 是人的对话台，和其他 skill 一样按描述触发。问它某张卡的进展、有什么等你回复、哪些卡待验收、loop 是否健康；它会先跑一次 `taskctl loop doctor --json` 与 `taskctl loop console --json`，给出摘要，再做细节。
+`meerkat-chat` 是人的对话台，和其他 skill 一样按描述触发。问它某张卡的进展、有什么等你回复、哪些卡待验收、loop 是否健康；它会先跑一次 `taskctl doctor --json` 与 `taskctl console --json`，给出摘要，再做细节。
 
 它一次一张卡地走 `awaiting`：把卡读回来，问完这张卡的全部问题，把准备写入的评论原文给你看，你点头后才以你的身份写下去。你在板上 UI 里回答也算数。它也报告健康状态和每张 `blocked` 卡的原因，按请求放行 `backlog → todo`（唯一的前进边；`in_progress` 属于认领），并且只在展示了当前轮报告与验收覆盖后才关闭已交付的卡。每次写板都先给你看，而且每次写入都是 `--as-human`：评论记录的是你的话，不是模型自己的意见。
 
@@ -212,7 +212,7 @@ supervisor 有两个时钟和一个常驻会话池：
 2. **workflow** —— 写入通道。看板用 `issue reconcile --workflow` 计算计划（容器规则、为每笔交付派出独立审核员、应用结论）；supervisor 执行计划里的审核动作。`--workflow=no` 关闭这条通道；审核卡的 assignee（角色目录的 `default_reviewer`）决定审核员。
 3. **poll** —— 扫描、导出卡片 brief、原子认领、写交接队列。它不 spawn worker。空扫描 $0。只有认领成功后，这笔工作的第一个模型回合才会开始。
 
-会话池把每张卡放进它自己的 worker 会话，在项目目录或卡片 worktree 里打开，并跑在承载该角色 skill 的 kind 上。同轮重派（问题得到回答、返工、崩溃）会按 id **恢复**原会话；原生会话不存在时，supervisor 把一段有界转录重放进新会话并标记。
+会话池把每张卡放进它自己的 worker 会话，在项目目录或卡片 worktree 里打开，并跑在承载该角色 skill 的 kind 上。**仍在认领周期内**的同轮重派（返工、崩溃）会按 id **恢复**原会话；原生会话不存在时，supervisor 把一段有界转录重放进新会话并标记。卡片一旦离开认领周期（释放、取消、问题得到回答、进入终态），正在跑的 turn 会被中断、会话被丢弃，下次认领以全新会话启动并重读卡片与评论。
 
 worker 的提问由 director 回答：写 agent `note` 并把卡移回 `todo`，或用 `awaiting --awaiting-reason --question` 升级 E1–E5。超过 30 分钟仍未分配的卡由 director 按生成的路由表指派。不再另起专门的项目会话处理这些。
 

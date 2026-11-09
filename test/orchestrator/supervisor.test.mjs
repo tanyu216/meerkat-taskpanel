@@ -921,7 +921,9 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /--actor-kind claude/);
     assert.match(text, /--session-id sid-9/);
     assert.match(text, /report/i);
-    assert.ok(text.length < 3600, "the handoff must be bounded");
+    // Raised once for the pre-delivery lane merge: the handoff gained the one
+    // line that keeps an approved lane landable. `bounded` still means bounded.
+    assert.ok(text.length < 3760, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("places the worker in the project and says the claim is already taken", () => {
@@ -957,7 +959,7 @@ describe("buildHandoff (pure)", () => {
       agent: "alice",
       actorKind: "codex",
     });
-    assert.ok(text.length < 3900, `the handoff must be bounded (was ${text.length})`);
+    assert.ok(text.length < 4070, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("asks the director before splitting an epic, rather than promoting it", () => {
@@ -1030,7 +1032,7 @@ describe("buildHandoff (pure)", () => {
       actorKind: "claude",
       sessionId: "550e8400-e29b-41d4-a716-446655440000",
     });
-    assert.ok(text.length < 3900, `the handoff must be bounded (was ${text.length})`);
+    assert.ok(text.length < 4070, `the handoff must be bounded (was ${text.length})`);
   });
 
   it("points the worker at the reviewer when one is configured", () => {
@@ -2026,7 +2028,7 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-2:done", "T-3:canceled"]);
   });
 
-  it("cancels an in-review review card through in_progress, never done", async () => {
+  it("cancels a review card in one move and interrupts its turn, never done", async () => {
     const order = [];
     await runWorkflowTick(
       baseDeps({
@@ -2041,14 +2043,21 @@ describe("runWorkflowTick (injected deps)", () => {
         },
         comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
         move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+        requestInterrupt: (request) => {
+          order.push(`interrupt:${request.card}:${request.from}:${request.to}`);
+          return { ok: true };
+        },
       }),
     );
+    // TP-0125 — `in_review → canceled` is one hop; the marker is written after
+    // the move so the pool can stop a reviewer turn that is still running.
     assert.deepEqual(order, [
       "comment:T-3:note",
-      "move:T-3:in_progress",
       "move:T-3:canceled",
+      "interrupt:T-3:in_review:canceled",
       "comment:T-4:note",
       "move:T-4:canceled",
+      "interrupt:T-4:in_progress:canceled",
     ]);
     assert.equal(order.includes("move:T-3:done"), false, "a canceled review is never recorded as accepted");
   });
@@ -2439,7 +2448,8 @@ describe("parseArgs — the project map", () => {
   });
 
   it("defaults the SLA ledger beside the state file, and follows a custom one", () => {
-    assert.equal(parseArgs(["--actor-kind", "claude", "--once"], ENV).slaLedger, "/home/alice/.claude/meerkat-taskpanel/sla-ledger.json");
+    const cfg = { ...ENV, MEERKAT_TASKPANEL_CONFIG_DIR: "/maps" };
+    assert.equal(parseArgs(["--actor-kind", "claude", "--once"], cfg).slaLedger, "/maps/loop/sla-ledger.json");
     const moved = parseArgs(["--actor-kind", "claude", "--once", "--state", "/tmp/state.json"], ENV);
     assert.equal(moved.slaLedger, "/tmp/sla-ledger.json", "one directory remembers everything");
     assert.equal(parseArgs(["--actor-kind", "claude", "--once", "--sla-ledger=/tmp/l.json"], ENV).slaLedger, "/tmp/l.json");
@@ -2447,8 +2457,8 @@ describe("parseArgs — the project map", () => {
 
   it("defaults the workflow ledger beside the state file, and follows a custom one", () => {
     assert.equal(
-      parseArgs(["--actor-kind", "claude", "--once"], ENV).workflowLedger,
-      "/home/alice/.claude/meerkat-taskpanel/workflow-ledger.json",
+      parseArgs(["--actor-kind", "claude", "--once"], { ...ENV, MEERKAT_TASKPANEL_CONFIG_DIR: "/maps" }).workflowLedger,
+      "/maps/loop/workflow-ledger.json",
     );
     const moved = parseArgs(["--actor-kind", "claude", "--once", "--state", "/tmp/state.json"], ENV);
     assert.equal(moved.workflowLedger, "/tmp/workflow-ledger.json");
@@ -3037,7 +3047,6 @@ describe("the resident session pool surface", () => {
     assert.equal(opts.projectIdleMs, 30 * 60 * 1000);
     assert.equal(opts.projectConcurrency, opts.maxConcurrency, "a project is not capped below the pool by default");
     assert.equal(opts.sessionState, join(dirname(opts.state), "sessions.state.json"));
-    assert.equal(opts.allowAllTools, false, "full tool access is opt-in");
     assert.equal(opts.subagentBackground, undefined, "background subagents are retired");
   });
 
@@ -3136,25 +3145,19 @@ describe("the resident session pool surface", () => {
     assert.throws(() => parseArgs(["--actor-kind", "claude", "--resident=maybe"], ENV), /auto or no/);
   });
 
-  it("requires a recorded authorization for full tool access", () => {
+  it("retires the full-tool-access opt-in", () => {
+    // Full access is the loop's default now; the flag and its config keys are
+    // gone. An old invocation fails fast instead of silently changing nothing.
     assert.throws(
       () => parseArgs(["--actor-kind", "claude", "--session", "--allow-all-tools"], ENV),
-      /--allow-all-tools-reason/,
+      /unknown option/,
     );
-    const authorized = parseArgs(
-      ["--actor-kind", "claude", "--session", "--allow-all-tools", "--allow-all-tools-reason", "operator authorized unattended runs"],
-      ENV,
-    );
-    assert.equal(authorized.allowAllTools, true);
-    assert.equal(authorized.allowAllToolsReason, "operator authorized unattended runs");
-
     const fromEnv = parseArgs(["--actor-kind", "claude"], {
       ...ENV,
       MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS: "yes",
       MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON: "fleet policy",
     });
-    assert.equal(fromEnv.allowAllTools, true);
-    assert.equal(fromEnv.allowAllToolsReason, "fleet policy");
+    assert.equal("allowAllTools" in fromEnv, false);
   });
 
   it("retires background subagents", () => {

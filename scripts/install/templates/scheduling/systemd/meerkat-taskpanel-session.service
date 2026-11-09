@@ -11,14 +11,10 @@
 # paused and one `--notify` alert is emitted per cadence.
 #
 # `Type=simple` + `Restart=always` is the unit's recovery story. A project
-# session is re-opened (and resumed) on demand; the ledger records unfinished
-# subagents so they can be reattached.
+# session is re-opened (and resumed) on demand; subagents are not tracked.
 #
-# Full tool access is opt-in through the per-kind config — never a flag here:
-#   MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes
-#   MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON="<who authorized it and why>"
-# With it, every session runs with the installing user's full OS permissions;
-# the project directory is not an isolation boundary.
+# Every session runs with the full tool set; the reviewer's write tools are
+# denied. The project directory is not an isolation boundary.
 [Unit]
 Description=Meerkat TaskPanel resident session pool ({{AGENT}} on {{ACTOR_KIND}})
 After=network.target
@@ -28,7 +24,7 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart={{NODE}} {{CLI}} loop session --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
+ExecStart={{NODE}} {{CLI}} pool --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
 Restart=always
 RestartSec=2
 # EX_CONFIG (78): a missing skill cannot appear by restarting.

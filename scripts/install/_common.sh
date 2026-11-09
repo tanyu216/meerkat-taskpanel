@@ -330,8 +330,8 @@ export_tp_env() {
   # derived, never hard-coded, so the unit PATH and the shim cannot disagree.
   TP_SHIM_DIR="${TP_SHIM%/*}"
   TP_HOOK="$(target_home)/$agent_dir/hooks/meerkat-taskpanel-session-start.sh"
-  # The external loop is `taskctl loop …`, shipped by the runtime tree `TP_REPO`
-  # names. Log and state are fixed per agent kind so a user always knows where they
+  # The external loop is the runtime commands (`taskctl run`, `taskctl pool`, …),
+  # shipped by the runtime tree `TP_REPO` names. Log and state are fixed per agent kind so a user always knows where they
   # land (documented in docs/scheduling.md).
   #
   # The units name the CLI entry, not an agent-local copy of the loop body: the
@@ -340,15 +340,28 @@ export_tp_env() {
   TP_ACTOR_KIND="$label"
   TP_AGENT_BASE="$(target_home)/$agent_dir"
   TP_LOOP="$(target_home)/$agent_dir/meerkat-taskpanel"
-  TP_STATE_DIR="$TP_LOOP"
+  TP_LEGACY_STATE_DIR="$TP_LOOP"
   TP_CLI="$TP_REPO/src/cli/index.mjs"
   # The machine-local config lives beside the board `.env` at the program root,
   # one per-kind file (`<program root>/.env.<kind>`) plus the project map
   # (`<program root>/projects.json`), not under the agent home.
   # `MEERKAT_TASKPANEL_CONFIG_DIR` is the tests/containers/read-only-root escape.
   TP_CONFIG_DIR="$(config_root)"
+  # The loop's runtime state (queue, session records, locks, transcripts) lives
+  # at the config root. An explicit TP_STATE_DIR or MEERKAT_TASKPANEL_STATE_DIR
+  # relocates it; the installer persists the key only when it was explicit.
+  TP_STATE_DIR_EXPLICIT="${TP_STATE_DIR:-${MEERKAT_TASKPANEL_STATE_DIR:-}}"
+  TP_STATE_DIR="${TP_STATE_DIR_EXPLICIT:-$TP_CONFIG_DIR/loop}"
+  case "$TP_STATE_DIR" in
+    /*) ;;
+    *)
+      _state_parent="$(dirname "$TP_STATE_DIR")"
+      _state_base="$(basename "$TP_STATE_DIR")"
+      TP_STATE_DIR="$(cd "$_state_parent" 2>/dev/null && pwd || printf '%s' "$_state_parent")/$_state_base"
+      ;;
+  esac
   # One log for every actor kind, at the config root (the install root for a
-  # combined install); the state stays per kind under `$TP_LOOP`.
+  # combined install).
   TP_LOG="$TP_CONFIG_DIR/logs/supervisor.log"
   TP_ENV="$TP_CONFIG_DIR/.env.$label"
   TP_LEGACY_ENV="$TP_AGENT_BASE/meerkat-taskpanel.env"
@@ -460,7 +473,7 @@ export_tp_env() {
   fi
 
   export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK
-  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_STATE_DIR TP_CLI TP_LOG TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED TP_KIND_ORDER
+  export TP_ACTOR_KIND TP_AGENT_BASE TP_LOOP TP_LEGACY_STATE_DIR TP_STATE_DIR TP_CLI TP_LOG TP_ENV TP_SCHED TP_CLAIM_UNASSIGNED TP_KIND_ORDER
   export TP_CONFIG_DIR TP_LEGACY_ENV
   export TP_RECOVER_STALE TP_WORKFLOW TP_REVIEWER
   export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
@@ -768,6 +781,8 @@ apply_supervisor() {
     --agent "$TP_AGENT" \
     --agent-base "$TP_AGENT_BASE" \
     --config "$TP_ENV" \
+    --state-dir "$TP_STATE_DIR" \
+    --legacy-state-dir "$TP_LEGACY_STATE_DIR" \
     --scheduler "$scheduler" $dry || status=$?
 
   if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
@@ -815,10 +830,29 @@ supervisor_restart_if_changed() {
 # The templates are this installer's own (`scripts/install/templates/`), the one place
 # they live: the director skill carries decisions, not deployment files.
 install_scheduling() {
-  # The loop's state directory (queue, ledger, locks, status files). It used to be
-  # created as a side effect of copying the body; now nothing else makes it.
+  # The loop's state directory (queue, ledger, locks, status files).
+  #
+  # A fresh install creates it (0700) and proves it writable before writing the
+  # units. A plain upgrade with legacy state must NOT create an empty new
+  # directory or migrate under a possibly-live pool: it renders the new units
+  # inert and prints the enable command, which performs the relocation.
   if [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-    mkdir -p "$TP_LOOP"
+    legacy_present=0
+    for _name in sessions.state.json cards.queue.json supervisor.state.json workspaces.json; do
+      if [ -f "$TP_LEGACY_STATE_DIR/$_name" ]; then
+        legacy_present=1
+        break
+      fi
+    done
+    if [ "$legacy_present" = "0" ] || [ "${MEERKAT_TASKPANEL_SUPERVISOR:-}" = "enable" ]; then
+      if ! mkdir -p "$TP_STATE_DIR" 2>/dev/null; then
+        echo "$TP_ACTOR_KIND: cannot create the loop state directory $TP_STATE_DIR — set MEERKAT_TASKPANEL_STATE_DIR to a writable absolute path" >&2
+        return 1
+      fi
+      chmod 700 "$TP_STATE_DIR" 2>/dev/null || true
+    elif [ "${MEERKAT_TASKPANEL_IS_PRIMARY:-0}" = "1" ]; then
+      echo "$TP_ACTOR_KIND: the loop state is still at $TP_LEGACY_STATE_DIR; migrate it with: install.sh --supervisor=enable --supervisor-actor-kinds $TP_ACTOR_KIND"
+    fi
   fi
 
   # Whether this is a reinstall (the units' directory already exists) and whether this run
@@ -849,7 +883,10 @@ install_scheduling() {
   echo "$TP_ACTOR_KIND: scheduling units installed under $TP_SCHED"
 
   if [ -n "${MEERKAT_TASKPANEL_SUPERVISOR:-}" ]; then
-    apply_supervisor
+    # An OS refusal (exit 1) is reported and tolerated inside apply_supervisor; a
+    # state relocation that could not finish (exit 2) is not, and must fail the
+    # install — the caller would otherwise believe the loop moved.
+    apply_supervisor || return $?
     return 0
   fi
 
@@ -1036,6 +1073,20 @@ ensure_agent_config_keys() {
   ensure_env_key "MEERKAT_TASKPANEL_PING_INTERVAL" "$TP_PING_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE_INTERVAL" "$TP_CONTINUE_INTERVAL"
   ensure_env_key "MEERKAT_TASKPANEL_CONTINUE" "$TP_CONTINUE"
+  # A relocated loop state must be named in the per-kind config too: the units
+  # carry `--state-dir`, but a manual `taskctl loop` reads the config, and
+  # the two answering differently is exactly the drift this key prevents.
+  if [ -n "${TP_STATE_DIR_EXPLICIT:-}" ] && [ "$TP_STATE_DIR" != "$TP_CONFIG_DIR/loop" ]; then
+    if [ -f "$TP_ENV" ] && grep -q "^MEERKAT_TASKPANEL_STATE_DIR=" "$TP_ENV"; then
+      local recorded
+      recorded="$(grep "^MEERKAT_TASKPANEL_STATE_DIR=" "$TP_ENV" | tail -n 1 | cut -d= -f2-)"
+      if [ "$recorded" != "$TP_STATE_DIR" ]; then
+        echo "$TP_ACTOR_KIND: warning: $TP_ENV names MEERKAT_TASKPANEL_STATE_DIR=$recorded but the units will use $TP_STATE_DIR" >&2
+      fi
+    else
+      ensure_env_key "MEERKAT_TASKPANEL_STATE_DIR" "$TP_STATE_DIR"
+    fi
+  fi
 }
 
 # keep_unlisted_env_keys <saved> <target> — re-append KEY=VALUE lines from <saved>

@@ -2466,7 +2466,6 @@ const BLOCKS = [
       "[data-agent-platform]",
       "[data-agent-platform-value]",
       "[data-agent-session-id]",
-      "[data-agent-resume]",
     ],
     states: [],
     rules: [

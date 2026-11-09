@@ -114,24 +114,19 @@ function readLines(path) {
 }
 
 describe("codex session params", () => {
-  it("keeps approvals on by default and opens the sandbox with an authorization", () => {
+  it("runs unattended with the full-access sandbox", () => {
     assert.deepEqual(threadStartParams({ opts: {}, cwd: "/work/app" }), {
-      cwd: "/work/app",
-      approvalPolicy: "on-request",
-      sandbox: "workspace-write",
-    });
-    assert.deepEqual(threadStartParams({ opts: { allowAllTools: true }, cwd: "/work/app" }), {
       cwd: "/work/app",
       approvalPolicy: "never",
       sandbox: "danger-full-access",
     });
   });
 
-  it("resumes by thread id", () => {
+  it("resumes by thread id with the same posture", () => {
     assert.deepEqual(threadResumeParams({ opts: {}, threadId: "th-9" }), {
       threadId: "th-9",
-      approvalPolicy: "on-request",
-      sandbox: "workspace-write",
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
     });
   });
 

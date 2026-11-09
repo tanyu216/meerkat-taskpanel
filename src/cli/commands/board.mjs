@@ -1,17 +1,18 @@
 /**
- * `taskctl status` — where the board `taskctl` talks to is, and whether it is up.
+ * `taskctl board` — where the board `taskctl` talks to is, and whether it is up.
  *
  * It is a **local read**, not a command sent to the board: it reads the runtime
  * pointer, asks `/health`, and prints the answer. That is why it is a top-level
  * command rather than `taskd status` — `taskd` is the server process, and this
  * command does not control it, does not need a token, and does not start one.
  * It is also why it needs no `--actor-kind`: nothing is written, so there is no
- * author to name.
+ * author to name. Its name is the subject, not the verb: `board` reads the
+ * board, `loop` reads the loop.
  *
  * Exit code 0 even when the board is not running. "The board is down" is the
  * answer the caller asked for, not a failure of the question — a supervisor that
  * is deciding whether to wake the board must be able to read it without treating
- * `status` itself as broken.
+ * `board` itself as broken.
  *
  * The pointer never carries a token (`runtime-pointer.mjs` refuses one), and
  * this command reports only `pointer`/`data_dir`/`pid`/`url`/`running` — the
@@ -82,9 +83,9 @@ function humanReport(runtime) {
 
 export const COMMANDS = [
   {
-    name: "status",
+    name: "board",
     summary: "Report the board this taskctl talks to: pointer, data dir, pid, url and whether it answers.",
-    usage: "status [--url <url>]",
+    usage: "board [--url <url>]",
     // Runs before the identity check and before any board is contacted; see
     // `src/cli/index.mjs`. A `local` command receives no client and no token.
     local: true,

@@ -22,7 +22,7 @@ what a change must comply with.
 | [0001](0001-architecture-style.md) | Layered modulith; DDD rejected | Accepted (reconstructed) |
 | [0002](0002-stack-bundle.md) | Node 22 + `node:sqlite`, zero runtime dependencies; Vue built offline | Accepted (reconstructed) |
 | [0003](0003-delivery-report-anchors-at-write.md) | A `met` claim needs its evidence anchor at delivery, not only at close | Accepted |
-| [0004](0004-actor-kind-system.md) | The board writes as `system`; acceptance is decided by evidence, not by actor kind | Accepted |
+| [0004](0004-actor-kind-system.md) | The board writes as `system`; acceptance is decided by evidence, not by actor kind | Superseded by ADR 0018 (identity half only) |
 | [0005](0005-the-loop-ships-with-the-board.md) | The loop ships in the board's package, so the board-interface gate is removed | Accepted |
 | [0006](0006-first-class-worker-sessions.md) | A worker is its own pooled session, resumed by id in the same round; replay when the native session is gone | Accepted |
 | [0007](0007-roles-are-skills-and-the-director-decides.md) | Roles are standalone skills; installation location routes the platform; `meerkat-director` decides and the control turn is gone | Accepted |
@@ -35,6 +35,12 @@ what a change must comply with.
 | [0014](0014-a-review-is-a-third-kind.md) | A review is a third card `kind`; the marker stays its identity and the database ties them together | Proposed |
 | [0015](0015-stale-claim-recovery-keeps-the-assignee.md) | Stale-claim recovery keeps the assignee's role; a non-assignee takeover needs the audited override; Worker is a formal, commented fallback | Accepted |
 | [0016](0016-turn-timeouts-are-transient.md) | A turn timeout has its own counter and backoff and returns the card to `todo`, never `blocked`; the loop pulses the claim and the deadline includes the opener | Accepted |
+| [0017](0017-a-claim-cycle-exit-interrupts-the-turn.md) | Leaving the claim cycle interrupts the turn, records `interrupted`, and discards the session; the next claim is fresh | Proposed |
+| [0018](0018-board-is-the-one-automation-identity.md) | The board has one automation identity, `Board` (kind `system`); `system` and `Orchestrator` stop being actor ids | Accepted |
+| [0019](0019-the-reviewer-may-spawn-one-review-subagent.md) | The reviewer may spawn one fresh-context, read-only, one-shot review subagent; no ledger returns | Superseded by ADR 0020 (tool-surface claims; the one-shot child stands) |
+| [0020](0020-full-tool-access-by-default.md) | Every dispatched session runs with the full tool set; the reviewer's write tools are denied; the `--allow-all-tools` opt-in is retired | Accepted |
+| [0021](0021-the-loop-cli-is-flat.md) | The `loop` group is flattened into top-level runtime commands; `status` → `board`, `loop session` → `pool`, and old spellings exit 2 with a migration error | Accepted |
+| [0022](0022-the-loop-state-lives-at-the-config-root.md) | The loop state lives at `<config root>/loop/`, one per board installation; not in the agent home and not in `.data`; a stable `loop.id` replaces the path identity | Proposed |
 
 ## Writing one
 

@@ -196,14 +196,14 @@ describe("cli/commands — the registry", () => {
       // `attachment` is T-20261014-212017-4's group: the drawer's file surface
       // needed a writer and the CLI is the board's second front door. It sits
       // beside `relation` because both are per-card edge/sidecar writes.
-      // `sla` is the board's computed SLA read — the loop patrol's transport
+      // `sla` is the board's computed SLA read — the taskctl patrol's transport
       // and a read-only surface for a human. `events` is the live activity
       // stream the loop's subscriber consumes; it is the one NDJSON command.
       // `role` is the local role catalog the supervisor publishes for humans and
       // the `meerkat` skill: host-local state, never a board request.
       // `worktree` is the session half of the loop's isolation: local git state,
       // never a board request.
-      ["project", "issue", "comment", "relation", "attachment", "session", "actors", "labels", "report", "export", "token", "sla", "events", "loop", "role", "worktree"],
+      ["project", "issue", "comment", "relation", "attachment", "session", "actors", "labels", "report", "export", "token", "sla", "events", "role", "worktree"],
     );
     for (const { group, command } of allCommands()) {
       assert.equal(
@@ -214,14 +214,34 @@ describe("cli/commands — the registry", () => {
   });
 
   it("keeps top-level commands out of every group, and their names unique", () => {
-    // `taskctl status` is one word: it must not be a group, and the parser's
-    // group lookup must never shadow it (or the reverse).
+    // `taskctl board` and the ten runtime commands are one word each: none may
+    // be a group, and the parser's group lookup must never shadow one (or the
+    // reverse).
     const groupNames = new Set(groups.map((group) => group.name));
     const names = topLevel.map((command) => command.name);
     for (const name of names) {
       assert.equal(groupNames.has(name), false, `${name} is both a top-level command and a group`);
     }
     assert.equal(new Set(names).size, names.length, "a top-level name repeats");
+  });
+
+  it("flattens the runtime commands to the card's eleven top-level names", () => {
+    // The registry order is the help order: the board read first, then the
+    // loop's ten verbs in their documented order.
+    assert.deepEqual(topLevel.map((command) => command.name), [
+      "board",
+      "patrol",
+      "workflow",
+      "poll",
+      "tick",
+      "console",
+      "doctor",
+      "loop",
+      "run",
+      "subscribe",
+      "pool",
+    ]);
+    assert.equal(groups.some((group) => group.name === "loop"), false, "the loop group must be gone");
   });
 
   it("has a run handler and a summary for every command", () => {

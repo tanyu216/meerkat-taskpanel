@@ -191,7 +191,7 @@ export async function run(argv, io) {
     return CLI_EXIT.OK;
   }
 
-  // A **local** command reports something the client itself knows. `status`
+  // A **local** command reports something the client itself knows. `board`
   // reads the runtime pointer; `project dir --require-dir` reads the local
   // projects map for a wake and must work with the board down. Both run before
   // the identity check and before any board is contacted: there is no write to
@@ -219,10 +219,12 @@ export async function run(argv, io) {
       const local = {
         flags: parsed.flags,
         args: parsed.commandArgs,
-        // The raw tokens let a compatibility entry (`taskctl loop …`) hand the
-        // original flag spellings to the moved loop parser without rebuilding
-        // them from bound flags.
+        // The raw tokens let a runtime command hand the original flag spellings
+        // to the moved loop parser without rebuilding them from bound flags;
+        // `commandIndex` is the token to strip (a flag value can be spelled like
+        // a command, so the name cannot be searched for).
         argv: argv.slice(),
+        commandIndex: parsed.commandIndex ?? null,
         env: config.env,
         cwd: io.cwd ?? process.cwd(),
         readFile: io.readFile ?? ((file) => readFileSync(file, "utf8")),

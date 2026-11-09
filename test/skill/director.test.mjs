@@ -91,10 +91,19 @@ describe("director skill: SKILL.md", () => {
     assert.match(text, /E1[–-]E5/);
   });
 
+  it("names the triage close-out and its four dispositions", () => {
+    assert.match(text, /close it out/i);
+    assert.match(text, /one disposition per open item/i);
+    for (const disposition of ["existing card", "created card", "recorded decline", "escalation"]) {
+      assert.match(text, new RegExp(disposition, "i"), `the ${disposition} disposition`);
+    }
+  });
+
   it("states the decision boundary without restating the scheduler", () => {
-    assert.match(text, /do not do the work/i);
-    assert.match(text, /never claim a card/i);
-    assert.match(text, /move a card to `done`/i);
+    assert.match(text, /stay with the board and the roles/i);
+    assert.match(text, /Claims, execution and closure belong to the roles, the board and the human/i);
+    assert.match(text, /the decision and the release/i);
+    assert.match(text, /a note records the answer/i, "the release concludes; the note records");
     assert.doesNotMatch(
       text,
       /deterministic passes|patrol|workflow|poll|queue|row|attempt|retry|session|prompt/i,
@@ -143,13 +152,18 @@ describe("director skill: references", () => {
     assert.match(question, /worker/i);
     assert.match(question, /escalates only the items the decision map[\s\S]*leaves to the human/i);
     assert.match(question, /one round is one question per card/i);
+    assert.equal(
+      (question.match(/one round is one question per card/gi) ?? []).length,
+      1,
+      "the rule is stated once",
+    );
   });
 
   it("puts the route rule in route.md", () => {
     const route = ref("route.md");
     assert.match(route, /one accountable role/i);
     assert.match(route, /Worker/);
-    assert.match(route, /never invent a role name/i);
+    assert.match(route, /role catalog/i);
   });
 
   it("puts the triage markers and the E1 check in triage.md", () => {
@@ -159,9 +173,29 @@ describe("director skill: references", () => {
     assert.match(triage, /create it only if the map gives E1 to the[\s\S]*director/i);
   });
 
+  it("closes out every open item before recording the round marker", () => {
+    const triage = ref("triage.md");
+    assert.match(triage, /close-out/i);
+    assert.match(triage, /the report's `leftovers`/i, "the report leftovers are a ledger input");
+    assert.match(triage, /review cards of the same round/i);
+    assert.match(triage, /observations/i);
+    assert.match(triage, /backlog/i);
+    assert.match(triage, /meta\.fixes/);
+    assert.match(triage, /exactly one disposition/i);
+    for (const disposition of ["owned", "created", "declined", "escalated"]) {
+      assert.match(triage, new RegExp(`\\*\\*${disposition}\\*\\*`), `the ${disposition} disposition`);
+    }
+    assert.match(triage, /leaves the round open/i, "an un-dispositioned item keeps the round open");
+  });
+
   it("reads the project graph, adopts a producer and only fills what is missing", () => {
     const triage = ref("triage.md");
     assert.match(triage, /docs\/agents\/epic-graphs\.md/, "the project graph is the content source");
+    assert.match(
+      triage,
+      /classification lives in the\s+project's `docs\/agents\/epic-graphs\.md`/i,
+      "classification meta's home is named",
+    );
     assert.match(triage, /adopt the delivered producer\s+as its matching stage/i);
     assert.match(triage, /fill only what is missing/i);
     assert.match(triage, /--parent <epic> --target <stage-id>/, "the recipe's idempotency convention");
@@ -183,9 +217,22 @@ describe("director skill: references", () => {
     assert.match(policy, /keeps its default/i, "unmentioned items keep the default");
     assert.match(policy, /`human` or `director`/, "a project entry names its decider");
     assert.match(policy, /unreadable[\s\S]*apply the default/i, "an unusable file falls back");
-    assert.match(policy, /cannot add a code/i, "the E-code vocabulary is fixed");
+    assert.match(policy, /code set itself\s+stays fixed/i, "the E-code vocabulary is fixed");
     assert.match(policy, /ladder[\s\S]{0,120}fixed/i, "the ladder cannot be overridden");
     assert.match(policy, /Record which source decided/i, "the deciding source is recorded");
+  });
+
+  it("states every boundary as a positive action", () => {
+    const files = [
+      ["SKILL.md", readFileSync(join(DIRECTOR_SKILL, "SKILL.md"), "utf8")],
+      ...readdirSync(refsDir)
+        .filter((name) => name.endsWith(".md"))
+        .map((name) => [name, ref(name)]),
+    ];
+    const negative = /\b(?:do not|don't|never|must not|cannot|can't)\b/i;
+    for (const [name, body] of files) {
+      assert.doesNotMatch(body, negative, `${name}: state the positive action`);
+    }
   });
 
   it("puts the round protocol in rounds.md", () => {
@@ -210,7 +257,7 @@ describe("director skill: references", () => {
     for (const [name, body] of files) {
       assert.doesNotMatch(
         body,
-        /meerkat-chat|human console|TASKCTL_HUMAN|--as-human|loop doctor|loop console/i,
+        /meerkat-chat|human console|TASKCTL_HUMAN|--as-human|taskctl doctor|taskctl console/i,
         `${name}: the human console is not the director's`,
       );
       assert.doesNotMatch(

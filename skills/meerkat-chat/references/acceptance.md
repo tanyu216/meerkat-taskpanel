@@ -25,7 +25,8 @@ Consequences for chat:
   still close it as a fallback, but only after saying so and after the verdict is on the board.
 - A review card is closed by a human or another actor — **never** the one who wrote the verdict.
 - `canceled` is abandonment, never a way to close a card. It has no child guard and leaves work
-  orphaned.
+  orphaned; a cancel interrupts the running turn and the next claim is fresh (ADR 0017). The
+  board asks first.
 
 ## The evidence to read first
 

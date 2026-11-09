@@ -58,7 +58,6 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "md",
     "dry-run",
     "take-over",
-    "allow-all-tools",
     "allow-dup",
     "allow-steal",
     "assignee-only",
@@ -75,7 +74,7 @@ export const GLOBAL_FLAGS = Object.freeze([
   { flag: "token", key: "token", as: "string", value: "<token>", summary: "Access token (never echoed)." },
   { flag: "env-file", key: "envFile", as: "string", value: "<path>", summary: "Config file (default: <install root>/.env; env: MEERKAT_TASKPANEL_ENV_FILE)." },
   { flag: "if-version", key: "ifVersion", as: "number", value: "<n>", summary: "Optimistic-concurrency guard." },
-  { flag: "actor-kind", key: "actorKind", as: "string", value: "<name>", summary: "The platform writing (claude|codex|…); required on every command that talks to the board — local reads (`status`) and --help/--version need none. `human` is reserved; use --as-human." },
+  { flag: "actor-kind", key: "actorKind", as: "string", value: "<name>", summary: "The platform writing (claude|codex|…); required on every command that talks to the board — local reads (`board`) and --help/--version need none. `human` is reserved; use --as-human." },
   { flag: "as-human", key: "asHuman", as: "boolean", summary: "Write as the configured human, not as yourself." },
   { flag: "session-id", key: "sessionId", as: "string", value: "<id>", summary: "Agent session identifier." },
   { flag: "agent", key: "agent", as: "string", value: "<name>", summary: "Actor id recorded on writes — a role or person (jobs, linus, turing, …)." },
@@ -93,6 +92,8 @@ const SHORT_FLAGS = Object.freeze({ "-h": "help" });
 export function tokenize(argv) {
   /** @type {string[]} */
   const positionals = [];
+  /** Raw argv index beside each positional — the command token's boundary. @type {number[]} */
+  const indices = [];
   /** @type {Map<string, (string|boolean)[]>} */
   const flags = new Map();
   const add = (name, value) => {
@@ -138,9 +139,10 @@ export function tokenize(argv) {
     }
 
     positionals.push(token);
+    indices.push(i);
   }
 
-  return { positionals, flags };
+  return { positionals, indices, flags };
 }
 
 /**
@@ -151,6 +153,31 @@ export function tokenize(argv) {
 function usageError(message, hint) {
   return new DomainError("CLI_USAGE", hint === undefined ? { message } : { message, hint });
 }
+
+/**
+ * The retired `loop <verb>` spellings and the command each became.
+ *
+ * Private on purpose: this map is a migration aid, not a registry. It never
+ * appears in `--help` and never enters `test/fixtures/contract/cli.snapshot.json`.
+ * `loop` and `pool` are the two names that changed; the other eight kept their
+ * verb word and merely lost the `loop` prefix.
+ */
+const RETIRED_LOOP_VERBS = Object.freeze({
+  status: "loop",
+  session: "pool",
+  patrol: "patrol",
+  workflow: "workflow",
+  poll: "poll",
+  tick: "tick",
+  console: "console",
+  doctor: "doctor",
+  run: "run",
+  subscribe: "subscribe",
+});
+
+/** The one hint every retired-spelling error carries. */
+const MIGRATION_FIX = "re-run install.sh to refresh the scheduling units" +
+  " (the runtime commands are top-level now)";
 
 /**
  * Coerce and validate the flags a command actually accepts.
@@ -228,10 +255,10 @@ export function bindFlags(tokenized, specs, where, helpTarget, options = {}) {
  *
  * @param {string[]} argv
  * @param {{groups: object[], topLevel?: object[]}} registry
- * @returns {{flags: object, group: object|null, command: object|null, commandArgs: object, positionals: string[], wantedHelp: boolean, version: boolean}}
+ * @returns {{flags: object, group: object|null, command: object|null, commandArgs: object, positionals: string[], commandIndex: number|null, wantedHelp: boolean, version: boolean}}
  */
 export function parseArgv(argv, registry) {
-  const { positionals, flags } = tokenize(argv);
+  const { positionals, indices, flags } = tokenize(argv);
   // First pass: the globals only, and *leniently* — a command flag is not an
   // error until we know which command it belongs to.
   const globals = bindFlags(flags, GLOBAL_FLAGS, "taskctl", "", { lenient: true });
@@ -243,38 +270,54 @@ export function parseArgv(argv, registry) {
   }
 
   // A **top-level command** is one word, not a group and a verb (`taskctl
-  // status`). It is matched before the group lookup because it is not a group:
+  // board`). It is matched before the group lookup because it is not a group:
   // there is no namespace to put it inside. The registry test pins that the two
   // namespaces never collide, so the order is a formality — but it is also what
-  // makes `taskctl status --help` a command page and not "unknown group".
+  // makes `taskctl board --help` a command page and not "unknown group".
   const topLevel = (registry.topLevel ?? []).find((entry) => entry.name === groupName);
   if (topLevel !== undefined) {
+    // `loop` was a group until the flattening; its ten verbs are top-level
+    // commands now, so a retired verb after `loop` arrives as a positional.
+    // Name the new spelling — and do it before `bindFlags`, so a retired flag
+    // cannot hide the migration message behind "unknown option".
+    if (topLevel.name === "loop" && commandName !== undefined) {
+      const moved = RETIRED_LOOP_VERBS[commandName];
+      if (moved !== undefined) {
+        throw usageError(`loop ${commandName} has moved: use \`taskctl ${moved}\``, {
+          fix: MIGRATION_FIX,
+        });
+      }
+    }
     if (globals.help === true) {
       return helpResult(globals, null, topLevel, rest, wantsVersion);
     }
     const bound = bindFlags(flags, [...GLOBAL_FLAGS, ...(topLevel.flags ?? [])], topLevel.name, topLevel.name);
+    // The destructuring above always captures the second positional as
+    // `commandName`; for a bare command that *is* its first argument.
+    const args = commandName === undefined ? [] : [commandName, ...rest];
     const slots = topLevel.positionals ?? [];
     const required = slots.filter((slot) => slot.required !== false).length;
-    if (rest.length < required) {
-      throw usageError(`${topLevel.name}: missing argument <${slots[rest.length]?.name ?? "…"}>`, {
+    if (args.length < required) {
+      throw usageError(`${topLevel.name}: missing argument <${slots[args.length]?.name ?? "…"}>`, {
         fix: `usage: taskctl ${topLevel.usage ?? topLevel.name}`,
       });
     }
-    if (rest.length > slots.length) {
-      throw usageError(`${topLevel.name}: unexpected argument ${JSON.stringify(rest[slots.length])}`, {
+    if (args.length > slots.length) {
+      throw usageError(`${topLevel.name}: unexpected argument ${JSON.stringify(args[slots.length])}`, {
         fix: `usage: taskctl ${topLevel.usage ?? topLevel.name}`,
       });
     }
     const commandArgs = {};
     slots.forEach((slot, index) => {
-      if (rest[index] !== undefined) commandArgs[slot.name] = rest[index];
+      if (args[index] !== undefined) commandArgs[slot.name] = args[index];
     });
     return {
       flags: bound,
       group: null,
       command: topLevel,
       commandArgs,
-      positionals: rest,
+      positionals: args,
+      commandIndex: indices[0] ?? null,
       wantedHelp: false,
       version: wantsVersion,
     };
@@ -282,6 +325,13 @@ export function parseArgv(argv, registry) {
 
   const group = registry.groups.find((entry) => entry.name === groupName);
   if (group === undefined) {
+    // The board-status read kept the word, changed the subject: `status` used to
+    // mean the board client; it is `board` now, and `loop` is the loop's own read.
+    if (groupName === "status") {
+      throw usageError("status has moved: use `taskctl board`", {
+        fix: "`taskctl board` reports the board; `taskctl loop` reports the loop",
+      });
+    }
     throw usageError(`unknown command ${JSON.stringify(groupName)}`, {
       fix: "run `taskctl --help` for the list of commands",
     });
@@ -302,6 +352,7 @@ export function parseArgv(argv, registry) {
       command: implicit,
       commandArgs: {},
       positionals: [],
+      commandIndex: null,
       wantedHelp: false,
       version: wantsVersion,
     };
@@ -347,13 +398,14 @@ export function parseArgv(argv, registry) {
     command,
     commandArgs,
     positionals: rest,
+    commandIndex: indices[1] ?? null,
     wantedHelp: false,
     version: wantsVersion,
   };
 }
 
 function helpResult(flags, group, command, positionals, version) {
-  return { flags, group, command, commandArgs: {}, positionals, wantedHelp: true, version };
+  return { flags, group, command, commandArgs: {}, positionals, commandIndex: null, wantedHelp: true, version };
 }
 
 /** Did the caller pass anything the *globals* do not own? */

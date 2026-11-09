@@ -80,8 +80,9 @@ When `.meerkat/<id>/prd.md` exists, check it and `design/prds/<content-slug>.md`
    - **partial** / **not_met** — a blocker: finish it or ask; a baseline item with either stays
      out of the delivery.
    - **leftover** — outside the frozen acceptance, with the item, its owner and the follow-up.
-     A blocker, not a leftover: a red gate, a security finding, a missing acceptance item, a
-     missing handoff path, or a published contract or migration change.
+     An out-of-scope defect is filed by its finder in `backlog`, bug-labelled and `meta.fixes`
+     = this card, and named here. A blocker, not a leftover: a red gate, a security finding, a
+     missing acceptance item, a missing handoff path, or a published contract or migration change.
 2. The report's `conclusion` starts with `Outcome:` and contains the `## Handoff` block; the
    product card names Design card, Validation brief, Spec, Prototype, Prototype card, Verdict
    and commit, PRD, Glossary, Product ADRs, `Acceptance source`, `Delivery shape`, proposed
@@ -91,7 +92,8 @@ When `.meerkat/<id>/prd.md` exists, check it and `design/prds/<content-slug>.md`
 4. A split prototype card's handoff names its product card or brief, questions, verdict, path,
    evidence, rejected variants, commit, limitations and open questions.
 5. The delivered tree is committed on the card's branch and the report carries the `commit` anchor;
-   `nothing was merged, rebased or pushed`.
+   the integration branch was merged into the lane before delivery (conflicts resolved, checks
+   re-run), and `nothing was merged, rebased or pushed` from this card.
 6. The director creates downstream cards; the handoff proposes their shape. One card delivers
    once unless the flow is split.
 

@@ -4,8 +4,8 @@ Step 4. The `meerkat` skill reads a project's own rules from `docs/agents/`. Wri
 once there; they are project content, shared by every agent platform that works in this
 project.
 
-Work in this order: **create-card and trackers → epic graph (on request) → project map →
-instruction entry → worktrees.md → worktree guard**. The order matters: once
+Work in this order: **create-card and trackers → epic graph (on request) → review scenarios
+(on request) → project map → instruction entry → worktrees.md → worktree guard**. The order matters: once
 `docs/agents/worktrees.md` exists
 and a guard is active, writes to the primary checkout are denied, including the entry write.
 If a guard is already active, finish the remaining writes from a session worktree under
@@ -52,6 +52,38 @@ which graphs to keep or change. **Write only on an explicit yes**; the file is a
 default. A re-run reports `written` / `unchanged` / `conflict`, and never creates the default
 silently. The `meerkat` skill's `references/scenarios/epic.md` reads this file at creation
 time; `setup-meerkat` only installs it.
+
+### `docs/agents/review-scenarios/<type>.md` (optional)
+
+The project's own reviewer refinements. The installed `reviewer` role skill discovers every
+file in this directory at the delivered sha and applies the files whose `Applies to:` line
+matches the card. Read the reviewer skill's `references/scenarios/README.md` first: it names
+the built-in scenarios, the template and the precedence rules.
+
+Ask one gate: **does this project have review checks that repeat on every card and are not
+already written in the project's own standards?** Recommended: **no** — skip, and write
+nothing; the built-in scenarios plus the project's standards already apply. **Yes** — ask
+which scenario types carry project-specific checks (project-wide, product planning,
+prototype, development, test-case authoring, test execution, epic/rollup, generic), then for
+each selected type:
+
+- Write `docs/agents/review-scenarios/<type>.md` with the user's answers only. Name it after
+  the scenario type (`development.md`), or `<project>.md` for checks that apply to every card
+  (`Applies to: every card reviewed in this repository`).
+- Take the `Applies to:` line from that built-in scenario's applicability; do not invent a
+  new taxonomy.
+- Record a `## Checks` list, each item naming the evidence that proves it, and a
+  `## Blocks APPROVE` list for the failures that are blocking rather than observations.
+- State that the file augments the reviewer's built-in floors and never weakens them.
+- Write a file only for a type the user selected and gave at least one check for. An empty or
+  generic file is noise: the reviewer's generic floor already ships with the skill.
+
+**setup-meerkat is the only writer of project scenarios.** A role, a card or a session that
+needs one routes the change through this sub-step rather than writing the file directly; a
+delivery that changes one is flagged by the reviewer and judged by the stricter of the base
+and delivered text. A re-run reports `written` /
+`unchanged` / `conflict`; a conflict is backed up as `<file>.bak-<timestamp>` and merged only
+with consent.
 
 ### `docs/agents/issue-tracker.md`, `triage-labels.md`, `domain.md`
 
@@ -106,10 +138,13 @@ never hand-edit `projects.json`.
 Call the `init` skill for the project's agent-instruction entry, and require it to point card
 work at the `/meerkat` skill and board rules at `docs/agents/` (`create-card.md`,
 `worktrees.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, `epic-graphs.md` when
-present, and `decision-policy.md` when present),
-and to state this step's card scope. The entry and the
+present, and `decision-policy.md` when present), to name **every** scenario file under
+`docs/agents/review-scenarios/` when the directory exists — the directory and each file by
+name, not the directory alone — and to state this step's card scope. The entry and the
 rules are project content shared by every platform: call `init` once, write the rules once
 under `docs/agents/`, never copy them per platform, and never write an entry yourself.
+A later run that adds or removes a scenario file updates the entry through `init`, with the
+same separate yes an entry change always needs.
 
 - Show the brief before calling `init`.
 - An existing entry that differs is a separate yes; `--yes` does not authorize replacing it.

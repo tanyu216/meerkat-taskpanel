@@ -228,8 +228,6 @@ export const PER_KIND_CONFIG_KEYS = Object.freeze([
  */
 export const LOOP_CONFIG_KEYS = Object.freeze([
   "MEERKAT_TASKPANEL_AGENT_KIND_ORDER",
-  "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS",
-  "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON",
   "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED",
   "MEERKAT_TASKPANEL_CONTINUE",
   "MEERKAT_TASKPANEL_CONTINUE_INTERVAL",
@@ -250,6 +248,7 @@ export const LOOP_CONFIG_KEYS = Object.freeze([
   "MEERKAT_TASKPANEL_SESSION_TURN_TIMEOUT",
   "MEERKAT_TASKPANEL_SLA_LEADER",
   "MEERKAT_TASKPANEL_SLA_PEER",
+  "MEERKAT_TASKPANEL_STATE_DIR",
   "MEERKAT_TASKPANEL_SUBAGENT_BACKGROUND",
   "MEERKAT_TASKPANEL_WORKFLOW",
   "MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS",
@@ -801,16 +800,17 @@ export const HUMAN_KIND = "human";
 export const SYSTEM_KIND = "system";
 
 /**
- * The loop's automation identity — an **actor id, never a kind**.
+ * The board's one automation identity — an **actor id, never a kind**.
  *
- * The workflow pass (create the review card, apply the verdict, close the
- * review card) runs inside the loop process, but it is not any one worker's act:
- * it applies a decision the board planned. Naming it `Orchestrator` keeps those
- * writes out of the first worker's record and keeps the automation distinct from
- * the reviewer, which matters because a review's verdict author may not close
- * the card it reviewed.
+ * It covers every automated write, whichever actor triggered it: core board
+ * events (rollup, the label GC, agent sessions) and the loop's workflow pass
+ * (create the review card, apply the verdict, close the review card). The kind
+ * those writes carry is `SYSTEM_KIND`; the *identity* is `Board`, so a reader
+ * sees one automation author and `system`/`Orchestrator` are identities no
+ * longer (ADR 0018). Keeping the loop's writes out of the first worker's record
+ * still matters: a review's verdict author may not close the card it reviewed.
  */
-export const ORCHESTRATOR_ACTOR_ID = "Orchestrator";
+export const BOARD_ACTOR_ID = "Board";
 
 /**
  * The Director lane's board identity — an **actor id, never a kind**.
@@ -865,18 +865,21 @@ export const DEFAULT_BOARD_LIMIT = 500;
 export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
 
 /** How long an unassigned `todo` card waits for the director before it is the
- * route lane's, and before `loop doctor` reports it as unowned. One number, so
+ * route lane's, and before `taskctl doctor` reports it as unowned. One number, so
  * the lane and the inspection agree on the window. */
 export const ROUTE_UNASSIGNED_MS = 30 * 60 * 1000;
 
 /**
- * How many delivery rounds one card may run before the board parks it.
+ * How many **review rejections** one card may take before the board parks it.
  *
- * Round 1 is the first delivery; every rejection, rework or audited reopen bumps
- * `delivery_round`. Four means the work came back three times — the same number
- * `loop doctor` has always reported as looping. The board decides the hold; the
- * loop only executes it. A human who moves the card back starts a fresh epoch
- * from the round it was held at.
+ * The counter is `meta.review_rejects`, incremented only when an independent
+ * review actually rejects a delivery. A landing conflict, an acceptance refusal,
+ * a review re-dispatch and the hold itself never increment it, so an
+ * environmental round cannot consume the budget. Four means four failed reviews.
+ *
+ * The board decides the hold; the loop only executes it. The hold writes the
+ * count it parked at in `meta.loop_hold_retry_base`, so a human who moves the
+ * card back starts a fresh epoch of the same size — never an unbounded one.
  */
 export const DEFAULT_REWORK_MAX_ROUNDS = 4;
 

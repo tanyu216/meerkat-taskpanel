@@ -20,7 +20,7 @@
  */
 
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
@@ -452,7 +452,7 @@ describe("install.sh: enable — launchd", () => {
     const sessionLabel = "com.meerkat-taskpanel.alice.claude.session";
     writeFileSync(
       manager.argsFile(sessionLabel),
-      ["/usr/bin/node", "/x/cli.mjs", "loop", "session", "--actor-kind", "claude", "--agent", "Worker"].join("\n") + "\n",
+      ["/usr/bin/node", "/x/cli.mjs", "pool", "--actor-kind", "claude", "--agent", "Worker"].join("\n") + "\n",
       "utf8",
     );
 
@@ -468,6 +468,80 @@ describe("install.sh: enable — launchd", () => {
       ],
       "the pool is taken down and loaded again; the units that did not change are left alone",
     );
+  });
+
+  it("relocates the legacy loop state before loading, and keeps a rollback copy", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const args = ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=launchd"];
+    assert.equal(runInstall(args, installEnv(home, manager)).status, 0);
+
+    const configDir = kindConfigDirFor(home);
+    const stateDir = join(configDir, "loop");
+    const legacy = join(home, ".claude", "meerkat-taskpanel");
+    // The pre-migration world: state under the agent directory, units pointing at it.
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(legacy, "cards.queue.json"), '{"version":1,"cards":[]}\n');
+    writeFileSync(join(legacy, "workspaces.json"), '{"version":1,"workspaces":[]}\n');
+
+    const again = runInstall(args, installEnv(home, manager));
+    assert.equal(again.status, 0, again.stderr);
+
+    assert.match(again.stdout, /relocate-state: moved /);
+    assert.ok(existsSync(join(stateDir, "cards.queue.json")), "the queue moved to the config root");
+    assert.ok(existsSync(join(stateDir, "loop.id")), "the moved loop keeps a stable identity");
+    assert.equal(existsSync(join(legacy, "cards.queue.json")), false, "the source is gone, not duplicated");
+
+    const backups = readdirSync(join(home, ".claude")).filter((name) =>
+      name.startsWith("meerkat-taskpanel.migrated-"),
+    );
+    assert.equal(backups.length, 1, "the old directory is a rollback copy");
+    assert.ok(existsSync(join(home, ".claude", backups[0], "cards.queue.json")));
+
+    // The loaded definition is the one the bootstrap read — the units now name
+    // the new directory, so a restart lands in the same state the migration moved.
+    const sessionArgs = readFileSync(
+      manager.argsFile("com.meerkat-taskpanel.alice.claude.session"),
+      "utf8",
+    );
+    assert.ok(sessionArgs.includes(stateDir), sessionArgs);
+  });
+
+  it("records an explicit non-default state directory in the per-kind config", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const stateDir = join(home, "durable", "loop");
+    const run = runInstall(
+      ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=launchd"],
+      installEnv(home, manager, { MEERKAT_TASKPANEL_STATE_DIR: stateDir }),
+    );
+    assert.equal(run.status, 0, run.stderr);
+    // The units carry `--state-dir`; a manual `taskctl loop` reads the
+    // config, and the two must name the same directory.
+    const config = readFileSync(join(kindConfigDirFor(home), ".env.claude"), "utf8");
+    assert.ok(config.includes(`MEERKAT_TASKPANEL_STATE_DIR=${stateDir}`), config);
+    assert.ok(existsSync(stateDir), "the explicit state directory exists");
+  });
+
+  it("refuses to merge several legacy state directories, and fails the install", () => {
+    const home = makeTempDir();
+    const manager = fakeManager();
+    for (const kind of ["claude", "codex"]) {
+      const dir = join(home, `.${kind}`, "meerkat-taskpanel");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "cards.queue.json"), '{"version":1,"cards":[]}\n');
+    }
+    const run = runInstall(
+      ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=launchd"],
+      installEnv(home, manager),
+    );
+    assert.equal(run.status, 1, "a half-migrated loop is not a success");
+    assert.match(run.stdout, /several loop state directories/);
+    assert.match(run.stdout, /keep the one that belongs to this board/);
+    assert.deepEqual(loads(manager), [], "nothing is loaded onto an ambiguous state");
+    // Neither source is touched: this is a refusal, not a merge.
+    assert.ok(existsSync(join(home, ".claude", "meerkat-taskpanel", "cards.queue.json")));
+    assert.ok(existsSync(join(home, ".codex", "meerkat-taskpanel", "cards.queue.json")));
   });
 
   it("leaves a loaded unit alone when its definition cannot be compared, and says so", () => {
@@ -555,20 +629,9 @@ describe("install.sh: enable — launchd", () => {
     const after = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
     assert.match(after.stdout, /^supervisor:   launchd: loaded \(/m);
     assert.match(after.stdout, /^supervisor:   session: not running \(no session state\)$/m);
-    assert.match(after.stdout, /^supervisor:   tools: role allowlists \(full access is off\)$/m);
-
-    // The full-access opt-in is an authorization; status states it and who
-    // recorded it, so a bypass is never invisible.
-    const config = join(kindConfigDirFor(home), ".env.claude");
-    writeFileSync(
-      config,
-      `${readFileSync(config, "utf8")}MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes\n` +
-        "MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON=operator authorized unattended runs\n",
-    );
-    const authorized = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
     assert.match(
-      authorized.stdout,
-      /^supervisor:   tools: all enabled \(authorized by: operator authorized unattended runs\)/m,
+      after.stdout,
+      /^supervisor:   tools: full \(reviewer read-only\) — the project directory is not an isolation boundary$/m,
     );
   });
 
@@ -578,7 +641,7 @@ describe("install.sh: enable — launchd", () => {
     const base = ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--scheduler=launchd"];
     assert.equal(runInstall([...base, "--supervisor=enable"], installEnv(home, manager)).status, 0);
 
-    const stateDir = join(home, ".claude", "meerkat-taskpanel");
+    const stateDir = join(kindConfigDirFor(home), "loop");
     const statePath = join(stateDir, "subscribe.state.json");
     const now = Date.now();
     writeFileSync(
@@ -762,8 +825,8 @@ describe("install.sh: enable — cron", () => {
     // PATH line sits *inside* the block, so `disable` takes it away with the block.
     const blockLines = table.split("# >>> meerkat-taskpanel (~/.claude) >>>\n")[1].split("\n");
     assert.match(blockLines[0], /^PATH=\S+$/);
-    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --ping-once --actor-kind claude --agent alice --log .* >\/dev\/null 2>&1$/);
-    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs loop run --continue-once --actor-kind claude --agent alice /);
+    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs run --ping-once --actor-kind claude --agent alice --log .* >\/dev\/null 2>&1$/);
+    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*src\/cli\/index\.mjs run --continue-once --actor-kind claude --agent alice /);
     assert.equal(blockLines[3], "# <<< meerkat-taskpanel (~/.claude) <<<");
     assert.match(table, /^# <<< meerkat-taskpanel \(~\/\.claude\) <<<$/m);
 
@@ -1204,7 +1267,7 @@ describe("install.sh: reload after a take-down race", () => {
     // A loaded unit whose definition changed → the drift path boots it out first.
     writeFileSync(
       manager.argsFile("com.meerkat-taskpanel.alice.claude.session"),
-      ["/usr/bin/node", "/x/cli.mjs", "loop", "session", "--agent", "Worker"].join("\n") + "\n",
+      ["/usr/bin/node", "/x/cli.mjs", "pool", "--agent", "Worker"].join("\n") + "\n",
       "utf8",
     );
 

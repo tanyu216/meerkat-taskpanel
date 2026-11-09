@@ -3,7 +3,7 @@
  *
  * A role is a standalone skill: `skills/<role>/` carries `SKILL.md` (the workflow
  * entry), `role.json` (its machine-readable identity) and `references/` (branch
- * workflows, self-check, reviewer prompt). The supervisor does not read a team
+ * workflows, self-check, reviewer handoff). The supervisor does not read a team
  * manifest and does not own a roles root. It scans every installed agent kind's
  * skills tree:
  *
@@ -200,7 +200,7 @@ function resolveInside(root, rel, extensions) {
 }
 
 /**
- * Resolve a role-relative markdown file (workflow, self-check, reviewer prompt).
+ * Resolve a role-relative markdown file (workflow, self-check, reviewer handoff).
  * Returns the canonical absolute path, or `null`.
  */
 function resolveRoleFile(root, rel) {
@@ -213,7 +213,7 @@ function variantOf(role) {
     skillDir: role.skillDir ?? null,
     workflow: role.workflow ?? null,
     selfCheck: role.selfCheck ?? null,
-    reviewerPrompt: role.reviewerPrompt ?? null,
+    reviewerHandoff: role.reviewerHandoff ?? null,
   };
 }
 
@@ -224,7 +224,7 @@ function variantOf(role) {
  *
  * @param {object} role
  * @param {string|null|undefined} kind
- * @returns {{skillDir: string|null, workflow: string|null, selfCheck: string|null, reviewerPrompt: string|null}}
+ * @returns {{skillDir: string|null, workflow: string|null, selfCheck: string|null, reviewerHandoff: string|null}}
  */
 export function roleVariant(role, kind) {
   const variant = typeof kind === "string" ? role?.variants?.[kind] : null;
@@ -308,11 +308,17 @@ function normalizeRole(raw, skillDir, kind, warnings) {
   if (nonEmptyString(raw.self_check) && selfCheck === null) {
     warnings.push(`role ${id}: self_check is missing or escapes the skill directory`);
   }
-  const reviewerPrompt = nonEmptyString(raw.reviewer_prompt)
-    ? resolveRoleFile(skillDir, raw.reviewer_prompt)
+  const reviewerHandoff = nonEmptyString(raw.reviewer_handoff)
+    ? resolveRoleFile(skillDir, raw.reviewer_handoff)
     : null;
-  if (nonEmptyString(raw.reviewer_prompt) && reviewerPrompt === null) {
-    warnings.push(`role ${id}: reviewer_prompt is missing or escapes the skill directory`);
+  if (nonEmptyString(raw.reviewer_handoff) && reviewerHandoff === null) {
+    warnings.push(`role ${id}: reviewer_handoff is missing or escapes the skill directory`);
+  }
+  // The old key is retired: an install that predates the rename keeps its skill
+  // directory (the installer never clobbers), so name the fix instead of
+  // silently dropping the handoff excerpt.
+  if (nonEmptyString(raw.reviewer_prompt)) {
+    warnings.push(`role ${id}: reviewer_prompt is not read; rename it to reviewer_handoff`);
   }
 
   return {
@@ -322,7 +328,7 @@ function normalizeRole(raw, skillDir, kind, warnings) {
     lanes,
     // The per-kind files, so a dispatch on a fallback kind points at that
     // kind's copy of the skill instead of the primary kind's.
-    variants: { [kind]: variantOf({ skillDir, workflow, selfCheck, reviewerPrompt }) },
+    variants: { [kind]: variantOf({ skillDir, workflow, selfCheck, reviewerHandoff }) },
     title: nonEmptyString(raw.title) ? raw.title.trim() : agent,
     summary: nonEmptyString(raw.summary) ? raw.summary.trim() : "",
     responsibilities: stringList(raw.responsibilities, ROLES_LIMITS.responsibilities),
@@ -337,7 +343,7 @@ function normalizeRole(raw, skillDir, kind, warnings) {
     installedOn: [kind],
     workflow,
     selfCheck,
-    reviewerPrompt,
+    reviewerHandoff,
     defaultReviewer: raw.default_reviewer === true,
   };
 }

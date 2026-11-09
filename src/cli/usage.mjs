@@ -27,7 +27,7 @@ export function flagSynopsis(spec) {
 }
 
 /**
- * `taskctl issue deliver <id> [options]`, or `taskctl status [options]` for a
+ * `taskctl issue deliver <id> [options]`, or `taskctl board [options]` for a
  * top-level command (`group === null`).
  */
 export function commandSynopsis(group, command) {

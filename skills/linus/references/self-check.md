@@ -26,7 +26,9 @@ IDs: `S` shared, `A` architecture, `R` reconstruction/audit, `I` implementation,
   and re-run, or ask through the board; the delivery gate refuses either on a baseline item.
   Reconstruction rows are prefixed `reconstructed — <evidence>`.
 - **S4.** A **leftover** is work the card surfaced but does not own: outside the frozen
-  acceptance, with the item, its owner and the follow-up card (or why none is needed). A
+  acceptance, with the item, its owner and the follow-up card; a non-defect leftover outside
+  the board's scope names why no card is needed. An out-of-scope defect is filed
+  by its finder in `backlog`, bug-labelled and `meta.fixes` = this card, and named here. A
   blocker, not a leftover: a red gate, a security finding, a missing acceptance item, a missing
   or invalid handoff path, or a published contract, schema or migration change.
 - **S5.** Re-run the gates you claim; a red gate is a blocker, not a leftover. The decision
@@ -45,6 +47,10 @@ records `n/a` and does not run them.
 | Coverage | line, branch and function all **≥80%** (or the project's stricter floor) |
 | Mocks | only at http / websocket / db / redis and comparable external boundaries; internal modules stay real |
 | Security scan | the project's documented scan — dependency audit (default `osv-scanner`), secret scan, SAST — each arm with the command the standard records or its recorded `n/a — <reason>`; no unaddressed high/critical |
+
+A gate outside the lane's reach — the push-time container gate (TS-34) with an unpushed branch
+and no CI run — is recorded as `n/a — gate unobservable in lane`. Record it, deliver the rest
+of the evidence, and leave the push-time run to the pre-push hook.
 
 ## Architecture branch
 
@@ -162,7 +168,10 @@ Confirm the report gives every baseline item its status and falsifiable evidence
 leftover its owner and follow-up. The report is `plan.md`'s table projected onto the card's
 acceptance — not a narrative rewritten at delivery. A card with an open omission, a red gate or
 an unanswered question is not delivered: close it and re-run, or ask and keep the card open.
-The delivered tree is committed on the card's branch and the report carries the `commit` anchor; nothing was merged, rebased or pushed from this card. Call the `meerkat` board skill to deliver at
-`in_review`; the reviewer is independent.
+The delivered tree is committed on the card's branch and the report carries the `commit` anchor.
+The project's integration branch was merged into the lane before delivery, with any conflicts
+resolved and the checks re-run; nothing was merged, rebased or pushed from this card — landing
+is the loop's. Call the `meerkat` board skill to deliver at `in_review`; the reviewer is
+independent.
 
 A no-card run stops here: it records `E5 pending` and writes no board state.

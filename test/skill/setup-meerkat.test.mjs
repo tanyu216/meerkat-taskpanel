@@ -149,10 +149,40 @@ describe("skill frontmatter and the six-step shape", () => {
     assert.match(skill, /\/meerkat/, "the entry points card work at the board skill");
     assert.match(skill, /docs\/agents\//, "the entry points board rules at docs/agents");
     assert.match(skill, /card scope/i, "the entry carries the card scope");
+    assert.match(
+      skill,
+      /load the matching role skill[^.]*before the first edit/i,
+      "the entry loads the role skill for a task or plan that is not a card",
+    );
     assert.match(skill, /call `init` once|call the `init` skill once/i, "one call, not per kind");
     assert.match(skill, /never write an entry yourself|never write an entry/i, "setup never writes it");
     assert.match(skill, /no `init` skill|has no `init` skill/i, "the missing-init path is named");
     assert.match(skill, /report `skip`|reports? `skip`/i, "the missing-init outcome is skip");
+    assert.match(skill, /review-scenarios\//, "the entry names the project scenario directory");
+    assert.match(skill, /name \*\*every\*\* scenario file/i, "the entry names every scenario file");
+  });
+
+  it("offers project review scenarios through setup only", () => {
+    const skill = readFileSync(join(SKILL, "SKILL.md"), "utf8");
+    const reference = readFileSync(join(SKILL, "references/board-project.md"), "utf8");
+    for (const text of [skill, reference]) {
+      assert.match(text, /docs\/agents\/review-scenarios\//, "the scenario directory is named");
+      assert.match(text, /reviewer/i, "the reviewer owns the discovery");
+    }
+    assert.match(skill, /references\/scenarios\/README\.md/, "the installed scenario manual is named");
+    assert.match(skill, /No \(recommended\)/, "the gate defaults to skip");
+    assert.match(skill, /only for a type the user selected/i, "only selected types are written");
+    assert.match(skill, /the user's answers only/i, "the file records answers, not a template");
+    assert.match(
+      skill,
+      /augments the reviewer's built-in floors and never weakens/i,
+      "the project file is add-only",
+    );
+    assert.match(skill, /the \*\*only\*\* writer of project scenarios/i, "setup is the only writer");
+    assert.match(reference, /## Checks/, "the template names its checks");
+    assert.match(reference, /## Blocks APPROVE/, "the template names the blocking list");
+    assert.match(reference, /<project>\.md/, "a project-wide file is named after the project");
+    assert.match(reference, /written` \/ `unchanged` \/ `conflict`/, "the re-run outcomes are named");
   });
 
   it("keeps the setup prose free of host instruction filenames", () => {
@@ -257,7 +287,7 @@ describe("skill frontmatter and the six-step shape", () => {
       typeof roleJson.system_prompt === "string" && roleJson.system_prompt.trim() !== "",
       "the template ships the static card-session board text",
     );
-    assert.ok(existsSync(join(template, "references", "reviewer-prompt.md")), "the reviewer sample exists");
+    assert.ok(existsSync(join(template, "references", "reviewer-handoff.md")), "the reviewer sample exists");
     const templateSkill = readFileSync(join(template, "SKILL.md"), "utf8");
     assert.match(templateSkill, /\nname: example\n/);
     assert.doesNotMatch(templateSkill, /disable-model-invocation/);
@@ -266,6 +296,23 @@ describe("skill frontmatter and the six-step shape", () => {
     assert.match(reference, /only into an installed kind's skills tree|installed kind's skills tree/i);
     assert.match(reference, /never the repository's `skills\/`|never the repository/i);
     assert.ok(existsSync(join(SKILL, "scripts/scaffold-role.mjs")));
+  });
+
+  it("splits downstream cards from a defect follow-up in the shipped template", () => {
+    const template = join(SKILL, "assets/role-template");
+    const skill = readFileSync(join(template, "SKILL.md"), "utf8");
+    assert.match(skill, /downstream cards come from the director's triage/i);
+    assert.match(skill, /defect outside this card is filed by\s+its finder in `backlog`/i);
+    assert.match(skill, /meta\.fixes/);
+    const roleJson = JSON.parse(readFileSync(join(template, "role.json"), "utf8"));
+    const boundaries = roleJson.boundaries.join("\n");
+    assert.match(boundaries, /downstream cards in the handoff/i);
+    assert.match(boundaries, /backlog/i);
+    assert.match(boundaries, /bug-labelled/i);
+    assert.match(boundaries, /meta\.fixes/);
+    const platforms = readFileSync(join(SKILL, "references/roles-platforms.md"), "utf8");
+    assert.match(platforms, /downstream cards come from the\s+director's triage/i);
+    assert.match(platforms, /filed by its finder in `backlog`/i);
   });
 
   it("ships the role skills as standalone skills, never a team copy", () => {
@@ -291,7 +338,7 @@ describe("skill frontmatter and the six-step shape", () => {
   it("keeps the skill-creator eval prompts parseable", () => {
     const evals = JSON.parse(readFileSync(join(SKILL, "evals", "evals.json"), "utf8"));
     assert.equal(evals.skill_name, "setup-meerkat");
-    assert.equal(evals.evals.length, 13);
+    assert.equal(evals.evals.length, 14);
     for (const entry of evals.evals) {
       assert.equal(typeof entry.prompt, "string");
       assert.ok(entry.prompt.length > 20, `eval ${entry.id}: prompt`);
@@ -307,6 +354,7 @@ describe("skill frontmatter and the six-step shape", () => {
       "card-scope",
       "security-toolchain-belongs-to-linus",
       "init-writes-requirements",
+      "project-review-scenarios",
     ]) {
       assert.ok(names.has(name), `eval ${name} must exist`);
     }
@@ -317,6 +365,9 @@ describe("skill frontmatter and the six-step shape", () => {
     assert.match(text, /docs\/agents\//);
     assert.match(text, /card scope/i);
     assert.match(text, /init/i);
+    assert.match(text, /role skill/i, "the eval names the card-less role-skill trigger");
+    assert.match(text, /review-scenarios\//, "the eval names the project scenario directory");
+    assert.match(text, /every scenario file/i, "the eval names every scenario file");
 
     const interview = evals.evals.find((entry) => entry.name === "setup-interview");
     const interviewText = interview.assertions.join("\n");
@@ -631,7 +682,8 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     role("codex", "turing", "Turing");
     mkdirSync(join(home, ".claude", "skills", "tdd"), { recursive: true });
     writeFileSync(join(home, ".claude", "skills", "tdd", "SKILL.md"), "# tdd\n");
-    mkdirSync(join(home, ".claude", "meerkat-taskpanel"), { recursive: true });
+    mkdirSync(join(configDir, "loop"), { recursive: true });
+    writeFileSync(join(configDir, "loop", "sessions.state.json"), "{}\n");
     writeFileSync(
       join(configDir, ".env.claude"),
       "MEERKAT_TASKPANEL_AGENT_KIND_ORDER=claude,codex,pi\n",
@@ -656,6 +708,8 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
     assert.ok(claude.skills.names.includes("tdd"), "the installed skill names are reported");
     assert.ok(claude.skills.names.includes("jobs"), "the installed role skill is named");
     assert.equal(claude.loopState.installed, true);
+    assert.equal(claude.loopState.path, join(fixture.configDir, "loop"));
+    assert.equal(claude.loopState.legacy, null, "the state moved to the config root");
     assert.equal(typeof claude.supervisor.installed, "boolean");
     assert.deepEqual(claude.roles.sort(), ["Jobs", "Linus", "Reviewer"]);
     assert.deepEqual(claude.config.kindOrder, ["claude", "codex", "pi"]);
@@ -670,6 +724,28 @@ describe("detect.mjs — platforms and the role→platform proposal", () => {
 
     // No director skill on pi, so it cannot host a supervisor.
     assert.equal(result.body.platforms.pi.available, false);
+  });
+
+  it("reports a pre-migration state directory as legacy, never installed", (t) => {
+    const home = temp(t);
+    const project = temp(t);
+    const configDir = temp(t);
+    const legacy = join(home, ".claude", "meerkat-taskpanel");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(legacy, "cards.queue.json"), '{"cards":[]}\n');
+    const result = runJson(
+      t,
+      DETECT,
+      ["--home", home, "--project", project, "--actor-kind", "claude", "--no-network"],
+      {
+        cwd: project,
+        env: { HOME: home, PATH: temp(t), MEERKAT_TASKPANEL_CONFIG_DIR: configDir },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.body.loopState.installed, false);
+    assert.equal(result.body.loopState.legacy, legacy);
+    assert.equal(result.body.loopState.path, legacy, "the read path names the old directory");
   });
 
   it("accepts a custom team from an explicit roles directory", (t) => {
@@ -958,7 +1034,7 @@ describe("scaffold-role.mjs — render and validate a role skill", () => {
     assert.equal(identity.schema, "meerkat-role");
     assert.equal(identity.id, "ops");
     assert.deepEqual(identity.lanes, ["worker"]);
-    assert.equal(identity.reviewer_prompt, null);
+    assert.equal(identity.reviewer_handoff, null);
     assert.ok(existsSync(join(dir, identity.self_check)));
     const generated = readFileSync(join(dir, "SKILL.md"), "utf8");
     assert.match(generated, /\nname: ops\n/);
@@ -1030,7 +1106,7 @@ describe("scaffold-role.mjs — render and validate a role skill", () => {
     assert.equal(forced.body.status, "written");
   });
 
-  it("writes a reviewer prompt and the default-reviewer flag for a reviewer lane", (t) => {
+  it("writes a reviewer handoff and the default-reviewer flag for a reviewer lane", (t) => {
     const home = temp(t);
     const skills = join(home, ".agents", "skills");
     mkdirSync(skills, { recursive: true });
@@ -1038,9 +1114,9 @@ describe("scaffold-role.mjs — render and validate a role skill", () => {
     const result = runJson(t, SCAFFOLD, ["--spec", file, "--skills-dir", skills, "--json"], { cwd: temp(t), env: { HOME: home } });
     assert.equal(result.status, 0, result.stderr);
     const identity = JSON.parse(readFileSync(join(skills, "grace", "role.json"), "utf8"));
-    assert.equal(identity.reviewer_prompt, "references/reviewer-prompt.md");
+    assert.equal(identity.reviewer_handoff, "references/reviewer-handoff.md");
     assert.equal(identity.default_reviewer, true);
-    assert.ok(existsSync(join(skills, "grace", "references", "reviewer-prompt.md")));
+    assert.ok(existsSync(join(skills, "grace", "references", "reviewer-handoff.md")));
   });
 
   it("rejects a traversal id and a non-reviewer default reviewer", (t) => {

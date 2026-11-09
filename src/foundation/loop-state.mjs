@@ -27,9 +27,34 @@ export const QUEUE_FILES = Object.freeze({
   workspaces: "workspaces.json",
 });
 
+/**
+ * The loop's state directory: `<config root>/loop`.
+ *
+ * The config root is the machine-local root that already holds `.env.<kind>` and
+ * `projects.json` (`resolveConfigDir`), so a checkout install keeps the loop's
+ * queue, session records, locks and transcripts inside the project, and an
+ * installed tree keeps them beside `logs/` and `scheduling/`. It is deliberately
+ * not under the board's `.data`: the database and the loop have independent
+ * backup, teardown and permission lifecycles.
+ *
+ * Pure path arithmetic — the caller passes the config root.
+ *
+ * @param {string} configRoot
+ * @returns {string} absolute directory (not created)
+ */
+export function loopStateDir(configRoot) {
+  return join(String(configRoot), "loop");
+}
+
 /** Every other file the loop keeps beside its state directory. */
 export const STATE_FILES = Object.freeze({
   supervisor: "supervisor.state.json",
+  // A stable loop identity, independent of the state directory path: moving or
+  // renaming the checkout must not strand the board rows keyed by `meta.loop`.
+  loopId: "loop.id",
+  // The installer writes the pre-migration directories here; the pool's first
+  // reconcile closes their `running` board rows and drops the marker.
+  legacyLoopIds: "legacy-loop-ids.json",
   log: "supervisor.log",
   continueState: "continue.state.json",
   slaLedger: "sla-ledger.json",
@@ -52,6 +77,9 @@ export const STATE_FILES = Object.freeze({
   // ping is one-shot, so the consecutive `/health` failure count has to outlive
   // the process that measured it.
   boardHealth: "board-health.json",
+  // TP-0125 · the cross-process turn-interrupt channel (`orchestrator/
+  // interrupts.mjs`). A directory, not a file: one request per card target.
+  interrupts: "interrupts",
 });
 
 /** Statuses a legacy ledger row may carry while it still claims a concurrency slot. */
@@ -439,7 +467,7 @@ export function wedgeKillAction(input = {}) {
  * The state siblings that live beside `continue.state.json`.
  *
  * @param {string} stateDir
- * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string, poolWedge: string, health: string}}
+ * @returns {{continueState: string, slaLedger: string, workflowLedger: string, slaLastOk: string, deferrals: string, poolWedge: string, health: string, interrupts: string}}
  */
 export function statePathsForDir(stateDir) {
   const dir = String(stateDir);
@@ -452,5 +480,6 @@ export function statePathsForDir(stateDir) {
     poolWedge: join(dir, STATE_FILES.poolWedge),
     health: join(dir, STATE_FILES.health),
     boardHealth: join(dir, STATE_FILES.boardHealth),
+    interrupts: join(dir, STATE_FILES.interrupts),
   };
 }

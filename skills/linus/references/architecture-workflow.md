@@ -328,7 +328,10 @@ high/critical finding, or it records `n/a — <reason>`.
 
 Record the decision policy with the tools: the **recorded threshold** that blocks, the
 **waiver window** and its caps, the strict switch and what each **exit code** means. A project
-that grants no waivers records that. Pin each tool to a minimum version and record the check
+that grants no waivers records that. Record the **ASVS target level** too (L1, L2 or L3): it is
+the depth the independent reviewer's Tier 3 audits. **Ask the human for it when initializing the
+standard**; an existing project inherits its recorded level, and one that records none is
+audited at **L2**, recorded as the default. Pin each tool to a minimum version and record the check
 that proves it is present. A committed secret is not waivered: rotate it, purge it, then record
 what happened. A `.vue` or Svelte single-file component has no extractor in either SAST default;
 record those files `n/a — no extractor` and let the reviewer's checklist cover them.

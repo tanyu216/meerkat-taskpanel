@@ -45,7 +45,7 @@ const installed = new WeakSet();
 /**
  * Entry-specific cleanup hooks, run inside the crash timebox.
  *
- * A long-lived entry is not always the process entry: `taskctl loop session`
+ * A long-lived entry is not always the process entry: `taskctl pool`
  * starts through the CLI's dispatcher, so the CLI installs the one crash
  * boundary. The entry still needs its own last words (the boot ledger's failure
  * record and its restart delay), so it registers here instead of installing a

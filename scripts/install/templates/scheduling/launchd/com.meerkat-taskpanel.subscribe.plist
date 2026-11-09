@@ -13,7 +13,6 @@
   <array>
     <string>{{NODE}}</string>
     <string>{{CLI}}</string>
-    <string>loop</string>
     <string>subscribe</string>
     <string>--actor-kind</string>
     <string>{{ACTOR_KIND}}</string>

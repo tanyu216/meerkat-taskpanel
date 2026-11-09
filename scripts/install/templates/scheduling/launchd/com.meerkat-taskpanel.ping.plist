@@ -17,7 +17,6 @@
   <array>
     <string>{{NODE}}</string>
     <string>{{CLI}}</string>
-    <string>loop</string>
     <string>run</string>
     <string>--ping-once</string>
     <string>--actor-kind</string>

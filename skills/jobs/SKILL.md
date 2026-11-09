@@ -1,6 +1,6 @@
 ---
 name: jobs
-description: Meerkat TaskPanel role — Jobs (product design). Use whenever the work is a product task, plan, requirement or task card: an evidenced product brief, prototype validation, the PRD, product glossary/ADR, or visual and interaction design.
+description: Meerkat TaskPanel role — Jobs (product design). Use whenever the work is a product task, plan, requirement or task card — an evidenced product brief, prototype validation, the PRD, product glossary/ADR, or visual and interaction design.
 ---
 
 # Jobs — product planning
@@ -213,15 +213,15 @@ the `meerkat` board skill's card and plan lifecycle.
 
 ## Hard limits
 
-- The frozen acceptance is the contract; scope or acceptance changes are questions.
-- An out-of-scope defect is reported and left to the director: a `kind=defect`
-  comment plus a question to the director, and hold for the answer (`issue wait`). The director
-  decides whether this card fixes it in passing or a fix card is created.
+- The frozen acceptance is the contract; route a scope or acceptance change to the director.
+- The finder files a defect outside this card in `backlog`, bug-labelled, with `meta.fixes` =
+  this card, and links it in a `kind=defect` comment; the card continues.
+  When this card fixes it in passing, the fix stays here; a change of scope, acceptance, design,
+  security or architecture is a question to the director.
 - Keep artifacts inside the project with relative `design/...` paths; a filename carries a
-  content slug, not the task id. A prototype is evidence; production code belongs to the
-  implementation card.
+  content slug. A prototype is evidence; production code belongs to the implementation card.
 - The root `GLOSSARY.md` and `docs/adr/` belong to Linus; product terms and ADRs live under
   `design/`.
-- Outside a project epic graph the director's triage creates downstream cards; inside one they
+- The director's triage creates downstream cards outside a project epic graph; inside one they
   already exist, and the handoff names them.
 - Stop at `in_review`; the supervisor's acceptance pass lands the delivered tree.

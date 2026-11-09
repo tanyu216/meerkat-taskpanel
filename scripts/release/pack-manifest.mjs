@@ -93,7 +93,7 @@ export const REQUIRED = Object.freeze([
   "skills/setup-meerkat/assets/role-template/role.json",
   "skills/setup-meerkat/assets/role-template/references/workflow.md",
   "skills/setup-meerkat/assets/role-template/references/self-check.md",
-  "skills/setup-meerkat/assets/role-template/references/reviewer-prompt.md",
+  "skills/setup-meerkat/assets/role-template/references/reviewer-handoff.md",
   ...ROLE_REQUIRED,
   ".claude-plugin/plugin.json",
   ".claude-plugin/marketplace.json",

@@ -13,7 +13,8 @@ Tick what applies. Anything left unticked should say why in the notes below.
 - [ ] If a route, error code or wire field moved: the contract snapshot was refreshed with
       `node scripts/verify/contract.mjs --update` and the diff was read, not rubber-stamped
 - [ ] If anything under `skills/` was edited: the prose still matches `taskctl` (the skills
-      carry decisions; the loop runs as `taskctl loop …`, so there is no payload to regenerate)
+      carry decisions; the loop runs as top-level `taskctl` commands (`taskctl run`,
+      `taskctl pool`, …), so there is no payload to regenerate)
 - [ ] If a `src/core/storage/migrations/*.sql` file was added: it is a **new** numbered file
       and no committed migration was edited or deleted
 - [ ] No `CHANGELOG.md` edit: entries are written only when `dev` merges into `main`

@@ -333,7 +333,7 @@ into one lighter row, and counts what the reader can see. The drawer's activity 
 shows every event with a localised sentence for the known vocabulary and a generic fallback for an
 unknown name.
 
-### 5.4 The loop subscriber (`taskctl loop subscribe`)
+### 5.4 The loop subscriber (`taskctl subscribe`)
 
 Included in every launchd/systemd supervisor; cron cannot host a long-lived process. It consumes
 `taskctl events follow` — NDJSON from the local hub — and never speaks the board's HTTP API. Board
@@ -359,13 +359,16 @@ Two narrow field rules sit before the actor suppression (`CONDITIONAL_EVENTS` na
   turn on a card already `awaiting`; the event payload carries no card status and a status
   fetch per event would cost more than the wake, so one coalesced continue turn is accepted.
 - `task_moved` with `from: "in_progress"` and `to: "todo"` wakes even when this loop authored it:
-  that is the director releasing a card, and the same-round resume should not wait for the next
+  that is the director releasing a card, and the re-dispatch should not wait for the next
   continue clock. A move to `awaiting` is not a wake — the worker is parked and only a human
   comment resumes the card.
 
 `task_resumed` wakes a turn: a human answer moves an `awaiting` card to `todo` in the same
-transaction, and the worker session resumes with the answer. The loop's own resume remains a
-local fact (the stored session id in `sessions.state.json`) — see
+transaction. Both events are **claim-cycle exits**, so the subscriber also writes an interrupt
+request under `<stateDir>/interrupts/` (TP-0125 · ADR 0017): the pool stops the parked turn and
+the next claim is a fresh session, which re-reads the answer from the comments. It is a state
+file, not a board write. A session resume **inside the claim** (rework, crash recovery) remains
+a local fact (the stored session id in `sessions.state.json`) and emits no board event — see
 [`scheduling.md` §Resume and replay](scheduling.md#the-resident-session-pool).
 
 The loop does write the **board** session row, though: every turn boundary goes through
@@ -375,7 +378,7 @@ instead of emitting a new conversation. Both events are excluded from the human 
 and drive the drawer's `sessions` refetch (`web/src/lib/events.js`); the audit trail keeps
 them, which is what makes the Sessions tab live.
 
-Everything else is named in `IGNORED_EVENTS`. `epic_auto_start` is board-authored (`system`),
+Everything else is named in `IGNORED_EVENTS`. `epic_auto_start` is board-authored (`Board`),
 which actor suppression already ignores; listing it as a dispatch was a contradiction, not a
 behaviour.
 
@@ -384,8 +387,8 @@ A name neither list knows is a newer board and is ignored, never an error.
 **Suppression is by actor identity, not by a role word:**
 
 - a `human` event is never suppressed;
-- events authored by the board itself (`actor_id` is `system` or the workflow pass's `Orchestrator`)
-  are ignored;
+- events authored by the board itself (`actor_id` is `Board`, kind `system`) are ignored;
+  `system` is the kind those writes carry, never an actor id (ADR 0018);
 - events authored by the decision lane (`actor_id` is `Director`) are ignored, except the
   `in_progress → todo` release, which is that lane's answer and wakes the worker;
 - events authored by this loop's own agents (`actor_id ∈ --agent`, non-human) are ignored, which
@@ -636,7 +639,7 @@ Notes that the table cannot carry:
 - `import_completed` is what a historical importer wrote at the end of a whole-directory import.
   The loop still classifies it as a dispatch (an import is work to discover) for boards that carry
   such rows; its `md-import` actor id is what lets it through the board-write suppression (the rule
-  is the id, not the kind — an importer also wrote `system`).
+  is the id, not the kind — an importer also carried the `system` kind).
 - A `task_updated` row carries the patched **field names** plus the new dictionary/label values
   it resolved; it is not a diff of the patched fields. Consumers that need the old value read the
   state, not the row.
@@ -671,6 +674,11 @@ the label GC, the loop's workflow pass). What used to be `--actor-kind taskd` wa
 `system` on 2026-10-30: `taskd` put the service *process* on the record, which a reader could not
 tell from an agent.
 
+A kind is not an identity. Every automated write carries the kind `system` under the actor id
+**`Board`** (ADR 0018); `system` and the loop's former `Orchestrator` are no actor ids at all.
+The record's job is to tell a person from an agent from the board — the kind does that, and the
+id names the one automation author.
+
 `system` is a role word rather than a platform, and that cost is accepted deliberately: the
 record's job is to tell a person from an agent from the board, and "system" is the word a reader
 already knows. It is affordable because **no rule trusts a kind any more** — acceptance is decided
@@ -687,7 +695,7 @@ surface.
 This matters to the stream because suppression is by actor, not by a role word:
 
 - the loop ignores its own agents' writes, the decision lane's `Director` writes, and the
-  board's housekeeping by `actor_id`;
+  board's housekeeping by `actor_id` (`Board`);
 - a human's write is never suppressed;
 - an unknown actor kind is still a valid actor: it simply is not `human` and not `system`.
 
