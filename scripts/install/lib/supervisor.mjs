@@ -1325,9 +1325,9 @@ export function runSupervisorAction(options) {
       unitLoaded: subscribeUnitLoaded,
     });
     log(subscribeStatusLine(subscriber, options.now ?? Date.now));
-    // Full access is the loop's posture, not a hidden opt-in; the reviewer is
-    // the one lane with a deny list.
-    log("supervisor:   tools: full (reviewer read-only) — the project directory is not an isolation boundary");
+    // Full access is the loop's posture, not a hidden opt-in; the director and
+    // reviewer lanes are the only ones with a deny list.
+    log("supervisor:   tools: full worker; read-only director and reviewer — the project directory is not an isolation boundary");
     return 0;
   }
 

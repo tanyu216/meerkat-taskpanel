@@ -123,11 +123,18 @@ describe("pi session args", () => {
     assert.equal(args.includes("--exclude-tools"), false);
   });
 
-  it("excludes only the reviewer's write tools", () => {
-    const args = sessionArgs({ opts: {}, role: "reviewer" });
-    assert.ok(args.includes("--approve"));
-    assert.equal(args[args.indexOf("--exclude-tools") + 1], "edit,write");
-    assert.equal(args.includes("--tools"), false);
+  it("excludes the read-only lanes' write tools", () => {
+    for (const role of ["director", "reviewer"]) {
+      const args = sessionArgs({ opts: {}, role });
+      assert.ok(args.includes("--approve"));
+      assert.equal(args[args.indexOf("--exclude-tools") + 1], "edit,write", `${role} may not write`);
+      assert.equal(args.includes("--tools"), false);
+    }
+    assert.equal(
+      sessionArgs({ opts: {}, role: "worker" }).includes("--exclude-tools"),
+      false,
+      "the worker keeps every tool",
+    );
   });
 
   it("appends the role skill file and its directory to the system prompt", (t) => {

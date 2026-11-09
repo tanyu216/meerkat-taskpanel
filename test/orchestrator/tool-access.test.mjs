@@ -2,9 +2,9 @@
  * The supervised tool policy across the three adapters, and the absence of the
  * retired full-access switch.
  *
- * ADR 0020: worker and director lanes run with every tool; the reviewer keeps
- * everything except the file-edit tools. Codex has no per-role tool surface, so
- * its reviewer boundary is the prompt.
+ * ADR 0020 / 0021: the worker lane runs with every tool; the director and
+ * reviewer lanes keep everything except the file-edit tools. Codex has no
+ * per-role tool surface, so a read-only lane's boundary is the prompt there.
  *
  * Run with: node --test
  */
@@ -32,9 +32,9 @@ function filesUnder(dir) {
   return out;
 }
 
-describe("supervised tool access (ADR 0020)", () => {
-  it("gives the worker and director lanes every tool on every adapter", () => {
-    for (const role of ["worker", "director", "unknown"]) {
+describe("supervised tool access (ADR 0020 / 0021)", () => {
+  it("gives the worker lane every tool on every adapter", () => {
+    for (const role of ["worker", "unknown"]) {
       const claude = claudeArgs({ opts: {}, role });
       assert.equal(claude[claude.indexOf("--permission-mode") + 1], "bypassPermissions");
       assert.equal(claude.includes("--allowedTools"), false);
@@ -51,22 +51,25 @@ describe("supervised tool access (ADR 0020)", () => {
     });
   });
 
-  it("keeps the reviewer write-less on Claude and Pi", () => {
-    const claude = claudeArgs({ opts: {}, role: "reviewer" });
-    assert.equal(claude[claude.indexOf("--permission-mode") + 1], "bypassPermissions");
-    assert.equal(claude[claude.indexOf("--disallowedTools") + 1], "Edit,Write,NotebookEdit");
-    assert.doesNotMatch(claude[claude.indexOf("--disallowedTools") + 1], /\bAgent\b/);
+  it("keeps the director and reviewer write-less on Claude and Pi", () => {
+    for (const role of ["director", "reviewer"]) {
+      const claude = claudeArgs({ opts: {}, role });
+      assert.equal(claude[claude.indexOf("--permission-mode") + 1], "bypassPermissions");
+      assert.equal(claude[claude.indexOf("--disallowedTools") + 1], "Edit,Write,NotebookEdit");
+      assert.doesNotMatch(claude[claude.indexOf("--disallowedTools") + 1], /\bAgent\b/);
 
-    const pi = piArgs({ opts: {}, role: "reviewer" });
-    assert.ok(pi.includes("--approve"));
-    assert.equal(pi[pi.indexOf("--exclude-tools") + 1], "edit,write");
-    assert.equal(pi.includes("--tools"), false);
+      const pi = piArgs({ opts: {}, role });
+      assert.ok(pi.includes("--approve"));
+      assert.equal(pi[pi.indexOf("--exclude-tools") + 1], "edit,write");
+      assert.equal(pi.includes("--tools"), false);
+    }
   });
 
   it("carries no per-role surface on Codex", () => {
-    // A Codex reviewer cannot be made read-only at the adapter; the role prompt
-    // is the boundary. Both lanes get the same full-access posture.
+    // Codex cannot enforce a read-only lane at the adapter; the role prompt is
+    // the boundary. Every lane gets the same full-access posture.
     assert.deepEqual(threadPolicy(), threadPolicy({ opts: { role: "reviewer" } }));
+    assert.deepEqual(threadPolicy(), threadPolicy({ opts: { role: "director" } }));
   });
 
   it("leaves no full-access switch in the source", () => {

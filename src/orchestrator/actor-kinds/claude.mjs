@@ -13,7 +13,7 @@
 
 import { spawn } from "node:child_process";
 
-import { reviewerDeniedTools } from "../../foundation/role-tools.mjs";
+import { readOnlyDeniedTools } from "../../foundation/role-tools.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
@@ -23,9 +23,9 @@ export const DEFAULT_TURN_TIMEOUT_MS = 60 * 60 * 1000;
  * The argv for one Claude resident session.
  *
  * Every lane runs with permissions bypassed: a supervisor turn is unattended and
- * the operator asked for the full tool set. The reviewer is the one exception —
- * its write tools are denied. A deny rule is enforced even under
- * `bypassPermissions`, where an allow list would be inert.
+ * the operator asked for the full tool set. The read-only lanes — director and
+ * reviewer — are the exception: their write tools are denied. A deny rule is
+ * enforced even under `bypassPermissions`, where an allow list would be inert.
  *
  * @param {{opts: object, sessionId?: string|null, role?: string, systemPrompt?: string|null}} input
  * @returns {string[]}
@@ -41,9 +41,8 @@ export function sessionArgs(input) {
     "--permission-mode",
     "bypassPermissions",
   ];
-  if (String(input.role ?? "worker") === "reviewer") {
-    args.push("--disallowedTools", reviewerDeniedTools("claude"));
-  }
+  const denied = readOnlyDeniedTools(String(input.role ?? "worker"), "claude");
+  if (denied !== null) args.push("--disallowedTools", denied);
   if (input.sessionId !== undefined && input.sessionId !== null && input.sessionId !== "") {
     args.push("--resume", String(input.sessionId));
   }

@@ -2194,20 +2194,22 @@ A wake is **non-interactive**: the supervisor starts the worker with no human at
 the keyboard to answer a prompt. The loop therefore declares the tool surface up
 front instead of confirming it per call (ADR 0020).
 
-**Every dispatched session runs with the full tool set.** The supervisor is an
-unattended executor for a board the human owns; a card session must be able to run
-the project's commands, edit its tree and spawn subagents without waiting for a
-prompt nobody can answer.
+**A worker session runs with the full tool set; the director and reviewer lanes
+are read-only.** The supervisor is an unattended executor for a board the human
+owns, so a card session must be able to run the project's commands, edit its tree
+and spawn subagents without waiting for a prompt nobody can answer. The decision
+and review lanes decide and report on the board; they never edit files
+(ADR 0023).
 
-- **Claude Code** — `--permission-mode bypassPermissions`; every lane gets the
-  whole tool pool, including `Agent`. The reviewer lane is the one exception:
-  `--disallowedTools Edit,Write,NotebookEdit` removes the write tools. A deny rule
-  is enforced in every permission mode, including `bypassPermissions`; an allow
-  list would be inert there.
-- **Pi** — `--approve` with no `--tools`; the reviewer adds
+- **Claude Code** — `--permission-mode bypassPermissions`; the worker gets the
+  whole tool pool, including `Agent`. The read-only lanes add
+  `--disallowedTools Edit,Write,NotebookEdit`. A deny rule is enforced in every
+  permission mode, including `bypassPermissions`; an allow list would be inert
+  there.
+- **Pi** — `--approve` with no `--tools`; the read-only lanes add
   `--exclude-tools edit,write`.
 - **Codex** — `approvalPolicy: "never"` with `sandbox: "danger-full-access"`.
-  Codex has no per-role tool surface, so the reviewer's read-only rule stays with
+  Codex has no per-role tool surface, so a read-only lane's boundary stays with
   its prompt.
 
 **The project directory is not an isolation boundary** — cwd is where the work
@@ -2218,22 +2220,22 @@ block writes to the protected checkout, but they are a guard, not isolation.
 ### The resident pool's tool surface
 
 One table is the source for the adapters and the installer:
-`src/foundation/role-tools.mjs` (`REVIEWER_DENIED_TOOLS`). The Claude and Pi
-adapters read it for `--disallowedTools` / `--exclude-tools`, and the installer
-reads it to write the reviewer's native agent definition; worker and director
-definitions carry no tool line at all, so the subagent inherits its whole pool.
-Changing the reviewer boundary means changing that table, never a copy.
+`src/foundation/role-tools.mjs` (`READ_ONLY_LANES` / `READ_ONLY_DENIED_TOOLS`). The
+Claude and Pi adapters read it for `--disallowedTools` / `--exclude-tools`, and the
+installer reads it to write the reviewer's native agent definition; the worker
+definition carries no tool line at all, so the subagent inherits its whole pool.
+Changing a read-only boundary means changing that table, never a copy.
 
 | Role | Adapter posture |
 |---|---|
-| director | full: `bypassPermissions` / `--approve` / `danger-full-access` |
-| worker | full: the same |
-| reviewer | full minus `Edit`, `Write`, `NotebookEdit` (Claude) and `edit`, `write` (Pi); Codex prompt-only |
+| worker | full: `bypassPermissions` / `--approve` / `danger-full-access` |
+| director | full minus `Edit`, `Write`, `NotebookEdit` (Claude) and `edit`, `write` (Pi); Codex prompt-only |
+| reviewer | the same read-only posture |
 
-A card session may spawn subagents (`Agent`). `Agent` takes no per-call `cwd`, so
+A session may spawn subagents (`Agent`). `Agent` takes no per-call `cwd`, so
 a child does not inherit the card's worktree; subagents are not tracked in a
-supervisor ledger and none is resumed. The reviewer's write deny applies to its
-own session; a child it spawns has its own tool pool. The posture is stated in
+supervisor ledger and none is resumed. A read-only lane's write deny applies to
+its own session; a child it spawns has its own tool pool. The posture is stated in
 `--supervisor=status`; the installed units carry no tool switch.
 
 When the declared gate is the push-time container gate and the lane cannot run it — the

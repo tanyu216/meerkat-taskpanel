@@ -129,26 +129,29 @@ describe("claude session args", () => {
     }
   });
 
-  it("denies only the reviewer's write tools", () => {
-    const reviewer = sessionArgs({ opts: {}, role: "reviewer" });
-    assert.equal(
-      reviewer[reviewer.indexOf("--disallowedTools") + 1],
-      "Edit,Write,NotebookEdit",
-    );
-    for (const role of ["worker", "director"]) {
+  it("denies the read-only lanes' write tools", () => {
+    for (const role of ["director", "reviewer"]) {
+      const args = sessionArgs({ opts: {}, role });
       assert.equal(
-        sessionArgs({ opts: {}, role }).includes("--disallowedTools"),
-        false,
-        `${role} keeps every tool`,
+        args[args.indexOf("--disallowedTools") + 1],
+        "Edit,Write,NotebookEdit",
+        `${role} may not write`,
       );
     }
+    assert.equal(
+      sessionArgs({ opts: {}, role: "worker" }).includes("--disallowedTools"),
+      false,
+      "the worker keeps every tool",
+    );
   });
 
   it("leaves the subagent tool available to every lane", () => {
-    // ADR 0020: a card session may spawn subagents. The reviewer's deny list
-    // removes only the write tools, so `Agent` survives there too.
-    const reviewer = sessionArgs({ opts: {}, role: "reviewer" });
-    assert.doesNotMatch(reviewer[reviewer.indexOf("--disallowedTools") + 1], /\bAgent\b/);
+    // ADR 0020: a card session may spawn subagents. A read-only lane's deny
+    // list removes only the write tools, so `Agent` survives there too.
+    for (const role of ["director", "reviewer"]) {
+      const args = sessionArgs({ opts: {}, role });
+      assert.doesNotMatch(args[args.indexOf("--disallowedTools") + 1], /\bAgent\b/);
+    }
     for (const role of ["director", "worker", "reviewer"]) {
       assert.equal(
         sessionArgs({ opts: {}, role }).includes("--allowedTools"),
