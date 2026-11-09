@@ -22,7 +22,7 @@
 
 import { dirname } from "node:path";
 
-import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
+import { installEntryCrashGuard, registerLongLivedEntry } from "../foundation/crash-guard.mjs";
 import { processStartToken } from "../foundation/daemon-state.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 import {
@@ -603,13 +603,16 @@ export async function main(argv, env = process.env, io = {}) {
     return 2;
   }
   // The long-lived entry keeps the boot ledger: a start that never reaches the
-  // hub is delayed before the service manager restarts it.
+  // hub is delayed before the service manager restarts it. It also declares its
+  // lifetime to the crash guard: the CLI dispatches this entry, and its one-shot
+  // stream rule must not exit 0 on a closed reader.
   const log = createLogger(opts);
   const boot = beginBootHealth({
     path: statePathsForDir(dirname(String(opts.state))).health,
     log,
     version: VERSION,
   });
+  const unregisterLongLived = registerLongLivedEntry();
   try {
     const code = await runOnce(opts, env, { log, onFirstTick: boot.noteFirstTick });
     const { delayMs } = boot.settle(code);
@@ -624,6 +627,8 @@ export async function main(argv, env = process.env, io = {}) {
     const { delayMs } = boot.settle(1);
     if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     throw err;
+  } finally {
+    unregisterLongLived();
   }
 }
 

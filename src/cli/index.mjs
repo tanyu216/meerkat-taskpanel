@@ -39,7 +39,7 @@ import { exitCodeFor } from "../foundation/transport/errors.mjs";
 import { renderFailure, renderResult } from "./output/index.mjs";
 import { connectBoard, createBoardSession } from "../foundation/transport/session.mjs";
 import { commandUsage, groupUsage, topLevelUsage, versionLine } from "./usage.mjs";
-import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
+import { installEntryCrashGuard, isLongLivedEntry } from "../foundation/crash-guard.mjs";
 import { isEntryPoint } from "../foundation/entry-guard.mjs";
 
 /** `--json`, in either spelling. Read from the raw argv so it survives a parse failure. */
@@ -327,20 +327,23 @@ if (isEntryPoint(import.meta.url)) {
   // One crash boundary for every CLI command, including the loop entries that
   // run through this dispatch: an escaped rejection leaves a `process_crash`
   // record instead of a silent non-zero exit. The CLI's own EPIPE listener
-  // below still exits 0 for a reader that stopped early — that is a choice for
-  // a one-shot command, and the guard's swallow is for long-lived entries.
+  // below still exits 0 for a one-shot command; a long-lived entry declares
+  // itself (crash-guard's marker) and keeps the guard's swallow instead.
   installEntryCrashGuard("taskctl");
 
   // Letting the writes drain (below) exposes what `process.exit()` used to hide: a
   // reader that stops early — `… | head`, `… | jq -c 'first'` — closes the pipe, and
   // the next chunk surfaces as an unhandled `'error'` event, which would print a
-  // stack trace where every other CLI just stops. The reader asked for no more, so
-  // there is nothing to report and nothing failed. Any other write error is still a
-  // crash, exactly as it was without a listener.
+  // stack trace where every other CLI just stops. For a one-shot command the reader
+  // asked for no more, so there is nothing to report and nothing failed. A
+  // long-lived entry (the resident pool, the daemon, a subscriber) has no caller to
+  // restart it and must follow the crash guard: swallow the EPIPE and keep running.
+  // Any other write error is still a crash, exactly as it was without a listener.
   for (const stream of [process.stdout, process.stderr]) {
     stream.on("error", (failure) => {
-      if (failure?.code === "EPIPE") process.exit(CLI_EXIT.OK);
-      throw failure;
+      if (failure?.code !== "EPIPE") throw failure;
+      if (isLongLivedEntry()) return;
+      process.exit(CLI_EXIT.OK);
     });
   }
 

@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 
+import { baseEnv } from "../helpers/base-env.mjs";
 import { processStartToken } from "../../src/foundation/daemon-state.mjs";
 import { createClaudePool } from "../../src/orchestrator/actor-kinds/claude.mjs";
 import {
@@ -2193,6 +2194,48 @@ describe("session pool", () => {
     return { child, sessionState, logPath };
   }
 
+  /**
+   * The same pool, but through the entry the service manager runs:
+   * `taskctl pool`. The CLI dispatcher installs the one crash boundary
+   * for every command, so its own stream-error rule must know this process is
+   * long-lived — `supervisor.mjs` alone cannot say so.
+   */
+  async function startCliSessionChild(t) {
+    const dir = mkdtempSync(join(tmpdir(), "tp-session-pool-cli-"));
+    const home = join(dir, "home");
+    for (const name of ["meerkat", "meerkat-director"]) {
+      const skillDir = join(home, ".claude", "skills", name);
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, "SKILL.md"), `---\nname: ${name}\n---\n`);
+    }
+    const args = [
+      join(import.meta.dirname, "../../src/cli/index.mjs"),
+      "pool",
+      "--actor-kind", "claude",
+      "--agent", "alice",
+      "--home", home,
+      "--repo", join(import.meta.dirname, "../.."),
+      "--state-dir", dir,
+      "--log", join(dir, "supervisor.log"),
+    ];
+    // stdout is ignored on purpose: this case closes the stderr reader, and a
+    // second dead stream would be a second fault in the same measurement.
+    const child = spawn(process.execPath, args, {
+      cwd: join(import.meta.dirname, "../.."),
+      env: baseEnv(),
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    t.after(async () => {
+      await reap(child);
+      rmSync(dir, { recursive: true, force: true });
+    });
+    return {
+      child,
+      sessionState: join(dir, "sessions.state.json"),
+      logPath: join(dir, "supervisor.log"),
+    };
+  }
+
   it(
     "keeps an idle pool resident in every control mode past the restart throttle",
     { timeout: 45_000 },
@@ -2235,6 +2278,63 @@ describe("session pool", () => {
         assert.equal(outcome.signal, null, `${label}: SIGTERM shut it down without SIGKILL`);
         assert.equal(outcome.code, 0, `${label}: a clean shutdown; log: ${log}`);
       }
+    },
+  );
+
+  // The soak's EPIPE fault (TP-0034): a service manager may lose the reader of
+  // the pool's stderr. A one-shot CLI command stops quietly there (`… | head`);
+  // a long-lived entry must not — it has no caller to restart it. Before the fix
+  // the CLI's own EPIPE listener exited 0, so the pool vanished silently after
+  // writing its state (exit 0, no stopped record).
+  it(
+    "survives its stderr reader closing through the CLI dispatcher",
+    { timeout: 30_000 },
+    async (t) => {
+      const pool = await startCliSessionChild(t);
+      // Hanging up before the pool's first log line drains: every later stderr
+      // write is an EPIPE.
+      pool.child.stderr.destroy();
+
+      const deadline = Date.now() + 10_000;
+      let state = null;
+      while (Date.now() < deadline) {
+        if (pool.child.exitCode !== null || pool.child.signalCode !== null) break;
+        try {
+          state = JSON.parse(readFileSync(pool.sessionState, "utf8"));
+        } catch {
+          /* not written yet */
+        }
+        if (Number(state?.poolPid) === pool.child.pid && state?.phase === "running") break;
+        await sleep(25);
+      }
+
+      // The pool logs on its own clock; give the write that follows the closed
+      // reader (the pre-fix exit path) time to arrive.
+      await sleep(1_000);
+      const log = existsSync(pool.logPath) ? readFileSync(pool.logPath, "utf8") : "(none)";
+      assert.equal(
+        pool.child.exitCode,
+        null,
+        `the pool exited ${pool.child.exitCode} after its stderr reader closed; log:\n${log}`,
+      );
+      assert.equal(pool.child.signalCode, null, `the pool was killed; log:\n${log}`);
+      assert.equal(
+        JSON.parse(readFileSync(pool.sessionState, "utf8")).poolPid,
+        pool.child.pid,
+        "the state file still names the live manager",
+      );
+
+      const exited = waitExit(pool.child, 10_000);
+      pool.child.kill("SIGTERM");
+      const outcome = await exited;
+      assert.equal(outcome.signal, null, "SIGTERM shut it down without SIGKILL");
+      assert.equal(outcome.code, 0, `a clean shutdown; log:\n${log}`);
+      // The pre-fix exit 0 left the state machine without a stopped record.
+      assert.match(
+        readFileSync(pool.logPath, "utf8"),
+        /session: pool stopped/,
+        "the pool records its own stop instead of vanishing",
+      );
     },
   );
 

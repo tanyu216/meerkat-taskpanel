@@ -22,6 +22,11 @@
  * otherwise end a working entry. `EPIPE` is swallowed; **any other** stream
  * error is re-thrown, exactly as it would be without a listener.
  *
+ * A long-lived entry says so through {@link registerLongLivedEntry}, because the
+ * CLI installs this one boundary for every command it dispatches and its own
+ * one-shot stream rule (stop quietly, exit 0) must not end a process that has no
+ * caller to restart it.
+ *
  * `beforeExit` is deliberately not used: it never fires on an uncaught
  * exception and it is not an exit path.
  *
@@ -60,6 +65,37 @@ export function registerFatalHook(hook) {
 
 /** The pipe-closed code: the reader asked for no more, so there is no failure. */
 const EPIPE = "EPIPE";
+
+/** Live registrations marking this process as a long-lived entry. */
+let longLivedEntries = 0;
+
+/**
+ * Declare that this process is a long-lived entry — the supervisor, the resident
+ * pool, the daemon, a subscriber.
+ *
+ * The entry knows its own lifetime; the CLI does not before it parses the
+ * command, and it installs one stream-error rule for every command. A one-shot
+ * command's closed reader is a silent exit 0 (`… | head`), while a long-lived
+ * process must keep the guard's swallow: there is no caller to restart it.
+ *
+ * @returns {() => void} the unregister (idempotent); a long-lived entry normally
+ *   keeps the marker for the life of the process, so only a resolved run or a
+ *   test needs it
+ */
+export function registerLongLivedEntry() {
+  longLivedEntries += 1;
+  let registered = true;
+  return () => {
+    if (!registered) return;
+    registered = false;
+    longLivedEntries -= 1;
+  };
+}
+
+/** Whether a live registration marks this process as a long-lived entry. */
+export function isLongLivedEntry() {
+  return longLivedEntries > 0;
+}
 
 /**
  * Install the crash boundary on a process-like emitter.
