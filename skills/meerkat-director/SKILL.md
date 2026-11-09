@@ -36,7 +36,7 @@ Only a human-authored comment resumes an `awaiting` card. The shared core is
 and it, with `references/rounds.md`, is the single decision-authority source. A project's own
 `docs/agents/decision-policy.md` may refine only its E1–E5 map, item by item, under the rules
 in `references/escalation.md`. The lane is read-only: its write tools are denied, so a fix
-becomes a card rather than an edit in the project tree.
+becomes a card, and the edit belongs to a worker in the project tree.
 
 ## Files
 
