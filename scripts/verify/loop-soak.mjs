@@ -14,8 +14,9 @@
  *   * **no duplicate dispatch** — two agent turns for the same card never
  *     overlap in time (the SIGKILL/restart path is where today's tree violates
  *     this: it redispatches while the orphaned child still runs);
- *   * **taskctl loop back to running** — after the last restart, the loop's own
- *     verdict returns to `running` within the documented bound.
+ *   * **loop status healthy and live** — after the last restart, the loop's own
+ *     verdict is `running`, or `busy` with a live pid, within the documented
+ *     bound. `busy` is a tick in flight, not a failure (TP-0151).
  *
  * A fourth check covers the EPIPE boundary directly: closing the pool's stderr
  * reader must not kill the pool.
@@ -52,6 +53,7 @@ import { fileURLToPath } from "node:url";
 
 import { enqueueCard, readCards } from "../../src/orchestrator/queue.mjs";
 import { probeSupervisor } from "../../src/orchestrator/status.mjs";
+import { healthyStatusVerdict } from "./lib/soak-verdict.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const USAGE = `Usage: node scripts/verify/loop-soak.mjs [options]
@@ -575,6 +577,21 @@ async function main(argv) {
     return statusOf(sandbox);
   }
 
+  /**
+   * Wait for a healthy live verdict: `running`, or `busy` with a live pid. A
+   * `starting` phase can still resolve into one, so the wait continues until
+   * the deadline; the last status is the evidence either way.
+   */
+  async function waitForHealthyStatus(timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    let status = statusOf(sandbox);
+    while (!healthyStatusVerdict(status).ok && Date.now() < deadline) {
+      await sleep(100);
+      status = statusOf(sandbox);
+    }
+    return status;
+  }
+
   async function poolPid() {
     const state = readJson(join(sandbox.stateDir, "sessions.state.json"));
     const pid = Number(state?.poolPid);
@@ -761,9 +778,13 @@ async function main(argv) {
           })();
           if (survived) pass("epipe-survival", `pool ${pid} survived its closed stderr`);
           else fail("epipe-survival", `pool ${pid} died after its stderr reader closed`);
-          const status = statusOf(sandbox);
-          if (status.verdict !== "running") {
-            fail("status-running", `after EPIPE the verdict was ${status.verdict}`);
+          // The pool must still be healthy and live after the EPIPE. A card
+          // turn in flight (`busy`) is that healthy state, not a failure —
+          // demanding exactly `running` here is the same defect the final
+          // check had (TP-0151).
+          const afterEpipe = healthyStatusVerdict(statusOf(sandbox));
+          if (!afterEpipe.ok) {
+            fail("status-running", `after EPIPE ${afterEpipe.detail}`);
           }
         }
       } else {
@@ -781,21 +802,35 @@ async function main(argv) {
     if (pool === null || pool.exitCode !== null) {
       startPool();
     }
-    const finalStatus = await waitForVerdict("running", 10_000);
-    if (finalStatus.verdict === "running") {
-      pass("status-running", `verdict running (pid ${finalStatus.pool.poolPid})`);
+    const finalStatus = await waitForHealthyStatus(10_000);
+    const finalJudgement = healthyStatusVerdict(finalStatus);
+    if (finalJudgement.ok) {
+      pass("status-running", finalJudgement.detail);
     } else {
-      fail("status-running", `final verdict was ${finalStatus.verdict}: ${finalStatus.pool.reason ?? "no reason"}`);
+      fail("status-running", `final ${finalJudgement.detail}`);
     }
 
     // The operator's spelling of the same question.
     const cli = cliStatus(sandbox);
     if (cli.exit !== 0) {
       fail("cli-status", `taskctl loop exited ${cli.exit}: ${cli.err.trim()}`);
-    } else if (!/"verdict"\s*:\s*"running"/.test(cli.out)) {
-      fail("cli-status", `taskctl loop did not report running: ${cli.out.trim().slice(0, 200)}`);
     } else {
-      pass("cli-status", "taskctl loop reports running");
+      let cliReport = null;
+      try {
+        cliReport = JSON.parse(cli.out);
+      } catch {
+        cliReport = null;
+      }
+      if (cliReport === null) {
+        fail("cli-status", `taskctl loop did not emit JSON: ${cli.out.trim().slice(0, 200)}`);
+      } else {
+        const cliJudgement = healthyStatusVerdict(cliReport);
+        if (cliJudgement.ok) {
+          pass("cli-status", `taskctl loop reports ${cliJudgement.detail}`);
+        } else {
+          fail("cli-status", `taskctl loop did not report a healthy live verdict — ${cliJudgement.detail}`);
+        }
+      }
     }
 
     // Let the last dispatch settle before judging the queues.
