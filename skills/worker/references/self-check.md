@@ -2,8 +2,11 @@
 
 Run this audit in both modes — a card delivery or a no-card report — before delivering the work.
 A card-only item is recorded `not_applicable — no card`. Every item ends with one of `met`, `not_applicable`,
-`partial`, `not_met` or `leftover` and a pointer to the evidence. A `partial` or `leftover`
-without a named follow-up is a red; close it or ask before delivery. Card operations (brief, report,
+`partial`, `not_met` or `leftover` and a pointer to the evidence. A `partial` is closed and
+re-run; a `leftover` names its owner and its follow-up — the filing card, or, for a non-defect
+item outside the board's scope, why no card is needed. An out-of-scope defect is filed by its
+finder in `backlog` (bug-labelled, `meta.fixes` = this card), linked from a `kind=defect`
+comment, and named in the report. Card operations (brief, report,
 delivery) are the `meerkat` board skill's contract; decisions are the `meerkat-director`
 skill's — this file audits the work, not those contracts.
 
@@ -28,5 +31,8 @@ skill's — this file audits the work, not those contracts.
 - **W8.** The tree is committed and the report carries the `commit` anchor.
 - **W9.** The report maps each acceptance item to its evidence, names every command run, and
   records any waiver with who granted it.
-- **W10.** The card is at `in_review`; nothing was moved to `done`, merged, rebased or pushed.
-- **W11.** The report is a digest, not a transcript; links point at the committed tree.
+- **W10.** The project's integration branch was merged into this lane, the conflicts (if any)
+  resolved, and the checks re-run on the result.
+- **W11.** The card is at `in_review`; nothing was moved to `done`, and the lane was not merged
+  back into the integration branch, rebased or pushed — landing is the loop's.
+- **W12.** The report is a digest, not a transcript; links point at the committed tree.

@@ -85,6 +85,8 @@ async function throughBothHalves(input, overrides = {}) {
   const order = [];
   const appends = [];
   const metas = [];
+  const comments = [];
+  const notes = [];
   const result = await runWorkflowTick({
     plan: wirePlan,
     config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
@@ -97,8 +99,14 @@ async function throughBothHalves(input, overrides = {}) {
     createReview: async (action) => (order.push(`createReview:${action.idem}`), { ok: true, ref: "PROJ-0003" }),
     createFixChild: async (action) => (order.push(`createFixChild:${action.original_ref}`), { ok: true, ref: "PROJ-0004" }),
     linkFixChild: async (epic, child) => (order.push(`linkFixChild:${epic}:${child}`), { ok: true }),
-    move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
-    comment: async (ref, { kind }) => (order.push(`comment:${ref}:${kind}`), { ok: true }),
+    move:
+      overrides.move ??
+      (async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true })),
+    comment: async (ref, { kind, body }) => (
+      comments.push({ ref, kind, body }),
+      order.push(`comment:${ref}:${kind}`),
+      { ok: true }
+    ),
     setMeta: async (ref, meta) => (
       metas.push({ ref, meta }),
       order.push(`setMeta:${ref}:${JSON.stringify(meta)}`),
@@ -109,11 +117,17 @@ async function throughBothHalves(input, overrides = {}) {
       order.push(`appendAcceptance:${ref}:${items.length}`);
       return { ok: true };
     },
-    notify: () => {},
-    now: () => NOW,
+    // TP-0125 — the cancel_review path writes the interrupt marker after the
+    // card's move; the sequence is part of the executor's order.
+    requestInterrupt: (request) => {
+      order.push(`interrupt:${request.card}:${request.to}`);
+      return { ok: true };
+    },
+    notify: (alert) => notes.push(alert),
+    now: overrides.now ?? (() => NOW),
     log: () => {},
   });
-  return { plan, wirePlan, order, result, appends, metas };
+  return { plan, wirePlan, order, result, appends, metas, comments, notes };
 }
 
 const APPROVE_ORDER = [
@@ -128,7 +142,7 @@ const APPROVE_ORDER = [
 // The must-fix append sits **after** the move to `in_progress` (the round bump
 // is what unlocks the baseline) and **before** the card leaves for `todo`.
 const REJECT_TASK_ORDER = [
-  'setMeta:PROJ-0001:{"rework_round":"2"}',
+  'setMeta:PROJ-0001:{"rework_round":"2","review_rejects":"1"}',
   "comment:PROJ-0001:change",
   "move:PROJ-0001:in_progress",
   "appendAcceptance:PROJ-0001:1",
@@ -140,7 +154,7 @@ const REJECT_TASK_ORDER = [
 const REJECT_EPIC_ORDER = [
   "createFixChild:PROJ-0001",
   "linkFixChild:PROJ-0001:PROJ-0004",
-  'setMeta:PROJ-0001:{"rework_round":"2"}',
+  'setMeta:PROJ-0001:{"rework_round":"2","review_rejects":"1"}',
   "comment:PROJ-0001:change",
   "move:PROJ-0001:in_progress",
   "appendAcceptance:PROJ-0001:1",
@@ -330,7 +344,13 @@ const SCENARIOS = [
       return [original, review];
     })(),
     expectedAction: "cancel_review",
-    expectedOrder: ["comment:PROJ-0002:note", "move:PROJ-0002:in_progress", "move:PROJ-0002:canceled"],
+    // TP-0125 — one hop, then the marker the pool consumes. The old
+    // `→ in_progress → canceled` re-entered the work cycle.
+    expectedOrder: [
+      "comment:PROJ-0002:note",
+      "move:PROJ-0002:canceled",
+      "interrupt:PROJ-0002:canceled",
+    ],
   },
   {
     name: "reopen_review (verdict unreadable)",
@@ -350,10 +370,16 @@ const SCENARIOS = [
   },
   {
     name: "hold_card (rework cap)",
-    tasks: [card({ delivery_round: 4 })],
+    tasks: [
+      card({
+        status: "todo",
+        delivery_round: 5,
+        meta: { review_rejects: "4", loop_hold_retry_base: "0" },
+      }),
+    ],
     expectedAction: "hold_card",
     expectedOrder: [
-      'setMeta:PROJ-0001:{"loop_hold_code":"rework_cap","loop_hold_round":"4","loop_hold_retry_base":"0","loop_hold_e_code":"E2","loop_hold_at":"2026-10-08T00:05:00.000Z"}',
+      'setMeta:PROJ-0001:{"loop_hold_code":"rework_cap","loop_hold_round":"5","loop_hold_retry_base":"4","loop_hold_e_code":"E2","loop_hold_at":"2026-10-08T00:05:00.000Z"}',
       "comment:PROJ-0001:question",
       "move:PROJ-0001:blocked",
     ],
@@ -386,22 +412,225 @@ describe("workflow plan → execution", () => {
     });
   }
 
-  it("keeps the card out of done when the lane branch cannot be merged", async () => {
+  it("parks the card in the same tick when a rejection reaches the bound", async () => {
+    const original = card({ meta: { review_rejects: "3" } });
+    const review = reviewCard(original);
+    const { plan, order, result } = await throughBothHalves({
+      tasks: [original, review],
+      verdicts: { "PROJ-0002": verdict("REJECT", "1. fix it") },
+    });
+    assert.deepEqual(
+      plan.actions.map((action) => action.type),
+      ["reject_task", "hold_card"],
+      "the reject and the hold are planned together, so poll cannot claim the todo card",
+    );
+    assert.equal(result.failed, 0);
+    assert.deepEqual(order, [
+      'setMeta:PROJ-0001:{"rework_round":"2","review_rejects":"4"}',
+      "comment:PROJ-0001:change",
+      "move:PROJ-0001:in_progress",
+      "appendAcceptance:PROJ-0001:1",
+      "move:PROJ-0001:todo",
+      "comment:PROJ-0002:note",
+      "move:PROJ-0002:done",
+      'setMeta:PROJ-0001:{"loop_hold_code":"rework_cap","loop_hold_round":"2","loop_hold_retry_base":"4","loop_hold_e_code":"E2","loop_hold_at":"2026-10-08T00:05:00.000Z"}',
+      "comment:PROJ-0001:question",
+      "move:PROJ-0001:blocked",
+    ]);
+  });
+
+  it("stamps the hold marker at execution time, so a refused move is retried", async () => {
+    const LATER = "2026-10-08T00:06:00.000Z";
+    const original = card({ meta: { review_rejects: "3" } });
+    const review = reviewCard(original);
+    const { metas, result } = await throughBothHalves(
+      { tasks: [original, review], verdicts: { "PROJ-0002": verdict("REJECT", "1. fix it") } },
+      {
+        now: () => LATER,
+        move: async (ref, to) =>
+          to === "blocked"
+            ? { ok: false, error: "the move was refused", code: "VERSION_CONFLICT" }
+            : { ok: true },
+      },
+    );
+    assert.equal(result.failed, 1, "the refused hold move is a failed action");
+    const marker = metas.find((entry) => entry.meta?.loop_hold_code === "rework_cap")?.meta;
+    assert.ok(marker, "the hold marker was written before the move");
+    assert.equal(marker.loop_hold_at, LATER, "the marker carries the executor's clock");
+    assert.ok(Date.parse(marker.loop_hold_at) > Date.parse(NOW), "…after the reject's move to todo");
+
+    // The next tick over the crash state must retry the move, not read a human release.
+    const crashed = card({
+      status: "todo",
+      delivery_round: 2,
+      status_changed_at: NOW,
+      meta: {
+        rework_round: "2",
+        review_rejects: "4",
+        loop_hold_code: "rework_cap",
+        loop_hold_round: "2",
+        loop_hold_retry_base: "4",
+        loop_hold_at: marker.loop_hold_at,
+      },
+    });
+    const next = planWorkflowTick({
+      tasks: [crashed],
+      verdicts: {},
+      reportsByRef: {},
+      config: CONFIG,
+      now: NOW,
+    });
+    const hold = next.actions.find((action) => action.type === "hold_card");
+    assert.ok(hold, "the interrupted hold is re-emitted");
+    assert.equal(hold.held, true, "only the move is retried");
+  });
+
+  it("routes a landing conflict back for a merge-resolution round", async () => {
     const original = card();
     const review = reviewCard(original);
     const landing = [];
-    const { order, result } = await throughBothHalves(
+    const { order, result, comments, notes } = await throughBothHalves(
       { tasks: [original, review], verdicts: { "PROJ-0002": verdict("APPROVE") } },
       {
         land: async (action) => (
           landing.push(action.original_ref),
-          { ok: false, error: "WORKSPACE_MERGE_CONFLICT: conflict" }
+          {
+            ok: false,
+            error: "WORKSPACE_MERGE_CONFLICT: merging lane/PROJ-0001 into /p conflicted",
+            code: "WORKSPACE_MERGE_CONFLICT",
+            details: {
+              branch: "lane/PROJ-0001",
+              project_dir: "/p",
+              conflicts: ["src/a.mjs", "docs/events.md"],
+            },
+          }
         ),
       },
     );
-    assert.equal(result.failed, 1);
+    assert.equal(result.failed, 0, "a routed conflict is not a failure");
+    assert.equal(result.blocked, 1);
     assert.deepEqual(landing, ["PROJ-0001"], "landing is attempted first");
-    assert.deepEqual(order, [], "no acceptance write happens before the landing");
+    assert.deepEqual(
+      order,
+      [
+        'setMeta:PROJ-0001:{"rework_round":"2"}',
+        "comment:PROJ-0001:change",
+        "move:PROJ-0001:in_progress",
+        "move:PROJ-0001:todo",
+        "comment:PROJ-0002:note",
+        "move:PROJ-0002:done",
+      ],
+      "the conflict reopens the card through the rework two-hop, review card last",
+    );
+    const change = comments.find((entry) => entry.ref === "PROJ-0001" && entry.kind === "change");
+    assert.match(change.body, /src\/a\.mjs/);
+    assert.match(change.body, /docs\/events\.md/);
+    assert.match(change.body, /integration branch/);
+    assert.deepEqual(notes.map((alert) => alert.type), ["landing_conflict"]);
+    assert.equal(notes[0].dedupKey, "landing_conflict|approve|PROJ-0001|r1");
+  });
+
+  it("retries environmental landing failures instead of reopening the card", async () => {
+    for (const code of [
+      "WORKSPACE_TARGET_DIRTY",
+      "WORKSPACE_TARGET_UNREADABLE",
+      "WORKSPACE_MERGE_TARGET_MISMATCH",
+      "WORKSPACE_DETACHED_HEAD",
+    ]) {
+      const original = card();
+      const review = reviewCard(original);
+      const { order, result, notes } = await throughBothHalves(
+        { tasks: [original, review], verdicts: { "PROJ-0002": verdict("APPROVE") } },
+        { land: async () => ({ ok: false, error: `${code}: not this card's fault`, code }) },
+      );
+      assert.equal(result.failed, 1, code);
+      assert.equal(result.blocked, 0, code);
+      assert.deepEqual(order, [], `${code}: no acceptance write before the landing`);
+      assert.deepEqual(notes.map((alert) => alert.type), ["workflow_action_failed"], code);
+    }
+  });
+
+  it("routes a landing conflict on an auto_accept, with no review card to close", async () => {
+    const record = [];
+    const plan = planWorkflowTick({
+      tasks: [card({ acceptance_mode: "off" })],
+      config: CONFIG,
+      now: NOW,
+    });
+    const result = await runWorkflowTick({
+      plan: workflowToWire(plan),
+      config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
+      dryRun: false,
+      land: async () => ({
+        ok: false,
+        error: "WORKSPACE_MERGE_CONFLICT: conflicted",
+        code: "WORKSPACE_MERGE_CONFLICT",
+        details: { conflicts: [] },
+      }),
+      createReview: async () => ({ ok: true }),
+      createFixChild: async () => ({ ok: true }),
+      linkFixChild: async () => ({ ok: true }),
+      move: async (ref, to) => (record.push(`move:${ref}:${to}`), { ok: true }),
+      comment: async (ref, { kind }) => (record.push(`comment:${ref}:${kind}`), { ok: true }),
+      setMeta: async (ref, meta) => (record.push(`setMeta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+      appendAcceptance: async () => ({ ok: true }),
+      notify: () => {},
+      now: () => NOW,
+      log: () => {},
+    });
+    assert.equal(result.blocked, 1);
+    assert.deepEqual(record, [
+      'setMeta:PROJ-0001:{"rework_round":"2"}',
+      "comment:PROJ-0001:change",
+      "move:PROJ-0001:in_progress",
+      "move:PROJ-0001:todo",
+    ]);
+  });
+
+  it("does not notify the same landing conflict twice when the reopen failed", async () => {
+    const original = card();
+    const review = reviewCard(original);
+    const plan = planWorkflowTick({
+      tasks: [original, review],
+      verdicts: { "PROJ-0002": verdict("APPROVE") },
+      config: CONFIG,
+      now: NOW,
+    });
+    const deps = (notes) => ({
+      plan: workflowToWire(plan),
+      config: { workflow: true, maxActions: 20, reviewAgingMs: 60 * 60_000 },
+      dryRun: false,
+      land: async () => ({
+        ok: false,
+        error: "WORKSPACE_MERGE_CONFLICT: conflicted",
+        code: "WORKSPACE_MERGE_CONFLICT",
+        details: { conflicts: ["src/a.mjs"] },
+      }),
+      move: async (ref, to) => {
+        if (ref === "PROJ-0001" && to === "in_progress") {
+          return { ok: false, error: "PROJ-0001 cannot move", code: "INVALID_TRANSITION" };
+        }
+        return { ok: true };
+      },
+      comment: async () => ({ ok: true }),
+      setMeta: async () => ({ ok: true }),
+      createReview: async () => ({ ok: true }),
+      createFixChild: async () => ({ ok: true }),
+      linkFixChild: async () => ({ ok: true }),
+      appendAcceptance: async () => ({ ok: true }),
+      notify: (alert) => notes.push(alert),
+      now: () => NOW,
+      log: () => {},
+    });
+    const firstNotes = [];
+    const first = await runWorkflowTick(deps(firstNotes));
+    assert.equal(first.failed, 1, "a failed reopen is a failure");
+    assert.deepEqual(firstNotes.map((alert) => alert.type), ["landing_conflict"]);
+    assert.equal(firstNotes[0].route_error, "PROJ-0001 cannot move");
+
+    const secondNotes = [];
+    await runWorkflowTick({ ...deps(secondNotes), ledger: first.ledger });
+    assert.deepEqual(secondNotes, [], "the same round does not notify twice");
   });
 
   it("a refused `done` is routed back for a new round instead of retried for ever", async () => {
@@ -609,10 +838,10 @@ describe("workflow plan → execution", () => {
       auto_accept: ["type", "original_ref", "round", "accepted_by", "held"],
       approve: ["type", "review_status", "review_ref", "original_ref", "round", "close_review", "accepted_by", "held"],
       record_verdict: ["type", "review_status", "review_ref", "original_ref", "round", "reason", "close_review", "held"],
-      reject_task: ["type", "review_status", "review_ref", "original_ref", "round", "rework_round", "findings", "must_fix", "close_review", "held"],
+      reject_task: ["type", "review_status", "review_ref", "original_ref", "round", "rework_round", "findings", "must_fix", "review_rejects", "close_review", "held"],
       reject_epic: [
         "type", "review_status", "review_ref", "original_ref", "round", "rework_round",
-        "project_id", "assignee_id", "original_title", "acceptance_mode", "findings", "must_fix", "close_review", "held",
+        "project_id", "assignee_id", "original_title", "acceptance_mode", "findings", "must_fix", "review_rejects", "close_review", "held",
       ],
       reject_task_finish: ["type", "review_status", "review_ref", "original_ref", "round", "must_fix", "close_review"],
       reopen_review: ["type", "review_status", "review_ref", "original_ref", "round", "retry", "reason"],

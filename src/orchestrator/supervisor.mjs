@@ -6,19 +6,19 @@
  *     `/health` for liveness (log-only; it never stops the board). No board API
  *     read, no LLM.
  *   * **continue** (600s) — run patrol → workflow → poll in-process; the
- *     runs `taskctl loop patrol|workflow|poll`, in that order.
+ *     runs `taskctl patrol|workflow|poll`, in that order.
  *
  * The installed units are one-shot (`--ping-only --once` / `--continue-only
  * --once`); daemon mode is for a hand-run supervisor. A bare `--once` runs the
  * legacy poll pass, so an old installed unit keeps discovering work.
  *
  * Usage:
- *   taskctl loop run --actor-kind claude --agent alice
- *   taskctl loop run --actor-kind claude --agent alice --ping-once
- *   taskctl loop run --actor-kind claude --agent alice --continue-once
- *   taskctl loop subscribe --actor-kind claude --agent alice
+ *   taskctl run --actor-kind claude --agent alice
+ *   taskctl run --actor-kind claude --agent alice --ping-once
+ *   taskctl run --actor-kind claude --agent alice --continue-once
+ *   taskctl subscribe --actor-kind claude --agent alice
  *
- * Run with: taskctl loop run --help
+ * Run with: taskctl run --help
  */
 
 import { existsSync, mkdirSync } from "node:fs";

@@ -55,12 +55,14 @@ const TINY = {
 describe("storage/migrations — the shipped set", () => {
   it("reads the shipped migrations in version order with stable checksums", () => {
     const migrations = listMigrations();
-    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003", "0004"]);
+    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006"]);
     assert.deepEqual(migrations.map((m) => m.name), [
       "init",
       "card_acceptance_model",
       "drop_project_reviewer",
       "review_kind",
+      "transition_edges",
+      "blocked_to_backlog",
     ]);
     for (const migration of migrations) {
       assert.match(migration.checksum, /^[0-9a-f]{64}$/);
@@ -74,17 +76,17 @@ describe("storage/migrations — the shipped set", () => {
     const board = await createTempBoard({ migrate: false });
     try {
       const first = applyMigrations(board.db);
-      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003", "0004"]);
+      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003", "0004", "0005", "0006"]);
       assert.deepEqual(first.skipped, []);
       for (const entry of first.applied) assert.equal(typeof entry.ms, "number");
 
       const second = applyMigrations(board.db);
       assert.deepEqual(second.applied, [], "re-apply must be a no-op");
-      assert.deepEqual(second.skipped, ["0001", "0002", "0003", "0004"]);
+      assert.deepEqual(second.skipped, ["0001", "0002", "0003", "0004", "0005", "0006"]);
 
       const rows = board.db.prepare("SELECT version, checksum FROM schema_migrations ORDER BY version").all();
       assert.equal(rows.length, listMigrations().length, "one bookkeeping row per shipped file");
-      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003", "0004"]);
+      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003", "0004", "0005", "0006"]);
     } finally {
       board.close();
     }

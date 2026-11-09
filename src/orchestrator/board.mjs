@@ -8,7 +8,7 @@
 
 import { dirname } from "node:path";
 
-import { ORCHESTRATOR_ACTOR_ID, ROUTE_UNASSIGNED_MS, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { BOARD_ACTOR_ID, ROUTE_UNASSIGNED_MS, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { markerMatches } from "../foundation/handoff-round.mjs";
 import { resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { loadRoles } from "../foundation/roles.mjs";
@@ -22,6 +22,7 @@ import {
   pruneSlaLedger,
 } from "../foundation/sla-patrol.mjs";
 
+import { requestInterrupt } from "./interrupts.mjs";
 import { newestQuestion, questionOpen } from "./questions.mjs";
 import { findWorkspace, mergeWorkspace, runGit } from "./workspace.mjs";
 import { notifySlaAlerts, runWorkflowTick, notifyReal } from "./runners.mjs";
@@ -420,10 +421,10 @@ export async function runSlaPass(opts, log, periodSeconds = opts.patrolInterval)
 
 /**
  * The real-I/O half of the workflow pass. Every write goes through `taskctl`
- * as the board's own kind (`system`), under the automation identity
- * `Orchestrator`: an automated acceptance is the board's act, not a human's and
- * not the first worker's — and not the reviewer's either, which matters because
- * the actor who wrote a verdict may not close the card it reviewed.
+ * as the board's own kind (`system`), under the one automation identity
+ * `Board`: an automated acceptance is the board's act, not a human's and not the
+ * first worker's — and not the reviewer's either, which matters because the
+ * actor who wrote a verdict may not close the card it reviewed.
  */
 /**
  * The `todo` cards no scan can claim, read from the board and turned into
@@ -495,7 +496,7 @@ function strandedTodoAlerts(opts, config, invoke, log) {
 export async function runWorkflowPass(opts, config, log) {
   if (config.workflow !== true) return null;
   const automation = { actorKind: SYSTEM_KIND };
-  const invoke = (args) => runCli(opts, ORCHESTRATOR_ACTOR_ID, args, automation);
+  const invoke = (args) => runCli(opts, BOARD_ACTOR_ID, args, automation);
 
   // One call does the board's container reconcile and returns the plan.
   const args = ["issue", "reconcile", "--workflow"];
@@ -568,7 +569,7 @@ export async function runWorkflowPass(opts, config, log) {
       return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : boardRefusal(read);
     },
     linkFixChild: (epicRef, childRef) => {
-      const listed = runCli(opts, ORCHESTRATOR_ACTOR_ID, ["relation", "list", epicRef]);
+      const listed = runCli(opts, BOARD_ACTOR_ID, ["relation", "list", epicRef]);
       if (listed.ok && Array.isArray(listed.data.children) && listed.data.children.some((edge) => edge.target === childRef)) {
         return { ok: true };
       }
@@ -607,9 +608,10 @@ export async function runWorkflowPass(opts, config, log) {
       return read.ok ? { ok: true } : boardRefusal(read);
     },
     // Acceptance lands the work: the lane branch is merged into the project's
-    // current branch *before* the card reaches `done`. A failed merge keeps the
-    // card in `in_review` (the verdict is already recorded) and leaves the
-    // worktree and branch for a human; the next tick retries.
+    // current branch *before* the card reaches `done`. A content conflict is
+    // deterministic — retrying it changes nothing — so the runner routes the
+    // card back for a merge-resolution round; the environmental codes (a dirty
+    // or detached checkout) keep the card in `in_review` and retry next tick.
     land: (action) => {
       if (opts.dryRun) return { ok: true };
       const stateDir = dirname(String(opts.state));
@@ -641,15 +643,28 @@ export async function runWorkflowPass(opts, config, log) {
       if (merged.ok === true) return { ok: true, sha: headSha(record.project_dir) };
       log(
         `workflow: landing ${action.original_ref} blocked (${merged.code}: ${merged.message}) — ` +
-          "the card stays in in_review",
+          "the runner decides whether this is a rework or a retry",
       );
+      // `step()` forwards `code`, `details` and `hint`; the conflicting paths
+      // must travel inside `details` or the routing comment cannot name them.
       return {
         ok: false,
         error: `${merged.code}: ${merged.message}`,
         code: merged.code,
-        conflicts: merged.conflicts ?? [],
+        details: {
+          branch: record.branch ?? null,
+          project_dir: record.project_dir ?? null,
+          conflicts: merged.conflicts ?? [],
+        },
       };
     },
+    // TP-0125 — cancelling a review card orphans the reviewer's turn. The marker
+    // travels through the state directory to the pool that owns it; a dry run
+    // writes nothing.
+    requestInterrupt:
+      opts.dryRun || typeof opts.state !== "string" || opts.state === ""
+        ? null
+        : (request) => requestInterrupt(dirname(String(opts.state)), request),
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),
     log,
   });

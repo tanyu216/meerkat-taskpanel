@@ -69,7 +69,7 @@ _Avoid_: tag, category, keyword
 
 **Actor**:
 Anyone or anything that can be recorded as having done something — a human, an agent or
-the system. Actors are created by use and are never renamed or deleted.
+the board. Actors are created by use and are never renamed or deleted.
 _Avoid_: user, owner, person
 
 **Actor kind**:
@@ -77,7 +77,8 @@ Which application wrote: a platform slug (`claude`, `codex`, `pi`, `openclaw`), 
 own `system`, or `human` — the one reserved value a caller may not
 declare. It is recorded on every write and read back as `author_kind` / `owner_kind`;
 the CLI flag is `--actor-kind`. It is **not** the identity: that is the actor id
-(`--agent jobs|linus|…`).
+(`--agent jobs|linus|…`). Every automated write carries the kind `system` under the one
+automation identity `Board`; `system` itself is never an actor id (ADR 0018).
 _中文_: actor kind（平台）
 _Avoid_: host (that is the machine), platform (the web layer's display badge), kind alone
 (card kind is a different word)
@@ -457,7 +458,7 @@ _Avoid_: project session, control lane
 **Chat console**:
 The human's live view of the board — the `meerkat-chat` skill. It reports progress, surfaces
 awaiting questions and pending acceptance, records the human's own answer with `--as-human`,
-and reads `loop doctor`; it never makes a decision, claims a card or delivers one.
+and reads `taskctl doctor`; it never makes a decision, claims a card or delivers one.
 _中文_: 对话台
 _Avoid_: director mode, manual mode
 
@@ -511,15 +512,20 @@ _Avoid_: restore, rehydrate, resync
 
 **Reviewer session**:
 The resident conversation for review cards in a project's directory, opened with the
-`reviewer` role when a review card is queued. It spawns one reviewer **subagent** per
-review card; where the adapter has a role allowlist, that surface has no Write.
+`reviewer` role when a review card is queued. It runs the review itself; when its session
+shares the delivery's context it hands the review to one fresh-context reviewer
+**subagent** (ADR 0019). Where the adapter can enforce it, the reviewer's write tools are
+denied (ADR 0020).
 _中文_: 审核会话
 _Avoid_: review worker, worker session
 
 **Subagent**:
-A reviewer started by a reviewer session through the agent kind's own subagent mechanism.
-It is not a supervisor process, and it inherits its parent session's cwd rather than being
-handed one. Workers are not subagents: each has its own **worker session**.
+A fresh-context child spawned through the agent kind's own subagent mechanism (`Agent` on
+Claude). Any lane may spawn one; the reviewer's is the independence child, one-shot, never
+resumed, read-only, and it returns the verdict, the security table and the evidence while
+the parent keeps the board writes (ADR 0019). The supervisor tracks no children. A subagent
+takes no per-call cwd, so it does not inherit the card's worktree. Workers are not
+subagents: each has its own **worker session**.
 _中文_: 子代理
 _Avoid_: worker process, child session (that is an agent-kind API term), thread
 
@@ -571,7 +577,7 @@ The board's workflow decisions (`issue reconcile --workflow`: reconcile containe
 outcomes, auto-accept and review dispatch) and the loop's execution of that plan. The board
 decides; the loop creates the review card, applies the verdict, auto-accepts a no-review
 delivery and closes the review card — as the board's own kind, `system`, under the automation
-id `Orchestrator`. It is not scheduled; the continue turn runs
+id `Board`. It is not scheduled; the continue turn runs
 it after patrol.
 _中文_: 工作流通道
 _Avoid_: workflow engine, pipeline; SLA alerts are not part of it
@@ -713,7 +719,7 @@ load-bearing in the same conversations and are easy to mistake for board vocabul
 
 **Per-kind config**:
 `<program root>/.env.<actor-kind>` (for example `.env.claude`) — the file `taskctl` reads as
-a per-agent default layer and `taskctl loop …` reads for loop policy. It lives beside the
+a per-agent default layer and `taskctl run` reads for loop policy. It lives beside the
 board `.env`, not under the agent directory, and is selected by `--actor-kind`.
 _Avoid_: loop config, agent config
 

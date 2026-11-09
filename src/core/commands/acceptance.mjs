@@ -561,7 +561,7 @@ export function assertReviewReady(ctx, task, actor) {
     hint: {
       fix:
         "let the review finish, or cancel the review card if it is abandoned " +
-        "(`taskctl issue move <review> canceled` after moving it out of in_review)",
+        "(`taskctl issue move <review> canceled` — the loop's own cancel is one move, TP-0125)",
     },
   });
 }

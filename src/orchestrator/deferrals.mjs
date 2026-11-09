@@ -5,7 +5,7 @@
  * same failure retried every pass for hours with no counter, no alert and no
  * doctor row. This file keeps one entry per card — how many consecutive times
  * admission failed, for which code — and escalates once per (streak, code) with
- * one board-visible comment by `Orchestrator`.
+ * one board-visible comment by `Board`.
  *
  * Only *card-scoped* admission failures are counted. Claim-budget exhaustion,
  * no-pool and a per-project concurrency cap are backpressure, not a stuck card;
@@ -133,7 +133,7 @@ export function emptyDeferralLedger() {
  * Read the ledger.
  *
  * A missing file is the fresh-install state and is **not** an error — a fresh
- * state directory must not turn `loop doctor` red. Only an unreadable or
+ * state directory must not turn `taskctl doctor` red. Only an unreadable or
  * malformed file is reported.
  *
  * @param {string} stateDir
@@ -366,7 +366,7 @@ export function deferralCommentBody(entry) {
     `- last seen: ${entry.last_at}`,
     "",
     "It keeps retrying every pass. Check the lane branch and the loop's workspaces.json record; " +
-      "`taskctl loop doctor` reports the same card under `looping`.",
+      "`taskctl doctor` reports the same card under `looping`.",
   ].join("\n");
 }
 
@@ -426,7 +426,7 @@ export function escalateDeferral({
  * One owner for the record/clear pair both admission sites use.
  *
  * `postComment` is the only board write: the poll and patrol passes build it
- * from `runCli` as `Orchestrator`. A dry run gets no-op functions, so it writes
+ * from `runCli` as `Board`. A dry run gets no-op functions, so it writes
  * neither the ledger nor the board.
  *
  * @param {{

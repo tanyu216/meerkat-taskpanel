@@ -929,6 +929,7 @@ export function buildHandoff(input) {
     "",
     `Keep the claim alive (<=10 minutes): taskctl issue heartbeat <card> <flags>`,
     `Deliver with a report (a draft may live under ${processDir}/report.md): taskctl issue deliver <card> --report-file - <flags>`,
+    "Before you deliver, merge the project's integration branch into this lane and re-run the checks. Never merge the lane back, rebase or push — landing is the loop's.",
     "Rules: after a split, the heartbeat and delivery apply to the claimed CHILD, not the epic.",
     `On resume, re-read ${brief} before acting; the loop owns it.`,
     `${acceptanceRule} Carry the flags above on every write.`,
@@ -1012,8 +1013,8 @@ export function buildReviewHandoff(input) {
     "Leave both cards where they are: the loop applies the verdict and closes this card.",
     "Stay in the review turn: insufficient evidence is a REJECT with the findings.",
   ];
-  if (input.reviewerPrompt || input.reviewerPromptPath) {
-    const block = renderReviewerProtocol(input.reviewerPrompt ?? null, input.reviewerPromptPath ?? null);
+  if (input.reviewerHandoff || input.reviewerHandoffPath) {
+    const block = renderReviewerProtocol(input.reviewerHandoff ?? null, input.reviewerHandoffPath ?? null);
     if (block.length > 0) {
       const at = lines.findIndex((line) => line.startsWith("Step 0 —"));
       lines.splice(at === -1 ? lines.length : at, 0, ...block, "");
@@ -1074,6 +1075,7 @@ export function buildResidentEnvelope(input) {
     "the loop moves it to done and holds the claim for you.",
     `  taskctl issue heartbeat ${ref} <flags>`,
     `  taskctl issue deliver ${ref} --report-file - <flags>`,
+    "Before you deliver, merge the project's integration branch into this lane and re-run the checks. Never merge the lane back, rebase or push — landing is the loop's.",
     "The frozen acceptance is in the brief; changing an existing item is E2. Route a question",
     "to the director:",
     `  taskctl comment add ${ref} --kind question --body "..." <flags>`,
@@ -1265,7 +1267,11 @@ export function buildQuestionPrompt(rows, input = {}) {
         `${index + 1}) ${row.card}${title} — accepted producer, required handoff (round ${round}):`,
         `   The card is done and must not be reopened or moved. Read its current delivery:`,
         `   taskctl issue get ${row.card} --json --include reports --include relations ${flags}`,
-        `   Read only the report whose round is ${round}; its \`## Handoff\` is the contract.`,
+        `   Read only the report whose round is ${round}; its \`## Handoff\`, its \`leftovers\` and`,
+        "   that round's review observations are the close-out ledger. Give every ledger item",
+        "   one disposition — reuse, create, decline or escalate — before the marker.",
+        `   Its review cards: taskctl issue list --review-of ${row.card} --json ${flags}`,
+        `   (take the one whose review_round is ${round}; its report's \`leftovers\` are those observations),`,
         `   Resolve the project directory with \`taskctl project dir ${projectId} --json\`, then read`,
         "   `<dir>/docs/agents/epic-graphs.md` first. The project's canonical multi-role shape is",
         "   there: adopt this producer as its matching stage, reuse an existing instance, and create",
@@ -1285,9 +1291,10 @@ export function buildQuestionPrompt(rows, input = {}) {
         `   For an epic, create --kind epic first, then taskctl relation add <epic> --type parent --target <child>.`,
         "   For a task producer, record meta.origin=<producer> on the follow-up card instead.",
         `   When done: taskctl issue meta ${row.card} --if-version <v> --meta handoff_consumed_round=${round} ${flags}`,
-        `   (record the created refs in the value); if no downstream card is needed:`,
+        `   (record the created refs in the value); when the ledger declines every item:`,
         `   taskctl issue meta ${row.card} --if-version <v> --meta handoff_declined_round=${round} ${flags}`,
-        "   and leave a note saying why. A proposed child that expands scope is E1:",
+        "   and leave a note accounting for each declined item and its reason.",
+        "   A proposed child that expands scope is E1:",
         "   escalate instead of creating it.",
         "   You may create cards; never claim or implement one, never move the producer,",
         "   and never use --as-human.",

@@ -20,10 +20,11 @@ A card has **eight stored status words**, but only **seven are stages** — the 
 
 An agent question the **director** can decide never enters `awaiting`: the card stays
 `in_progress`, the worker **holds** with `issue wait <ref> --question <id>`, and the director's
-**release** (`in_progress → todo`) resumes it — a `note` alone is not a settle. `answered`
-continues the same turn (re-claim if the card is back in `todo`); `escalated` / `moved` /
-`error` park the session, as does `timeout` after one re-invoke, and it is resumed by id when
-the answer lands.
+**release** (`in_progress → todo`) **interrupts that turn** — a `note` alone is not a settle.
+The release leaves the claim cycle, so the next claim is a **fresh session** that reads the card
+and comments (ADR 0017); there is no same-round resume across a release. `answered` continues
+the same turn; `escalated` / `moved` / `error` park the session, as does `timeout` after one
+re-invoke, and the session is resumed by id while the card keeps its claim.
 
 `awaiting` is the **eighth literal but not an eighth column**: an *attention overlay* on an
 in-progress card that has stopped to ask a human a question, displayed under `in_progress`.
@@ -33,9 +34,10 @@ The question is a **`question` comment**: an agent enters with
 land in one transaction. The payload the view shows is the newest `question` (falling back to
 the newest human comment for a card that predates the kind). **Any human comment** answers
 it — whatever its kind — and re-queues the card (`awaiting → todo`) in the same transaction,
-because the asking worker is parked; the dispatch resumes that worker's session with the
-answer. The board does not read the text: whether the answer
-is a complete decision is judged from its content by the resumed worker, and an incomplete or
+because the asking worker is parked. The re-queue leaves the claim cycle: the turn is
+**interrupted** and the next claim is a **fresh session** that re-reads the comments (ADR 0017).
+The board does not read the text: whether the answer
+is a complete decision is judged from its content by the new worker, and an incomplete or
 ambiguous answer sends the card back to `awaiting` for another human comment. A `decision` /
 `confirm` / `change` kind remains the explicit I5 record, not the resume gate. An answer is
 not a reopen: the delivery round stays where it was.
@@ -58,10 +60,10 @@ Only these moves exist; every other ordered pair is refused — `INVALID_TRANSIT
 ```text
 backlog     → todo, canceled
 todo        → backlog, in_progress, blocked, canceled        (an epic also → in_review)
-in_progress → in_review, blocked, todo, canceled, awaiting
+in_progress → in_review, blocked, todo, backlog, canceled, awaiting
 awaiting    → in_progress, todo, canceled
-in_review   → done, in_progress, blocked
-blocked     → todo, in_progress, in_review, canceled
+in_review   → done, in_progress, blocked, canceled
+blocked     → todo, backlog, in_progress, in_review, canceled
 done        → todo
 canceled    → todo
 ```
@@ -92,8 +94,9 @@ canceled    → todo
 
 - **`x → x` is not a transition.** Recover a stale `in_progress` claim with `issue claim`.
 - **An unknown status word is `VALIDATION_FAILED`**, not `INVALID_TRANSITION`.
-- **`in_review → canceled` does not exist.** It takes two moves; both exits from `in_review`
-  bump the round (§4), even if you cancel immediately.
+- **`in_review → canceled` is one move** (TP-0125). It is terminal, so it does **not** bump the
+  delivery round; only the rework exits (`→ in_progress`, `→ blocked`) do (§4).
+- **`in_progress → backlog` is one move** (TP-0125): the `todo` hop would re-enter dispatch.
 - **Only an `epic` in `todo` may go to `in_review`** — scoped to `kind`, not to status.
 
 ## 3. The guard on each edge
@@ -109,7 +112,7 @@ A pair on the whitelist can still be refused; the target decides which guard app
 | `blocked` | `--blocked-reason` is **optional**. Entering `blocked` does not bump the round; **`in_review → blocked` does**. |
 | `awaiting` | Only `in_progress → awaiting`, naming `--awaiting-reason E1`…`E5`. An **agent** must also supply `--question` (or already have an unanswered `question` comment) — `QUESTION_REQUIRED`; a human may park silently. Exits: `→ in_progress` (live worker), `→ todo` (any human comment re-queues the card; releases the claim, no round bump), `→ canceled`. Leaving clears the reason. `awaiting → blocked`/`in_review`/`done` are forbidden. |
 | `done` | From `in_review` — **acceptance**, so the delivery gate is not re-consulted — or **directly from `in_progress`** when the card's `acceptance_mode` is `off`. The writer must be allowed by the card's mode (§7); every child must be terminal (`CHILDREN_OPEN`). An `auto` card needs a current-round review card (`REVIEW_REQUIRED`), and a `human` card needs that review **done**; the DB trigger enforces the structural half. A human closing a `human` card also needs the current round's review cards resolved (`REVIEW_PENDING`). A non-empty **acceptance baseline** must be covered by the current round's report (`ACCEPTANCE_UNVERIFIED` / `ACCEPTANCE_INCOMPLETE`, §4a). |
-| `canceled` | From `backlog`, `todo`, `in_progress`, `awaiting` or `blocked` — **never directly from `in_review`**. Terminal. |
+| `canceled` | From `backlog`, `todo`, `in_progress`, `awaiting`, `in_review` or `blocked`. Terminal; from `in_review` it does not bump the round. A claim-cycle exit interrupts the turn; the next claim is fresh (ADR 0017). |
 
 ### The order the guards run
 

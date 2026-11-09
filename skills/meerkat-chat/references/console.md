@@ -5,18 +5,18 @@ are local, and neither needs `--actor-kind` or a session identity. Run them with
 human output is for a person reading a terminal, not for a decision.
 
 ```bash
-taskctl loop console --json   # questions waiting on a human + delivered cards
-taskctl loop doctor --json    # the daily inspection: attention, stuck, looping, workers
+taskctl console --json   # questions waiting on a human + delivered cards
+taskctl doctor --json    # the daily inspection: attention, stuck, looping, workers
 ```
 
-## `loop console --json`
+## `taskctl console --json`
 
 The human-owned queue, already filtered to what is actually unanswered.
 
 ```json
 {
   "ok": true,
-  "supervisor": { "...": "the same verdict `loop status` prints" },
+  "supervisor": { "...": "the same verdict `taskctl loop` prints" },
   "questions": [
     {
       "ref": "PROJ-0042",
@@ -35,10 +35,16 @@ The human-owned queue, already filtered to what is actually unanswered.
 }
 ```
 
-- `kind: "awaiting"` — the card is parked on a human question. A human comment resumes it.
+- `kind: "awaiting"` — the card is parked on a human question. A human comment resumes it: the
+  turn is interrupted and the next claim is fresh (ADR 0017).
 - `kind: "agent-question"` — an `in_progress` card carries a worker question the director has
   not settled. The card needs a requeue after the answer (see
   [`answering.md`](answering.md#answer-an-in_progress-agent-question)).
+- `kind: "blocked-decision"` — a `blocked` card whose `blocked_reason` is `decision`: the loop
+  parked it (rework cap or review-reopen exhaustion) and posted its question there. The row
+  carries `status: "blocked"` and `blocked_reason: "decision"`. **A comment does not resume a
+  blocked card** — record the answer and then release it `blocked → todo` in the same act. The
+  row disappears once the card is moved.
 - `age_ms` is how long the question has waited (working time in the SLA sense is the
   board's, not this field). `answered_pending_release: true` means a later human comment
   exists but the card is still `in_progress` — the **director owes the release**; do not
@@ -51,7 +57,7 @@ The human-owned queue, already filtered to what is actually unanswered.
 A question answered in the board UI is already settled. If a stale snapshot still lists it,
 `comment list` shows the human comment; do not ask again.
 
-## `loop doctor --json`
+## `taskctl doctor --json`
 
 One read-only inspection. Start with `attention` and `attention_reasons`; read the specific rows
 only for what the human asks about or what the reasons name.
@@ -74,6 +80,7 @@ only for what the human asks about or what the reasons name.
 | `looping.question_lane` | director rows that exhausted their two attempts (question, route or triage) | explain the failed turn; a route card is parked, a question card still waits, a triage leaves the producer `done` |
 | `looping.unowned` | `todo` cards nobody owns past the route window | the routing table has no shape for them — ask the human to assign |
 | `looping.orphaned` | processing rows whose agent child outlived twice the turn bound | report; do **not** re-dispatch the card under a live child |
+| `looping.landing_conflicts` | a card whose lane conflicted at landing twice or more (`rounds`, `last_round`) | the loop already reopened it for a merge-resolution round; the fix is the worker's merge, not a board move |
 | `waiting.in_review` | delivered cards awaiting acceptance | feed the human's waiting register |
 | `blocked_acceptance` | the board refused a close; the card still carries the marker | show the refusal and what it demands |
 | `handoff_unconsumed` | an accepted producer's required handoff has no decision for its round | report; the director creates the proposed card, or the human records that none is needed |
@@ -108,10 +115,11 @@ refused, and the marker stayed. Read the current report and the last comments; n
 or failing acceptance item. The fix is evidence or a rework, not a retry of the move.
 
 **Looping (`looping`).** The heuristics are review thresholds, not verdicts: a rework round
-count, repeated review reopens, repeated dispatch rows, repeated failed subagents. Explain which
-pattern fired and what it usually means (a requirement nobody can satisfy, a review disagreeing
-with the plan, a worker that cannot start). The next act is a human decision — reject, cut scope,
-reassign, or fix the environment.
+count, repeated review reopens, repeated dispatch rows, repeated failed subagents, repeated
+landing conflicts. Explain which pattern fired and what it usually means (a requirement nobody
+can satisfy, a review disagreeing with the plan, a worker that cannot start, a lane that no
+longer merges the integration branch). The next act is a human decision — reject, cut scope,
+reassign, or fix the environment; a landing conflict is already back in the worker's hands.
 
 **Unlanded (`unlanded`).** A card is `done` but its lane branch is not in the project's current
 branch. Report the branch and the worktree path. The fix is a merge in git; chat never merges.

@@ -4,7 +4,7 @@
  * Three decisions are pinned here:
  *
  *   1. the generic layer carries no design/verification classification — the
- *      create manual, the board skill and `loop doctor` no longer demand it;
+ *      create manual, the board skill and `taskctl doctor` no longer demand it;
  *   2. a project's `docs/agents/epic-graphs.md` is the only content source, and it is
  *      absent by default — `setup-meerkat` installs a default only after a user says yes;
  *   3. the `meerkat` skill's epic page owns the mechanics: read the graph, create the

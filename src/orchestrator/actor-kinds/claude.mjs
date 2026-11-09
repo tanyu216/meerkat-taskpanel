@@ -4,8 +4,8 @@
  * One `claude -p --input-format stream-json --output-format stream-json` process
  * owns one conversation. The process stays alive between turns; `send()` writes
  * one user message and waits for that turn's `result` event. A card session is
- * opened with `cwd = target_dir`, so the card's work happens in its own
- * worktree and nothing is spawned from inside the session.
+ * opened with `cwd = target_dir`, so the card's own work happens in its
+ * worktree; a subagent it spawns takes no `cwd` and is not a supervisor session.
  *
  * The adapter never uses `--bare`: it would skip skill discovery, including the
  * model-invocable `meerkat-chat` console a human uses.
@@ -13,27 +13,19 @@
 
 import { spawn } from "node:child_process";
 
-import { claudeAllowedTools } from "../../foundation/role-tools.mjs";
+import { reviewerDeniedTools } from "../../foundation/role-tools.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
 export const DEFAULT_TURN_TIMEOUT_MS = 60 * 60 * 1000;
 
 /**
- * The tool surface a role gets when full access is not enabled. The operator
- * can enable `--allow-all-tools`, which replaces this with bypassPermissions.
- *
- * @param {string} role
- */
-export function allowedToolsFor(role) {
-  // A card session owns its whole card: nothing spawns a subagent, so no role
-  // carries `Agent`/`Task`. The table lives once in foundation so the installer
-  // renders the same surface (`src/foundation/role-tools.mjs`).
-  return claudeAllowedTools(String(role ?? "worker"));
-}
-
-/**
  * The argv for one Claude resident session.
+ *
+ * Every lane runs with permissions bypassed: a supervisor turn is unattended and
+ * the operator asked for the full tool set. The reviewer is the one exception —
+ * its write tools are denied. A deny rule is enforced even under
+ * `bypassPermissions`, where an allow list would be inert.
  *
  * @param {{opts: object, sessionId?: string|null, role?: string, systemPrompt?: string|null}} input
  * @returns {string[]}
@@ -46,13 +38,11 @@ export function sessionArgs(input) {
     "--output-format",
     "stream-json",
     "--verbose",
+    "--permission-mode",
+    "bypassPermissions",
   ];
-  if (input.opts?.allowAllTools === true) {
-    args.push("--permission-mode", "bypassPermissions");
-  } else {
-    args.push("--permission-mode", "dontAsk");
-    const tools = allowedToolsFor(String(input.role ?? "worker"));
-    if (tools !== "") args.push("--allowedTools", tools);
+  if (String(input.role ?? "worker") === "reviewer") {
+    args.push("--disallowedTools", reviewerDeniedTools("claude"));
   }
   if (input.sessionId !== undefined && input.sessionId !== null && input.sessionId !== "") {
     args.push("--resume", String(input.sessionId));

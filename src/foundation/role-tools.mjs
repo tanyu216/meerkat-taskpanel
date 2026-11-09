@@ -1,72 +1,44 @@
 /**
- * The lane → tools table: one source for every surface that gives an agent a
- * tool allowlist.
+ * The lane → tool surface: one source for the session adapters and the installer.
  *
- * The session adapters (`orchestrator/actor-kinds/*`) pass these strings to the
- * CLI, and the installer writes the native agent frontmatter/Toml; before this
- * file each had its own copy, so a lane's surface depended on which door the
- * session came through. The kind names match the adapters' actor kinds.
+ * Worker and director lanes run with every tool, so they pass no tool list at
+ * all. Only the reviewer lane is restricted: it may not write, and that one deny
+ * list is rendered both into the adapters' argv and into the generated native
+ * agent definitions.
  *
- * Node builtins only; this file must not import from `src/orchestrator`.
+ * The kind names match the adapters' actor kinds. Node builtins only; this file
+ * must not import from `src/orchestrator`.
  */
 
-/** The lanes a role may be installed for; `role.json` carries the same names. */
-export const TOOL_LANES = Object.freeze(["director", "reviewer", "worker"]);
-
-/**
- * One entry per lane and actor kind.
- *
- * A card session owns its whole card, so no lane carries a subagent tool. The
- * reviewer runs the project's gate itself (hence the command entries) and never
- * edits; the worker edits its own tree; the director only reads and drives the
- * board. The Claude strings use the CLI's scoped `Bash(...)` form.
- */
-export const LANE_TOOLS = Object.freeze({
-  director: Object.freeze({
-    claude: "Read,Grep,Glob,Bash(taskctl *),Bash(node *)",
-    pi: "read,bash",
-  }),
-  reviewer: Object.freeze({
-    claude:
-      "Read,Grep,Glob,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)",
-    pi: "read,bash",
-  }),
-  worker: Object.freeze({
-    claude: "Read,Edit,Write,Grep,Glob,Bash(taskctl *),Bash(node *),Bash(git *)",
-    pi: "read,bash,edit,write",
-  }),
+/** The reviewer lane may not write. Every other lane passes no tool list at all. */
+export const REVIEWER_DENIED_TOOLS = Object.freeze({
+  claude: "Edit,Write,NotebookEdit",
+  pi: "edit,write",
 });
 
 /**
- * The Claude tool surface for a lane; an unknown lane behaves as a worker,
- * which is the adapter's long-standing fallback.
+ * The reviewer's deny list for one actor kind, or `null` when the kind has no
+ * per-role tool surface (Codex, and any future kind that cannot enforce one).
  *
- * @param {string} [lane]
- * @returns {string}
- */
-export function claudeAllowedTools(lane) {
-  return LANE_TOOLS[lane]?.claude ?? LANE_TOOLS.worker.claude;
-}
-
-/**
- * The Pi tool surface for a lane; an unknown lane behaves as a worker.
- *
- * @param {string} [lane]
- * @returns {string}
- */
-export function piAllowedTools(lane) {
-  return LANE_TOOLS[lane]?.pi ?? LANE_TOOLS.worker.pi;
-}
-
-/**
- * The tool string for a native agent definition of one kind, or `null` when the
- * table carries no surface for that lane/kind pair (the caller must not invent
- * one).
- *
- * @param {string} lane
- * @param {string} kind
+ * @param {string} [kind]
  * @returns {string|null}
  */
-export function nativeAgentTools(lane, kind) {
-  return LANE_TOOLS[lane]?.[kind] ?? null;
+export function reviewerDeniedTools(kind) {
+  return REVIEWER_DENIED_TOOLS[kind] ?? null;
+}
+
+/**
+ * The native agent definition's tool lines for a lane. A full lane adds none:
+ * omitting `tools` is what makes Claude and Pi inherit their whole tool pool.
+ * The reviewer carries a deny line instead of an allowlist.
+ *
+ * @param {string} [lane]
+ * @param {string} kind
+ * @returns {string[]}
+ */
+export function nativeAgentToolLines(lane, kind) {
+  if (lane !== "reviewer") return [];
+  if (kind === "claude") return [`disallowedTools: ${REVIEWER_DENIED_TOOLS.claude}`];
+  if (kind === "pi") return [`excludeTools: ${REVIEWER_DENIED_TOOLS.pi}`];
+  return [];
 }

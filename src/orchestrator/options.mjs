@@ -49,12 +49,12 @@ const BACKGROUND_RETIRED =
 export { AGENT_DIRS, agentPaths } from "../foundation/agent-paths.mjs";
 import {
   AGENT_DIRS,
-  agentPaths,
   loopLogPath,
   resolveConfigDir,
   resolveKindConfigPath,
 } from "../foundation/agent-paths.mjs";
-import { statePathsForDir } from "../foundation/loop-state.mjs";
+import { STATE_FILES, statePathsForDir } from "../foundation/loop-state.mjs";
+import { resolveLoopState } from "../foundation/state-dir.mjs";
 
 /** Parse a `KEY=value` env file, or `{}` when it is absent/unreadable. */
 function readConfigFile(path) {
@@ -70,7 +70,7 @@ function readConfigFile(path) {
  *
  * There are two places a supervisor can run from, and they need different answers:
  *
- *   * **from the checkout** (`taskctl loop …`, the documented dev run
+ *   * **from the checkout** (`taskctl …`, the documented dev run
  *     and every test) — the board sits beside the executor, so the relative answer is
  *     the right one and nothing else is consulted. This branch is why a dev run never
  *     depends on the machine's per-kind config.
@@ -141,7 +141,7 @@ function resolvePositive(input, fallback) {
   return fallback;
 }
 
-// `taskctl loop …` forwards the CLI's global `--json`; the loop entries use it
+// Runtime commands forward the CLI's global `--json`; the loop entries use it
 // only where they emit a document (status/console). Accept and ignore it here.
 flag("--json", () => {});
 flag("--agent", (opts, value) => opts.agents.push(...list(value)));
@@ -178,8 +178,6 @@ flag("--workspace", (opts, value) => {
   opts.workspace = mode;
 });
 flag("--project-idle-ms", (opts, value) => { opts.projectIdleMs = number("--project-idle-ms", value); });
-flag("--allow-all-tools", (opts) => { opts.allowAllTools = true; }, "switch");
-flag("--allow-all-tools-reason", (opts, value) => { opts.allowAllToolsReason = value; });
 // Retired: no adapter reports a per-subagent completion, so a background row
 // could never release its slot. `=no` stays accepted for the installed config;
 // anything that asks for the old behavior fails loudly.
@@ -264,8 +262,6 @@ function defaultOptions(env) {
     sessionPoolMax: undefined,
     projectConcurrency: undefined,
     projectIdleMs: undefined,
-    allowAllTools: false,
-    allowAllToolsReason: null,
     // 0034 — who opened this loop. `supervisor` (systemd/launchd/cron) must
     // escalate questions to the board; a human-opened session may ask in its own
     // conversation first.
@@ -298,6 +294,8 @@ function defaultOptions(env) {
     dryRun: false,
     log: null,
     state: null,
+    // Which input named the state directory: explicit | env | config | default | legacy.
+    stateSource: null,
     slaLedger: null,
     workflowLedger: null,
     slaLeader: null,
@@ -351,12 +349,26 @@ export function parseArgs(argv, env = process.env) {
     throw new Error(`unknown actor kind '${opts.actorKind}' (expected claude|codex|pi)`);
   }
 
-  const paths = agentPaths(opts.home, opts.actorKind);
+  // The per-kind config is read before the state default: it may name the state
+  // directory (`MEERKAT_TASKPANEL_STATE_DIR`).
+  // `--config` is the explicit override and fills the value first.
+  opts.kindConfigDefault = resolveKindConfigPath({ actorKind: opts.actorKind, env });
+  opts.config ??= opts.kindConfigDefault;
+  opts.configFile = readConfigFile(opts.config);
+
   // One log for every actor kind, at the program root: the file answers "where
-  // are this product's logs" without the agent-kind table. `--home` still moves
-  // the state and the roles; it no longer moves the log.
+  // are this product's logs" without the agent-kind table. `--home` moves the
+  // roles; it no longer moves the log or the loop state.
   opts.log ??= loopLogPath(resolveConfigDir({ env }));
-  opts.state ??= paths.state;
+  const loopState = resolveLoopState({
+    stateFile: opts.state,
+    home: opts.home,
+    actorKind: opts.actorKind,
+    env,
+    config: opts.configFile,
+  });
+  opts.stateSource = loopState.source;
+  opts.state ??= join(loopState.dir, STATE_FILES.supervisor);
   // The lock and the ledgers sit beside the worker registry, never inside it: an
   // entry there would consume a worker slot.
   const beside = statePaths(opts.state);
@@ -366,12 +378,6 @@ export function parseArgs(argv, env = process.env) {
   opts.slaLastOk ??= beside.slaLastOk;
   opts.slaLeader ??= env.MEERKAT_TASKPANEL_SLA_LEADER ?? null;
   opts.slaPeer ??= env.MEERKAT_TASKPANEL_SLA_PEER ?? null;
-  // The per-kind config, the project map and the log live at the program root,
-  // not under `--home`; `--home` still selects the state and the roles.
-  // `--config` is the explicit override and fills the value first.
-  opts.kindConfigDefault = resolveKindConfigPath({ actorKind: opts.actorKind, env });
-  opts.config ??= opts.kindConfigDefault;
-  opts.configFile = readConfigFile(opts.config);
   opts.agents = resolveWriterIdentity(opts.agents, env);
   // The install-time kind order: process env wins, then the per-kind config.
   // `loadRoles` normalizes it to a full permutation; an absent/empty value is
@@ -500,25 +506,6 @@ export function parseArgs(argv, env = process.env) {
     throw new Error("--control=external requires --session");
   }
   opts.control = control;
-  const allowAll =
-    parseYesNo(opts.allowAllTools === true ? "yes" : undefined) ??
-    parseYesNo(env.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS) ??
-    parseYesNo(opts.configFile.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS) ??
-    false;
-  opts.allowAllTools = allowAll;
-  if (allowAll) {
-    opts.allowAllToolsReason = String(
-      opts.allowAllToolsReason ??
-        env.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON ??
-        opts.configFile.MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS_REASON ??
-        "",
-    ).trim();
-    if (opts.allowAllToolsReason === "") {
-      throw new Error(
-        '--allow-all-tools requires --allow-all-tools-reason "<who authorized it and why>"',
-      );
-    }
-  }
   // The flag is a retirement shim: `=no` is inert, anything else threw above.
   // Environment/config keep flag > env > config without resurrecting the mode.
   const flagValue = opts.subagentBackground; // undefined, or false from `=no`
@@ -739,12 +726,11 @@ export function resolveLoopConfig(opts, env = process.env) {
   };
 }
 
-export const USAGE = `Usage: taskctl loop <patrol|workflow|poll|tick|console|doctor|status|run|subscribe|session> [options]
+export const USAGE = `Usage: taskctl <patrol|workflow|poll|tick|console|doctor|loop|run|subscribe|pool> [options]
 
-Run it through \`taskctl loop <verb>\`; this page lists the shared options. The
-verbs map onto the entries below, so the selectors are not part of the public
-surface: \`loop session\` is the resident pool, \`loop subscribe\` the event daemon,
-\`loop run --ping-once\` / \`--continue-once\` one-shot clocks.
+Every runtime command is top-level; this page lists the shared options. The
+names map onto the entries below: \`pool\` is the resident pool, \`subscribe\` the
+event daemon, \`run --ping-once\` / \`--continue-once\` the one-shot clocks.
 
 The loop's scheduler. In its default resident shape it owns a session pool:
   session    long-lived — one card session per card (worker or review, cwd = the
@@ -795,12 +781,8 @@ Options:
   --workspace <worktree|shared>
                             Per-card git worktree for a git project (default: worktree).
   --project-idle-ms <ms>    Close an idle lane session after this (default: 1800000).
-  --allow-all-tools         Enable every agent tool. Requires --allow-all-tools-reason;
-                            the session runs with the operator's full OS permissions.
-  --allow-all-tools-reason <text>
-                            Who authorized full tool access, and why.
   --once                    Internal one-shot switch; the documented form is
-                            \`taskctl loop run --ping-once|--continue-once\`.
+                            \`taskctl run --ping-once|--continue-once\`.
   --ping-only               With --once, prune the worker registry and exit.
   --continue-only           With --once, run one tick.
   --url <url>               Board URL (default: TASKD_URL in the process env or
@@ -832,12 +814,13 @@ Options:
   --reviewer <agent>        Deprecated no-op (the review card's assignee picks the role).
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
-  --rework-max-rounds <n>   Park a card after this many delivery rounds since its last hold (default: 4).
+  --rework-max-rounds <n>   Park a card after this many review rejections since its last hold (default: 4).
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).
   --notify <cmd>            Run <cmd> with each patrol alert as JSON on stdin.
   --dry-run                 Print intended actions; write nothing, spawn nothing.
   --log <path>              Append log lines here (default: <config root>/logs/supervisor.log — one file for every actor kind).
-  --state <path>            Worker registry (default: <home>/<agent-dir>/meerkat-taskpanel/supervisor.state.json).
+  --state <path>            Worker registry (default: <config root>/loop/supervisor.state.json;
+                            env: MEERKAT_TASKPANEL_STATE_DIR).
   --sla-ledger <path>       SLA de-duplication ledger (default: a sibling of --state).
   --workflow-ledger <path>  Workflow alert de-duplication ledger (default: a sibling of --state).
   --sla-leader <id>         The author id the leader writes under (default: the board's human
@@ -850,13 +833,14 @@ Options:
                             to sla list.
   --config <path>           Per-kind config (default: <program root>/.env.<actor-kind>;
                             env: MEERKAT_TASKPANEL_CONFIG_DIR).
-  --home <path>             Home the defaults are resolved against (default: $HOME).
+  --home <path>             Home the agent directories (skills, roles) derive from (default: $HOME);
+                            it does not select the log or the loop state.
   --cli <path>              taskctl entry (default: <repo>/src/cli/index.mjs).
   -h, --help                Show this help
 
 The deterministic passes are also runnable on their own:
-  taskctl loop patrol     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
-  taskctl loop workflow   apply the board's workflow plan
-  taskctl loop poll       scan → atomic claim → enqueue the handoff;
+  taskctl patrol     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
+  taskctl workflow   apply the board's workflow plan
+  taskctl poll       scan → atomic claim → enqueue the handoff;
                                           the resident pool spawns the worker session`;
 

@@ -7,8 +7,12 @@
  */
 
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
+import { readInterruptRequestIndex } from "../../src/orchestrator/interrupts.mjs";
 import {
   DISPATCH_EVENTS,
   IGNORED_EVENTS,
@@ -86,13 +90,13 @@ describe("loop/subscribe — event rules", () => {
   });
 
   it("does not dispatch the board's own epic start", () => {
-    // `epic_auto_start` is written by the board (`system`), so suppression by
-    // author already wins; it belongs in the explicit ignore list, not the
-    // dispatch whitelist.
+    // `epic_auto_start` is written by the board (`Board`, kind `system`), so
+    // suppression by author already wins; it belongs in the explicit ignore
+    // list, not the dispatch whitelist.
     assert.equal(IGNORED_EVENTS.includes("epic_auto_start"), true);
     assert.equal(DISPATCH_EVENTS.includes("epic_auto_start"), false);
     assert.equal(
-      classify(activity("epic_auto_start", { actor_kind: "system", actor_id: "system" }), { agents: ["linus"] }),
+      classify(activity("epic_auto_start", { actor_kind: "system", actor_id: "Board" }), { agents: ["linus"] }),
       "ignore",
     );
   });
@@ -201,10 +205,13 @@ describe("loop/subscribe — event rules", () => {
 
   it("suppresses the board's own housekeeping and this loop's agents", () => {
     const ctx = { agents: ["linus"] };
-    assert.equal(classify(activity("task_created", { actor_kind: "system", actor_id: "system" }), ctx), "ignore");
+    assert.equal(classify(activity("task_created", { actor_kind: "system", actor_id: "Board" }), ctx), "ignore");
     assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "linus" }), ctx), "ignore");
-    // The workflow pass's automation writes as the board, under its own id.
-    assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "Orchestrator" }), ctx), "ignore");
+    // The workflow pass is the board too: one automation identity, one id.
+    assert.equal(classify(activity("task_moved", { actor_kind: "system", actor_id: "Board" }), ctx), "ignore");
+    // `system` is a kind, not an identity: a row that names it as the id is not
+    // the board's own write (ADR 0018). The kind alone decides nothing.
+    assert.equal(classify(activity("task_created", { actor_kind: "system", actor_id: "system" }), ctx), "dispatch");
     // The importer is the board's platform under a component id: it must pass.
     assert.equal(classify(activity("import_completed", { actor_kind: "system", actor_id: "md-import" }), ctx), "dispatch");
     // A human whose id happens to match an agent is still a human.
@@ -637,6 +644,64 @@ describe("loop/subscribe — the process loop", () => {
     assert.equal(runs, 0);
   });
 
+});
+
+/**
+ * TP-0125 — the subscriber is one of the three writers of the cross-process
+ * interrupt channel. It writes on the **event**, not on the dispatch decision:
+ * `classify` is only consulted when dispatch is enabled, and `isOwnWrite` would
+ * swallow the loop's own cancellation — both would leave an orphaned turn.
+ */
+describe("loop/subscribe — claim-cycle exits write an interrupt request", () => {
+  it("writes for every exit, including an own write, and never for an inside-cycle move", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "tp-subscribe-interrupts-"));
+    try {
+      const controller = new AbortController();
+      const sent = [
+        ["u-todo", "task_moved", { from: "in_progress", to: "todo" }, { created_at: "2026-11-05T09:00:00.000Z" }],
+        // The loop canceled its own review card: `isOwnWrite` says ignore, the
+        // marker must still be written.
+        ["u-own", "task_moved", { from: "in_review", to: "canceled" }, { actor_kind: "system", actor_id: "orchestrator" }],
+        ["u-resumed", "task_resumed", { from: "awaiting", to: "todo" }, {}],
+        // Inside the cycle: no marker.
+        ["u-rework", "task_moved", { from: "in_review", to: "in_progress" }, {}],
+        ["u-backlog", "task_moved", { from: "todo", to: "backlog" }, {}],
+        ["u-await", "task_moved", { from: "in_progress", to: "awaiting" }, {}],
+      ];
+      await runSubscribe(
+        { agents: ["linus"], eventDebounceMs: 0, eventDebounceMaxMs: 0, eventContinueMinMs: 0, sseIdleMs: 1_000 },
+        {},
+        {
+          controller,
+          // Deliberately off: the marker must not depend on the dispatch path.
+          dispatchEnabled: false,
+          loopConfig: { continueEnabled: false, eventContinueEnabled: false },
+          log: () => {},
+          stateDir,
+          subscribeStatePath: join(stateDir, "subscribe.state.json"),
+          writeSubscribeState: () => {},
+          streamEvents: async ({ onEvent }) => {
+            sent.forEach(([taskId, event, changes, extra], index) =>
+              onEvent({ id: index + 1, data: { event, task_id: taskId, changes, ...extra } }),
+            );
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            controller.abort();
+            return { reason: "aborted" };
+          },
+          runContinue: async () => {},
+          sleep: async () => {},
+        },
+      );
+
+      const index = readInterruptRequestIndex(stateDir);
+      assert.deepEqual([...index.byTask.keys()].sort(), ["u-own", "u-resumed", "u-todo"]);
+      assert.equal(index.byTask.get("u-todo")[0].to, "todo");
+      assert.equal(index.byTask.get("u-resumed")[0].from, "awaiting");
+      assert.equal(index.byTask.get("u-own")[0].requested_by, "subscribe");
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("the loop consumes the local event hub", () => {

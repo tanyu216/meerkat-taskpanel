@@ -13,7 +13,7 @@ place:
   poll / patrol (see [`scheduling.md`](../scheduling.md#openclaw-no-loop-units)). The
   supervisor finds the skill wherever it is installed at runtime; no config records its path.
 - **`meerkat-chat`** (`skills/meerkat-chat/`) — the human's live console: progress, awaiting
-  questions, pending acceptance, `loop doctor` and abnormal-card triage; records the human's
+  questions, pending acceptance, `taskctl doctor` and abnormal-card triage; records the human's
   own words with `--as-human`. Installed beside the director on the primary kind.
 - **`jobs`, `linus`, `turing`, `reviewer`, `worker`** (`skills/<role>/`) — the five
   standalone role skills. Each is a complete role: `SKILL.md`, `role.json` and `references/`.
@@ -38,7 +38,7 @@ There are three layers, and it is worth keeping them straight:
    skill, symlinked) into the agent's skill directory by `install.sh`. This is
    deterministic, offline, and needs no agent tooling. The board skill is what makes the
    agent able to drive `taskctl`; the role skills carry each role's workflow, and the
-   supervisor itself runs as `taskctl loop …`.
+   supervisor itself runs as `taskctl run`.
 2. **The agent bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
    deploys the rest of that agent's setup too, not just the skill: the agent's own settings
    (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
@@ -115,7 +115,8 @@ The server target materializes a self-contained runtime at `<home>/.meerkat-task
 ├── .env                  # 0600, seeded from the template; never overwritten
 ├── .env.<actor-kind>     # umask default; one per installed kind, policy not secrets
 ├── .data/                # 0700, the SQLite board; never deleted
-└── logs/                 # 0700, the loop's supervisor.log for every actor kind
+├── logs/                 # 0700, the loop's supervisor.log for every actor kind
+└── loop/                 # 0700, the loop's queue, session records, locks and transcripts
 ```
 
 The tree is self-locating: `src/` resolves `.env`, `.env.<actor-kind>`, `.data` and `web/dist` from its own
@@ -139,11 +140,31 @@ Upgrade by running the installer again (`--force` to refresh managed files). To 
 delete the agent-kind skill directories listed below and the tree itself; **keep `.data/` if you
 want the board**: `rm -rf ~/.meerkat-taskpanel` deletes the database with it.
 
+**The runtime commands are top-level now.** The `loop <verb>` spellings are
+retired: `taskctl loop run` is `taskctl run`, `taskctl loop session` is
+`taskctl pool`, and the loop's own read is bare `taskctl loop` (see
+[ADR 0021](../adr/0021-the-loop-cli-is-flat.md)). Installed systemd/launchd/cron
+units still carry the old argv, so an upgraded machine must re-run `install.sh`
+(re-rendering the units) before its next reboot; until then a scheduled job exits
+2 with a migration error that names the replacement. `taskctl status` is
+`taskctl board` for the same reason.
+
 **One loop log, at the config root.** The supervisor log used to sit under the agent
 directory (`<agent-dir>/meerkat-taskpanel/supervisor.log`) and now lands at
 `<program root>/logs/supervisor.log`, one file for every actor kind. The installer does not
 move the old file: a re-run repoints the units, and the old
 `<agent-dir>/meerkat-taskpanel/supervisor.log*` is dead weight you may delete by hand.
+
+**One loop state, at the config root.** The loop's queue, session records, locks and worker
+transcripts used to live at `<agent-dir>/meerkat-taskpanel/`; they now live at
+`<config root>/loop/`. `install.sh --supervisor=enable` performs the one-time move: it stops
+every loaded loop kind, waits for the pool, subscriber, tick and queue locks to quiesce, copies
+the durable files, writes a stable `loop.id`, and keeps the old directory as
+`meerkat-taskpanel.migrated-<timestamp>`. A relocation that cannot finish (a live holder, an
+ambiguous source, a failed copy) fails the install rather than reporting a loop that never moved.
+A plain install with legacy state prints the enable command instead of moving it under a
+possibly-live pool. `MEERKAT_TASKPANEL_STATE_DIR` names a non-default location (the installer
+writes it into the per-kind config when it was explicit).
 
 **Where the per-kind config lives.** `<program root>/.env.<actor-kind>` (for example
 `.env.claude`), beside the board `.env`, not under the agent directory. A combined install
@@ -221,7 +242,7 @@ plugin/bundle that agent's own plugin system reads in place.
 `--link` applies to the **board** skill only. The director, chat console and role skills are
 always copied: they are small and standalone (docs plus decisions), and a symlink would put a
 checkout into the load path of a skill meant to read the same in every install. The
-supervisor's execution body is not in the skill at all — it is `taskctl loop …`, shipped
+supervisor's execution body is not in the skill at all — it is `taskctl run`, shipped
 with the runtime tree.
 
 **Every agent kind gets a `taskctl` shim**, at `<agent-dir>/bin/taskctl`
@@ -312,11 +333,11 @@ claimable.
 
 | Artefact | Where | What |
 |---|---|---|
-| director skill | `<primary-agent-dir>/skills/meerkat-director/` | the decision hub as a skill: its `SKILL.md` plus the decision policy and operator view. The execution body is `taskctl loop …` in the runtime tree, not a copy. Always **copied**, never symlinked; the runtime finds it wherever it is installed |
+| director skill | `<primary-agent-dir>/skills/meerkat-director/` | the decision hub as a skill: its `SKILL.md` plus the decision policy and operator view. The execution body is `taskctl run` in the runtime tree, not a copy. Always **copied**, never symlinked; the runtime finds it wherever it is installed |
 | chat skill | `<primary-agent-dir>/skills/meerkat-chat/` | the human's console as a skill: its `SKILL.md` plus the console, answering and acceptance references. It carries no execution body; every write is the `meerkat` board skill's command. Always **copied**, never symlinked |
 | setup skill | `<primary-agent-dir>/skills/setup-meerkat/` | `/setup-meerkat`: detect, repair, and move a role between kinds. Always **copied**, never symlinked |
 | role skills | `<agent-dir>/skills/<role>/` for every discovered role (the standard five are jobs, linus, turing, reviewer, worker) | each role's workflow, `role.json` and references. The list is data (`scripts/install/lib/role-skills.mjs`), not a hard-coded set. Always **copied**; where a role is installed is the platform that runs it |
-| loop state | `<agent-dir>/meerkat-taskpanel/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, worker transcripts, `continue.state.json` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
+| loop state | `<config root>/loop/` | the loop's runtime state — queue, ledger, locks, `sessions.state.json`, worker transcripts, `continue.state.json` (see [`scheduling.md §The loop's state directory`](../scheduling.md#the-loops-state-directory)) |
 | launchd | `<agent-dir>/scheduling/launchd/com.meerkat-taskpanel.{session,ping,continue,subscribe}.plist` | `KeepAlive` for the resident pool and the event subscriber; `StartInterval` 60 / 600 for the two clocks |
 | systemd | `<agent-dir>/scheduling/systemd/meerkat-taskpanel-{session,ping,continue,subscribe}.{service,timer}` | `Type=simple` + `Restart=always` for the pool and subscriber; 60s / 600s timers for the clocks |
 | cron | `<agent-dir>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue — **no pool**: no worker dispatch |
@@ -330,12 +351,12 @@ that same set. The shim heads the list so a globally installed `taskctl` cannot 
 and write the wrong actor identity. If the agent CLI is not on `PATH` at install time, the
 installer says so and renders the shim directory and node's alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](../scheduling.md#what-the-loops-units-run-with).
-| per-kind config | `<program root>/.env.<actor-kind>` | the loop's policy: claiming, stale recovery, where `taskctl` lives (`MEERKAT_TASKPANEL_REPO`), the workflow channel, the clocks, the concurrency cap, the session pool and the role kind preference (`MEERKAT_TASKPANEL_AGENT_KIND_ORDER`). **Every key, its default and its allowed values are inventoried once in [`.env.example`](../../.env.example)** (`docs/tech-spec.md` TS-26). Full tool access is off unless both `MEERKAT_TASKPANEL_ALLOW_ALL_TOOLS=yes` and `..._ALLOW_ALL_TOOLS_REASON="…"` are set |
+| per-kind config | `<program root>/.env.<actor-kind>` | the loop's policy: claiming, stale recovery, where `taskctl` lives (`MEERKAT_TASKPANEL_REPO`), the workflow channel, the clocks, the concurrency cap, the session pool and the role kind preference (`MEERKAT_TASKPANEL_AGENT_KIND_ORDER`). **Every key, its default and its allowed values are inventoried once in [`.env.example`](../../.env.example)** (`docs/tech-spec.md` TS-26). Every session runs with the full tool set; the reviewer's write tools are denied |
 | log (runtime) | `<program root>/logs/supervisor.log` | the supervisor's tick log — **one file for every actor kind**, each line carrying `actor_kind=<kind>`; `~/.meerkat-taskpanel/logs/supervisor.log` for a combined install |
-| state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry (legacy one-shot path) |
-| state (runtime) | `<agent-dir>/meerkat-taskpanel/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
-| state (runtime) | `<agent-dir>/meerkat-taskpanel/subscribe.state.json` | the event daemon's pid, last connection/event and pending reconnect — what `--supervisor=status` reports |
-| state (runtime) | `<agent-dir>/meerkat-taskpanel/supervisor.health.json` | the long-lived entries' boot ledger (`startedAt`, `pid`, `version`, `lastCrash`, `starts`, `bootFailures`) — the input to the 5/15/60/300 s restart ladder |
+| state (runtime) | `<config root>/loop/supervisor.state.json` | the running registry (legacy one-shot path) |
+| state (runtime) | `<config root>/loop/{sessions,subagents}.state.json` | the resident pool's session ids + heartbeat, and the subagent ledger |
+| state (runtime) | `<config root>/loop/subscribe.state.json` | the event daemon's pid, last connection/event and pending reconnect — what `--supervisor=status` reports |
+| state (runtime) | `<config root>/loop/supervisor.health.json` | the long-lived entries' boot ledger (`startedAt`, `pid`, `version`, `lastCrash`, `starts`, `bootFailures`) — the input to the 5/15/60/300 s restart ladder |
 
 `<agent-dir>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these, and no
 `meerkat-director`, `meerkat-chat` or role skills** — it installs the board skill only and uses the
@@ -396,7 +417,7 @@ an explicit list still narrows the action, and both default to every loop kind i
 `--target`. A kind outside `--target` is named and dropped (its installer never runs). The
 flag selects *which* kinds an action applies to, rather than naming the kind the installer
 itself runs as, which is why it is not called `--actor-kind` here: that name is the
-per-command identity flag (`taskctl loop … --actor-kind claude|codex|pi`). **`openclaw` is rejected** in this list
+per-command identity flag (`taskctl run --actor-kind claude|codex|pi`). **`openclaw` is rejected** in this list
 (reason on stderr, exit 2) — it has no loop supervisor to enable (see
 [`scheduling.md §OpenClaw: no loop units`](../scheduling.md#openclaw-no-loop-units)).
 
@@ -481,8 +502,8 @@ supervisor:   reload it with: install.sh --supervisor=enable --supervisor-actor-
 ```
 
 Enabling installs the resident pool, the two clocks **and the event daemon**: a long-lived
-`taskctl loop session` manager, a $0 ping, one bounded tick per continue cadence that runs
-patrol → workflow → poll in-process, and the `taskctl loop subscribe` daemon on launchd/systemd.
+`taskctl pool` manager, a $0 ping, one bounded tick per continue cadence that runs
+patrol → workflow → poll in-process, and the `taskctl subscribe` daemon on launchd/systemd.
 The daemon is part of that set, not a separate flag: it is the low-latency path, the
 continue cadence remains the fallback, and an event wakes a turn only while the pool is
 live. It is not a closure component — with no pool it skips the turn and the timer still
@@ -883,7 +904,9 @@ rm -rf ~/.claude/skills/meerkat ~/.claude/skills/{meerkat-director,meerkat-chat}
        ~/.claude/skills/setup-meerkat \
        ~/.claude/commands/{board,claim,deliver}.md \
        ~/.claude/hooks/meerkat-taskpanel-session-start.sh ~/.claude/bin/taskctl \
-       ~/.claude/scheduling ~/.claude/meerkat-taskpanel
+       ~/.claude/scheduling
+# The loop state moved to <config root>/loop (the pre-migration
+# ~/.claude/meerkat-taskpanel is a backup after the one-time migration).
 ```
 
 ### OpenClaw
@@ -1129,8 +1152,10 @@ rm -rf ~/.codex/skills/{meerkat,meerkat-director,meerkat-chat,setup-meerkat,jobs
 rm -rf ~/.agents/skills/{meerkat,meerkat-director,meerkat-chat,setup-meerkat,jobs,linus,turing,reviewer,worker} # pi
 ```
 
-Nothing is written outside those directories, and nothing is sent over the network — see
-[`PRIVACY.md`](../../PRIVACY.md).
+The loop's runtime state is separate: it lives at `<config root>/loop/`, so deleting the
+install tree removes it for a combined install; an agent-only install keeps it in its
+checkout/package config root. Back it up (or delete it) explicitly. Nothing is written outside
+those directories, and nothing is sent over the network — see [`PRIVACY.md`](../../PRIVACY.md).
 
 ## Troubleshooting
 

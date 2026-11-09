@@ -1275,7 +1275,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.ok(assign, "the route is rewritten first");
     assert.equal(assign[assign.indexOf("--assignee") + 1], "Worker");
     assert.equal(assign[assign.indexOf("--if-version") + 1], "3", "the scan's version guards the reassignment");
-    assert.equal(assign[assign.indexOf("--agent") + 1], "Orchestrator");
+    assert.equal(assign[assign.indexOf("--agent") + 1], "Board");
     assert.equal(assign[assign.indexOf("--actor-kind") + 1], "system");
 
     const comment = all.find((call) => call.includes("comment") && call.includes("add"));
@@ -1283,7 +1283,7 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.equal(comment[comment.indexOf("--kind") + 1], "change");
     assert.match(comment.join(" "), /Ghost/);
     assert.match(comment.join(" "), /not installed/);
-    assert.equal(comment[comment.indexOf("--agent") + 1], "Orchestrator");
+    assert.equal(comment[comment.indexOf("--agent") + 1], "Board");
   });
 
   it("claims a stale patrol card as the planned assignee, never the holder", () => {
@@ -1835,7 +1835,7 @@ describe("the resident poll dispatch", () => {
       installedOn: ["codex"],
       workflow: "/roles/codex/turing/SKILL.md",
       selfCheck: null,
-      reviewerPrompt: null,
+      reviewerHandoff: null,
       defaultReviewer: false,
       variants: {},
     };
@@ -1978,7 +1978,7 @@ describe("the resident poll dispatch", () => {
       skillDir: "/roles/reviewer",
       workflow: "/roles/reviewer/SKILL.md",
       selfCheck: null,
-      reviewerPrompt: null,
+      reviewerHandoff: null,
       variants: {},
     };
     const opts = {
@@ -2035,7 +2035,7 @@ describe("the resident poll dispatch", () => {
       skillDir: "/roles/jobs",
       workflow: "/roles/jobs/SKILL.md",
       selfCheck: null,
-      reviewerPrompt: null,
+      reviewerHandoff: null,
       variants: {},
     };
     const opts = {
@@ -2302,7 +2302,7 @@ describe("the resident poll dispatch", () => {
       skillDir: "/roles/reviewer",
       workflow: "/roles/reviewer/SKILL.md",
       selfCheck: null,
-      reviewerPrompt: null,
+      reviewerHandoff: null,
       variants: {},
     };
     const opts = {

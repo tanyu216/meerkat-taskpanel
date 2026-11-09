@@ -1,21 +1,23 @@
 /**
- * `taskctl loop …` — the command surface and its two board-free verbs.
+ * The runtime commands — flat, top-level, and board-free where they must be.
  *
- * The migration's honesty hinges on two things this file pins:
+ * The flattening's honesty hinges on three things this file pins:
  *
- *   1. the ten verbs are registered as *local* commands (no board connect
- *      happens before the handler runs — `loop status` must answer with the
- *      board down);
+ *   1. the ten runtime commands are registered as *local* top-level commands
+ *      (no board connect happens before the handler runs — `loop` must answer
+ *      with the board down);
  *   2. the two globals the loop cannot honour (`--as-human`, `--session-id`,
- *      `--if-version`) are refused, and a mutating verb without
- *      `--actor-kind` is a usage error, not a board call.
+ *      `--if-version`) are refused, and a mutating command without
+ *      `--actor-kind` is a usage error, not a board call;
+ *   3. the retired `loop <verb>` spellings are a usage error that names the new
+ *      command.
  *
  * `loop compat` is gone: the loop ships with the board, so there is no board
  * generation to gate on (ADR 0005). The last describe pins that it stays gone.
  */
 
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
@@ -29,40 +31,40 @@ import {
 
 after(cleanupTempDirs);
 
-const VERBS = [
+const COMMAND_NAMES = [
   "patrol",
   "workflow",
   "poll",
   "tick",
   "console",
   "doctor",
-  "status",
+  "loop",
   "run",
   "subscribe",
-  "session",
+  "pool",
 ];
 
 describe("cli/commands/loop — the surface", () => {
-  it("registers the ten verbs, each local", () => {
-    assert.deepEqual(COMMANDS.map((command) => command.name), VERBS);
+  it("registers the ten top-level commands, each local", () => {
+    assert.deepEqual(COMMANDS.map((command) => command.name), COMMAND_NAMES);
     for (const command of COMMANDS) {
       assert.equal(command.local, true, `${command.name} must not connect first`);
       assert.equal(typeof command.run, "function");
-      assert.match(command.usage, /^loop /);
+      assert.match(command.usage, new RegExp(`^${command.name} `));
     }
   });
 
-  it("asks for an actor on every verb that writes", async () => {
+  it("asks for an actor on every command that writes", async () => {
     // No board, no identity: the refusal must come from dispatch, before any
     // transport code could run.
-    const result = runCli(["loop", "patrol", "--dry-run"], { noIdentity: true });
+    const result = runCli(["patrol", "--dry-run"], { noIdentity: true });
     assert.equal(result.status, 2, result.stderr);
     assert.match(result.stderr, /--actor-kind is required/);
   });
 
   it("refuses the globals the loop cannot honour", () => {
     for (const flag of ["--as-human", "--session-id=x", "--if-version=3"]) {
-      const result = runCli(["--actor-kind", "claude", "loop", "poll", "--dry-run", flag], {
+      const result = runCli(["--actor-kind", "claude", "poll", "--dry-run", flag], {
         noIdentity: true,
       });
       assert.equal(result.status, 2, `${flag}: ${result.stderr}`);
@@ -77,7 +79,6 @@ describe("cli/commands/loop — the surface", () => {
     const accepted = runCli([
       "--actor-kind",
       "claude",
-      "loop",
       "poll",
       "--dry-run",
       "--workspace",
@@ -91,7 +92,6 @@ describe("cli/commands/loop — the surface", () => {
     const refused = runCli([
       "--actor-kind",
       "claude",
-      "loop",
       "poll",
       "--dry-run",
       "--workspace",
@@ -103,23 +103,24 @@ describe("cli/commands/loop — the surface", () => {
     assert.match(refused.stderr, /worktree or shared/);
   });
 
-  it("answers --help for the group and every verb", () => {
-    const group = runCli(["loop", "--help"], { noIdentity: true });
-    assert.equal(group.status, 0);
-    for (const verb of VERBS) assert.match(group.stdout, new RegExp(`\\b${verb}\\b`));
-
-    for (const verb of VERBS) {
-      const page = runCli(["loop", verb, "--help"], { noIdentity: true });
-      assert.equal(page.status, 0, `${verb}: ${page.stderr}`);
-      assert.match(page.stdout, new RegExp(`Usage: taskctl loop ${verb}`));
+  it("answers --help for every command, with a top-level usage line", () => {
+    for (const name of COMMAND_NAMES) {
+      const page = runCli([name, "--help"], { noIdentity: true });
+      assert.equal(page.status, 0, `${name}: ${page.stderr}`);
+      assert.match(page.stdout, new RegExp(`Usage: taskctl ${name}\\b`));
+    }
+    const top = runCli(["--help"], { noIdentity: true });
+    assert.equal(top.status, 0);
+    for (const name of COMMAND_NAMES) {
+      assert.match(top.stdout, new RegExp(`\\b${name}\\b`), `top-level help misses ${name}`);
     }
   });
 });
 
-describe("cli/commands/loop — status", () => {
+describe("cli/commands/loop — the runtime verdict", () => {
   it("reports the runtime verdict with the board down", () => {
     const stateDir = makeTempDir("meerkat-taskpanel-loop-state-");
-    const result = runCli(["loop", "status", "--json", "--state-dir", stateDir], {
+    const result = runCli(["loop", "--json", "--state-dir", stateDir], {
       actorKind: "claude",
       noUrl: true,
       env: { TASKD_NO_AUTOSTART: "1" },
@@ -131,6 +132,83 @@ describe("cli/commands/loop — status", () => {
     // `--state-dir` derives the registry file inside the directory, so the
     // verdict cannot read a developer's real loop state.
     assert.equal(data.pool.file, join(stateDir, "sessions.state.json"));
+  });
+
+  it("refuses the retired `loop status` spelling, naming `taskctl loop`", () => {
+    const result = runCli(["loop", "status"], { noIdentity: true });
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stderr, /taskctl loop\b/);
+    assert.match(result.stderr, /install\.sh/);
+  });
+});
+
+describe("cli/commands/loop — the legacy state directory", () => {
+  /** A home with the pre-migration loop state, and an empty config root. */
+  function legacyWorld() {
+    const home = makeTempDir("meerkat-taskpanel-legacy-home-");
+    const configRoot = makeTempDir("meerkat-taskpanel-legacy-config-");
+    const legacy = join(home, ".claude", "meerkat-taskpanel");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(legacy, "cards.queue.json"), '{"cards":[]}\n');
+    return { home, configRoot, legacy };
+  }
+
+  it("reads it with a warning on stderr, leaving stdout valid JSON", () => {
+    const { home, configRoot, legacy } = legacyWorld();
+    const result = runCli(["loop", "--json"], {
+      actorKind: "claude",
+      noUrl: true,
+      env: {
+        HOME: home,
+        MEERKAT_TASKPANEL_CONFIG_DIR: configRoot,
+        TASKD_NO_AUTOSTART: "1",
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /legacy loop state/);
+    // stdout is still the one machine-readable answer; the warning must not
+    // corrupt it.
+    const data = parseJson(result);
+    assert.equal(data.pool.file, join(legacy, "sessions.state.json"));
+  });
+
+  it("refuses every write verb instead of splitting the queue", () => {
+    const { home, configRoot, legacy } = legacyWorld();
+    const env = {
+      HOME: home,
+      MEERKAT_TASKPANEL_CONFIG_DIR: configRoot,
+      TASKD_NO_AUTOSTART: "1",
+    };
+    for (const argv of [
+      ["patrol", "--dry-run"],
+      ["run", "--ping-once"],
+      // `loop` is a read until it takes over or stops the pool.
+      ["loop", "--take-over"],
+      ["loop", "--stop"],
+    ]) {
+      const result = runCli(argv, { actorKind: "claude", noUrl: true, env });
+      assert.equal(result.status, 2, `${argv.join(" ")}: ${result.stderr}`);
+      assert.match(result.stderr, /refusing to write to the legacy loop state/);
+      assert.match(result.stderr, /re-run install\.sh/);
+      assert.ok(result.stderr.includes(legacy), `names the directory it refuses: ${result.stderr}`);
+    }
+  });
+
+  it("treats an explicit --state-dir as the answer, not as legacy", () => {
+    const { home, configRoot } = legacyWorld();
+    const named = makeTempDir("meerkat-taskpanel-legacy-named-");
+    const result = runCli(["loop", "--json", "--state-dir", named], {
+      actorKind: "claude",
+      noUrl: true,
+      env: {
+        HOME: home,
+        MEERKAT_TASKPANEL_CONFIG_DIR: configRoot,
+        TASKD_NO_AUTOSTART: "1",
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stderr, /legacy loop state/);
+    assert.equal(parseJson(result).pool.file, join(named, "sessions.state.json"));
   });
 });
 
@@ -158,7 +236,6 @@ describe("cli/commands/loop — doctor", () => {
 
     const result = runCli(
       [
-        "loop",
         "doctor",
         "--json",
         "--cli",
@@ -211,7 +288,6 @@ describe("cli/commands/loop — the moved entries", () => {
     const { script, record } = sentinel(dir);
     const result = runCli(
       [
-        "loop",
         "tick",
         "--passes",
         "patrol,workflow",
@@ -246,33 +322,43 @@ describe("cli/commands/loop — the moved entries", () => {
   it("run --ping-once is one clock, and both one-shots together are refused", () => {
     const dir = makeTempDir("meerkat-taskpanel-loop-run-");
     const ping = runCli(
-      ["loop", "run", "--ping-once", "--state-dir", dir, "--log", join(dir, "loop.log")],
+      ["run", "--ping-once", "--state-dir", dir, "--log", join(dir, "loop.log")],
       { actorKind: "claude", noUrl: true },
     );
     assert.equal(ping.status, 0, ping.stderr);
 
     const both = runCli(
-      ["loop", "run", "--ping-once", "--continue-once", "--state-dir", dir],
+      ["run", "--ping-once", "--continue-once", "--state-dir", dir],
       { actorKind: "claude", noUrl: true },
     );
     assert.equal(both.status, 2);
     assert.match(both.stderr, /choose --ping-once or --continue-once/);
+  });
+
+  it("pool is the resident session entry, and the retired `loop session` names it", () => {
+    const page = runCli(["pool", "--help"], { noIdentity: true });
+    assert.equal(page.status, 0, page.stderr);
+    assert.match(page.stdout, /^Usage: taskctl pool\b/m);
+
+    const retired = runCli(["loop", "session"], { noIdentity: true });
+    assert.equal(retired.status, 2);
+    assert.match(retired.stderr, /taskctl pool/);
   });
 });
 
 describe("cli/commands/loop — the retired board-interface gate", () => {
   it("no longer answers `loop compat`", () => {
     const result = runCli(["loop", "compat"], { noIdentity: true });
-    assert.equal(result.status, 2, "an unknown verb is usage, not a verdict");
-    assert.match(result.stderr, /unknown command/);
+    assert.equal(result.status, 2, "an unknown word is usage, not a verdict");
+    assert.match(result.stderr, /unexpected argument "compat"/);
   });
 
   it("no longer advertises the verb, or a `--quiet` it was the only user of", () => {
-    const group = runCli(["loop", "--help"], { noIdentity: true });
-    assert.equal(group.status, 0);
-    assert.doesNotMatch(group.stdout, /\bcompat\b/);
+    const page = runCli(["loop", "--help"], { noIdentity: true });
+    assert.equal(page.status, 0);
+    assert.doesNotMatch(page.stdout, /\bcompat\b/);
 
-    const quiet = runCli(["loop", "doctor", "--quiet"], { noIdentity: true });
+    const quiet = runCli(["doctor", "--quiet"], { noIdentity: true });
     assert.equal(quiet.status, 2);
     assert.match(quiet.stderr, /--quiet/);
   });

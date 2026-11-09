@@ -103,10 +103,11 @@ disposition per row.
 **Purpose.** Make the change reviewable and auditable.
 
 **Watch for.** The tree is committed and the report carries the `commit` anchor; the board's delivery gate (`DELIVERY_NEEDS_COMMIT`) refuses a report that does not. Deliver the committed tree; the supervisor's acceptance pass merges, rebases, pushes and cleans up. A production bug fix
-carries a committed regression test. Turing's verification is a follow-up card, not delivery
-evidence: outside a project epic graph a card without a verification card sets
+carries a committed regression test. Turing's verification is a downstream follow-up card:
+outside a project epic graph a card without a verification card sets
 `meta.stage_handoff=required` and names the verification scope; inside a graph the verification
-stage already exists and the report names it.
+stage already exists and the report names it. A defect follow-up filed in `backlog` stands on
+its own.
 
 **Essentials.** Commit the delivered tree; call the `meerkat` board skill to deliver at
 `in_review` with what changed, the tests and gates, the evidence anchors, the acceptance

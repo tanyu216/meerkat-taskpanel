@@ -84,8 +84,8 @@ What the loop does next depends on why the target moved:
   card (`round_mismatch`) without touching the original. A review card that is not `in_review`
   is canceled rather than closed, because `done` is reachable only from `in_review`.
 - **The original is `done` at the same round** — the loop raises `verdict_unreadable` and
-  leaves the review card open. A human must cancel it with the two-hop
-  `in_review → in_progress → canceled`.
+  leaves the review card open. A human cancels it in one move: `in_review → canceled`
+  (TP-0125).
 - **The verdict cannot be read, or an `APPROVE` does not cover its baseline** — the loop
   re-dispatches the review card for a second review (`meta.review_retry`, at most two
   reopens). A reopen is the two-hop `in_review → in_progress → todo`; the card is claimed
@@ -102,7 +102,8 @@ What the loop does next depends on why the target moved:
   (the worker's plan, if it exists), plus the notes, evidence, report drafts and attachments
   in that directory;
 - the current round's delivery report and its evidence anchors;
-- the comment trail, looking for unresolved decision / defect entries;
+- the comment trail, looking for decision / defect entries and their resolution — a recorded
+  decision, a linked filed follow-up card, or the director's disposition;
 - for an epic: the rollup report and each child's state.
 
 An `APPROVE` is checked against **two** baselines before it can close anything: the review
@@ -233,8 +234,8 @@ The board enforces the mode; `ACCEPTANCE_FORBIDDEN` carries `mode` and `reviewCa
   while the review card is still open (the loop's `already_approved` pass closes it later).
   A `human` card is never auto-accepted: its review runs like any other, the verdict is
   recorded, and the close is the person's.
-- **Cancel an abandoned review card** — a review card in `in_review` cannot go directly to
-  `canceled`; the move is two hops: `in_review → in_progress → canceled`.
+- **Cancel an abandoned review card** — `in_review → canceled` is one move (TP-0125). It does
+  not bump the round, and it interrupts a reviewer turn that is still running.
 - **Reopen the original, never the review card.** A review card is a loop artefact and cannot
   be reopened; reopening the original produces the next round's review.
 
@@ -277,8 +278,8 @@ the next pass.
 
 A review card can be refused by the same codes as any other card — `REPORT_REQUIRED`,
 `REPORT_ROUND_MISMATCH`, `ACCEPTANCE_FORBIDDEN`, `REVIEW_PENDING`, `REVIEW_REQUIRED`,
-`REVIEW_CARD_MARKER_INVALID`, `VALIDATION_FAILED` — plus `INVALID_TRANSITION` for a reopen or
-a direct `in_review → canceled`. The reopen, parent/child and review-of-review refusals are
+`REVIEW_CARD_MARKER_INVALID`, `VALIDATION_FAILED` — plus `INVALID_TRANSITION` for a reopen.
+(`in_review → canceled` is legal since TP-0125.) The reopen, parent/child and review-of-review refusals are
 also database triggers, so a raw writer cannot bypass the command layer. The full
 table, with when each fires, is in
 [`lifecycle/refusals.md` §9](lifecycle/refusals.md#9-refusals).

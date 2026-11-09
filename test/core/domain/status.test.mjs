@@ -22,9 +22,11 @@ import {
   assertTransition,
   bumpsDeliveryRound,
   canTransition,
+  holdsClaim,
   isClaimable,
   isKnownStatus,
   isTerminalStatus,
+  leavesClaimCycle,
   requiresReport,
   transitionPolicyFor,
   transitionReasonCode,
@@ -38,12 +40,18 @@ const EXPECTED_ALLOWED = {
   // M1 — `awaiting` joins as the fifth exit from `in_progress`, and is its own
   // row below. The card's conversion rules: entry only from `in_progress`;
   // `→ canceled` allowed; `→ blocked` / `→ in_review` / `→ done` forbidden.
-  in_progress: ["in_review", "blocked", "todo", "canceled", "awaiting"],
+  // TP-0125 — `backlog` is a direct exit: leaving the claim cycle must not need
+  // the `todo` hop, which would re-enqueue the card on the way out.
+  in_progress: ["in_review", "blocked", "todo", "backlog", "canceled", "awaiting"],
   // 0034 — the answered card re-queues (`todo`); `in_progress` stays for a live
   // worker. `→ blocked` / `→ in_review` / `→ done` remain forbidden.
   awaiting: ["in_progress", "todo", "canceled"],
-  in_review: ["done", "in_progress", "blocked"],
-  blocked: ["todo", "in_progress", "in_review", "canceled"],
+  // TP-0125 — a delivered card can be abandoned in one move; the old two-hop
+  // (`→ in_progress → canceled`) briefly returned it to the work cycle.
+  in_review: ["done", "in_progress", "blocked", "canceled"],
+  // TP-0127 — `backlog` is the exit that does not re-enter dispatch; the other
+  // three stay (unblock into the work, the review repair edge, abandon).
+  blocked: ["todo", "backlog", "in_progress", "in_review", "canceled"],
   // The reopen edge: a finished card may go back to the queue, and nowhere
   // else. `in_progress` is deliberately absent — it would be a work state
   // without the claim that a `todo → in_progress` move stamps.
@@ -90,7 +98,11 @@ describe("domain/status — the whitelist table", () => {
 
   it("keeps both in_review exits that start a new delivery round (F3)", () => {
     assert.deepEqual([...ROUND_BUMPING_EXITS].sort(), ["blocked", "in_progress"]);
-    assert.deepEqual(allowedTargets(STATUS.IN_REVIEW), ["done", "in_progress", "blocked"]);
+    assert.deepEqual(allowedTargets(STATUS.IN_REVIEW), ["done", "in_progress", "blocked", "canceled"]);
+    // TP-0125 — a terminal move from review does not start a new round; the
+    // card is finished, and a reopen is the family that bumps.
+    assert.equal(bumpsDeliveryRound("in_review", "canceled"), false);
+    assert.equal(bumpsDeliveryRound("canceled", "todo"), true);
     for (const [from, to] of ALL_PAIRS) {
       const expected =
         (from === STATUS.IN_REVIEW && ROUND_BUMPING_EXITS.includes(to)) ||
@@ -131,6 +143,56 @@ describe("domain/status — terminals, claimability, gate", () => {
     for (const status of STATUSES) assert.equal(isKnownStatus(status), true, status);
     for (const bad of ["", "READY", "Todo", "ready", "failed", null, 42]) {
       assert.equal(isKnownStatus(bad), false, String(bad));
+    }
+  });
+});
+
+/**
+ * TP-0125 — the one predicate every interrupt writer shares: a turn is orphaned
+ * exactly when the card leaves the claim cycle. It is stated over the table, not
+ * over an enumeration of edges, so a future status is classified by `holdsClaim`
+ * alone.
+ */
+describe("domain/status — leaving the claim cycle", () => {
+  it("is exactly holdsClaim(from) && !holdsClaim(to) on every ordered pair", () => {
+    for (const [from, to] of ALL_PAIRS) {
+      assert.equal(
+        leavesClaimCycle(from, to),
+        holdsClaim(from) && !holdsClaim(to),
+        `${from} → ${to}`,
+      );
+    }
+  });
+
+  it("names the claim-holding statuses once", () => {
+    assert.deepEqual(
+      STATUSES.filter(holdsClaim),
+      ["in_progress", "in_review", "blocked", "awaiting"],
+    );
+  });
+
+  it("covers every new direct exit, and the benign terminal moves", () => {
+    for (const [from, to] of [
+      ["in_progress", "backlog"],
+      ["in_progress", "todo"],
+      ["in_progress", "canceled"],
+      ["in_progress", "done"],
+      ["awaiting", "todo"],
+      ["in_review", "canceled"],
+      ["in_review", "done"],
+      ["blocked", "todo"],
+    ]) {
+      assert.equal(leavesClaimCycle(from, to), true, `${from} → ${to} leaves the cycle`);
+    }
+    for (const [from, to] of [
+      ["in_progress", "in_review"],
+      ["in_progress", "awaiting"],
+      ["in_review", "in_progress"],
+      ["blocked", "in_progress"],
+      ["todo", "in_progress"],
+      ["backlog", "todo"],
+    ]) {
+      assert.equal(leavesClaimCycle(from, to), false, `${from} → ${to} stays inside the cycle`);
     }
   });
 });
@@ -384,7 +446,7 @@ describe("domain/status — the card-derived policy", () => {
     });
     assert.equal(policy.can("done"), false);
     assert.equal(policy.reason("done"), "INVALID_TRANSITION");
-    assert.deepEqual(policy.allowed, ["in_review", "blocked", "todo", "canceled", "awaiting"]);
+    assert.deepEqual(policy.allowed, ["in_review", "blocked", "todo", "backlog", "canceled", "awaiting"]);
   });
 
   it("exposes the round bump and the report requirement", () => {

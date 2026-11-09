@@ -54,9 +54,9 @@ fails the board's own checks — a `met` with no resolvable `evidence[n]`, or no
 anchor at all — is not planned: the loop raises `verdict_unsupported` and reopens the review
 card under the same bound as an incomplete verdict.
 
-A `cancel_review` on a review card that is still `in_review` is a two-hop move
-(`in_review → in_progress → canceled`): the whitelist has no direct
-`in_review → canceled` edge, and a canceled review is never recorded as `done`.
+A `cancel_review` on a review card that is still `in_review` is a **one-hop** move
+(`in_review → canceled`, TP-0125); it writes an interrupt request so the pool stops a reviewer
+turn that is still running. A canceled review is never recorded as `done`.
 
 Only an **open** review card suppresses the original's `acceptance_card_creation`
 SLA row. A `done` review turns that row into an acceptance reminder; a `canceled`

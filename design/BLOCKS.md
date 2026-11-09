@@ -496,19 +496,29 @@ remains the document's only **horizontal** scroll container.
 **Implementation supplement — the human-facing move subset.** 〔原型菜单不过滤；这是记录在案的收紧〕
 The prototype's card menu and drawer status combo list all seven statuses and filter nothing
 (`app.js#moveCard`), because the prototype owns the control's **structure**, not the lifecycle. In
-the shipped board the person drives only four acts, so `web/src/stores/board.js#UI_TRANSITIONS`
+the shipped board the person drives only five acts, so `web/src/stores/board.js#UI_TRANSITIONS`
 narrows every human-facing status surface to:
 
 | from | offered targets |
 |---|---|
 | `backlog` | `todo`, `canceled` |
 | `todo` | `backlog`, `canceled` |
-| `in_review` | `done`, `in_progress` (Accept / Send back) |
-| `in_progress`, `awaiting`, `blocked`, `done`, `canceled` | none |
+| `in_progress` | `canceled`, `todo`, `backlog` (TP-0125 — leaving the work) |
+| `in_review` | `done`, `in_progress` (Accept / Send back), `canceled` |
+| `blocked` | `todo`, `backlog` (TP-0127 — unqueue), `canceled` |
+| `awaiting`, `done`, `canceled` | none |
 
-`canceled → backlog` is deliberately absent: `canceled` is terminal and only the audited
-`reopen → todo` edge exists. That edge is not in the table either — it needs a reason, so it
-belongs to the drawer's dedicated Reopen control (B09), never the generic menu or a drop.
+`in_progress → in_review|done` is deliberately absent: delivery is the agent's `taskctl` act,
+and the board has no deliver write. `canceled → backlog` is deliberately absent: `canceled` is
+terminal and only the audited `reopen → todo` edge exists. That edge is not in the table either —
+it needs a reason, so it belongs to the drawer's dedicated Reopen control (B09), never the
+generic menu or a drop.
+
+A `canceled` target — from the card menu, a drop, or the drawer combo — opens the shared
+confirmation (`web/src/stores/confirm.js`, `ConfirmDialog.vue`, hooks `[data-confirm-dialog]` /
+`-panel` / `-body` / `-accept` / `-dismiss`); dismissing writes nothing. The dialog is the
+topmost layer: Escape keeps the card. A confirmed cancel also interrupts the loop's running
+turn (ADR 0017).
 
 The surfaces: `[data-card-menu]` stays on every card but is **disabled** when the table row is
 empty (the part set is invariant; disabling keeps the card's geometry), and the shared
@@ -732,8 +742,12 @@ driven in `web/scripts/dom-smoke.mjs` (run by `test/web/blocks.dom.test.mjs`).
 这是记录在案的扩展〕 The Acceptance tab also lists the review cards that audited
 the open card, oldest round first: `[data-detail-review-rounds]` → per row
 `[data-review-round]` (the round number), `[data-review-round-label]` (the round
-copy, or the identifier when the wire carries no round), `[data-review-identifier]`
-and `[data-review-status-text]`. The criteria rows keep their own
+copy, or the identifier when the wire carries no round), `[data-review-identifier]`,
+`[data-review-title]` (the review card's title, one line, ellipsised with the full
+value on the element's `title`) and `[data-review-status-chip]` — the **same** status
+chip as the drawer head and the list row (`badge badge-sm td-chip td-chip-status`,
+18px pill, 6px dot, `data-status` reading the shared colour map), whose word stays on
+`[data-review-status-text]`. The criteria rows keep their own
 `[data-detail-acceptance-list]` seat, so the round rows cannot be mistaken for
 verdict rows by a test that counts them. It is read-only: the review card is the loop's
 record of the round. The projection is
@@ -1066,9 +1080,7 @@ rendered from the card's session list (`GET /api/v1/tasks/:ref/sessions`), with
 `[data-agent-platform]`, `[data-agent-platform-value]` (the card's **platform
 id**, e.g. `claude` — `[data-agent-platform]` is the id's badge; the prototype's
 static sample renders a CLI-style declaration there, a prototype-only expression
-registered in `design/fidelity-r14.md` §8.3 `DF-4`), `[data-agent-session-id]`
-and `[data-agent-resume]` (the running row only; the hook stays in the DOM,
-hidden, when no row is running).
+registered in `design/fidelity-r14.md` §8.3 `DF-4`) and `[data-agent-session-id]`.
 
 The trail is ordered **running first, then `ts` descending**. Visibility is
 **data-driven** (`sessions.length > 0`): the section and the Sessions tab are
@@ -1077,6 +1089,13 @@ switch — a human-assigned card can carry real session rows, and the server
 enforces no assignee/session relationship. Historical rows name their own
 `owner_kind` in a plain badge; the `data-agent-platform` seat states the card's own
 platform.
+
+The prototype also carries `[data-agent-resume]` (the running row only; the hook
+stays in the DOM, hidden, when no row is running). The shipped app no longer
+renders it — Terry's ruling of 2026-11-08: the board cannot resume a session (the
+agent runtime owns that), so the control was a toast with no transport. The hook
+and its strings (`drawer.resume`, `toast.resume`) stay in the prototype as a
+prototype-only demonstration.
 
 ## B17 · Error state
 

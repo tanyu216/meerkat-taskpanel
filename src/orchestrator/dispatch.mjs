@@ -1,19 +1,31 @@
 /**
- * `taskctl loop <verb>` — route one verb to the moved loop entries.
+ * `taskctl <verb>` — route one runtime command to the moved loop entries.
+ *
+ * The runtime commands are top-level since the flattening (`taskctl patrol`,
+ * `taskctl loop`, `taskctl pool`, …); `loop.mjs` passes both its CLI name and
+ * its internal verb, because dispatch keeps the loop's original verb keys
+ * (`status`, `session`) until the in-process operations layer replaces it.
  *
  * The entries still speak the loop's original argv/`opts` shape, so the raw
- * command line is handed through (minus `loop <verb>`) instead of rebuilding it
- * from bound flags. The only translations are the new spellings:
+ * command line is handed through (minus the command token) instead of rebuilding
+ * it from bound flags. The only translations are the new spellings:
  *
  *   * `--state-dir <dir>` -> `--state <dir>/supervisor.state.json`
- *   * `loop tick --passes a,b` -> three `passes.main` calls
- *   * `loop run --ping-once|--continue-once` -> `--ping-only|--continue-only --once`
+ *   * `taskctl tick --passes a,b` -> three `passes.main` calls
+ *   * `taskctl run --ping-once|--continue-once` -> `--ping-only|--continue-only --once`
  *
  * This is the 2A bridge: the board adapter still spawns `taskctl`. 2B replaces
  * it with the in-process operations layer.
  */
 
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+
+import { resolveKindConfigPath } from "../foundation/agent-paths.mjs";
+import { STATE_FILES } from "../foundation/loop-state.mjs";
+import { parseEnvFile } from "../foundation/scheduling.mjs";
+import { resolveLoopState } from "../foundation/state-dir.mjs";
 
 import * as consoleEntry from "./console.mjs";
 import * as doctorEntry from "./doctor.mjs";
@@ -35,13 +47,28 @@ const VERBS = new Set([
   "session",
 ]);
 
-/** The raw tokens after removing the `loop <verb>` pair. */
+/**
+ * The raw tokens after removing the command name.
+ *
+ * `commandIndex` is the tokenizer's raw index for the command word. It is the
+ * only reliable boundary: searching the raw line for a verb name would splice a
+ * *flag value* (`--roles-dir doctor patrol`). A `--` that ended flag parsing
+ * before the command is syntax, not an argument, so it goes too. The
+ * `findIndex` fallback serves a caller that built the context by hand.
+ */
 function rawRest(ctx) {
   const raw = Array.isArray(ctx.argv) ? ctx.argv.slice() : [];
-  const at = raw.findIndex((token, index) => token === "loop" && VERBS.has(raw[index + 1]));
-  if (at < 0) return raw;
+  const at = Number.isInteger(ctx.commandIndex) ? ctx.commandIndex : -1;
+  if (at >= 0 && at < raw.length) {
+    const rest = raw.slice();
+    if (at > 0 && rest[at - 1] === "--") rest.splice(at - 1, 2);
+    else rest.splice(at, 1);
+    return rest;
+  }
+  const legacy = raw.findIndex((token, index) => token === "loop" && VERBS.has(raw[index + 1]));
+  if (legacy < 0) return raw;
   const rest = raw.slice();
-  rest.splice(at, 2);
+  rest.splice(legacy, 2);
   return rest;
 }
 
@@ -73,12 +100,27 @@ function takeSwitch(args, name) {
   };
 }
 
+/** Read `--name value` / `--name=value` without removing it. */
+function peekValue(args, name) {
+  const at = args.indexOf(`--${name}`);
+  if (at !== -1 && at + 1 < args.length) return args[at + 1];
+  const prefix = `--${name}=`;
+  const match = args.find((token) => token.startsWith(prefix));
+  return match === undefined ? undefined : match.slice(prefix.length);
+}
+
+/** Whether a bare switch is present, without removing it. */
+function peekSwitch(args, name) {
+  return args.includes(`--${name}`);
+}
+
 /**
- * @param {object} ctx the local CLI context (`argv`, `env`, `flags`, `out`, `err`)
- * @param {string} verb one of `VERBS`
+ * @param {object} ctx the local CLI context (`argv`, `commandIndex`, `env`, `flags`, `out`, `err`)
+ * @param {string} verb one of `VERBS` — the internal key, not the CLI name
+ * @param {string} [cliName] the command the user typed, for messages
  * @returns {Promise<{streamed: true, exit: number}>}
  */
-export async function runLoopVerb(ctx, verb) {
+export async function runLoopVerb(ctx, verb, cliName = verb) {
   const io = { out: ctx.out, err: ctx.err };
   const env = ctx.env ?? process.env;
   let rest = rawRest(ctx);
@@ -98,7 +140,45 @@ export async function runLoopVerb(ctx, verb) {
   // the loop's own parser does not know them, so refuse them here.
   for (const forbidden of ["--as-human", "--session-id", "--if-version"]) {
     if (rest.some((token) => token === forbidden || token.startsWith(`${forbidden}=`))) {
-      io.err(`loop: ${forbidden} is not valid for the loop\n`);
+      io.err(`${cliName}: ${forbidden} is not valid for the loop\n`);
+      return { streamed: true, exit: 2 };
+    }
+  }
+
+  // The state directory is resolved before the verb runs. A legacy-only
+  // directory is readable (with a stderr warning) but never writable: moving the
+  // state is the installer's job, and two live directories would split the queue.
+  const actorKind = peekValue(rest, "actor-kind") ?? ctx.flags?.actorKind ?? null;
+  const home = peekValue(rest, "home") ?? env.HOME ?? env.USERPROFILE ?? homedir();
+  const configPath = peekValue(rest, "config") ?? resolveKindConfigPath({ actorKind, env });
+  let config = {};
+  if (typeof configPath === "string" && configPath !== "") {
+    try {
+      config = parseEnvFile(readFileSync(configPath, "utf8"));
+    } catch {
+      // An absent/unreadable per-kind config is the normal agent-only fallback.
+    }
+  }
+  const stateFile =
+    stateDir.value !== undefined && stateDir.value !== ""
+      ? join(stateDir.value, STATE_FILES.supervisor)
+      : peekValue(rest, "state");
+  const loopState = resolveLoopState({ stateFile, home, actorKind, env, config });
+  const readOnlyVerb =
+    verb === "console" ||
+    verb === "doctor" ||
+    (verb === "status" && !peekSwitch(rest, "take-over") && !peekSwitch(rest, "stop"));
+  if (loopState.source === "legacy") {
+    if (readOnlyVerb) {
+      io.err(
+        `loop: warning — reading the legacy loop state at ${loopState.dir}; ` +
+          "re-run install.sh to migrate it to the config root\n",
+      );
+    } else {
+      io.err(
+        `loop: refusing to write to the legacy loop state at ${loopState.dir}; ` +
+          "re-run install.sh to migrate it (or pass --state-dir explicitly)\n",
+      );
       return { streamed: true, exit: 2 };
     }
   }
@@ -107,7 +187,7 @@ export async function runLoopVerb(ctx, verb) {
   // verb must say who is acting, like every board command.
   const MUTATING = new Set(["patrol", "workflow", "poll", "tick", "run", "subscribe", "session"]);
   if (MUTATING.has(verb) && !(ctx.flags?.actorKind ?? ctx.env?.TASKCTL_ACTOR_KIND)) {
-    io.err("loop: --actor-kind is required for this verb\n");
+    io.err(`${cliName}: --actor-kind is required for this verb\n`);
     return { streamed: true, exit: 2 };
   }
 
@@ -146,7 +226,7 @@ export async function runLoopVerb(ctx, verb) {
       const cont = takeSwitch(ping.rest, "continue-once");
       rest = cont.rest;
       if (ping.value && cont.value) {
-        io.err("loop run: choose --ping-once or --continue-once\n");
+        io.err(`${cliName}: choose --ping-once or --continue-once\n`);
         return { streamed: true, exit: 2 };
       }
       if (ping.value) rest.push("--ping-only", "--once");
@@ -161,7 +241,7 @@ export async function runLoopVerb(ctx, verb) {
       return { streamed: true, exit: await supervisorEntry.main(["--session", ...rest], env, io) };
 
     default:
-      io.err(`loop: unknown verb ${verb}\n`);
+      io.err(`${cliName}: unknown verb ${verb}\n`);
       return { streamed: true, exit: 2 };
   }
 }

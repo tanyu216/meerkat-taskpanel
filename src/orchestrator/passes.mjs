@@ -2,9 +2,9 @@
 /**
  * The loop's deterministic passes — the one entry the tick runs.
  *
- *   taskctl loop patrol      notify-only SLA; never moves a card
- *   taskctl loop workflow    apply the board's workflow plan
- *   taskctl loop poll        scan → atomic claim → enqueue the handoff
+ *   taskctl patrol      notify-only SLA; never moves a card
+ *   taskctl workflow    apply the board's workflow plan
+ *   taskctl poll        scan → atomic claim → enqueue the handoff
  *
  * They are one file because they share one contract: parse the same flags, then
  * run one pass. The order (`patrol → workflow → poll`) belongs to the continue
@@ -17,7 +17,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { ORCHESTRATOR_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
+import { BOARD_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 import { resolveWakeDir, resolveWakeTarget } from "../foundation/project-dir.mjs";
 import { reviewIdentityOf } from "../foundation/review-identity.mjs";
 import { installEntryCrashGuard } from "../foundation/crash-guard.mjs";
@@ -86,13 +86,13 @@ import {
 } from "./runtime.mjs";
 import { poolStatus } from "./session.mjs";
 
-const PASS_USAGE = `Usage: taskctl loop <patrol|workflow|poll> [options]
+const PASS_USAGE = `Usage: taskctl <patrol|workflow|poll> [options]
 
   patrol     the notify-only SLA pass; no alert moves a card
   workflow   apply the board's workflow plan (issue reconcile --workflow)
   poll       scan → atomic claim → enqueue the handoff for the session pool
 
-Options are the loop's shared flags; run \`taskctl loop run --help\` for the list.
+Options are the loop's shared flags; run \`taskctl run --help\` for the list.
 `;
 
 /**
@@ -291,7 +291,7 @@ function discardWorkspace({ stateDir, workspace, runGit }) {
 /**
  * The deferral recorder both admission sites share: the poll pass and the
  * patrol's LLM turn. The board write is the escalation itself — one note per
- * (streak, failure code), attributed to `Orchestrator`.
+ * (streak, failure code), attributed to `Board`.
  */
 function deferralRecorderFor(opts, stateDir, log) {
   return createDeferralRecorder({
@@ -302,7 +302,7 @@ function deferralRecorderFor(opts, stateDir, log) {
     postComment: (ref, body) => {
       const posted = runCli(
         opts,
-        ORCHESTRATOR_ACTOR_ID,
+        BOARD_ACTOR_ID,
         ["comment", "add", ref, "--kind", "note", "--body", body],
         { actorKind: SYSTEM_KIND },
       );
@@ -681,7 +681,7 @@ export function createQueueDispatch(input) {
     if (forceFresh && queued.superseded !== true) {
       const cleared = runCli(
         opts,
-        ORCHESTRATOR_ACTOR_ID,
+        BOARD_ACTOR_ID,
         ["issue", "meta", action.identifier, "--meta", "session_reset=no"],
         { actorKind: SYSTEM_KIND },
       );
@@ -714,14 +714,14 @@ export function reassignCard(opts, log, identifier, agent, options = {}) {
   if (opts?.dryRun) return { ok: true, dryRun: true };
   const args = ["issue", "assign", identifier, "--assignee", agent];
   if (options.ifVersion !== undefined) args.push("--if-version", String(options.ifVersion));
-  const assigned = runCli(opts, ORCHESTRATOR_ACTOR_ID, args, { actorKind: SYSTEM_KIND });
+  const assigned = runCli(opts, BOARD_ACTOR_ID, args, { actorKind: SYSTEM_KIND });
   if (!assigned.ok) {
     return { ok: false, error: assigned.error, ...(assigned.code ? { code: assigned.code } : {}) };
   }
   const version = assigned.data?.task?.version;
   const commented = runCli(
     opts,
-    ORCHESTRATOR_ACTOR_ID,
+    BOARD_ACTOR_ID,
     ["comment", "add", identifier, "--kind", "change", "--body", String(options.reason ?? "")],
     { actorKind: SYSTEM_KIND },
   );

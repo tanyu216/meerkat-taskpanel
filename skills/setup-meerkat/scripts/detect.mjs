@@ -26,6 +26,7 @@ import {
   effectiveKindOrder,
   isAgentKind,
   kindConfigFile,
+  legacyLoopStateDir,
   loopStateDir,
   normalizeKindOrder,
   serverRoot,
@@ -302,14 +303,19 @@ function detectSkill(home, kind, name) {
   return { installed: existsSync(path), path: existsSync(path) ? path : null };
 }
 
-function detectLoopState(home, kind) {
+function detectLoopState(stateDir, legacyDir) {
   // The loop itself ships with the toolkit; what an install leaves here is its
-  // state directory (queue, ledger, sessions.state.json).
-  const path = loopStateDir(home, kind);
-  return { installed: existsSync(path), path: existsSync(path) ? path : null };
+  // state directory (queue, ledger, sessions.state.json). The pre-migration
+  // `<agent-dir>/meerkat-taskpanel` is reported, never treated as installed.
+  const legacy = !existsSync(stateDir) && existsSync(legacyDir) ? legacyDir : null;
+  return {
+    installed: existsSync(stateDir),
+    path: existsSync(stateDir) ? stateDir : legacy,
+    legacy,
+  };
 }
 
-function detectSupervisor(home, kind) {
+function detectSupervisor(home, kind, stateDir) {
   const base = agentBase(home, kind);
   const scheduling = join(base, "scheduling");
   const units = [];
@@ -322,7 +328,7 @@ function detectSupervisor(home, kind) {
       // ignore
     }
   }
-  const state = readJson(join(loopStateDir(home, kind), "sessions.state.json"));
+  const state = readJson(join(stateDir, "sessions.state.json"));
   const pid = Number.isInteger(state?.poolPid) ? state.poolPid : null;
   let alive = false;
   if (pid !== null) {
@@ -337,7 +343,7 @@ function detectSupervisor(home, kind) {
   const fresh = Number.isFinite(beat) && Date.now() - beat <= STALE_POOL_MS;
   return {
     installed: units.length > 0,
-    state: loopStateDir(home, kind),
+    state: stateDir,
     units,
     running: alive && fresh,
     poolPid: pid,
@@ -581,7 +587,15 @@ function humanReport(report) {
   lines.push(`  taskctl:   ${report.taskctl.found ? `${report.taskctl.path} ${report.taskctl.version ?? ""}` : "not found"}`);
   lines.push(`  server:    ${report.server.url} (${report.server.urlSource}); ${report.server.class}; ${report.server.probed ? (report.server.reachable ? "reachable" : "unreachable") : "not probed"}`);
   lines.push(`  skills:    board=${report.skills.board.installed} chat=${report.skills.chat.installed} director=${report.skills.director.installed} setup=${report.skills.setup.installed}`);
-  lines.push(`  loop state: ${report.loopState.installed ? report.loopState.path : "not installed"}`);
+  lines.push(
+    `  loop state: ${
+      report.loopState.installed
+        ? report.loopState.path
+        : report.loopState.legacy
+          ? `${report.loopState.legacy} (legacy — re-run install.sh to migrate)`
+          : "not installed"
+    }`,
+  );
   lines.push(`  supervisor: ${report.supervisor.running ? "running" : "not running"}${report.supervisor.reason ? ` (${report.supervisor.reason})` : ""}`);
   const roleLines = report.roles.list.map(
     (role) =>
@@ -654,8 +668,10 @@ async function main(argv) {
       setup: detectSkill(opts.home, candidate, "setup-meerkat").installed,
     };
   }
-  const loopState = detectLoopState(opts.home, kind);
-  const supervisor = detectSupervisor(opts.home, kind);
+  const stateDir = loopStateDir(programRoot.dir ?? serverRoot(opts.home));
+  const legacyStateDir = legacyLoopStateDir(opts.home, kind);
+  const loopState = detectLoopState(stateDir, legacyStateDir);
+  const supervisor = detectSupervisor(opts.home, kind, loopState.path ?? stateDir);
   // The install-time kind order lives in the primary kind's per-kind config.
   // `--actor-kind all` has no single primary, so the first loop kind is used.
   const primaryKind = LOOP_KINDS.includes(kind) ? kind : LOOP_KINDS[0];
@@ -706,6 +722,11 @@ async function main(argv) {
     const programRoot = resolveKindConfigDir(opts, opts.home, candidate, env);
     const platformConfigPath = programRoot.dir === null ? null : kindConfigFile(programRoot.dir, candidate);
     const platformConfig = parseEnvText(readText(platformConfigPath) ?? "");
+    const platformStateDir = loopStateDir(programRoot.dir ?? serverRoot(opts.home));
+    const platformLoopState = detectLoopState(
+      platformStateDir,
+      legacyLoopStateDir(opts.home, candidate),
+    );
     platforms[candidate] = {
       kind: candidate,
       dir: AGENT_KINDS[candidate].dir,
@@ -715,8 +736,8 @@ async function main(argv) {
           .filter((name) => existsSync(join(platformSkillsDir, name, "SKILL.md")))
           .sort(),
       },
-      loopState: detectLoopState(opts.home, candidate),
-      supervisor: detectSupervisor(opts.home, candidate),
+      loopState: platformLoopState,
+      supervisor: detectSupervisor(opts.home, candidate, platformLoopState.path ?? platformStateDir),
       config: {
         path: platformConfigPath,
         present: platformConfigPath !== null && existsSync(platformConfigPath),

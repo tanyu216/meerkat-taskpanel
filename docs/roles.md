@@ -37,7 +37,7 @@ per-kind installer run defaults to `<that kind>,<the rest>`.
 kinds carry it, the chain is the primary kind first, then the configured order. Availability is
 the CLI probe, not the directory: an unavailable carrier falls back only to another kind that
 also carries the role; if none is available, the card is not claimed and the gap is reported
-(`taskctl loop status`, `taskctl loop doctor`).
+(`taskctl loop`, `taskctl doctor`).
 
 Changing the order moves the **fallback** preference. Changing the **primary** kind is the
 unit's `--actor-kind` and needs `install.sh … --supervisor=enable` re-run.
@@ -112,11 +112,11 @@ It is skipped when:
 - `--force-create` is set — the documented escape, also meaning "allow an assignee outside the
   catalog".
 
-**It looks at the assignee, never the writer.** `system` / `Orchestrator` / `Director` are
+**It looks at the assignee, never the writer.** `Board` / `Director` are
 writer identities for closure work (verdict, move, acceptance, comment, reconcile) and are
 never assignees; `Director` is the decision lane's signature even though it is not a role. The
-two system-created cards are the review card (the catalog's `default_reviewer`, named by
-`--assignee` at that one argv builder) and the rework child (`--assignee-id`). A system
+two board-created cards are the review card (the catalog's `default_reviewer`, named by
+`--assignee` at that one argv builder) and the rework child (`--assignee-id`). A board
 writer that names a worker assignee is checked like anyone else.
 
 **A CLI guard, not a board invariant.** A caller that speaks HTTP directly bypasses it by

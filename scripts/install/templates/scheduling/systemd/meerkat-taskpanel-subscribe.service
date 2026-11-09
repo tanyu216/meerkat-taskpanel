@@ -15,7 +15,7 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart={{NODE}} {{CLI}} loop subscribe --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
+ExecStart={{NODE}} {{CLI}} subscribe --actor-kind {{ACTOR_KIND}} --agent {{AGENT}} --log {{LOG}} --state-dir {{STATE_DIR}}
 Restart=always
 RestartSec=2
 # EX_CONFIG (78): an unsupported runtime cannot appear by restarting.

@@ -51,10 +51,8 @@ describe("native agent definitions", () => {
     assert.equal(result.written.length, 1);
     const text = readFileSync(join(f.home, ".claude", "agents", "jobs.md"), "utf8");
     assert.match(text, /^---\nname: jobs\n/);
-    assert.match(
-      text,
-      /tools: Read,Edit,Write,Grep,Glob,Bash\(taskctl \*\),Bash\(node \*\),Bash\(git \*\)/,
-    );
+    assert.doesNotMatch(text, /^tools:/m, "a full lane omits the field and inherits every tool");
+    assert.doesNotMatch(text, /^disallowedTools:/m);
     assert.match(text, /skills\/jobs\/SKILL\.md/);
   });
 
@@ -76,11 +74,8 @@ describe("native agent definitions", () => {
     );
     writeNativeAgents({ kind: "claude", home: f.home, repo: f.repo });
     const text = readFileSync(join(f.home, ".claude", "agents", "reviewer.md"), "utf8");
-    assert.match(
-      text,
-      /tools: Read,Grep,Glob,Bash\(taskctl \*\),Bash\(git \*\),Bash\(npm run \*\),Bash\(node \*\),Bash\(bash \*\)/,
-    );
-    assert.doesNotMatch(text, /tools:.*Write/);
+    assert.match(text, /^disallowedTools: Edit,Write,NotebookEdit$/m);
+    assert.doesNotMatch(text, /^tools:/m, "a deny list replaces the allowlist");
   });
 
   // TP-0146 P2.3: the installer and the session adapters render the same table.
@@ -108,15 +103,11 @@ describe("native agent definitions", () => {
     const piWorker = readFileSync(join(f.home, ".pi", "agent", "agents", "jobs.md"), "utf8");
     const piReviewer = readFileSync(join(f.home, ".pi", "agent", "agents", "reviewer.md"), "utf8");
 
-    assert.match(
-      claudeWorker,
-      /tools: Read,Edit,Write,Grep,Glob,Bash\(taskctl \*\),Bash\(node \*\),Bash\(git \*\)/,
-      "a Claude worker gets the scoped Bash surface",
-    );
-    assert.doesNotMatch(claudeReviewer, /tools:.*Edit/);
-    assert.match(piWorker, /tools: read,bash,edit,write/, "a Pi worker gets Pi's own syntax");
-    assert.match(piReviewer, /tools: read,bash/);
-    assert.doesNotMatch(piReviewer, /tools:.*edit/);
+    assert.doesNotMatch(claudeWorker, /^tools:/m, "a Claude worker inherits every tool");
+    assert.match(claudeReviewer, /^disallowedTools: Edit,Write,NotebookEdit$/m);
+    assert.doesNotMatch(piWorker, /^tools:/m, "a Pi worker inherits its normal builtins");
+    assert.match(piReviewer, /^excludeTools: edit,write$/m);
+    assert.doesNotMatch(piReviewer, /^tools:/m);
   });
 
   it("writes TOML for codex and markdown under .pi for pi", () => {

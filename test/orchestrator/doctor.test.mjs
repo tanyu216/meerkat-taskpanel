@@ -1,5 +1,5 @@
 /**
- * `taskctl loop doctor` — the read-only daily inspection.
+ * `taskctl doctor` — the read-only daily inspection.
  *
  * The board is a sentinel CLI and the state directory is real files, so the test
  * asserts both the report and the promise behind it: every board call is a read,
@@ -22,6 +22,7 @@ import { after, describe, it } from "node:test";
 import {
   LOOP_DISPATCH_FAILED_MIN,
   LOOP_DISPATCH_ROWS_MIN,
+  LOOP_LANDING_CONFLICT_MIN,
   LOOP_REVIEW_REOPEN_MIN,
   LOOP_REVIEW_ROUND_MIN,
   LOOP_REWORK_ROUND_MIN,
@@ -143,7 +144,7 @@ function writeLog(dir, count) {
   return lines;
 }
 
-describe("loop doctor — the report", () => {
+describe("taskctl doctor — the report", () => {
   it("reports an accepted producer whose required handoff was never consumed", () => {
     const dir = tempDir();
     const tasks = [
@@ -210,6 +211,17 @@ describe("loop doctor — the report", () => {
 
     const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
     assert.deepEqual(report.handoff_unconsumed, []);
+  });
+
+  it("counts an interrupted row as its own terminal state (TP-0125)", () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir);
+    seedState(dir, {
+      cards: [{ status: "pending" }, { status: "processing" }, { status: "interrupted" }],
+    });
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+    assert.equal(report.queue.interrupted, 1);
+    assert.equal(report.queue.depth, 2, "an interrupted row is history, not queue depth");
   });
 
   it("covers every surface in one pass", () => {
@@ -289,6 +301,7 @@ describe("loop doctor — the report", () => {
       question_lane: [],
       unowned: [],
       orphaned: [],
+      landing_conflicts: [],
       total: 0,
     }, "the looping section is always present, and empty when nothing is circling");
 
@@ -1059,7 +1072,7 @@ describe("loop doctor — the report", () => {
   });
 });
 
-describe("loop doctor — the loop thresholds", () => {
+describe("taskctl doctor — the loop thresholds", () => {
   it("mirrors the review-reopen bound and the round-bump rule", () => {
     assert.equal(LOOP_REVIEW_REOPEN_MIN, DEFAULT_REVIEW_REOPEN_MAX);
     assert.equal(LOOP_REVIEW_ROUND_MIN, LOOP_REVIEW_REOPEN_MIN + 1);
@@ -1071,10 +1084,11 @@ describe("loop doctor — the loop thresholds", () => {
     assert.equal(LOOP_DISPATCH_ROWS_MIN, 5);
     assert.equal(LOOP_DISPATCH_FAILED_MIN, 2);
     assert.equal(LOOP_SUBAGENT_FAILED_MIN, 3);
+    assert.equal(LOOP_LANDING_CONFLICT_MIN, 2);
   });
 });
 
-describe("loop doctor — looping cards", () => {
+describe("taskctl doctor — looping cards", () => {
   it("flags a card whose delivery rounds keep coming back", () => {
     const dir = tempDir();
     const { script } = sentinel(dir, {
@@ -1132,6 +1146,75 @@ describe("loop doctor — looping cards", () => {
     assert.equal(report.looping.total, 3);
     assert.ok(report.attention_reasons.includes("looping: 3"));
     assert.equal(report.ok, true, "a looping finding is not an error");
+  });
+
+  it("flags a card whose landing kept conflicting, once per round", async () => {
+    const dir = tempDir();
+    const { script } = sentinel(dir, {
+      tasks: [
+        {
+          id: "id-710",
+          identifier: "T-710",
+          title: "Landing loops",
+          status: "todo",
+          delivery_round: 4,
+          status_changed_at: at(80 * MIN),
+        },
+        {
+          id: "id-711",
+          identifier: "T-711",
+          title: "Second conflict too",
+          status: "in_review",
+          delivery_round: 2,
+          status_changed_at: at(50 * MIN),
+        },
+        { id: "id-712", identifier: "T-712", title: "Landed late", status: "done", delivery_round: 3 },
+      ],
+    });
+    seedState(dir);
+    writeJson(join(dir, "workflow-ledger.json"), {
+      version: 1,
+      seen: {
+        "landing_conflict|approve|T-710|r1": { first_seen: at(90 * MIN), last_seen: at(80 * MIN) },
+        "landing_conflict|approve|T-710|r2": { first_seen: at(70 * MIN), last_seen: at(60 * MIN) },
+        "landing_conflict|auto_accept|T-711|r1": { first_seen: at(50 * MIN), last_seen: at(40 * MIN) },
+        "landing_conflict|approve|T-711|r2": { first_seen: at(35 * MIN), last_seen: at(30 * MIN) },
+        "landing_conflict|approve|T-712|r1": { first_seen: at(30 * MIN), last_seen: at(20 * MIN) },
+        "landing_conflict|approve|T-712|r2": { first_seen: at(20 * MIN), last_seen: at(10 * MIN) },
+      },
+    });
+
+    const report = doctorReport(optsFor(dir, script), { HOME: dir }, deps());
+
+    assert.deepEqual(
+      report.looping.landing_conflicts.map((row) => [row.ref, row.conflicts, row.last_round]),
+      [
+        ["T-710", 2, 2],
+        ["T-711", 2, 2],
+      ],
+      "two conflict rounds on a live card; a done card and a single conflict are not a cycle",
+    );
+    const row = report.looping.landing_conflicts.find((entry) => entry.ref === "T-710");
+    assert.deepEqual(row.rounds, [1, 2]);
+    assert.equal(row.first_at, at(90 * MIN));
+    assert.equal(row.last_at, at(60 * MIN));
+    assert.equal(row.age_ms, 90 * MIN);
+    assert.equal(report.looping.total, 2, "T-710 is one card even in two lists");
+    assert.ok(report.attention_reasons.includes("looping: 2"));
+
+    let out = "";
+    const argv = [
+      "--state", join(dir, "state.json"),
+      "--log", join(dir, "supervisor.log"),
+      "--config", join(dir, "config.env"),
+      "--cli", script,
+      "--agent", "alice",
+      "--actor-kind", "claude",
+      "--home", dir,
+    ];
+    const exit = await main(argv, { HOME: dir }, deps(), { out: (text) => (out += text) });
+    assert.equal(exit, 0);
+    assert.match(out, /T-710\s+landing\s+2 round\(s\), last r2/);
   });
 
   it("flags a review card the loop re-dispatched to exhaustion", () => {
@@ -1425,13 +1508,14 @@ describe("loop doctor — looping cards", () => {
       question_lane: [],
       unowned: [],
       orphaned: [],
+      landing_conflicts: [],
       total: 0,
     });
     assert.equal(report.attention_reasons.some((reason) => reason.startsWith("looping")), false);
   });
 });
 
-describe("loop doctor — the log tail", () => {
+describe("taskctl doctor — the log tail", () => {
   it("falls back to the rotated generation, and calls a missing log missing", () => {
     const dir = tempDir();
     const { script } = sentinel(dir);
@@ -1480,7 +1564,7 @@ describe("loop doctor — the log tail", () => {
   });
 });
 
-describe("loop doctor — read-only", () => {
+describe("taskctl doctor — read-only", () => {
   it("issues no board write, and leaves the state directory alone", () => {
     const dir = tempDir();
     const { script, record } = sentinel(dir);
@@ -1518,7 +1602,7 @@ describe("loop doctor — read-only", () => {
   });
 });
 
-describe("loop doctor — the process boundary", () => {
+describe("taskctl doctor — the process boundary", () => {
   it("emits the raw report with --json and a digest without it", async () => {
     const dir = tempDir();
     const { script } = sentinel(dir);
@@ -1558,7 +1642,7 @@ describe("loop doctor — the process boundary", () => {
     out = "";
     const helpExit = await main(["--help"], { HOME: dir }, deps(), { out: (text) => (out += text) });
     assert.equal(helpExit, 0);
-    assert.match(out, /^Usage: taskctl loop doctor/);
+    assert.match(out, /^Usage: taskctl doctor/);
   });
 
   it("renders the looping block and caps its free text on one line", async () => {
@@ -1644,7 +1728,7 @@ describe("loop doctor — the process boundary", () => {
   });
 });
 
-describe("loop doctor — deferred admission and stale workspaces", () => {
+describe("taskctl doctor — deferred admission and stale workspaces", () => {
   it("flags a card whose admission keeps failing", () => {
     const dir = tempDir();
     const { script } = sentinel(dir, {
@@ -1760,7 +1844,7 @@ describe("loop doctor — deferred admission and stale workspaces", () => {
   });
 });
 
-describe("loop doctor — worker sessions", () => {
+describe("taskctl doctor — worker sessions", () => {
   it("reports blocked/stale worker sessions and a missing worktree", () => {
     const dir = tempDir();
     const { script } = sentinel(dir);
@@ -1792,7 +1876,7 @@ describe("loop doctor — worker sessions", () => {
   });
 });
 
-describe("loop doctor — the human queue and the loop's dead ends", () => {
+describe("taskctl doctor — the human queue and the loop's dead ends", () => {
   it("reports awaiting, unowned, a failed director row and an orphaned child", () => {
     const dir = tempDir();
     const app = join(dir, "app");

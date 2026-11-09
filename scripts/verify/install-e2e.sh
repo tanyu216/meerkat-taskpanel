@@ -88,6 +88,13 @@ for kind in claude codex pi; do
   fi
   echo "  OK  .meerkat-taskpanel/.env.$kind"
 done
+# One loop state directory per board, at the config root — never under an agent
+# home (`~/.claude/meerkat-taskpanel` is the pre-migration location).
+if [ ! -d "$CONFIG_ROOT/loop" ]; then
+  echo "FAIL: install did not create the loop state directory $CONFIG_ROOT/loop" >&2
+  exit 1
+fi
+echo "  OK  .meerkat-taskpanel/loop"
 # Everything below runs as TASKCTL_ACTOR_KIND=system, which has no installed
 # config: the board path must treat a missing .env.system as "no overlay".
 

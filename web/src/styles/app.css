@@ -376,6 +376,11 @@ svg[data-token-icon][hidden] { display: none; }
 .td-dv-mark[data-acceptance-status="not_met"] { color: var(--brand-st-blocked); border-color: var(--brand-st-blocked); }
 .td-dv-tick { width: 9px; height: 9px; }
 .td-dv-text { min-width: 0; font-size: 13px; line-height: 1.5; color: var(--brand-text-2); }
+/* A review round reads like a board row: round, identifier, title, status chip.
+   The title owns the slack and ellipsises; the chip keeps its intrinsic width
+   (`ms-auto` then pins it right). Colour is the chip's own `--status-color`. */
+.td-dv-review-row { display: flex; flex: 1; align-items: center; gap: 8px; }
+.td-dv-review-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--brand-text); }
 /* The verdict's own note (implementation-only: the prototype shows no note). */
 .td-dv-note { display: block; margin-top: 2px; font-size: 12px; line-height: 1.45; color: var(--brand-text-3); }
 .td-dv-empty { font-size: 12px; line-height: 1.5; color: var(--brand-text-3); font-style: italic; }

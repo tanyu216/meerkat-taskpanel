@@ -4,7 +4,7 @@
  *
  * The unit-level suite (`test/orchestrator/resilience.test.mjs`) pins each defect
  * once. This driver is the complement: it runs the **real** pool entry
- * (`taskctl loop session`), against a hermetic sandbox and a fake agent CLI, for
+ * (`taskctl pool`), against a hermetic sandbox and a fake agent CLI, for
  * a configurable duration while injecting the four faults the epic fixes —
  * SIGKILL, EPIPE, an immediately-exiting child, and a slow `taskctl` — and then
  * asserts the three invariants the epic exists to keep:
@@ -376,8 +376,7 @@ process.stdout.write(JSON.stringify({ ok: true, data: { task: { status: "in_prog
 function poolArgs(sandbox, control = "external") {
   return [
     join(ROOT, "src", "cli", "index.mjs"),
-    "loop",
-    "session",
+    "pool",
     "--actor-kind",
     "claude",
     "--agent",
@@ -422,14 +421,13 @@ function poolEnv(sandbox, options) {
   };
 }
 
-/** The real `taskctl loop status --json`, as an operator would run it. */
+/** The real `taskctl loop --json`, as an operator would run it. */
 function cliStatus(sandbox) {
   const run = spawnSync(
     process.execPath,
     [
       join(ROOT, "src", "cli", "index.mjs"),
       "loop",
-      "status",
       "--json",
       "--actor-kind",
       "claude",
@@ -811,7 +809,7 @@ async function main(argv) {
     // The operator's spelling of the same question.
     const cli = cliStatus(sandbox);
     if (cli.exit !== 0) {
-      fail("cli-status", `taskctl loop status exited ${cli.exit}: ${cli.err.trim()}`);
+      fail("cli-status", `taskctl loop exited ${cli.exit}: ${cli.err.trim()}`);
     } else {
       let cliReport = null;
       try {
@@ -820,13 +818,13 @@ async function main(argv) {
         cliReport = null;
       }
       if (cliReport === null) {
-        fail("cli-status", `taskctl loop status did not emit JSON: ${cli.out.trim().slice(0, 200)}`);
+        fail("cli-status", `taskctl loop did not emit JSON: ${cli.out.trim().slice(0, 200)}`);
       } else {
         const cliJudgement = healthyStatusVerdict(cliReport);
         if (cliJudgement.ok) {
-          pass("cli-status", `taskctl loop status reports ${cliJudgement.detail}`);
+          pass("cli-status", `taskctl loop reports ${cliJudgement.detail}`);
         } else {
-          fail("cli-status", `taskctl loop status did not report a healthy live verdict — ${cliJudgement.detail}`);
+          fail("cli-status", `taskctl loop did not report a healthy live verdict — ${cliJudgement.detail}`);
         }
       }
     }

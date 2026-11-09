@@ -50,7 +50,7 @@ node scripts/run.mjs --help          # this skill's launcher
 taskctl --help                       # when the shim is on PATH
 ```
 
-`--actor-kind` is required except on `--help`, `--version`, `status` and the `project map`
+`--actor-kind` is required except on `--help`, `--version`, `board` and the `project map`
 actions; a human writes with `--as-human`. Config, flags and exit codes:
 [`references/cli/core.md#configuration-env`](references/cli/core.md#configuration-env),
 [`references/cli.md#global-options`](references/cli.md#global-options).
@@ -118,7 +118,8 @@ attribution, attachments and the one-line outcome are in
 ## Stage markers
 
 A producer card that hands work on sets `meta.stage_handoff=required` and puts a `## Handoff`
-block in its **current-round report**. The foundation records the one gate command the reviewer
+block in its **current-round report**. The marker covers downstream work; a defect follow-up
+filed in `backlog` stands on its own. The foundation records the one gate command the reviewer
 re-runs as the project's `meta.review_gate`. These keys are read by the role skills and the
 reviewer; write them with `issue meta` (its `--if-version` CAS form), not with a second local
 convention. A card's design and verification shape is not a board field: a project's

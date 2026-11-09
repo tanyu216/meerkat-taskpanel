@@ -13,6 +13,7 @@ import {
   AGENT_DIRS,
   KIND_CONFIG_DIR_ENV,
   agentPaths,
+  legacyLoopStateDir,
   loopLogPath,
   resolveConfigDir,
   resolveKindConfigPath,
@@ -27,25 +28,29 @@ describe("agent-paths — the installed agent's directories", () => {
     });
   });
 
-  it("derives one agent's paths from its home", () => {
+  it("derives one agent's skill paths from its home", () => {
     const paths = agentPaths("/home/op", "claude");
     assert.equal(paths.agentDir, ".claude");
-    assert.equal(
-      paths.state,
-      join("/home/op", ".claude", "meerkat-taskpanel", "supervisor.state.json"),
-    );
     assert.equal(paths.directorSkill, join("/home/op", ".claude", "skills", "meerkat-director"));
     assert.equal(paths.boardSkill, join("/home/op", ".claude", "skills", "meerkat"));
-    assert.equal(paths.stateDir, join("/home/op", ".claude", "meerkat-taskpanel"));
+    // The loop state is not an agent-home path anymore; it lives at the config root.
+    assert.equal(Object.hasOwn(paths, "state"), false);
+    assert.equal(Object.hasOwn(paths, "stateDir"), false);
   });
 
   it("is not where the loop log lives — the log is one file for every kind", () => {
     const claude = agentPaths("/home/op", "claude");
     const codex = agentPaths("/home/op", "codex");
     assert.equal(Object.hasOwn(claude, "log"), false);
-    // The state directory stays per kind: the queue, the locks and the ledgers
-    // must not be shared between two pools.
-    assert.notEqual(claude.stateDir, codex.stateDir);
+    assert.equal(Object.hasOwn(claude, "stateDir"), false);
+    assert.equal(Object.hasOwn(codex, "stateDir"), false);
+  });
+
+  it("keeps the legacy state path per kind, for migration and read fallback", () => {
+    assert.equal(legacyLoopStateDir("/home/op", "claude"), join("/home/op", ".claude", "meerkat-taskpanel"));
+    assert.equal(legacyLoopStateDir("/home/op", "codex"), join("/home/op", ".codex", "meerkat-taskpanel"));
+    assert.equal(legacyLoopStateDir("/home/op", "pi"), join("/home/op", ".agents", "meerkat-taskpanel"));
+    assert.equal(legacyLoopStateDir("/home/op", "nope"), null);
   });
 
   it("does not derive the machine-local project map from the agent home", () => {

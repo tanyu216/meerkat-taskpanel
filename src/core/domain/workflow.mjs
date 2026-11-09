@@ -88,7 +88,7 @@ const TERMINAL_STATUSES = new Set(["done", "canceled"]);
  * It names the cycle and the evidence, and it says what clears it. The loop
  * posts it as a `question` comment in the same transaction as the move.
  */
-function holdQuestionFor({ ref, code, round, base }) {
+function holdQuestionFor({ ref, code, round, base, rejects = null }) {
   const rounds = `round ${round}`;
   if (code === "review_reopen_exhausted") {
     return [
@@ -99,15 +99,57 @@ function holdQuestionFor({ ref, code, round, base }) {
       "this card back to `todo` (or `in_progress`). The loop will not dispatch it again by itself.",
     ].join("\n");
   }
+  const detail = Number.isInteger(rejects)
+    ? `${rejects} review rejections recorded (epoch base ${base})`
+    : `started from round ${base}`;
   return [
-    `${ref} has come back for rework more times than the loop allows (held at ${rounds}, ` +
-      `started from round ${base}).`,
+    `${ref} has come back for rework more times than the loop allows (held at ${rounds}, ${detail}).`,
     "",
     "The last reviews still rejected the delivery, so another automatic round would repeat",
     "the same cycle. Decide: narrow the acceptance baseline, take the work as it stands, or",
     "cancel the card — then move it back to `todo` (or `in_progress`). The loop will not",
     "dispatch it again by itself.",
   ].join("\n");
+}
+
+/**
+ * The review-rejection budget: the applied rejection count, the epoch base and
+ * the bound.
+ *
+ * The counter is written only by the reject paths. A landing conflict, an
+ * acceptance refusal, a review re-dispatch and the hold itself never increment
+ * it, so those rounds cannot consume the budget. `loop_hold_retry_base` carries
+ * the reject count **at the last hold** for `rework_cap` — writing it at the hold
+ * is what makes a human release a fresh epoch of the same size (for
+ * `review_reopen_exhausted` the key carries the retry count). A legacy hold
+ * written before the counter existed has no `review_rejects`; its base is a
+ * *round* and must not be read as a reject count.
+ *
+ * @param {object|null|undefined} task
+ * @param {object} [config]
+ * @returns {{rejects: number, base: number, max: number, releasedByHuman: boolean}}
+ */
+export function reviewRejectEpoch(task, config = {}) {
+  const meta = task?.meta ?? {};
+  const count = intOrNull(meta.review_rejects);
+  const rejects = count ?? 0;
+  // `loop_hold_retry_base` is a retry count for `review_reopen_exhausted`; only a
+  // `rework_cap` hold wrote it as a reject-count epoch.
+  const epochHold = String(meta.loop_hold_code ?? "") === "rework_cap";
+  const rawBase = count === null || !epochHold ? 0 : (intOrNull(meta.loop_hold_retry_base) ?? 0);
+  const heldAt = Date.parse(String(meta.loop_hold_at ?? ""));
+  const changedAt = Date.parse(String(task?.status_changed_at ?? ""));
+  const releasedByHuman =
+    Number.isFinite(heldAt) && Number.isFinite(changedAt) && changedAt > heldAt;
+  // The base is the count recorded at the last hold. After a human release it
+  // stays there, so the next hold lands a full bound later — a fresh epoch, not
+  // an unbounded one.
+  const base = rawBase;
+  const max =
+    Number.isFinite(config.reworkMaxRounds) && config.reworkMaxRounds > 0
+      ? config.reworkMaxRounds
+      : DEFAULT_REWORK_MAX_ROUNDS;
+  return { rejects, base, max, releasedByHuman };
 }
 
 /**
@@ -134,10 +176,6 @@ export function planLoopBreakers(input = {}) {
   const nowIso =
     typeof input.now === "string" && input.now !== "" ? input.now : new Date().toISOString();
   const config = input.config ?? {};
-  const maxRounds =
-    Number.isFinite(config.reworkMaxRounds) && config.reworkMaxRounds > 0
-      ? config.reworkMaxRounds
-      : DEFAULT_REWORK_MAX_ROUNDS;
   const byId = reviewIdentityIndex(tasks);
 
   const openReview = new Map();
@@ -161,24 +199,29 @@ export function planLoopBreakers(input = {}) {
     if (ref === "") continue;
     const meta = task.meta ?? {};
     const round = intOrNull(task.delivery_round) ?? 0;
-    const base = intOrNull(meta.loop_hold_round) ?? 0;
     // A marker at this exact round means the card was already held here. The
     // card still being `todo`/`in_review` is either the crash window between the
     // meta write and the move (retry only the move) or a **human release**.
     // `status_changed_at` after `loop_hold_at` distinguishes them: a move the
     // human made is newer than the hold, and must not be undone by re-parking.
-    const heldAt = Date.parse(String(meta.loop_hold_at ?? ""));
-    const changedAt = Date.parse(String(task.status_changed_at ?? ""));
-    const releasedByHuman =
-      Number.isFinite(heldAt) && Number.isFinite(changedAt) && changedAt > heldAt;
+    const { rejects, base, max, releasedByHuman } = reviewRejectEpoch(task, config);
     const alreadyHeld =
       typeof meta.loop_hold_code === "string" &&
       meta.loop_hold_code !== "" &&
       String(meta.loop_hold_round ?? "") === String(round) &&
       !releasedByHuman;
-    if (!alreadyHeld && round - base < maxRounds) continue;
+    if (!alreadyHeld) {
+      // A hold is never *initiated* on a delivered round: the review must run
+      // first. The same-tick hold after a rejection is planned by
+      // planReviewOutcomes; this branch is its crash fallback.
+      if (task.status !== "todo") continue;
+      if (rejects - base < max) continue;
+    }
     const review = openReview.get(ref) ?? null;
     const code = alreadyHeld ? String(meta.loop_hold_code) : "rework_cap";
+    // A new hold records the count it parks at; a crash re-emit keeps the stored
+    // base (the marker itself is not rewritten on a `held` retry).
+    const holdBase = alreadyHeld ? base : rejects;
     actions.push({
       type: "hold_card",
       original_ref: ref,
@@ -193,11 +236,11 @@ export function planLoopBreakers(input = {}) {
       marker: {
         loop_hold_code: code,
         loop_hold_round: String(round),
-        loop_hold_retry_base: String(base),
+        loop_hold_retry_base: String(holdBase),
         loop_hold_e_code: "E2",
         loop_hold_at: nowIso,
       },
-      question: holdQuestionFor({ ref, code, round, base }),
+      question: holdQuestionFor({ ref, code, round, base: holdBase, rejects }),
     });
   }
   return { actions };
@@ -1308,6 +1351,13 @@ export function planReviewOutcomes(input = {}) {
       // The marker is written with that new round; a move refused after it is
       // retried on the next pass without re-posting the rejection (`held`).
       const reworkHeld = intOrNull(original.meta?.rework_round) === reworkRound;
+      // The rejection budget counts applied rejections only. On a held retry the
+      // marker was already written, so the count must not move again.
+      const { rejects, base: rejectBase, max: rejectMax } = reviewRejectEpoch(
+        original,
+        input.config ?? {},
+      );
+      const writtenRejects = reworkHeld ? rejects : rejects + 1;
       // The findings must survive the round: they are appended to the
       // original's frozen baseline by the executor, so the next round's report
       // template and the next review card's baseline both carry them. A reject
@@ -1330,6 +1380,7 @@ export function planReviewOutcomes(input = {}) {
           acceptanceMode: "off",
           findings,
           mustFix,
+          reviewRejects: writtenRejects,
           closeReview,
           ...(reworkHeld ? { held: reworkHeld } : {}),
         });
@@ -1343,8 +1394,41 @@ export function planReviewOutcomes(input = {}) {
           reworkRound,
           findings,
           mustFix,
+          reviewRejects: writtenRejects,
           closeReview,
           ...(reworkHeld ? { held: reworkHeld } : {}),
+        });
+      }
+      // The bound is enforced in this same tick: the reject leaves the card in
+      // `todo`, and poll could claim it before the next workflow pass. The
+      // breaker is the crash fallback if this process dies first.
+      if (writtenRejects - rejectBase >= rejectMax) {
+        actions.push({
+          type: "hold_card",
+          original_ref: originalRef,
+          review_ref: reviewRef,
+          review_status: review.status ?? null,
+          round: reworkRound,
+          code: "rework_cap",
+          e_code: "E2",
+          blocked_reason: "decision",
+          held: false,
+          close_review: false,
+          marker: {
+            loop_hold_code: "rework_cap",
+            loop_hold_round: String(reworkRound),
+            // The count this hold parks at; the next epoch starts here.
+            loop_hold_retry_base: String(writtenRejects),
+            loop_hold_e_code: "E2",
+            loop_hold_at: Number.isFinite(now) ? new Date(now).toISOString() : new Date().toISOString(),
+          },
+          question: holdQuestionFor({
+            ref: originalRef,
+            code: "rework_cap",
+            round: reworkRound,
+            base: writtenRejects,
+            rejects: writtenRejects,
+          }),
         });
       }
       continue;
@@ -1407,7 +1491,8 @@ export function planReviewOutcomes(input = {}) {
  *
  * This is the `off` half of the 0038 model. Whether an `off` original may be
  * completed is decided by its own acceptance mode, exactly as it is for any
- * other `done` write. The loop executes the plan as `system` (under the automation id `Orchestrator`).
+ * other `done` write. The loop executes the plan under the automation id `Board`
+ * (kind `system`).
  *
  * Guards:
  *
@@ -1610,20 +1695,24 @@ export function planWorkflowTick(input = {}) {
     now: input.now ?? null,
   });
   const heldRefs = new Set(breakers.actions.map((action) => action.original_ref));
+  // The stop signal wins over an outcome planned from the same snapshot: at the
+  // rework bound the pass emits `hold_card`, and an `approve` for the same card
+  // would land it and un-park it in the same tick. `autoAccept` already reads
+  // `heldRefs`; the review outcomes must too.
+  const outcomeActions = outcomes.actions.filter(
+    (action) => !heldRefs.has(action.originalRef),
+  );
 
   const autoAcceptPlan = planAutoAccept({
     tasks,
     reportsByRef: input.reportsByRef ?? {},
     config,
     boardTruncated: input.boardTruncated === true,
-    skipRefs: new Set([
-      ...outcomes.actions.map((action) => action.originalRef),
-      ...heldRefs,
-    ]),
+    skipRefs: new Set([...outcomeActions.map((action) => action.originalRef), ...heldRefs]),
   });
 
   const handled = new Set(
-    [...heldRefs, ...[...outcomes.actions, ...autoAcceptPlan.actions].map((action) => action.originalRef)],
+    [...heldRefs, ...[...outcomeActions, ...autoAcceptPlan.actions].map((action) => action.originalRef)],
   );
   const dispatch = planReviewDispatch({
     tasks,
@@ -1638,11 +1727,25 @@ export function planWorkflowTick(input = {}) {
   // Holds come first: a backlog of reviews must never starve the stop signal.
   const planned = [
     ...breakers.actions,
-    ...outcomes.actions,
+    ...outcomeActions,
     ...autoAcceptPlan.actions,
     ...dispatch.actions,
   ];
   const actions = planned.slice(0, Math.max(cap, breakers.actions.length));
+  // A same-tick hold is planned directly after its reject. A small cap must not
+  // split the pair: the reject alone leaves the card in `todo` at the bound, and
+  // poll can claim it before the next workflow pass — the race the hold closes.
+  // Planner actions are mixed-case before the wire rename (`reject_task` carries
+  // `originalRef`, `hold_card` carries `original_ref`), so read both.
+  const originalRefOf = (action) => action.original_ref ?? action.originalRef;
+  const rejected = new Set(actions.map(originalRefOf));
+  const pairedHolds = planned.filter(
+    (action) =>
+      action.type === "hold_card" &&
+      !actions.includes(action) &&
+      rejected.has(originalRefOf(action)),
+  );
+  if (pairedHolds.length > 0) actions.push(...pairedHolds);
   const dropped = planned.length - actions.length;
 
   const alerts = [
@@ -1660,7 +1763,7 @@ export function planWorkflowTick(input = {}) {
       type: "actions_capped",
       cap,
       dropped,
-      outcomes: outcomes.actions.length,
+      outcomes: outcomeActions.length,
       autoAccept: autoAcceptPlan.actions.length,
       dispatch: dispatch.actions.length,
       dedupKey: alertKey("actions_capped", cap),

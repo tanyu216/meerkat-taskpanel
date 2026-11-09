@@ -7,7 +7,7 @@
  * trivially testable with a frozen clock and a temp database.
  */
 
-import { SYSTEM_KIND } from "../../foundation/constants.mjs";
+import { BOARD_ACTOR_ID, SYSTEM_KIND } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { newId } from "../../foundation/ids.mjs";
 import { DEFAULT_SLA_CONFIG } from "../../foundation/sla-config.mjs";
@@ -94,10 +94,11 @@ export function actorOf(actor, options = {}) {
 }
 
 /**
- * The actor for automated housekeeping (the board itself).
+ * The actor for every automated write (the board itself).
  *
- * Both halves are the board's own kind: what the reader needs to know is that
- * no person and no agent wrote this, and `system` says so without naming a
- * process the user has never heard of.
+ * The kind is the board's own (`system`); the id is the one automation identity,
+ * `Board`. A reader still learns that no person and no agent wrote this from the
+ * kind, and the id says *which* automation author — one, not the two (`system`,
+ * `Orchestrator`) the board used to show (ADR 0018).
  */
-export const BOARD_ACTOR = Object.freeze({ kind: SYSTEM_KIND, id: SYSTEM_KIND });
+export const BOARD_ACTOR = Object.freeze({ kind: SYSTEM_KIND, id: BOARD_ACTOR_ID });

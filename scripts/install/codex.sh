@@ -7,7 +7,7 @@
 #                           role skills install.sh assigned to this kind (copies)
 #   3. claim-first snippet → merged into ~/.codex/AGENTS.md (identity + rules)
 #   4. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron}, the loop state
-#                           directory (~/.codex/meerkat-taskpanel/) and the per-kind config
+#                           directory (<config root>/loop/) and the per-kind config
 #                           (<program root>/.env.codex)
 # plus the taskctl shim that injects --agent <name>. `--no-automation` skips the
 # scheduling wiring (and, in install.sh, the taskd keepalive guard) — Codex has no

@@ -1,5 +1,8 @@
 /**
- * The lane → tools table: one source for the session adapters and the installer.
+ * The lane → tool surface: one source for the session adapters and the installer.
+ *
+ * Only the reviewer lane is restricted: it may not write. Worker and director
+ * lanes pass no tool list at all.
  *
  * Run with: node --test
  */
@@ -8,51 +11,38 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  LANE_TOOLS,
-  TOOL_LANES,
-  claudeAllowedTools,
-  nativeAgentTools,
-  piAllowedTools,
+  REVIEWER_DENIED_TOOLS,
+  nativeAgentToolLines,
+  reviewerDeniedTools,
 } from "../../src/foundation/role-tools.mjs";
 
-describe("lane tools", () => {
-  it("pins the lanes and their exact strings per kind", () => {
-    assert.deepEqual(TOOL_LANES, ["director", "reviewer", "worker"]);
-
-    assert.equal(
-      claudeAllowedTools("director"),
-      "Read,Grep,Glob,Bash(taskctl *),Bash(node *)",
-    );
-    assert.equal(
-      claudeAllowedTools("reviewer"),
-      "Read,Grep,Glob,Bash(taskctl *),Bash(git *),Bash(npm run *),Bash(node *),Bash(bash *)",
-    );
-    assert.equal(
-      claudeAllowedTools("worker"),
-      "Read,Edit,Write,Grep,Glob,Bash(taskctl *),Bash(node *),Bash(git *)",
-    );
-
-    assert.equal(piAllowedTools("director"), "read,bash");
-    assert.equal(piAllowedTools("reviewer"), "read,bash");
-    assert.equal(piAllowedTools("worker"), "read,bash,edit,write");
+describe("lane tool surface", () => {
+  it("pins the reviewer's denied tools per kind", () => {
+    assert.deepEqual(REVIEWER_DENIED_TOOLS, {
+      claude: "Edit,Write,NotebookEdit",
+      pi: "edit,write",
+    });
+    assert.equal(reviewerDeniedTools("claude"), "Edit,Write,NotebookEdit");
+    assert.equal(reviewerDeniedTools("pi"), "edit,write");
+    assert.equal(reviewerDeniedTools(), null, "no kind means no restriction to carry");
   });
 
-  it("renders a native agent's tools by kind", () => {
-    assert.equal(nativeAgentTools("worker", "claude"), LANE_TOOLS.worker.claude);
-    assert.equal(nativeAgentTools("worker", "pi"), LANE_TOOLS.worker.pi);
-    assert.equal(nativeAgentTools("reviewer", "claude"), LANE_TOOLS.reviewer.claude);
-    assert.equal(nativeAgentTools("director", "pi"), LANE_TOOLS.director.pi);
+  it("carries no restriction for the full lanes", () => {
+    for (const lane of ["director", "worker", "mystery", undefined]) {
+      assert.deepEqual(nativeAgentToolLines(lane, "claude"), []);
+      assert.deepEqual(nativeAgentToolLines(lane, "pi"), []);
+    }
   });
 
-  it("returns nothing for a kind the table does not carry", () => {
-    assert.equal(nativeAgentTools("worker", "codex"), null);
-    assert.equal(nativeAgentTools("worker", "unknown"), null);
+  it("renders the reviewer's native frontmatter line per kind", () => {
+    assert.deepEqual(nativeAgentToolLines("reviewer", "claude"), [
+      "disallowedTools: Edit,Write,NotebookEdit",
+    ]);
+    assert.deepEqual(nativeAgentToolLines("reviewer", "pi"), ["excludeTools: edit,write"]);
   });
 
-  it("falls back to the worker lane for an unknown lane", () => {
-    assert.equal(claudeAllowedTools("mystery"), LANE_TOOLS.worker.claude);
-    assert.equal(claudeAllowedTools(), LANE_TOOLS.worker.claude);
-    assert.equal(piAllowedTools("mystery"), LANE_TOOLS.worker.pi);
-    assert.equal(nativeAgentTools("mystery", "claude"), null, "a lane renders only when it exists");
+  it("returns nothing for a kind with no native tool surface", () => {
+    assert.deepEqual(nativeAgentToolLines("reviewer", "codex"), []);
+    assert.equal(reviewerDeniedTools("codex"), null);
   });
 });

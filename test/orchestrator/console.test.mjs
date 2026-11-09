@@ -40,6 +40,26 @@ const TASKS = {
     { identifier: "T-6", title: "Note, not released", status: "in_progress", status_changed_at: "2025-12-31T23:00:00Z" },
   ],
   in_review: [{ identifier: "T-3", title: "Awaiting acceptance", status: "in_review" }],
+  blocked: [
+    {
+      identifier: "T-7",
+      title: "Held for a decision",
+      status: "blocked",
+      blocked_reason: "decision",
+    },
+    {
+      identifier: "T-8",
+      title: "Blocked on a resource",
+      status: "blocked",
+      blocked_reason: "resource",
+    },
+    {
+      identifier: "T-9",
+      title: "Answered hold",
+      status: "blocked",
+      blocked_reason: "decision",
+    },
+  ],
 };
 
 const COMMENTS = {
@@ -63,6 +83,24 @@ const COMMENTS = {
     { kind: "question", author_kind: "claude", body: "Which option?", created_at: "2026-01-01T00:00:00Z" },
   ],
   "T-3": [],
+  // The loop's hold question lands on a `blocked` card: the human never saw it.
+  "T-7": [
+    {
+      kind: "question",
+      author_kind: "claude",
+      body: "Decide: narrow the baseline, take the work as-is, or cancel.",
+      created_at: "2026-01-01T00:00:00Z",
+    },
+  ],
+  // A resource block is not a human decision, whatever question it carries.
+  "T-8": [
+    { kind: "question", author_kind: "claude", body: "Waiting on CI.", created_at: "2026-01-01T00:00:00Z" },
+  ],
+  // Answered by the human; the card is still `blocked` until it is moved.
+  "T-9": [
+    { kind: "note", author_kind: "human", body: "Narrow the baseline.", created_at: "2026-01-01T00:05:00Z" },
+    { kind: "question", author_kind: "claude", body: "Decide: ...", created_at: "2026-01-01T00:00:00Z" },
+  ],
 };
 
 function sentinelCli(dir) {
@@ -131,14 +169,21 @@ describe("the live-session console", () => {
     assert.equal(result.supervisor.verdict, "absent");
     assert.deepEqual(
       result.questions.map((entry) => entry.ref).sort(),
-      ["T-1", "T-2", "T-4", "T-6"],
+      ["T-1", "T-2", "T-4", "T-6", "T-7"],
       "T-5 is answered on an awaiting card (the board resumes it); T-2 and T-6 are answered " +
-        "but not released, so the director still owes the release",
+        "but not released, so the director still owes the release; T-7 is a blocked/decision " +
+        "hold; T-8 is a resource block and T-9 was answered, so both stay out",
     );
     assert.equal(result.questions.find((entry) => entry.ref === "T-1").kind, "awaiting");
     assert.equal(result.questions.find((entry) => entry.ref === "T-4").kind, "agent-question");
     assert.equal(result.questions.find((entry) => entry.ref === "T-2").answered_pending_release, true);
     assert.equal(result.questions.find((entry) => entry.ref === "T-6").answered_pending_release, false);
+    const blocked = result.questions.find((entry) => entry.ref === "T-7");
+    assert.equal(blocked.kind, "blocked-decision");
+    assert.equal(blocked.status, "blocked");
+    assert.equal(blocked.blocked_reason, "decision");
+    assert.match(blocked.question, /narrow the baseline/i);
+    assert.equal(blocked.answered_pending_release, false);
     assert.equal(typeof result.questions.find((entry) => entry.ref === "T-4").age_ms, "number");
     assert.deepEqual(result.pending_acceptance.map((entry) => entry.ref), ["T-3"]);
     assert.deepEqual(result.errors, []);

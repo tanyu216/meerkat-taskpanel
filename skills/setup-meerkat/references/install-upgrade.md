@@ -107,7 +107,11 @@ Switches that need care, in plain language:
 - `--no-automation` skips the machine-wide taskd guard and the Codex scheduling units; the
   agent kind's own loop units may still be planned.
 - `--supervisor=enable` starts the supervisor daemon and is always a separate safety
-  question; `disable` unloads it.
+  question; `disable` unloads it. On a machine still holding the pre-migration loop state at
+  `<agent-dir>/meerkat-taskpanel`, this run also performs the one-time move to
+  `<config root>/loop` (stopping the loop first, keeping a `.migrated-<timestamp>` copy); a
+  plain upgrade prints that command instead. Two old state directories are refused, never
+  merged.
 - `--force` replaces the skill's own differing files; show the diff first and ask.
 - `--link` links only the board skill; team and role skills are always copied.
 - `--prefix <home>` installs under another home — the sandbox form; never the operator's
