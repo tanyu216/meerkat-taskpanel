@@ -43,7 +43,7 @@
         "The target copy is written under <home>/.codex/skills/turing/ and includes role.json.",
         "The source <home>/.claude/skills/turing/ is deleted only after the user explicitly agrees; a role the user did not name is never touched.",
         "A re-run of the same move reports unchanged.",
-        "After the move, the scan set in taskctl loop status names Worker and every role whose cards are created.",
+        "After the move, the scan set in taskctl loop names Worker and every role whose cards are created.",
         "A retired meerkat-loop tree (if present) is reported as legacy and not deleted."
       ]
     },
@@ -159,7 +159,7 @@
       "id": 11,
       "name": "init-writes-requirements",
       "prompt": "Set up meerkat here and initialize this project's agent-instruction entry. Use a temporary HOME; do not touch the real one.",
-      "expected_output": "Step 4 writes docs/agents/*.md, declares the project map, then calls the init skill once with the brief: /meerkat is the card entry, board rules live in docs/agents/, the card scope is stated, and a task or plan that is not a card still loads the matching role skill (jobs, linus or turing) before the first edit. The init skill writes the project's CLAUDE.md or AGENTS.md; setup does not edit that file itself, and the file has no marker block.",
+      "expected_output": "Step 4 writes docs/agents/*.md, declares the project map, then calls the init skill once with the brief: /meerkat is the card entry, board rules live in docs/agents/, every file under docs/agents/review-scenarios/ is named when the directory exists, the card scope is stated, and a task or plan that is not a card still loads the matching role skill (jobs, linus or turing) before the first edit. The init skill writes the project's CLAUDE.md or AGENTS.md; setup does not edit that file itself, and the file has no marker block.",
       "files": [],
       "assertions": [
         "The init skill is called and the call succeeds; it is not replaced by setup writing the entry itself.",
@@ -169,7 +169,8 @@
         "The same file tells a live session to load the matching role skill (jobs, linus or turing) for a task or plan that is not a card, before the first edit.",
         "The file contains no <!-- meerkat:task-entry --> marker block.",
         "Setup does not use Write/Edit on that instruction file; the init skill is the writer.",
-        "The init skill is called once, not once per agent kind."
+        "The init skill is called once, not once per agent kind.",
+        "The same file names the docs/agents/review-scenarios/ directory and every scenario file in it when the directory exists."
       ]
     },
     {
@@ -202,6 +203,23 @@
         "Codex's hook review and trust in /hooks is reported as a manual step that remains open until the user confirms it.",
         "Setup does not modify install.sh or a per-kind install script.",
         "A second run reports the same adapters unchanged."
+      ]
+    },
+    {
+      "id": 14,
+      "name": "project-review-scenarios",
+      "prompt": "Set up meerkat here. Our reviews repeat a few repo-specific checks: every API change must update test/fixtures/contract/api.snapshot.json, migrations are append-only, and the design oracle tests self-skip in the container so we check the host run. Add those to our review setup.",
+      "expected_output": "Step 4 asks the one gate question and, on yes, writes docs/agents/review-scenarios/development.md (and any other type the user selected) with an Applies to: line, a Checks list carrying the three stated checks, and a Blocks APPROVE list. It writes no empty or generic scenario file. Each file states that it augments the built-in reviewer floors and never weakens them. Setup is the only writer; the init brief points at docs/agents/review-scenarios/ and names every file in it, and the instruction entry the init skill writes lists each file by name.",
+      "files": [],
+      "assertions": [
+        "Step 4 asks whether the project has review checks that repeat on every card and are not already in its standards; the recommended answer is no (skip).",
+        "On yes, setup writes docs/agents/review-scenarios/<type>.md only for the types the user selected and supplied at least one check for.",
+        "Each written file has an Applies to: line, a Checks list, a Blocks APPROVE list, and says it augments the built-in reviewer floors without weakening them.",
+        "No empty, placeholder or generic scenario file is written.",
+        "Setup is the only writer of the project review scenarios; a role or a card does not add or edit one by hand.",
+        "The init brief points at docs/agents/review-scenarios/ and names every file in the directory.",
+        "The instruction entry written by the init skill names the directory and each scenario file by name.",
+        "A second run reports written, unchanged or conflict without restating the file."
       ]
     }
   ]

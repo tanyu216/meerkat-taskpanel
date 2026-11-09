@@ -90,7 +90,7 @@ worker re-claims before writing.
 
 | Invocation | Keys read | Consumer |
 |---|---|---|
-| `issue list --limit <board-limit>` | `data.tasks[]` | the legacy stale-heartbeat patrol, and `taskctl loop doctor` |
+| `issue list --limit <board-limit>` | `data.tasks[]` | the legacy stale-heartbeat patrol, and `taskctl doctor` |
 
 The patrol reads `identifier`, `status`, `heartbeat_at`, `claimed_by_actor`,
 `assignee`. Truncation is inferred when `tasks.length >= board-limit`.

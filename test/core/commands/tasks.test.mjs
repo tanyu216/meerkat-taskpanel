@@ -2974,6 +2974,23 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
       assert.equal(actorName(db, unblocked.claimedBy), "linus");
     });
   });
+
+  it("leaves a blocked card for the queue with no reason, releasing the claim (TP-0127)", async () => {
+    await board(async ({ commands }) => {
+      const task = await claimed(commands);
+      const blocked = commands.moveStatus({ id: task.id, to: "blocked", actor: AGENT, blockedReason: "dependency" });
+
+      // The pre-check is the whitelist: `backlog` is a legal exit, and the move
+      // needs no `reason` (unlike a reopen) and no `blocked_reason`.
+      const released = commands.moveStatus({ id: task.id, to: "backlog", actor: AGENT });
+      assert.equal(released.status, "backlog");
+      assert.equal(released.claimedBy, null, "backlog can hold no claim");
+      assert.equal(released.blockedReason, null, "the class described the block, and the block ended");
+      assert.equal(released.blockedAt, blocked.blockedAt, "the stop's timestamp is history and stays");
+      assert.equal(released.deliveryRound, blocked.deliveryRound, "leaving blocked is not a new round");
+      assert.equal(released.version, blocked.version + 1, "one CAS write");
+    });
+  });
 });
 
 describe("commands/tasks — the acceptance mode and the two terminality gates", () => {

@@ -133,8 +133,8 @@ taskctl --as-human issue create --project <p> --title "<title>" --kind epic \
 `<epic-mode>` is the graph's `Epic mode`; `<slug>` defaults to the title's kebab-case; the
 same title returns the same epic.
 
-**Create the children in topological order, in `backlog`.** A `backlog` card is not claimable
-before its edges exist.
+**Create the children in topological order, in `backlog`.** A `backlog` card is never
+claimable; a dispatcher or human releases it.
 
 ```bash
 taskctl --as-human issue create --project <p> --title "<stage title>" \

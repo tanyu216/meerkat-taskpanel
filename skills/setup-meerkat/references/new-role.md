@@ -35,10 +35,12 @@ Offer the rest as defaults and ask the user to confirm or edit:
 - **native_agent** — default the id.
 - **lane** — default `worker`. Say what it changes: **worker** claims ordinary work;
   **reviewer** takes only review cards and never an ordinary card.
-- **responsibilities** — at most 16; what the role does on a card.
-- **boundaries** — at most 16; what it must not do. Always include: do not accept your own
-  work, do not merge/rebase/push from the card, and (for a reviewer) never claim an ordinary
-  card / never enter `awaiting` / insufficient evidence is a REJECT.
+- **responsibilities** — at most 16; what the role does on a card, each line a positive action.
+- **boundaries** — at most 16; where the role's ownership ends, each line a positive action
+  (for example, "operations on a running system belong to the Worker role"). Always include:
+  the independent reviewer accepts the role's own work; the supervisor's acceptance pass owns
+  merge, rebase and push; and, for a reviewer, review cards only, end the turn with a verdict,
+  and insufficient evidence is a REJECT.
 - **system_prompt** — optional; the static half of the card session's system prompt
   (board operations and the read-the-card rule). The supervisor adds the runtime
   agent/card/plan/flags context at open time. Omitted means the default board text.
@@ -114,7 +116,7 @@ The role is installed in an agent kind's skills tree, which is the routing. Let 
 supervisor rebuild the catalog:
 
 ```bash
-taskctl loop status --actor-kind <kind>
+taskctl loop --actor-kind <kind>
 taskctl role list --json
 ```
 

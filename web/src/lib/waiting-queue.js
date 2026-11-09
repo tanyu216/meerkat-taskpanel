@@ -34,13 +34,12 @@
  *
  * **One data note, stated rather than papered over.** The core's awaiting
  * categories are `E1`–`E5` (`src/core/domain/enums.mjs#AWAITING_REASONS`), and
- * every one of them is a question put to a human — nothing parks a card as
- * *blocked* on somebody. So the shipped queue renders `question`, and `blocked`
- * exists in the domain and in the prototype's sample without a producer here
- * (B27's own consistency item 5 asks for both, which M1's data domain cannot
- * satisfy). The category itself is not lost: the **card** keeps saying which of
- * the five it is (`[data-waiting-reason="E1"]`, on the badge's own `title`),
- * which is where M1 put it.
+ * every one of them is a question put to a human. A loop hold is the second
+ * producer: a `blocked` card whose `blocked_reason` is `decision`
+ * (`isBlockedDecision`) carries the loop's question and is owed the same answer
+ * plus the move that releases it. The category itself is not lost: the **card**
+ * keeps saying which of the five it is (`[data-waiting-reason="E1"]`, on the
+ * badge's own `title`), which is where M1 put it.
  *
  * The time ladder is B26's, imported rather than restated — B27 asks for "one
  * time vocabulary" across the two views, and a second copy of the same ladder is
@@ -143,12 +142,27 @@ export function payloadCommentOf(comments) {
 export { AWAITING_CATEGORIES } from "./board-enums.js";
 
 /**
- * The kind a card's awaiting category maps to.
+ * A card the loop parked on a decision: `blocked` + `blocked_reason=decision`.
  *
- * @param {{awaiting_reason?: string|null}} [task]
+ * The loop's rework/exhaustion holds land here, and a board comment alone does
+ * not move a blocked card — the human owes an answer **and** the move. It shares
+ * the queue with `awaiting` because the ball is on the human's side either way.
+ *
+ * @param {{status?: string, blocked_reason?: string|null}} [task]
+ * @returns {boolean}
+ */
+export function isBlockedDecision(task) {
+  return task?.status === "blocked" && task?.blocked_reason === "decision";
+}
+
+/**
+ * The kind a card's awaiting category — or a blocked decision — maps to.
+ *
+ * @param {{status?: string, awaiting_reason?: string|null, blocked_reason?: string|null}} [task]
  * @returns {"question"|"blocked"}
  */
 export function reasonKindOf(task) {
+  if (isBlockedDecision(task)) return "blocked";
   const raw = String(task?.awaiting_reason ?? "").toLowerCase();
   return WAITING_REASON_KINDS.includes(raw) ? raw : "question";
 }

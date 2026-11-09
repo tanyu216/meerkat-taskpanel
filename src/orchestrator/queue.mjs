@@ -17,7 +17,7 @@
  * Node builtins only; no network, no dependencies.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { acquireFileLock, releaseFileLock } from "../foundation/file-lock.mjs";
@@ -71,13 +71,28 @@ function queuePaths(stateDir) {
   };
 }
 
-/** @param {string} dir */
+/**
+ * Create the state directory (`0700`) and report whether it is usable.
+ *
+ * The loop's state holds worker transcripts and session ids, so the directory is
+ * private. The old boolean return swallowed the failure and let a later write
+ * fail with a bare ENOENT; callers now surface this error instead of degrading.
+ *
+ * @param {string} dir
+ * @returns {{ok: boolean, error: string|null}}
+ */
 export function ensureStateDir(dir) {
   try {
-    mkdirSync(dir, { recursive: true });
-    return true;
-  } catch {
-    return false;
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    try {
+      chmodSync(dir, 0o700);
+    } catch {
+      // An existing directory we cannot chmod is still usable; a write that
+      // cannot land will report its own error at the call site.
+    }
+    return { ok: true, error: null };
+  } catch (err) {
+    return { ok: false, error: `${dir}: ${err.message}` };
   }
 }
 

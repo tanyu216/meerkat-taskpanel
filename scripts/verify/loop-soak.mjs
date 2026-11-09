@@ -4,7 +4,7 @@
  *
  * The unit-level suite (`test/orchestrator/resilience.test.mjs`) pins each defect
  * once. This driver is the complement: it runs the **real** pool entry
- * (`taskctl loop session`), against a hermetic sandbox and a fake agent CLI, for
+ * (`taskctl pool`), against a hermetic sandbox and a fake agent CLI, for
  * a configurable duration while injecting the four faults the epic fixes —
  * SIGKILL, EPIPE, an immediately-exiting child, and a slow `taskctl` — and then
  * asserts the three invariants the epic exists to keep:
@@ -14,7 +14,7 @@
  *   * **no duplicate dispatch** — two agent turns for the same card never
  *     overlap in time (the SIGKILL/restart path is where today's tree violates
  *     this: it redispatches while the orphaned child still runs);
- *   * **loop status back to running** — after the last restart, the loop's own
+ *   * **taskctl loop back to running** — after the last restart, the loop's own
  *     verdict returns to `running` within the documented bound.
  *
  * A fourth check covers the EPIPE boundary directly: closing the pool's stderr
@@ -374,8 +374,7 @@ process.stdout.write(JSON.stringify({ ok: true, data: { task: { status: "in_prog
 function poolArgs(sandbox, control = "external") {
   return [
     join(ROOT, "src", "cli", "index.mjs"),
-    "loop",
-    "session",
+    "pool",
     "--actor-kind",
     "claude",
     "--agent",
@@ -420,14 +419,13 @@ function poolEnv(sandbox, options) {
   };
 }
 
-/** The real `taskctl loop status --json`, as an operator would run it. */
+/** The real `taskctl loop --json`, as an operator would run it. */
 function cliStatus(sandbox) {
   const run = spawnSync(
     process.execPath,
     [
       join(ROOT, "src", "cli", "index.mjs"),
       "loop",
-      "status",
       "--json",
       "--actor-kind",
       "claude",
@@ -793,11 +791,11 @@ async function main(argv) {
     // The operator's spelling of the same question.
     const cli = cliStatus(sandbox);
     if (cli.exit !== 0) {
-      fail("cli-status", `taskctl loop status exited ${cli.exit}: ${cli.err.trim()}`);
+      fail("cli-status", `taskctl loop exited ${cli.exit}: ${cli.err.trim()}`);
     } else if (!/"verdict"\s*:\s*"running"/.test(cli.out)) {
-      fail("cli-status", `taskctl loop status did not report running: ${cli.out.trim().slice(0, 200)}`);
+      fail("cli-status", `taskctl loop did not report running: ${cli.out.trim().slice(0, 200)}`);
     } else {
-      pass("cli-status", "taskctl loop status reports running");
+      pass("cli-status", "taskctl loop reports running");
     }
 
     // Let the last dispatch settle before judging the queues.

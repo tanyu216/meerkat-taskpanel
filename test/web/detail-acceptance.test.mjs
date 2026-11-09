@@ -174,6 +174,7 @@ describe("web/review — the Acceptance tab's review rounds", () => {
         review_of_id: "orig",
         review_of: "PROJ-1",
         review_round: 2,
+        title: "Audit round 2",
         assignee: { display_name: "reviewer" },
       },
       { id: "plain", identifier: "PROJ-2", kind: "task", status: "todo", review_of_id: null },
@@ -186,6 +187,7 @@ describe("web/review — the Acceptance tab's review rounds", () => {
         review_of_id: "orig",
         review_of: "PROJ-1",
         review_round: 1,
+        title: "Audit round 1",
         assignee: { display_name: "reviewer" },
       },
       {
@@ -200,10 +202,10 @@ describe("web/review — the Acceptance tab's review rounds", () => {
       },
     ];
     assert.deepEqual(
-      reviewRoundsFor(card, tasks).map((row) => [row.round, row.identifier, row.status]),
+      reviewRoundsFor(card, tasks).map((row) => [row.round, row.identifier, row.title, row.status]),
       [
-        [1, "PROJ-4", "in_review"],
-        [2, "PROJ-3", "done"],
+        [1, "PROJ-4", "Audit round 1", "in_review"],
+        [2, "PROJ-3", "Audit round 2", "done"],
       ],
     );
   });

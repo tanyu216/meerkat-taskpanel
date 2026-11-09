@@ -90,7 +90,7 @@ export function resolveRolePlatforms(roles, input = {}) {
 }
 
 /**
- * The one-line report `loop status` / `loop doctor` show: every role with where it
+ * The one-line report `taskctl loop` / `taskctl doctor` show: every role with where it
  * is installed, where it will run, and any fallback or unavailability.
  *
  * @param {object[]} roles

@@ -12,7 +12,8 @@
  *   2. **Against the prototype** — where `design/prototype/app.js` is present, the
  *      suite re-derives `MESSAGES` from that file and requires that the
  *      catalogue is that data minus exactly `PROTOTYPE_ONLY_KEYS` (the B15/B18
- *      demo vocabulary the ruling of 2026-10-12 drops from the implementation),
+ *      demo vocabulary the ruling of 2026-10-12 drops from the implementation,
+ *      plus the B16 Resume strings the ruling of 2026-11-08 drops),
  *      entry line by entry line and key by key. The exclusions are an explicit
  *      closed list, so the real measured counts and every *shipped* string are
  *      still checked against the source rather than against a number written
@@ -135,7 +136,10 @@ function placeholders(value) {
  *
  * Terry's ruling of 2026-10-12: the sidebar legend (B15) and the states gallery
  * (B18) are product-design demonstrations, not functional requirements, so the
- * shipped app renders neither and their strings have no consumer. This is an
+ * shipped app renders neither and their strings have no consumer. Terry's ruling
+ * of 2026-11-08 removes the drawer's Resume control (B16): the board cannot
+ * resume a session — the agent runtime owns that — so the button was a toast
+ * with no transport; the prototype keeps it as a demonstration. This is an
  * explicit, closed list rather than a prefix rule, so the suite can prove both
  * directions — every listed key really is a prototype key (the list cannot be
  * padded to hide a real drift) and none of them is in the catalogue (the
@@ -159,6 +163,8 @@ const PROTOTYPE_ONLY_KEYS = Object.freeze([
   "toast.sample.info",
   "toast.sample.success",
   "toast.sample.danger",
+  "drawer.resume",
+  "toast.resume",
 ]);
 
 /** Is this one of the prototype-only keys? */

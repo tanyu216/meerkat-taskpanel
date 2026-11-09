@@ -69,10 +69,12 @@ A card has three independent axes:
 | `canceled` | Abandoned. Terminal, with the same one exit. |
 
 A `blocked` card may also be **a loop hold**: the board's workflow plan parks a card that
-kept coming back (`blocked_reason=decision`, plus a `question` comment and
-`meta.loop_hold_round`), and the loop parks a card it repeatedly failed to run
-(`resource`/`external`). A hold is cleared only by a human moving the card back
-(`blocked → todo|in_progress`); it never auto-resumes. See
+kept coming back (`blocked_reason=decision`, plus a `question` comment,
+`meta.loop_hold_round` and the reject-count epoch in `meta.loop_hold_retry_base`), and the
+loop parks a card it repeatedly failed to run (`resource`/`external`). The rework hold counts
+**review rejections only** (`meta.review_rejects`); landing conflicts and acceptance refusals
+do not spend it, and a delivered round is always reviewed before a hold. A hold is cleared only
+by a human moving the card back (`blocked → todo|backlog|in_progress`); it never auto-resumes. See
 [ADR 0009](adr/0009-a-cycle-stops-at-a-human-decision.md) and
 [scheduling.md](scheduling.md#liveness-bounds-every-cycle-has-a-stop).
 
@@ -84,7 +86,7 @@ todo        → backlog, in_progress, blocked, canceled        (an epic also →
 in_progress → in_review, blocked, todo, backlog, canceled, awaiting
 awaiting    → in_progress, todo, canceled
 in_review   → done, in_progress, blocked, canceled
-blocked     → todo, in_progress, in_review, canceled
+blocked     → todo, backlog, in_progress, in_review, canceled
 done        → todo
 canceled    → todo
 ```
@@ -281,7 +283,7 @@ A round is what four mechanisms key on, and they must agree:
 4. the SLA suppression (an open review card silences `acceptance_card_creation` for that round
    only).
 
-`loop doctor` reads this counter as one of its `looping` signals: a card whose `delivery_round`
+`taskctl doctor` reads this counter as one of its `looping` signals: a card whose `delivery_round`
 has reached the rework threshold is reported (never moved). The round is also the baseline's
 lock boundary: the acceptance snapshot is append-only and
 frozen in `in_review`/terminal; a rework re-opens it, which is how a rejection's must-fix
@@ -374,7 +376,9 @@ report (`no_anchor` / `dangling_anchor` are `ACCEPTANCE_INCOMPLETE`), and the re
 at least one `command` anchor, because the reviewer runs the gate itself
 (`details.reason = "no_command_evidence"`). The gate is the project's declared one
 (`project.meta.review_gate`, copied into the review card's description) when there is one;
-otherwise the reviewer runs the targeted checks and records `n/a — none declared`. For an epic,
+otherwise the reviewer runs the targeted checks and records `n/a — none declared`. A gate the
+lane cannot run and cannot observe in CI — the push-time container gate (TS-34) on an unpushed
+branch — is `n/a — gate unobservable in lane`: an environmental gap, not a must-fix REJECT. For an epic,
 the current-round rollup must still match the children (`rollup_unverified` / `rollup_stale`).
 
 A `REJECT` is never checked for coverage — `partial` / `not_met` is its normal shape — but its
@@ -406,7 +410,7 @@ The executor sequences each one so a crash leaves a recoverable, re-plannable st
   [scheduling.md](scheduling.md)). The acceptance
   then records that merge as `meta.landed_sha` / `landed_at`; a card with no **registered**
   lane has nothing to merge, so it carries neither key — absence means unknown, and
-  `loop doctor` reports the ones git still finds outside the branch. An `auto_accept`
+  `taskctl doctor` reports the ones git still finds outside the branch. An `auto_accept`
   lands the same way before its `done` write.
 - **`record_verdict`** — comment, write `meta.review_verdict=approve` with
   `meta.review_verdict_round`, close the review card, stop. The person closes the original
@@ -580,8 +584,9 @@ The same rules are enforced wherever a writer can enter:
 
 The **web UI** is a narrower writer, not a fourth enforcement layer: it offers only the
 human-facing subset — release (`backlog ↔ todo`), abandon (`backlog`/`todo`/`in_progress`/
-`in_review` → `canceled`, confirmed first), release from a claimed card
-(`in_progress → todo|backlog`), the audited reopen (`done`/`canceled → todo`) and
+`in_review`/`blocked` → `canceled`, confirmed first), release from a claimed card
+(`in_progress → todo|backlog`), unqueue a blocked card (`blocked → todo|backlog`), the audited
+reopen (`done`/`canceled → todo`) and
 acceptance/send-back (`in_review → done` / `in_progress`) — and disables every other status
 row. `in_progress → in_review|done` is deliberately absent: delivery is the agent's `taskctl`
 act. It never widens what the three layers above permit; `src/core/domain/status.mjs` remains

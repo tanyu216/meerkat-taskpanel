@@ -208,15 +208,26 @@ describe("board skill: the scenario layout", () => {
 
     const total = markdownFiles(SKILL).reduce((sum, file) => sum + size(file), 0);
     // Raised from 230 KB after two shipped features documented themselves in
-    // the skill: TP-0033 added 456 B (loop status fields) and TP-0125 947 B
-    // (claim-cycle exits, the new transition edges). The cap still bounds
-    // growth; it is not a target.
-    assert.ok(total <= 232_000, `the skill's markdown totals ${total} B (≤ 232 KB)`);
+    // the skill: TP-0033 added 456 B (taskctl loop fields) and TP-0125 947 B
+    // (claim-cycle exits, the new transition edges). Raised again, 232 -> 233 KB,
+    // after merge 5691d78a unioned its parents (1ea1d7b4 at 231,799 B and
+    // 8b0405e8 at 231,807 B) into 232,046 B: neither parent crossed the cap, so
+    // no single lane owned the overrun, and TP-0127 then added 9 B for the
+    // blocked -> backlog whitelist row. The cap still bounds growth; it is not
+    // a target.
+    assert.ok(total <= 233_000, `the skill's markdown totals ${total} B (≤ 233 KB)`);
   });
 
   it("keeps the scenario pages self-contained for their operation", () => {
     const phrases = {
-      create: ["--as-human", "attachment add", "plan.md", "docs/agents/create-card.md"],
+      create: [
+        "--as-human",
+        "attachment add",
+        "plan.md",
+        "docs/agents/create-card.md",
+        "--status backlog",
+        "--meta fixes",
+      ],
       edit: ["--as-human", "--acceptance", "--description", "ACCEPTANCE_LOCKED", "issue assign"],
       execute: ["heartbeat", "--no-report", "depends_on", "evidence[n]"],
       epic: ["land on the base branch alone", "same card", "relation add --type parent"],

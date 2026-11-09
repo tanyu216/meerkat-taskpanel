@@ -7,7 +7,7 @@ only run when a session starts them.
 
 The design stance, in four sentences:
 
-- The **supervisor** lives **outside** the agent application: `taskctl loop …`
+- The **supervisor** lives **outside** the agent application: `taskctl run`
   (`src/orchestrator/`) ships with the toolkit, and the application is only ever the worker
   that gets woken. The collaboration decisions are the
   **[`meerkat-director`](../skills/meerkat-director/SKILL.md) skill**; the human's live view
@@ -17,7 +17,7 @@ The design stance, in four sentences:
   deterministic passes — and performs no board **API** I/O outside those passes. The ping's
   one outbound call is the read-only `/health` probe, which is liveness, not a board
   operation.
-- The board work is **deterministic code** — `taskctl loop poll|patrol|workflow` — run by
+- The board work is **deterministic code** — `taskctl poll|patrol|workflow` — run by
   the supervisor in-process; the model's invariants live in those passes and in the board,
   never in a prompt. There is **no control/continue LLM turn**.
 - A **resident session pool** turns an abstract "dispatch" into one top-level session per
@@ -62,7 +62,7 @@ the board back through `taskctl`.
                │                                  │
 ┌──────────────▼───────────┐                  ┌───▼────────────────────────┐
 │ SCHEDULER                │                  │ SUBSCRIBER                 │
-│ `loop run`               │◀─────────────────│ `loop subscribe`           │
+│ `taskctl run`            │◀─────────────────│ `taskctl subscribe`        │
 │ ping 60 s                │ early tick       │ debounce                   │
 │ continue 600 s           │                  │ (local hub)                │
 │ patrol/workflow/         │                  └────────────────────────────┘
@@ -76,7 +76,7 @@ the board back through `taskctl`.
 └──────────────┬───────────────────────────────────────────────────────────┘
                │ drain — only the pool opens, resumes or closes a lane
 ┌──────────────▼───────────────────────────────────────────────────────────┐
-│ POOL  `loop session` — one process; sessions keyed by (lane, actor kind) │
+│ POOL  `taskctl pool` — one process; sessions keyed by (lane, actor kind) │
 │ worker:<card>:r<n> (worker or reviewer)       director:<dir>            │
 │ cwd = card worktree  cwd = target dir          cwd = project dir         │
 └─────────┬───────────────────────────┬───────────────────────────┬────────┘
@@ -118,12 +118,12 @@ What the shape makes visible:
 - **The one-shot deployment stops at the pool.** Without a resident pool the continue clock
   still runs patrol and workflow, but poll claims nothing, so no row ever reaches a lane.
 
-The read-only verbs — `loop status`, `loop doctor`, `loop console` — read the state files and
+The read-only verbs — `taskctl loop`, `taskctl doctor`, `taskctl console` — read the state files and
 the board; they are not slots in the pipeline.
 
 Two execution shapes serve the same model:
 
-- **resident** (default on launchd/systemd): `taskctl loop session` runs a long-lived *session
+- **resident** (default on launchd/systemd): `taskctl pool` runs a long-lived *session
   pool* — one *session per card* (a review card gets its own reviewer session) and a director
   lane per project. Poll claims a card and **enqueues** the handoff; the pool opens or resumes
   the card's own session, so a same-round re-dispatch **inside one claim** (a rework, a crash
@@ -170,8 +170,9 @@ finds the director by scanning the installed skills trees, never from a config v
 
 The supervisor is a **scheduler**. It owns two clocks and performs no board **API**
 I/O outside the deterministic passes; the ping's one outbound call is the read-only
-`/health` liveness probe. The passes — poll, patrol, workflow — live in separate
-`taskctl loop` verbs, and the supervisor runs them **in process**.
+`/health` liveness probe. The passes — poll, patrol, workflow — are separate top-level
+commands (`taskctl patrol`, `taskctl poll`, `taskctl workflow`), and the supervisor runs
+them **in process**.
 
 | | **ping** | **tick** | **session** |
 |---|---|---|---|
@@ -184,7 +185,7 @@ I/O outside the deterministic passes; the ping's one outbound call is the read-o
 
 The split is deliberate. A 60-second clock that read the board would be a poll
 again; a 10-minute tick that runs the passes is bounded and needs no model. On
-launchd/systemd the **event subscriber** (`taskctl loop subscribe`) follows the local event
+launchd/systemd the **event subscriber** (`taskctl subscribe`) follows the local event
 hub through `taskctl events follow` and asks for an **early tick** when a dispatch-relevant
 event arrives, so a new card or a completed dependency is seen within seconds; the hub owns
 the host's single board connection and its reconnect ladder, and the subscriber's `follow`
@@ -199,11 +200,11 @@ The deterministic passes are **not scheduled individually**:
 
 | Entry | Job | Writes |
 |---|---|---|
-| `taskctl loop poll` | scan → atomic claim → **enqueue the handoff**; also enqueues open agent questions and the 30-minute routing fallback (the director's queue) | claims, card queue |
-| `taskctl loop patrol` | heartbeat alerts + SLA rows | card queue only with `--patrol-llm=yes` |
-| `taskctl loop workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `Board` (kind `system`) |
+| `taskctl poll` | scan → atomic claim → **enqueue the handoff**; also enqueues open agent questions and the 30-minute routing fallback (the director's queue) | claims, card queue |
+| `taskctl patrol` | heartbeat alerts + SLA rows | card queue only with `--patrol-llm=yes` |
+| `taskctl workflow` | apply the board's workflow plan (`issue reconcile --workflow`) | review actions, as `Board` (kind `system`) |
 
-`taskctl loop doctor` is **not** one of these passes. It is the read-only inspection a human
+`taskctl doctor` is **not** one of these passes. It is the read-only inspection a human
 runs: one report covering the supervisor verdict, the resolved scan set,
 the patrol's last-successful-run marker, the tail of the supervisor log, the queue and the
 worker/reviewer ledger, the worker sessions and their resume state, the cards that look stuck (a stale or unreadable heartbeat, judged by the patrol's own
@@ -325,7 +326,7 @@ policy is ADR [0009](adr/0009-a-cycle-stops-at-a-human-decision.md).
 
 | Cycle | Counter (home) | Bound | At the bound |
 |---|---|---|---|
-| Deliver → review → rework | `delivery_round − meta.loop_hold_round` (board) | `--rework-max-rounds` = 4 | `hold_card`: question + `blocked/decision` + close the review |
+| Deliver → review → rework | `meta.review_rejects − meta.loop_hold_retry_base` (board) | `--rework-max-rounds` = 4 | `hold_card`: question + `blocked/decision` + close the review |
 | Review verdict unappliable | `meta.review_retry − meta.loop_hold_retry_base` (board) | 2 | `hold_card` on the original + `close_review` |
 | Card handoff turn | queue row `attempts` | 3 | row `failed`; execution hold |
 | Handoff turn timeout | queue row `timeouts` | 3 (backoff 2/4/8 min) | below the bound, row pending with `retry_at`; at it, the card is re-read and (still `in_progress`) released to `todo` — never `blocked` |
@@ -357,14 +358,22 @@ yet a dispatch decision.
 
 Precedence is fixed and pinned by `test/contract/cycle-verdict.test.mjs`: `terminal` outranks
 every row fact, `settled` outranks spent counters, and a spent counter outranks a queued row. The
-level is observe-only for now; `taskctl loop doctor` reports the counts per level. A dispatch path
+level is observe-only for now; `taskctl doctor` reports the counts per level. A dispatch path
 that consumes the verdict must pass its own bound (the director lane's question and route rows
 stop at two attempts, not three).
 
-**The hold is an epoch, not a latch.** `meta.loop_hold_round` records the round the card was
-held at; the next hold is due only after another full bound. A human who moves the card back
-therefore gets a fresh bounded run — never an unbounded one — and a `held: true` re-emission
-recovers a crash between the marker and the move.
+**The hold is an epoch, not a latch.** `meta.loop_hold_retry_base` records the rejection count
+the card was held at; the next hold is due only after another full bound. A human who moves the
+card back therefore gets a fresh bounded run — never an unbounded one — and a `held: true`
+re-emission recovers a crash between the marker and the move. `meta.loop_hold_round` stays the
+round marker the crash retry compares against.
+
+**Only a review rejection spends the budget.** `meta.review_rejects` is written by the reject
+path alone (with `meta.rework_round`, in the same marker). A landing conflict, an acceptance
+refusal and a review re-dispatch move the card and bump `delivery_round`, but they do not touch
+the counter. A hold is never *initiated* on a delivered round: the review runs first, and the
+hold follows its verdict — `planReviewOutcomes` emits it in the same tick as a bound-reaching
+rejection, with the breaker as the crash fallback.
 
 **Why `blocked`, not `awaiting`.** `awaiting` is reachable only from `in_progress`, while a
 looping card is normally `todo` or `in_review`; a two-hop move into `in_progress` would
@@ -410,7 +419,7 @@ client's resume cursor survives the failure. The probe is one owner
   never stops the board**: a slow or unreachable board is not a wedged pool, and single-writer
   plus data safety make the guard/operator the owner of that decision. The ping's one kill
   authority remains `killWedgedPool` (`pool_killed`), which acts only on a `wedged` phase.
-- **`loop status` is the read side.** It already reports the five live verdicts
+- **`taskctl loop` is the read side.** It already reports the five live verdicts
   (`starting`, `running`, `busy`, `unresponsive`, `wedged`); it adds the pool's `tickAgeMs`
   and the boot ledger from `supervisor.health.json` — `lastCrash`, the consecutive failed-start
   streak (`bootFailures`) and the recent `starts`. The human output prints those as `tick:`
@@ -540,7 +549,7 @@ comes back as a new session. A review card gets a **reviewer session in the same
 the `reviewer` role: the write-tool deny list is per session.
 
 ```text
-session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
+session pool (`taskctl pool`, one process, sessions keyed by actor kind)
 ├── worker session         cwd = the card's workspace       (one per card, per kind)
 │     (kind, worker:<card>:r<round>) — resumed by session id
 ├── reviewer session       cwd = the same target_dir         (one per review card, per kind)
@@ -553,7 +562,7 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   pool executes `patrol|workflow|poll` and nothing wakes an LLM just to tick.
 - **Residency is the pool's own timers.** The tick, question and heartbeat timers are
   ref'd in every deployment shape — the installed daemon, a `--take-over` pool, a hand-run
-  `loop session`. Agent children are created lazily, so a fully idle board has none; the
+  `taskctl pool`. Agent children are created lazily, so a fully idle board has none; the
   manager still stays resident and keeps its heartbeat fresh. `KeepAlive` /
   `Restart=always` is recovery, not residency, and `--control` changes none of this.
 - **Worker sessions** — keyed `(actor_kind, worker:<card>:r<round>)` and opened from the
@@ -666,7 +675,7 @@ session pool (`taskctl loop session`, one process, sessions keyed by actor kind)
   worktrees and all of its worker sessions as one project. Each card in a git project runs in its own
   worktree (see "Per-card workspace isolation" below); `--workspace=shared` is the explicit
   opt-out and logs one warning per directory when parallel cards share a git checkout.
-- **One lock** — a second `taskctl loop session` on the same state directory is refused
+- **One lock** — a second `taskctl pool` on the same state directory is refused
   (`session.lock`). The pool writes a heartbeat every 15 s so a pass in another
   process can tell "busy" from "gone".
 
@@ -715,7 +724,7 @@ worktree and is logged for a human rather than merged on a guess.
 Landing covers the lanes **admission created and registered** in `workspaces.json`. A worktree
 a session makes for itself (`using-git-worktrees`, any `.worktrees/<slug>`) is never in that
 registry, so accepting its card merges nothing: the pass logs `has no lane record`, and `done`
-means *accepted*, not *merged*. `loop doctor` judges only each card's **delivery round**: a
+means *accepted*, not *merged*. `taskctl doctor` judges only each card's **delivery round**: a
 `meta.landed_sha` in the current branch, else that round's own registry record, else the exact
 `lane/<ref>[-r<N>][-<slug>]` branch a loop lane would use (the pre-slug `lane/<ref>[-r<N>]` name
 is also accepted, for a lane created before the rule). A session worktree outside that lane
@@ -775,7 +784,7 @@ Every dependency's failure is named; nothing degrades silently.
 | handoff turn timeout | transient: its own `timeouts` counter, 2/4/8-minute backoff; after three, re-read the card and release it to `todo` with a note — never `blocked` (ADR [0016](adr/0016-turn-timeouts-are-transient.md)). The release drops the session, so the next claim is fresh (TP-0125) |
 | dispatch failed after the claim | the claim is handed back to `todo` immediately; at three consecutive failures the card is parked |
 | a card keeps coming back | the board's plan emits `hold_card`; the card is `blocked/decision` with a question, and a human move starts a fresh epoch |
-| resident pool wedged | `loop doctor`/`status` report `wedged`; one minute later the ping clock SIGTERMs it once and SIGKILLs on a later ping if needed (`--recover-wedged=no` opts out) |
+| resident pool wedged | `taskctl doctor` / `taskctl loop` report `wedged`; one minute later the ping clock SIGTERMs it once and SIGKILLs on a later ping if needed (`--recover-wedged=no` opts out) |
 | stale claim | `--recover-stale` offers it; the claim itself is `issue claim`, made by the card's assignee role. A role absent or carried by no available kind re-routes a rotted work card to Worker (version-guarded, `change` comment) before claiming |
 | old roles tree / old `ROLES_DIR` shape | a directory with no `role.json` is reported as deprecated by `/setup-meerkat`; never deleted automatically. A directory of role directories is a valid custom team and replaces discovery |
 
@@ -896,7 +905,7 @@ What that means concretely:
 The SLA half notifies. Everything after that — accepting a delivery, rejecting it and
 opening a rework, rolling a container up, splitting a card into one — used to wait for a
 human. The **board** now owns those decisions; the supervisor's **workflow pass**
-(`taskctl loop workflow`) executes them. It is a pass of its own, run by the
+(`taskctl workflow`) executes them. It is a pass of its own, run by the
 tick after patrol.
 
 The board computes one plan through `issue reconcile --workflow` (see
@@ -1179,12 +1188,13 @@ back to another kind that carries the same role; if none does, the card is left 
 and reported. Installation location is the routing; the only other configuration is that
 preference order — there is no platform-mapping key.
 
-**Role catalog, not prompt text.** The supervisor routes by the card's assignee, but the
-role's `title`, `summary`, `responsibilities` and `boundaries` serve the local role catalog
-and routing only — they are **never injected into a prompt**. A resident worker session has
-the role's `SKILL.md` loaded from the **selected kind's** skill directory at session open,
-and reads `self_check` from the same directory before acting. The inline forms are verified
-against codex-cli 0.161.0 (`developerInstructions`) and pi 1.4.0
+**Role catalog, not prompt text.** The supervisor routes by the card's assignee. The role's
+`title` and `summary` are projected into the local role catalog, its `shapes` generate the
+routing table, and `responsibilities` and `boundaries` are the long-form contract kept in
+`role.json` for authoring and reference. None of them is **injected into a prompt**. A resident
+worker session has the role's `SKILL.md` loaded from the **selected kind's** skill directory at
+session open, and reads `self_check` from the same directory before acting. The inline forms are
+verified against codex-cli 0.161.0 (`developerInstructions`) and pi 1.4.0
 (`--append-system-prompt` reads an existing file path); Claude's `--append-system-prompt`
 needs 2.1.292 or newer. The full review handoff inlines `reviewer-handoff.md`, bounded at
 2,400 characters. Every role is told to write and maintain
@@ -1269,7 +1279,7 @@ assignee, and never appears in the scan set.
 |---|---|---|
 | `question` | a worker wrote an agent `question` and is waiting | answer with an agent `note` and **release** the card to `todo`; or escalate. A note without the release is retried |
 | `route` | an unassigned `todo` card past 30 minutes | assign the one role the generated routing table names. A card assigned to an agent no worker lane can claim is the workflow's `assignee_not_scanned` finding, not a route decision |
-| `triage` | an accepted producer carries `meta.stage_handoff=required` and has no decision for its delivery round | read the current report's `## Handoff`; create/seed/link the proposed cards, or record `handoff_declined_round`; record `handoff_consumed_round` on the producer |
+| `triage` | an accepted producer carries `meta.stage_handoff=required` and has no decision for its delivery round | read the current report's `## Handoff`, its `leftovers` and that round's review observations; give every open item one disposition — reuse, create, decline, escalate — then create/seed/link the proposed cards or record `handoff_declined_round`, and record `handoff_consumed_round` on the producer |
 | escalation | the director cannot decide | `issue move <ref> awaiting --awaiting-reason E1..E5 --question "..."` |
 
 The skill loads once, at session open: Claude opens with `/meerkat-director` + a `Flags:`
@@ -1290,8 +1300,10 @@ recipe (`--parent <epic> --target <stage-id>`); when no graph matches, the per-d
 behavior applies. The supervisor never sequences roles.
 A triage row is enqueued **after** the question and route rows: it is post-acceptance work
 and never displaces a held worker. Its completion is the marker on the producer, not a linked
-child; a producer that moved off `done` makes the row stale. A triage that exhausts its two
-attempts records a note on the `done` producer and becomes a `loop doctor`
+child; the marker follows a completed ledger — every open item the delivery records has an
+existing card, a created card, a recorded decline with its reason, or an escalation — and a
+producer that moved off `done` makes the row stale. A triage that exhausts its two
+attempts records a note on the `done` producer and becomes a `taskctl doctor`
 `handoff_unconsumed` finding; it is never parked. Both the triage read and that finding
 look back over the archive window (seven days): an older accepted handoff is not re-offered,
 though its marker stays on the producer's archived row.
@@ -1524,8 +1536,8 @@ The supervisor cannot live inside the agent application, because Claude Code and
 
 | Option | Shape |
 |---|---|
-| `taskctl loop …` (this tree) | the supervisor: `loop run --ping-once` / `--continue-once` for the clocks, `loop session` for the resident pool, `loop run` for its own daemon clocks |
-| the installed runtime tree | what `install.sh` deploys; the units name `<tree>/src/cli/index.mjs loop …`, and an agent-only install names the checkout |
+| `taskctl run` (this tree) | the supervisor: `taskctl run --ping-once` / `--continue-once` for the clocks, `taskctl pool` for the resident pool, `taskctl run` for its own daemon clocks |
+| the installed runtime tree | what `install.sh` deploys; the units name `<tree>/src/cli/index.mjs run …`, and an agent-only install names the checkout |
 | the local `taskd` process | a natural home for the same supervisor in a future milestone |
 | the OpenClaw agent framework | on OpenClaw, the framework itself is the supervisor |
 
@@ -1584,7 +1596,7 @@ never by drift.
 # cron: ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 PATH=/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
 
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs run --ping-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.meerkat-taskpanel/loop >/dev/null 2>&1
 ```
 
 (Both are rendered for the agent CLI you installed *for*, and only for it: a unit that wakes
@@ -2019,7 +2031,7 @@ one write lock, so they never fight over the slot:
 
 **A managed unit never gives up.** `Restart=always` / `KeepAlive` stay: the goal is "always
 up", and the supported way to stop a managed unit is `systemctl --user stop` /
-`launchctl bootout` (the service manager cancels the restart). `taskctl loop status --stop`
+`launchctl bootout` (the service manager cancels the restart). `taskctl loop --stop`
 only stops a pool started by `--take-over` and is not a reason to change restart policy.
 
 - **launchd** — `KeepAlive=true` and `ThrottleInterval=10`. launchd never enters a terminal
@@ -2040,7 +2052,7 @@ only stops a pool started by `--take-over` and is not a reason to change restart
   at once, not sleep first, and a real process manager is the only thing that can refuse the
   restart.
 - **The boot ladder delays only a boot that never worked.** The long-lived loop entries
-  (`loop session`, `loop subscribe`, the daemon clocks) keep
+  (`taskctl pool`, `taskctl subscribe`, the daemon clocks) keep
   `supervisor.health.json` — `{startedAt, pid, version, lastCrash, starts, bootFailures}`.
   A completed first tick (the pool's first dispatch tick, the subscriber's first connection,
   the daemon's first ping) clears `bootFailures`; a non-zero exit or a crash **before** that
@@ -2105,7 +2117,8 @@ checkout path in a unit. What the installer creates beside the skill is the supe
 directory**:
 
 ```text
-<home>/<agent-dir>/meerkat-taskpanel/
+<config root>/loop/
+├── loop.id                       runtime (stable loop identity; board rows key on it)
 ├── supervisor.state.json         runtime (legacy worker registry)
 ├── sessions.state.json           runtime (pool: pid, heartbeat, session ids per actor kind)
 ├── continue.state.json           runtime (the single-flight tick lock)
@@ -2138,17 +2151,18 @@ Every line carries `actor_kind=<kind>`, so one file is still readable per kind:
 time=2026-10-30T14:47:32.174Z level=info component=supervisor msg="ping: 0 live, no write" actor_kind=claude
 ```
 
-The state directory belongs to the **primary kind**: one supervisor per machine, so one
-queue, one lock and one ledger. Session records inside it carry the actor kind of the
-conversation they describe, so a multi-kind pool never confuses two platforms. Only the log
-is shared across primary kinds, because reading one machine's history should not require the
-agent-kind → dot-directory table. A spawned session's own stderr is appended to the same file
-as raw bytes, so those lines carry no `actor_kind=` field.
+The state directory belongs to the **board installation**, not to an agent kind: one
+supervisor per machine, so one queue, one lock and one ledger at the config root. Session
+records inside it carry the actor kind of the conversation they describe, so a multi-kind pool
+never confuses two platforms. The state is deliberately **not** under the board's `.data`:
+the database and the loop have independent backup, teardown and permission lifecycles. Two
+boards on one machine must have separate config roots; sharing one would share the queue and
+lock.
 
 The units name the runtime tree's CLI entry, not this directory:
 
 ```text
-program: <absolute node> <runtime>/src/cli/index.mjs loop run --ping-once
+program: <absolute node> <runtime>/src/cli/index.mjs run --ping-once
                                   --actor-kind <kind>
                                   --log <config root>/logs/supervisor.log --state-dir <state>
 ```
@@ -2158,12 +2172,21 @@ program: <absolute node> <runtime>/src/cli/index.mjs loop run --ping-once
 it, so moving the tree is a re-install — no `launchctl` / `systemctl` / `crontab` reload,
 because the unit never hard-codes a versioned body path.
 
-`--state-dir <dir>` is the documented spelling; the supervisor derives every state file above from
-it. `--state <file>` still names the registry file explicitly, and `--log` the log (its
-default is the config root's `logs/supervisor.log`). The installer
-removes an execution body left by an older install (`<state>/scripts/`, `<state>/templates/`,
-`<state>/manifest.txt`) on its next run, so an upgrade leaves no second implementation
-behind.
+`--state-dir <dir>` is the documented spelling; the supervisor derives every state file above
+from it. The default is `<config root>/loop`; `MEERKAT_TASKPANEL_STATE_DIR` (process env, then
+the per-kind config) names another, and `--state <file>` still names the registry file
+explicitly. `--log` is the log (its default is the config root's `logs/supervisor.log`).
+
+The pre-migration directory was `<home>/<agent-dir>/meerkat-taskpanel`. `install.sh
+--supervisor=enable` moves it once: it stops every loaded loop kind, waits for the pool,
+subscriber, tick and queue locks to quiesce, copies the durable files (excluding logs and stale
+pid/lock artifacts), writes `loop.id`, and keeps the old directory as
+`meerkat-taskpanel.migrated-<timestamp>`. If the state sits under more than one actor kind, the
+migration refuses instead of merging the queues and asks the operator to archive the ones that do
+not belong to this board. A plain install with legacy state does **not** migrate under a
+possibly-live pool; it prints the enable command. A failed relocation fails the install. A write
+verb refuses a legacy-only directory and points at the migration; `loop`/`doctor`/`console`
+read it with a warning on stderr.
 
 ## Headless permission boundary
 
@@ -2215,6 +2238,11 @@ supervisor ledger and none is resumed. A read-only lane's write deny applies to
 its own session; a child it spawns has its own tool pool. The posture is stated in
 `--supervisor=status`; the installed units carry no tool switch.
 
+When the declared gate is the push-time container gate and the lane cannot run it — the
+branch is unpushed, so no CI run exists — the reviewer records
+`n/a — gate unobservable in lane` and decides it as an E4 matter; the gap is
+environmental and does not become a rework round.
+
 ## The three agent kinds: how each one is triggered
 
 Claude Code, Codex and Pi have no clock, and their headless entry points differ. The
@@ -2226,7 +2254,7 @@ configured kind order), signing its writes as `Director`.
 
 | Agent kind | Session command | Trigger / scheduling | Continuity |
 |---|---|---|---|
-| **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `taskctl loop run --ping-once` / `--continue-once`, or the supervisor's own two clocks | `claude -p … --resume <sid>` — resume the session that owns the card |
+| **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `taskctl run --ping-once` / `--continue-once`, or the supervisor's own two clocks | `claude -p … --resume <sid>` — resume the session that owns the card |
 | **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | resume the thread with `codex exec resume <sid> <prompt>`; carry `$CODEX_THREAD_ID` as `--session-id` |
 | **Pi** | `pi --print "<handoff>"` | external units | resume with `pi --print --session <sid> <prompt>`; pass the session id through the handoff |
 | **OpenClaw** | *n/a — no self-scheduler* | the agent framework's own `poll`/`patrol` automations — this design is their statement | the framework keeps the id stable across resumes |
@@ -2269,7 +2297,7 @@ Installers also install the **director skill** at `<agent-dir>/skills/meerkat-di
 **chat console** at `<agent-dir>/skills/meerkat-chat/` and the five **role skills** beside
 them (`jobs`, `linus`, `turing`, `reviewer`, `worker`) — the operator's documentation, the
 decision protocol, the human's console and the role workflows. They are always copies:
-`--link` names the board skill only. The execution body is `taskctl loop …`, not a file the
+`--link` names the board skill only. The execution body is `taskctl run`, not a file the
 skills carry.
 
 Installers write per-agent kind units under `<agent-dir>/scheduling/{launchd,systemd,cron}`,
@@ -2310,7 +2338,7 @@ long-lived process — so a cron deployment stays on the continue cadence.
 An event-triggered turn requires a **live resident pool**. With no pool it could not
 dispatch anything, so the subscriber logs and skips the turn; the continue timer still runs
 patrol + workflow. The subscriber is observable: it publishes
-`<agent-dir>/meerkat-taskpanel/subscribe.state.json`, and `--supervisor=status` reports
+`<config root>/loop/subscribe.state.json`, and `--supervisor=status` reports
 `streaming`, `reconnecting`, `starting`, or `not running` from it. To run without the
 daemon, take its unit down with the service manager (`launchctl bootout …` /
 `systemctl --user disable --now meerkat-taskpanel-subscribe.service`); status then reports
@@ -2331,7 +2359,7 @@ The console is its own skill ([`meerkat-chat`](../skills/meerkat-chat/SKILL.md))
 mode of the director. The director remains command-only and supervisor-opened; its manual
 agenda moved to the console, and its decision authority did not.
 
-`status.mjs --json` reports `running | busy | starting | unresponsive | wedged |
+`taskctl loop --json` reports `running | busy | starting | unresponsive | wedged |
 configured-idle | partial | absent` (the first five are the pool's own verdict — a live pid is
 never `absent`); `--take-over` starts the pool only when the verdict is `absent` (with no control
 turn there is nothing to take over), and `--stop` stops only what it started. `--control` is
@@ -2516,8 +2544,8 @@ it is idempotent and cleanly removable:
 ```cron
 # >>> meerkat-taskpanel (~/.claude) >>>
 PATH=/home/you/.claude/bin:/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
-* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --ping-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
-*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs loop run --continue-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.claude/meerkat-taskpanel >/dev/null 2>&1
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs run --ping-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.meerkat-taskpanel/loop >/dev/null 2>&1
+*/10 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node /path/to/runtime/src/cli/index.mjs run --continue-once --actor-kind claude --log ~/.meerkat-taskpanel/logs/supervisor.log --state-dir ~/.meerkat-taskpanel/loop >/dev/null 2>&1
 # <<< meerkat-taskpanel (~/.claude) <<<
 ```
 
@@ -2564,7 +2592,7 @@ at [Headless permission boundary](#headless-permission-boundary): every session 
 the full tool set and the reviewer's write tools are denied.
 
 - **Identity and parameters.** The units start the supervisor with `--actor-kind <h>`, `--agent
-  <installer name>` and one pass (`taskctl loop run --ping-once` / `--continue-once`). The
+  <installer name>` and one pass (`taskctl run --ping-once` / `--continue-once`). The
   `--agent` is the loop's **writer** identity — the minimal unit environment has no
   `TASKCTL_AGENT` to inherit. It does not narrow the claim set, which is every discovered
   worker-lane role (plus every discovered reviewer-lane role). The tick runs the passes
@@ -2576,7 +2604,7 @@ the full tool set and the reviewer's write tools are denied.
   every actor kind, each line tagged `actor_kind=<kind>` — written and rotated by the supervisor
   itself. The units do **not** redirect their stdout/stderr into it — that would duplicate
   every line; cron sends the same output to `/dev/null` because `--log` already writes it.
-- **State.** `<agent-dir>/meerkat-taskpanel/supervisor.state.json` — the running registry.
+- **State.** `<config root>/loop/supervisor.state.json` — the running registry.
 - **Working directory.** A woken worker still `cd`s to the directory the map names for
   the card's project (`local_path ?? run_dir`), resolved by the poll pass from the
   config-root `projects.json`; enabling changes nothing here (see
@@ -2630,11 +2658,11 @@ first of those in `--target` order. `--supervisor-actor-kinds openclaw` is **rej
 ## Running the supervisor
 
 ```bash
-taskctl loop run --actor-kind claude --agent alice                  # both clocks (daemon)
-taskctl loop run --actor-kind claude --agent alice --ping-once      # one ping
-taskctl loop run --agent alice,bob --actor-kind codex               # loop
-taskctl loop run --agent alice --dry-run --ping-once                # plan only
-taskctl loop run --actor-kind claude --agent alice --continue-once  # one tick
+taskctl run --actor-kind claude --agent alice                  # both clocks (daemon)
+taskctl run --actor-kind claude --agent alice --ping-once      # one ping
+taskctl run --agent alice,bob --actor-kind codex               # loop
+taskctl run --agent alice --dry-run --ping-once                # plan only
+taskctl run --actor-kind claude --agent alice --continue-once  # one tick
 ```
 
 The flags are the same either way; a loaded unit names the runtime tree's CLI entry and
@@ -2658,13 +2686,13 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
 | `--continue=yes\|no` | from per-kind config → `yes` | enable the tick clock |
 | `--continue-state <path>` | `continue.state.json` beside `--state` | the single-flight lock for the tick |
-| `--ping-once` / `--continue-once` | off | on `loop run`: run only that clock's pass, then exit |
+| `--ping-once` / `--continue-once` | off | on `taskctl run`: run only that clock's pass, then exit |
 | `--patrol-interval <sec>` | `300` | the SLA **measurement** period (it no longer schedules anything) |
 | `--patrol-llm=yes\|no` | `no` | let patrol start an LLM turn on a stale card |
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin — both the legacy heartbeat alert and the SLA tuple |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--log <path>` | `<config root>/logs/supervisor.log` | where the tick log appends (one file for every actor kind) |
-| `--state <path>` | `<home>/<agent-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
+| `--state <path>` | `<config root>/loop/supervisor.state.json` | the running registry |
 | `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
 | `--workflow-ledger <path>` | `workflow-ledger.json` beside `--state` | the workflow alert de-duplication ledger; an unreadable one suppresses nothing |
 | `--sla-leader <id>` | from `$MEERKAT_TASKPANEL_SLA_LEADER`, else unset | the author id the leader writes under, for the `leader_stalled` attribution set; unset ⇒ the board's own decision authority (`author_kind = "human"`). Set the **same** identity on both mechanisms |
@@ -2674,7 +2702,7 @@ The flags are the same either way; a loaded unit names the runtime tree's CLI en
 | `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
 | `--config <path>` | `<program root>/.env.<actor-kind>` (or `MEERKAT_TASKPANEL_CONFIG_DIR`) | per-kind config: the supervisor's claim default and concurrency cap, `MEERKAT_TASKPANEL_REPO`, and — on the board path — the per-agent identity |
 | `--env-file <path>` | `$MEERKAT_TASKPANEL_ENV_FILE`, else `<repo>/.env` | the shared config file the subscriber's `taskctl` calls read (`TASKD_URL`, `TASKD_TOKEN`, …) |
-| `--home <path>` | `$HOME` | base for the agent directories (state, skills — not the log) |
+| `--home <path>` | `$HOME` | base for the agent skill/role directories — not the log or the loop state |
 
 The project map is not a flag: the poll pass and `taskctl project dir` read the same
 `<config root>/projects.json` ([Where a worker runs](#where-a-worker-runs)).
@@ -2683,7 +2711,8 @@ The project map is not a flag: the poll pass and `taskctl project dir` read the 
 who wants to know why a card did not start reads one file,
 `~/.meerkat-taskpanel/logs/supervisor.log` for a combined install (the config
 root's `logs/` for an agent-only one); its lines name their `actor_kind=`. The state
-stays per kind: `~/.claude/meerkat-taskpanel/` (or `.codex/`, `.agents/`).
+lives once per board installation at `<config root>/loop/` (`MEERKAT_TASKPANEL_STATE_DIR`
+overrides it).
 
 ## The claim-unassigned policy
 
@@ -2732,11 +2761,11 @@ keys an older config lacks and never overwrites one it already has.
 ## The end-to-end path
 
 ```
-launchd / systemd / cron  ──ping 60s──▶  taskctl loop run --ping-once
+launchd / systemd / cron  ──ping 60s──▶  taskctl run --ping-once
                                             prune registry entries whose pid is gone
                                             no board, no claim, no LLM
 
-launchd / systemd / cron  ──tick 600s──▶  taskctl loop run --continue-once
+launchd / systemd / cron  ──tick 600s──▶  taskctl run --continue-once
                                             (single-flight lock; no model turn)
                                                 ├─ passes.mjs patrol    notify-only SLA
                                                 ├─ passes.mjs workflow  apply board workflow plan (taskd)
@@ -2790,7 +2819,7 @@ this boundary: every agent kind gets one — see `docs/ops/install.md`.)
   round method this page designs. The skill is supervisor-only: the human console is
   `meerkat-chat`, never this one.
 - [`../skills/meerkat-chat/SKILL.md`](../skills/meerkat-chat/SKILL.md) — the human's live
-  console: progress, awaiting questions, acceptance, `loop doctor` and abnormal cards.
+  console: progress, awaiting questions, acceptance, `taskctl doctor` and abnormal cards.
 - [`../skills/jobs/SKILL.md`](../skills/jobs/SKILL.md) and its four siblings — the role
   workflows, discovered per platform from their `role.json`.
 - [`../skills/meerkat/SKILL.md`](../skills/meerkat/SKILL.md) —

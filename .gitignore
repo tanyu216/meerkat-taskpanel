@@ -15,6 +15,10 @@ dist/
 # the loop's per-task process directories: card.md and whatever a subagent writes there
 .meerkat/
 
+# the loop's own runtime state at the config root (queue, session records, locks,
+# transcripts). Distinct from `.meerkat/`, which is per card.
+/loop/
+
 # the install-root config file — it may hold TASKD_TOKEN, so it is never tracked
 .env
 # per-kind configs — one per actor kind, written beside the program root

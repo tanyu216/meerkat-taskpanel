@@ -7,14 +7,15 @@
  *
  * The pool manager owns the queues, routing, ledger, concurrency, heartbeat,
  * idle eviction and resume. It never speaks the board's HTTP API: the
- * supervisor's tick runs `taskctl loop patrol|workflow|poll`, the poll pass
+ * supervisor's tick runs `taskctl patrol|workflow|poll`, the poll pass
  * writes the card queue, and the pool's one board write is the card's session
  * row through `taskctl session set|close` (`board-session.mjs`).
  *
  * Node builtins only; no network, no dependencies.
  */
 
-import { existsSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -109,10 +110,12 @@ export {
   POOL_WEDGE_MARGIN_MS,
   SESSION_DEFAULTS,
   SESSION_LOCK_FILE,
+  STATE_FILES,
   killDeadlineMs,
   poolVerdict,
   sendDeadlineMs,
 } from "../foundation/loop-state.mjs";
+import { resolveLoopState } from "../foundation/state-dir.mjs";
 import {
   OPENER_TIMEOUT_MS,
   POOL_HEARTBEAT_MS,
@@ -120,6 +123,7 @@ import {
   POOL_STALE_MS,
   SESSION_DEFAULTS,
   SESSION_LOCK_FILE,
+  STATE_FILES,
   STOP_DRAIN_MS,
   effectiveTurnTimeoutMs,
   poolVerdict,
@@ -285,7 +289,11 @@ export function poolStatus(input = {}) {
   const opts = input.opts ?? {};
   const isAlive = input.isAlive ?? isProcessAlive;
   const now = input.now ?? Date.now;
-  const stateDir = dirname(String(opts.state ?? join(process.cwd(), "supervisor.state.json")));
+  const resolvedState =
+    typeof opts.state === "string" && opts.state !== ""
+      ? opts.state
+      : join(resolveLoopState({ home: opts.home, actorKind: opts.actorKind, env: process.env }).dir, STATE_FILES.supervisor);
+  const stateDir = dirname(String(resolvedState));
   const file = opts.sessionState ?? sessionsFile(stateDir);
   const empty = {
     live: false,
@@ -316,7 +324,7 @@ export function poolStatus(input = {}) {
     : [];
   const rawPid = Number(value.poolPid);
   const poolPid = Number.isInteger(rawPid) && rawPid > 0 ? rawPid : null;
-  // One verdict, shared with `loop status` and the installer's pool report: the
+  // One verdict, shared with `taskctl loop` and the installer's pool report: the
   // pid and its start token decide "gone"; the phase and the timestamps decide
   // which kind of live this is. A stale heartbeat never turns a live pid into
   // an absent pool.
@@ -387,7 +395,7 @@ export function createSessionPool(input = {}) {
     ? Number(input.reapGraceMs)
     : REAP_GRACE_MS;
   // `internal` is the installed supervisor; `external` marks a pool started by a
-  // live session (`loop status --take-over`). It is an observational marker only:
+  // live session (`taskctl loop --take-over`). It is an observational marker only:
   // it changes neither the pool's lifetime nor what the pool dispatches, and
   // there is no control turn in either mode — the supervisor's tick runs the
   // passes, the pool dispatches.
@@ -415,6 +423,17 @@ export function createSessionPool(input = {}) {
   const sessions = new Map();
   // The board-visible session row (one stable row per card and segment). The
   // writes are best-effort: a board that is down must never fail a turn.
+  // One stable loop identity in the state directory. A relocated checkout keeps
+  // its board rows; a pre-id directory falls back to the path identity.
+  const loopIdFile = join(stateDir, STATE_FILES.loopId);
+  if (!existsSync(loopIdFile)) {
+    try {
+      mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+      writeFileSync(loopIdFile, `${randomUUID()}\n`, { encoding: "utf8", mode: 0o600 });
+    } catch {
+      // The path identity remains the fallback; a failed write is not fatal.
+    }
+  }
   const boardSession = createBoardSession({ opts, log, isAlive });
   const stateRead = readSessionsState(stateDir);
   const state = stateRead.value;
@@ -1239,7 +1258,33 @@ export function createSessionPool(input = {}) {
       if (typeof taskId !== "string" || taskId === "" || typeof owner !== "string" || owner === "") continue;
       liveKeys.add(`${taskId}|${boardSegmentOf(entry)}|${owner}`);
     }
-    return boardSession.reconcile({ loopId: boardSession.loopId, liveKeys, deadline });
+    const current = await boardSession.reconcile({ loopId: boardSession.loopId, liveKeys, deadline });
+
+    // A relocated loop left its old board rows `running`: the old loop id is
+    // the old state directory. The installer writes this marker once; close
+    // those rows with the same reconciler, then drop it. A board that is down
+    // keeps the marker for the next start.
+    const marker = join(stateDir, STATE_FILES.legacyLoopIds);
+    const legacy = readJsonFile(marker, null);
+    const dirs = Array.isArray(legacy.value) ? legacy.value.filter((dir) => typeof dir === "string" && dir !== "") : [];
+    let legacyOk = current.ok === true;
+    for (const dir of dirs) {
+      const previous = createBoardSession({
+        opts: { ...opts, state: join(dir, STATE_FILES.supervisor) },
+        log,
+        isAlive,
+      });
+      const outcome = await previous.reconcile({ loopId: previous.loopId, liveKeys, deadline });
+      if (outcome.ok !== true) legacyOk = false;
+    }
+    if (legacyOk && dirs.length > 0) {
+      try {
+        rmSync(marker, { force: true });
+      } catch {
+        // A marker we cannot remove is retried on the next start.
+      }
+    }
+    return current;
   }
 
   /**
@@ -1269,7 +1314,7 @@ export function createSessionPool(input = {}) {
   /**
    * Record one interrupted turn in the ledger. `interrupted` is already part of
    * the ledger's vocabulary; without the row an interruption is invisible in
-   * `loop doctor` and in the reconcile trail.
+   * `taskctl doctor` and in the reconcile trail.
    */
   function recordInterrupt(row, key) {
     const review = String(row?.role ?? "worker") === "reviewer";
@@ -2690,7 +2735,7 @@ export function createSessionPool(input = {}) {
   /**
    * A triage that exhausted its turns. The producer is `done`, so there is no
    * legal move and no question to answer; record the failure on the card and
-   * let `loop doctor` surface the unconsumed handoff.
+   * let `taskctl doctor` surface the unconsumed handoff.
    */
   function noteTriageFailed(ref, reason) {
     const card = String(ref ?? "");
@@ -2977,7 +3022,10 @@ export function createSessionPool(input = {}) {
   let lockToken = null;
 
   async function acquireLock() {
-    ensureStateDir(stateDir);
+    const ready = ensureStateDir(stateDir);
+    if (!ready.ok) {
+      return { ok: false, holder: null, error: `state directory is not writable — ${ready.error}` };
+    }
     // The same `wx` lock the queue uses: the pool lock is never stolen from a
     // live pid, so a wedged-but-alive pool is one process, not two. A dead
     // holder (a crash) is reclaimed without waiting for a timeout.
@@ -3339,7 +3387,7 @@ export async function runSession(opts, deps = {}) {
     })();
   }
   // These three timers are the pool's lifetime in every deployment shape: the
-  // installed daemon, a `--take-over` pool, and a hand-run `loop session`. Agent
+  // installed daemon, a `--take-over` pool, and a hand-run `taskctl pool`. Agent
   // children are created lazily, so a fully idle board has none and cannot be
   // relied on to hold the loop. The service manager's KeepAlive / Restart=always
   // is recovery, not residency. `stop()` clears all three synchronously before

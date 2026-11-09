@@ -10,14 +10,15 @@
  *
  * ---------------------------------------------------------------------------
  * Measured counts (host-static, re-pinned after R17 · T-20261013-184457,
- * R14 · T-20261014-082533, T-20261014-212017-3 and TP-0074)
+ * R14 · T-20261014-082533, T-20261014-212017-3, TP-0074 and the
+ * 2026-11-08 B16 Resume removal)
  * ---------------------------------------------------------------------------
  *   prototype MESSAGES  en 292 / zh 292 (exact 1:1 mirror)
- *   this catalogue      en 275 / zh 275 — the 292 minus the 17 prototype-only
+ *   this catalogue      en 273 / zh 273 — the 292 minus the 19 prototype-only
  *                       keys listed below, still an exact 1:1 mirror (identical
  *                       key sets, identical key order, no duplicates, no empty
  *                       values)
- *   `%s` placeholders  255 keys carry none, 18 carry one, 2 carry two — and the
+ *   `%s` placeholders  253 keys carry none, 18 carry one, 2 carry two — and the
  *                       histogram is identical for en and zh, key for key (no
  *                       prototype-only key carries a placeholder)
  *   data-i18n* hooks    842 in `design/prototype/index.html`:
@@ -30,12 +31,16 @@
  * ---------------------------------------------------------------------------
  * Prototype-only keys (deliberately not shipped)
  * ---------------------------------------------------------------------------
- * Seventeen keys: the two `sidebar.*` demo entries (the B15 legend's label and
+ * Nineteen keys: the two `sidebar.*` demo entries (the B15 legend's label and
  * the B18 gallery opener), the twelve `states.*` strings of the gallery itself,
- * and the three `toast.sample.*` static samples that only the gallery rendered.
- * Terry's ruling of 2026-10-12: the legend and the gallery are **product-design
+ * the three `toast.sample.*` static samples that only the gallery rendered, and
+ * `drawer.resume` / `toast.resume` from the B16 Resume control. Terry's ruling
+ * of 2026-10-12: the legend and the gallery are **product-design
  * demonstrations, not functional requirements** — the shipped app renders
- * neither, so their vocabulary has no consumer. `design/prototype/**` is untouched
+ * neither, so their vocabulary has no consumer. Terry's ruling of 2026-11-08
+ * removes the drawer's Resume control for the same reason in the other
+ * direction: the board cannot resume a session (the agent runtime owns that), so
+ * the button was a toast with no transport. `design/prototype/**` is untouched
  * (the design baseline keeps the blocks), and `test/web/i18n.catalogue.test.mjs`
  * holds the exclusion as an explicit, per-key list — every other prototype string
  * still matches byte-for-byte. (This header does not spell the two `sidebar.*`
@@ -65,8 +70,8 @@
  * Coverage: every hook the prototype's own markup authors resolves
  * ---------------------------------------------------------------------------
  * All 540 `data-i18n`, 84 `-aria-label`, 19 `-title` and 11 `-placeholder`
- * values are real catalogue keys — except the 17 prototype-only demo values the
- * shipped app does not render (16 of them on `data-i18n`, `states.close` on
+ * values are real catalogue keys — except the 18 prototype-only demo values the
+ * shipped app does not render (17 of them on `data-i18n`, `states.close` on
  * `-aria-label`), which the suite tracks by name. Every key composed at runtime
  * (`status.*`, `priority.*`, `access.theme.*`, `access.lang.short.*` in `app.js`)
  * exists too. `data-i18n-arg` is different in kind: its 188 values (45 distinct)
@@ -197,7 +202,6 @@ export const CATALOGUE = {
       "relations.none": "No relations",
       "drawer.session": "Agent session",
       "session.id": "Session",
-      "drawer.resume": "Resume",
       "drawer.attachments": "Attachments",
       "attachments.none": "No attachments",
       "drawer.comments": "Comments",
@@ -278,7 +282,6 @@ export const CATALOGUE = {
       "toast.themeDark": "Dark theme on",
       "toast.themeLight": "Light theme on",
       "toast.themeAuto": "Auto theme on — following the system",
-      "toast.resume": "Resuming agent session",
       "toast.linked": "Opened linked task",
       "toast.activity": "Board revision",
       "toast.reloaded": "Tasks reloaded",
@@ -474,7 +477,6 @@ export const CATALOGUE = {
       "relations.none": "暂无关联",
       "drawer.session": "Agent 会话",
       "session.id": "会话",
-      "drawer.resume": "继续会话",
       "drawer.attachments": "附件",
       "attachments.none": "暂无附件",
       "drawer.comments": "评论",
@@ -555,7 +557,6 @@ export const CATALOGUE = {
       "toast.themeDark": "已切换到深色主题",
       "toast.themeLight": "已切换到浅色主题",
       "toast.themeAuto": "已切换到自动主题（跟随系统）",
-      "toast.resume": "正在继续 Agent 会话",
       "toast.linked": "已打开关联任务",
       "toast.activity": "看板修订",
       "toast.reloaded": "任务已重新加载",

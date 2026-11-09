@@ -11,8 +11,9 @@ Six capabilities, worked as **six steps in a fixed order**, one step at a time:
 1. **Install and upgrade** — `taskctl`, the local `taskd`, and the agent skill bundle.
 2. **Configuration** — taskctl/taskd env layers, conflict repair and parameter tuning.
 3. **The director's project rules** — E1–E5 refinements in `docs/agents/decision-policy.md`.
-4. **The board skill's project rules** — `docs/agents/*.md`, then one `init` call for the
-   project's agent-instruction entry.
+4. **The board skill's project rules** — `docs/agents/*.md`, the optional
+   `docs/agents/review-scenarios/` files, then one `init` call for the project's
+   agent-instruction entry.
 5. **Roles across agent platforms** — which kind carries which role skill, and moves.
 6. **Create a role** — a new role skill in an installed agent tree, from the shipped template.
 
@@ -81,7 +82,8 @@ early. After the single detection run, take the fast path only when the facts sh
 machine and project are already set up: `missing` is empty, `actions` is empty, the fixed
 human name is configured, every `docs/agents/` document this run would write already exists
 with the same content, and the agent-instruction entry already points card work at
-`/meerkat`, the board rules at `docs/agents/`, and states the chosen card scope. Report every
+`/meerkat`, the board rules at `docs/agents/`, states the chosen card scope, and names each
+file under `docs/agents/review-scenarios/` when that directory exists. Report every
 step as `unchanged` in one short block, then go straight to **Verify and finish**. A missing
 or different document is not "already set up": run that step. The fast path never skips a
 safety confirmation. If the user names one capability or one change, run that step only and
@@ -183,22 +185,42 @@ primary checkout once `docs/agents/worktrees.md` exists.
    template (`dev-verify` and `requirement`) and ask which graphs to keep or change. Write
    **only on an explicit yes**; the file is absent by default, and a re-run reports
    `written` / `unchanged` / `conflict`.
-3. Declare the project's rules in the map:
+3. Offer `docs/agents/review-scenarios/`: the project's own reviewer refinements, discovered
+   by the installed `reviewer` role skill at the delivered sha. Read that skill's
+   `references/scenarios/README.md` first. Ask one gate: does this project have review checks
+   that repeat on every card and are not already written in the project's own standards?
+   **No (recommended)** — skip, and write nothing; the built-in scenarios plus the project's
+   standards already apply. **Yes** — ask which scenario types carry project-specific checks
+   (project-wide, product planning, prototype, development, test-case authoring, test
+   execution, epic/rollup, generic), and for each selected type write
+   `docs/agents/review-scenarios/<type>.md` with the user's answers only: an `Applies to:`
+   line taken from that built-in scenario, a `## Checks` list, and a `## Blocks APPROVE`
+   list. Write a file only for a type the user selected and gave at least one check for.
+   State in each file that it augments the reviewer's built-in floors and never weakens
+   them. setup-meerkat is the **only** writer of project scenarios: a role, a card or a
+   session that needs one routes the change through this step rather than writing the file
+   directly. A re-run reports `written` / `unchanged` / `conflict`; a conflict is backed up
+   and merged only with consent.
+4. Declare the project's rules in the map:
    `taskctl project map set <id> --base-ref <ref> --merge-ref <ref>` (recommended:
    `base_ref = merge_ref =` the integration branch). The refs are probed at write time; a bad
    value is `PROJECT_REF_UNRESOLVED`. The page points at the map, never copies the values.
-4. Call the `init` skill for the project's agent-instruction entry, and require it to point
+5. Call the `init` skill for the project's agent-instruction entry, and require it to point
    card work at the `/meerkat` skill and board rules at `docs/agents/` (`create-card.md`,
    `worktrees.md`, `issue-tracker.md`, `triage-labels.md`, `domain.md`, `epic-graphs.md`
-   when present, and `decision-policy.md` when present), and to state this step's card scope.
+   when present, and `decision-policy.md` when present), and to name **every** scenario file
+   under `docs/agents/review-scenarios/` when the directory exists — the directory and each
+   file by name, not the directory alone — and to state this step's card scope.
    It must also say that a task or plan which is **not** a card is still role work:
    load the matching role skill (`jobs`, `linus` or `turing`) before the first edit, not only
    when a card handoff names it.
    The entry and the rules are project content shared by every platform: call `init` once,
    write the rules once under `docs/agents/`, never copy them per platform, and never write an entry yourself; report `skip` when the host has no `init` skill.
-5. Write `worktrees.md` (see `references/worktree-guard.md`), after every other
+   When a later run adds or removes a scenario file, the entry's list is stale: call `init`
+   again with the new list, after the same separate yes an entry change always needs.
+6. Write `worktrees.md` (see `references/worktree-guard.md`), after every other
    primary-checkout write. The page points at the map, never copies the ref values.
-6. Only then, if the user accepts, install the worktree guard through
+7. Only then, if the user accepts, install the worktree guard through
    `scripts/worktree-init.mjs` (show its `--dry-run` report first). This is the only
    initialization point — never add the wiring to an installer. Codex hooks must be reviewed
    and trusted in `/hooks`; report that step as still open until the user confirms it. The
@@ -231,7 +253,7 @@ has no director skill, so it must not receive a role until the team skills are i
 user may decline and keep one platform. The director, chat and setup skills follow the primary
 kind and are not moved by this step.
 
-After a move, refresh the native definitions and read `taskctl loop status`; the scan set
+After a move, refresh the native definitions and read `taskctl loop`; the scan set
 must name Worker and every role whose cards are created. Retired `meerkat-loop` trees are
 reported, never read or deleted. `MEERKAT_TASKPANEL_ROLES_DIR` pointing at directories that
 carry `role.json` is still a valid discovery override, not a retired key.
@@ -283,6 +305,8 @@ and logs a rename warning, and `install.sh --force` refreshes the skill.
   decision as an agent's.
 - **The roles are standalone skills; installation location is the routing.** This skill
   ships **no copy of their content** — no role workflow, self-check or reviewer protocol.
+  A project's `docs/agents/review-scenarios/` files are the project's own checks, written
+  from the user's answers; they are not a copy of the reviewer's built-in scenarios.
 - **The security toolchain is Linus's.** If the machine must be pre-provisioned, point at
   `<linus-skill-dir>/scripts/security-tools.mjs --check`; never install a scanner here.
 - **Second run changes no managed content.** Role skills, env keys, docs and the
@@ -296,13 +320,14 @@ and logs a rename warning, and `install.sh --force` refreshes the skill.
    is installed on every kind the user expects to use.
 3. Read-only check only: show the installer's plan with
    `bash <checkout>/install.sh --target <primary-kind> --dry-run` if a plan is needed, and
-   read `taskctl loop status --actor-kind <kind>`: the scan set must name Worker and every
+   read `taskctl loop --actor-kind <kind>`: the scan set must name Worker and every
    role whose cards are created. A name the loop does not scan is a finding, never "ready".
    Do not use `--supervisor=status` as a read-only check: it still walks the install path and
    writes. A daemon starts or is enabled only in Step 1, after a separate explicit yes.
 4. Re-read the project's agent-instruction entry: the `init` step ran, and it points card
-   work at `/meerkat` and the rules at `docs/agents/`. If `init` was unavailable, report
-   `skip` with the reason — never claim it ran.
+   work at `/meerkat`, the rules at `docs/agents/`, and every project review-scenario file
+   under `docs/agents/review-scenarios/` by name. If `init` was unavailable, report `skip`
+   with the reason — never claim it ran.
 5. Summarize: what was installed or changed, where, each role's effective platform and any
    fallback, the human name, the docs written, what was skipped and why. Name open items:
    Codex `/hooks` trust, an old hand-installed guard kept as a second layer, and any taskd

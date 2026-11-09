@@ -199,7 +199,7 @@ describe("boot-health — the process lifecycle", () => {
 });
 
 describe("boot-health — wiring", () => {
-  it("loop session arms supervisor.health.json before it checks the skills, then exits 78", async () => {
+  it("taskctl pool arms supervisor.health.json before it checks the skills, then exits 78", async () => {
     const dir = makeTempDir("meerkat-taskpanel-boot-health-");
     const home = join(dir, "home");
     const stateDir = join(dir, "state");

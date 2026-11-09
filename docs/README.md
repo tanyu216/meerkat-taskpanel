@@ -37,7 +37,8 @@ repository-only, as are `docs/ops/install.md`, `docs/ops/observability.md` and
 `docs/ops/publishing.md`; a target project may supply a file at the same path, but this
 repository's copy is not its documentation. `docs/agents/` is the home of a project's own board
 rules (`issue-tracker.md`, the historical `issue-tracer.md`, `triage-labels.md`, `domain.md`,
-`create-card.md`, and the optional `decision-policy.md`); those are project
+`create-card.md`, the optional `decision-policy.md`, and the `review-scenarios/` directory of
+reviewer refinements); those are project
 documentation and
 remain addressable. The same path can be a design record here and project
 documentation in another repository (`docs/architecture.md`, `docs/agents/*`); the guard asks
@@ -58,6 +59,7 @@ this repository's own.
 | [domain.md](agents/domain.md) | How the engineering skills consume this repository's domain documentation (`GLOSSARY.md`, ADRs, `design/`). |
 | [triage-labels.md](agents/triage-labels.md) | The five canonical triage roles and the label strings this repository uses for them. |
 | [create-card.md](agents/create-card.md) | This project's own card-creation choices — scope, acceptance-mode selection and the epic boundary; a thin override of the `meerkat` skill's manual, never board data. |
+| [review-scenarios/meerkat.md](agents/review-scenarios/meerkat.md) | This project's reviewer scenario — the concrete contract, data, design, security and evidence checks a review runs here, discovered under `docs/agents/review-scenarios/`. |
 
 ## Repository maintenance
 

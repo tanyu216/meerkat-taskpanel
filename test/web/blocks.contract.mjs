@@ -1686,11 +1686,15 @@ const BLOCKS = [
       "[data-detail-send-back-cancel]",
       // ADR 0014 — the Acceptance tab's read-only review-round rows. They exist
       // only for a card some review card audits, so they are data-driven
-      // `states`, not resting `required` hooks.
+      // `states`, not resting `required` hooks. Each row names the review card
+      // by identifier **and title**, and shows its status with the head's own
+      // chip (`[data-review-status-chip]`) rather than bare text.
       "[data-detail-review-rounds]",
       "[data-review-round]",
       "[data-review-round-label]",
       "[data-review-identifier]",
+      "[data-review-title]",
+      "[data-review-status-chip]",
       "[data-review-status-text]",
     ],
     rules: [
@@ -1875,6 +1879,29 @@ const BLOCKS = [
       {
         kind: "computed",
         probe: "[data-detail-status-chip] .td-status-dot",
+        property: "height",
+        equalsPx: 6,
+        when: "drawer open",
+      },
+      // ADR 0014 — a review round's status is the **same** status chip as the
+      // card's own: the same class set, the same 18px pill and the same 6px dot,
+      // so a review never reads in a style the task card does not use. The chip
+      // sits in the Acceptance panel, which is `hidden` while another tab is up,
+      // so the px verdicts run on the specified lengths of a closed subtree
+      // (not measured, not a false red) — the class set is the structural half.
+      // TD-1 is open for this pass and carries the TD-REV review row.
+      { kind: "classes", probe: "[data-review-status-chip]", includes: ["badge-sm", "td-chip", "td-chip-status"], when: "drawer open" },
+      { kind: "computed", probe: "[data-review-status-chip]", property: "height", equalsPx: 18, when: "drawer open" },
+      {
+        kind: "computed",
+        probe: "[data-review-status-chip] .td-status-dot",
+        property: "width",
+        equalsPx: 6,
+        when: "drawer open",
+      },
+      {
+        kind: "computed",
+        probe: "[data-review-status-chip] .td-status-dot",
         property: "height",
         equalsPx: 6,
         when: "drawer open",
@@ -2466,7 +2493,6 @@ const BLOCKS = [
       "[data-agent-platform]",
       "[data-agent-platform-value]",
       "[data-agent-session-id]",
-      "[data-agent-resume]",
     ],
     states: [],
     rules: [

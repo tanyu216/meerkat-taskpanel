@@ -1425,6 +1425,51 @@ describe("server/routes — blocked_reason over HTTP (0016)", () => {
   });
 });
 
+describe("server/routes — leaving `blocked` over HTTP (TP-0127)", () => {
+  // The browser gains a `blocked` exit in this card. The server's half is that
+  // the move is one reasonless write, and the row it lands is the one the
+  // state machine describes: no class, the stop's timestamp kept, no claim and
+  // no new delivery round. Asserted at the column, because the projection could
+  // echo a field the row never took.
+  const AS = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }) };
+  let REF;
+  const rowOf = () =>
+    taskd.board.db
+      .prepare(
+        "SELECT status, blocked_reason, blocked_at, claimed_by, delivery_round FROM tasks WHERE identifier = ?",
+      )
+      .get(REF);
+
+  before(async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "ublk", name: "Unblock" }));
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "ublk", title: "Stop and release", allow_dup: true }),
+    );
+    REF = created.task.identifier;
+  });
+
+  it("moves blocked → backlog with no reason, and the row reflects the exit", async () => {
+    dataOf(await call("POST", `/api/v1/tasks/${REF}/move`, { to: "in_progress" }, AS));
+    const stopped = dataOf(
+      await call("POST", `/api/v1/tasks/${REF}/move`, { to: "blocked", blocked_reason: "dependency" }, AS),
+    );
+    assert.equal(stopped.task.status, "blocked");
+    const before = rowOf();
+    assert.equal(before.blocked_reason, "dependency");
+    assert.notEqual(before.claimed_by, null, "a blocked card is still the same executor's card");
+
+    const released = dataOf(await call("POST", `/api/v1/tasks/${REF}/move`, { to: "backlog" }, AS));
+    assert.equal(released.task.status, "backlog");
+    assert.equal(released.task.version, stopped.task.version + 1, "one CAS write");
+
+    const after = rowOf();
+    assert.equal(after.blocked_reason, null, "the class described the block, and the block ended");
+    assert.equal(after.blocked_at, before.blocked_at, "the stop's timestamp is history and stays");
+    assert.equal(after.claimed_by, null, "backlog holds no claim (the CHECK depends on it)");
+    assert.equal(after.delivery_round, before.delivery_round, "leaving blocked is not a new round");
+  });
+});
+
 // Last, and on its own project: T-20261015-063755 asked for the wire-level
 // half of the ancestor ruling — the defect was reported through the API (N10b
 // and N10c both answered HTTP 200), so the regression is asserted where it was

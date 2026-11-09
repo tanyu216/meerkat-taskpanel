@@ -34,7 +34,11 @@ cost, never a silent drift.
 - Work the card by the role skill it names: read that role's `SKILL.md` and follow it, the
   installed copy is authoritative. Card operations go through `/meerkat`, and this project's
   board rules live in `docs/agents/` (`create-card.md`, `worktrees.md`, `issue-tracker.md`,
-  `triage-labels.md`, `domain.md`, `decision-policy.md`).
+  `triage-labels.md`, `domain.md`, `decision-policy.md`, `review-scenarios/`).
+- Reviewer scenarios live in `docs/agents/review-scenarios/` — currently `meerkat.md` — and
+  the reviewer reads every file there at the delivered sha. Add or change one through the
+  installed `setup-meerkat` skill's Step 4, never by a role or a card by hand; the
+  agent-instruction entry names the directory and every file in it.
 - Card scope is the work a role owns. Outside the roles is outside the board: a question, a
   lookup, a one-off command, a scratch experiment or the change already being made in this
   conversation is not a card.
@@ -103,8 +107,10 @@ these matter:
   different tree: the npm release tree written by `scripts/build.mjs`, never served. `web/dist`
   is gitignored yet in the npm `files` whitelist.
 - `.meerkat/<identifier>/` is the loop's per-task process directory under a project's working
-  directory (`card.md` is hub-maintained, never hand-edited). `dist/`, `.data/`,
-  `node_modules/`, `coverage/` and `.meerkat/` are build/runtime output, never committed.
+  directory (`card.md` is hub-maintained, never hand-edited); `loop/` at the config root is
+  the loop's own runtime state (queue, session records, locks, transcripts). `dist/`, `.data/`,
+  `node_modules/`, `coverage/`, `.meerkat/` and `loop/` are build/runtime output, never
+  committed.
 
 ## Constraints
 

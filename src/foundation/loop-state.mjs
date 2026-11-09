@@ -27,9 +27,34 @@ export const QUEUE_FILES = Object.freeze({
   workspaces: "workspaces.json",
 });
 
+/**
+ * The loop's state directory: `<config root>/loop`.
+ *
+ * The config root is the machine-local root that already holds `.env.<kind>` and
+ * `projects.json` (`resolveConfigDir`), so a checkout install keeps the loop's
+ * queue, session records, locks and transcripts inside the project, and an
+ * installed tree keeps them beside `logs/` and `scheduling/`. It is deliberately
+ * not under the board's `.data`: the database and the loop have independent
+ * backup, teardown and permission lifecycles.
+ *
+ * Pure path arithmetic — the caller passes the config root.
+ *
+ * @param {string} configRoot
+ * @returns {string} absolute directory (not created)
+ */
+export function loopStateDir(configRoot) {
+  return join(String(configRoot), "loop");
+}
+
 /** Every other file the loop keeps beside its state directory. */
 export const STATE_FILES = Object.freeze({
   supervisor: "supervisor.state.json",
+  // A stable loop identity, independent of the state directory path: moving or
+  // renaming the checkout must not strand the board rows keyed by `meta.loop`.
+  loopId: "loop.id",
+  // The installer writes the pre-migration directories here; the pool's first
+  // reconcile closes their `running` board rows and drops the marker.
+  legacyLoopIds: "legacy-loop-ids.json",
   log: "supervisor.log",
   continueState: "continue.state.json",
   slaLedger: "sla-ledger.json",

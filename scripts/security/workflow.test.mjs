@@ -225,6 +225,8 @@ describe("static: docs/tech-spec.md", () => {
       "CodeQL",
       "security-events",
       ".vue",
+      "ASVS",
+      "L2",
     ]) {
       assert.ok(text.includes(needle), `docs/tech-spec.md should mention ${needle}`);
     }

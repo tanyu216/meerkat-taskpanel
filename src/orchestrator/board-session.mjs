@@ -15,7 +15,8 @@
  * Node builtins only; the only process boundary is the injected `runCli`.
  */
 
-import { dirname, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 import { BOARD_ACTOR_ID, SYSTEM_KIND } from "../foundation/constants.mjs";
 
@@ -49,10 +50,20 @@ export function createBoardSession(input = {}) {
   const log = typeof input.log === "function" ? input.log : () => {};
   const run = typeof input.run === "function" ? input.run : runCli;
   const isAlive = typeof input.isAlive === "function" ? input.isAlive : isProcessAlive;
-  // The state directory is unique per loop, so its absolute path is the loop's
-  // identity for reconciliation; two boards on one machine must not close each
-  // other's rows.
-  const loopId = typeof opts.state === "string" && opts.state !== "" ? resolve(dirname(opts.state)) : null;
+  // A stable `loop.id` in the state directory is the loop's identity; a state
+  // directory written before the id existed falls back to its absolute path.
+  // Two boards on one machine must not close each other's rows.
+  const stateDir = typeof opts.state === "string" && opts.state !== "" ? resolve(dirname(opts.state)) : null;
+  const storedLoopId = (() => {
+    if (stateDir === null) return null;
+    try {
+      const id = readFileSync(join(stateDir, "loop.id"), "utf8").trim();
+      return id === "" ? null : id;
+    } catch {
+      return null;
+    }
+  })();
+  const loopId = storedLoopId ?? stateDir;
   const bounded = {
     ...opts,
     cliTimeoutMs: Math.min(

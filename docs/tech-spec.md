@@ -147,6 +147,9 @@ protection waiting.
 | 1 | Strict mode, and at least one unwaived High/Critical advisory or committed secret. |
 | 2 | Usage error, or no scanner report could be read at all. |
 
+**The review level.** The independent reviewer audits OWASP ASVS Tier 3 at **L2**, the target
+level this standard records. A change to the level is a recorded decision (TS-01).
+
 **Running it**
 
 ```bash

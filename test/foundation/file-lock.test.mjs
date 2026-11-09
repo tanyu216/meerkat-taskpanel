@@ -2,7 +2,7 @@
  * The loop's one advisory interprocess lock.
  *
  * The lock exists because two processes write the same state files: the tick
- * (`loop run --continue-once`) enqueues while the pool (`loop session`) claims
+ * (`taskctl run --continue-once`) enqueues while the pool (`taskctl pool`) claims
  * and requeues. A read-modify-write without a lock loses rows. The contract:
  *
  *   * `wx` creation is the atomic point — two processes cannot both create;

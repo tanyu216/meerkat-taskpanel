@@ -98,6 +98,30 @@ describe("board skill: creating a card", () => {
     assert.doesNotMatch(doc, /epic-splitting boundary|epic patterns/i);
   });
 
+  it("files a defect follow-up in backlog with the source reference", () => {
+    const start = create.indexOf("## File a defect follow-up");
+    assert.notEqual(start, -1, "the page carries the defect recipe");
+    assert.ok(start < create.indexOf("<!-- read-next:begin -->"), "the recipe precedes read-next");
+    const section = create.slice(start);
+    for (const phrase of [
+      "--status backlog",
+      "--label bug",
+      "--meta fixes=<source>",
+      '--acceptance "<repro>"',
+      "--idem",
+      "kind=defect",
+      "never claimable",
+      "dispatcher or human releases",
+    ]) {
+      assert.ok(section.includes(phrase), `the recipe names ${phrase}`);
+    }
+    assert.doesNotMatch(
+      section,
+      /--parent|--as-human/,
+      "the follow-up is neither a child nor a human-filed card",
+    );
+  });
+
   it("ships this project's card-creation guidance", () => {
     const doc = readFileSync(join(ROOT, "docs/agents/create-card.md"), "utf8");
     for (const word of ["off", "auto", "human"]) {

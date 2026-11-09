@@ -11,7 +11,7 @@
 # That is why this script calls neither `install_team_skills` nor `install_scheduling`:
 # there is no `~/.openclaw/skills/meerkat-director`, no `~/.openclaw/skills/meerkat-chat` and
 # no `~/.openclaw/scheduling`, on purpose, permanently (ruling O3). The chat console reads
-# `loop doctor`/`loop console`, which this target does not install. Two supervisors on one
+# `taskctl doctor`/`taskctl console`, which this target does not install. Two supervisors on one
 # board would only race each
 # other for the same cards — the board's claim is atomic, so the race is bounded, but the
 # second one is pure waste. `test/install/scheduling-units.test.mjs` asserts the absence.

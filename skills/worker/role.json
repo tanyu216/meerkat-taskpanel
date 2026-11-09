@@ -18,11 +18,11 @@
     "Deliver at `in_review` with the commit anchor, the acceptance mapping and the evidence."
   ],
   "boundaries": [
-    "Route an unauthorized question through the ladder: write an agent question and hold for the answer.",
+    "Route a question outside this card through the decision policy: write an agent question and hold for the answer.",
     "Stop at `in_review`; the card's `acceptance_mode` names the closer, and the loop moves a card to `done`.",
     "Deliver the committed tree; the supervisor's acceptance pass lands it.",
     "Keep the frozen acceptance as the scope; a scope expansion is an E1 question.",
-    "An out-of-scope defect is reported and left to the director: a `kind=defect` comment plus a question to the director, who decides whether this card fixes it in passing or a fix card is created."
+    "The finder files a defect outside this card in `backlog`, bug-labelled, with `meta.fixes` = this card, and links it in a `kind=defect` comment; the card continues. When this card fixes it in passing, the fix stays here; a change of scope, acceptance, design, security or architecture is a question to the director."
   ],
   "system_prompt": "Read the task card first; it is authoritative for this card. Write and maintain the plan in the process directory.\nThe supervisor owns card.md and refreshes it from the board.\nCarry the Flags above on every write.\nBoard: heartbeat this card at least every 10 minutes and deliver at in_review with a report;\nthe loop holds the claim and closes the card at done.\n  taskctl issue heartbeat <ref> <flags>\n  taskctl issue deliver <ref> --report-file - <flags>\nFor a question, route it to the director: leave a `question` comment and hold the card with `issue wait`.\n  taskctl comment add <ref> --kind question --body \"...\" <flags>\n  taskctl issue wait <ref> --question <id> <flags>",
   "self_check": "references/self-check.md",

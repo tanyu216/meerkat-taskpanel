@@ -427,7 +427,10 @@ describe("web/board — the human-facing move table", () => {
     in_progress: ["canceled", "todo", "backlog"],
     awaiting: [],
     in_review: ["done", "in_progress", "canceled"],
-    blocked: [],
+    // TP-0127 — a blocked card has an exit on the board: release, unqueue, or
+    // abandon. The work-cycle targets (`in_progress`, `in_review`) stay
+    // CLI/loop-only, exactly as they were for a `todo` card.
+    blocked: ["todo", "backlog", "canceled"],
     done: [],
     canceled: [],
   };
@@ -461,6 +464,15 @@ describe("web/board — the human-facing move table", () => {
     assert.equal(allowedTargets("in_progress").includes("done"), false);
     // The domain has the `off` direct-done edge; the board must not surface it.
     assert.equal(canTransition("in_progress", "done", null, "off"), true, "the domain keeps the edge");
+  });
+
+  it("gives a blocked card three exits and no work-cycle entry (TP-0127)", async () => {
+    const { allowedTargets } = await freshBoard();
+    assert.deepEqual([...allowedTargets("blocked")], ["todo", "backlog", "canceled"]);
+    // The domain allows `in_progress` / `in_review`; those are the loop's
+    // unblock/repair moves, not a person's.
+    assert.equal(canTransition("blocked", "in_progress"), true, "the domain keeps the repair edges");
+    assert.equal(canTransition("blocked", "in_review"), true);
   });
 });
 
@@ -1885,6 +1897,52 @@ describe("board store — the waiting queue is not narrowed by board filters", (
 
     mod.writeAssigneeFilter("jobs");
     assert.equal(mod.waitingCount.value, 0, "the assignee condition does change the queue");
+  });
+});
+
+describe("board store — a blocked decision joins the question half", () => {
+  const held = (over = {}) => ({
+    id: "b1",
+    identifier: "TD-B",
+    title: "Held for a decision",
+    status: "blocked",
+    blocked_reason: "decision",
+    version: 1,
+    labels: [],
+    assignee: { display_name: "elon", kind: "claude" },
+    ...over,
+  });
+
+  it("lists a blocked decision, not a resource block, and board filters do not narrow it", async () => {
+    const mod = await freshBoard();
+    mod.board.currentProjectId = "p1";
+    mod.board.loaded = true;
+    mod.board.tasks = [held(), held({ id: "b2", identifier: "TD-C", blocked_reason: "resource" })];
+    assert.deepEqual(mod.waitingTasks.value.map((task) => task.id), ["b1"]);
+    assert.equal(mod.waitingCount.value, 1);
+
+    mod.writeStatusFilter(["todo"]);
+    assert.equal(mod.visibleTasks.value.length, 0, "the status filter owns the board view");
+    assert.deepEqual(mod.waitingTasks.value.map((task) => task.id), ["b1"], "…not the queue");
+    assert.equal(mod.waitingCount.value, 1);
+
+    mod.writeAssigneeFilter("jobs");
+    assert.deepEqual(mod.waitingTasks.value, [], "the assignee condition still applies");
+  });
+
+  it("loads the hold question for the blocked row", async () => {
+    const mod = await freshBoard();
+    mod.board.currentProjectId = "p1";
+    mod.board.loaded = true;
+    mod.writeStatusFilter(["all"]);
+    mod.board.tasks = [held()];
+    const calls = installFetch({
+      "GET /api/v1/tasks/TD-B/comments": () =>
+        ok({ comments: [{ id: "c1", kind: "question", body: "Decide.", created_at: "2026-01-01T00:00:00Z" }] }),
+    });
+    await mod.loadWaitingPayloads();
+    assert.equal(calls.length, 1);
+    assert.equal(mod.board.waitingPayload.b1.body, "Decide.");
   });
 });
 

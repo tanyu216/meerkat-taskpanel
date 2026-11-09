@@ -1,5 +1,5 @@
 /**
- * `taskctl loop doctor` — the read-only daily inspection.
+ * `taskctl doctor` — the read-only daily inspection.
  *
  * The board is a sentinel CLI and the state directory is real files, so the test
  * asserts both the report and the promise behind it: every board call is a read,
@@ -144,7 +144,7 @@ function writeLog(dir, count) {
   return lines;
 }
 
-describe("loop doctor — the report", () => {
+describe("taskctl doctor — the report", () => {
   it("reports an accepted producer whose required handoff was never consumed", () => {
     const dir = tempDir();
     const tasks = [
@@ -1072,7 +1072,7 @@ describe("loop doctor — the report", () => {
   });
 });
 
-describe("loop doctor — the loop thresholds", () => {
+describe("taskctl doctor — the loop thresholds", () => {
   it("mirrors the review-reopen bound and the round-bump rule", () => {
     assert.equal(LOOP_REVIEW_REOPEN_MIN, DEFAULT_REVIEW_REOPEN_MAX);
     assert.equal(LOOP_REVIEW_ROUND_MIN, LOOP_REVIEW_REOPEN_MIN + 1);
@@ -1088,7 +1088,7 @@ describe("loop doctor — the loop thresholds", () => {
   });
 });
 
-describe("loop doctor — looping cards", () => {
+describe("taskctl doctor — looping cards", () => {
   it("flags a card whose delivery rounds keep coming back", () => {
     const dir = tempDir();
     const { script } = sentinel(dir, {
@@ -1515,7 +1515,7 @@ describe("loop doctor — looping cards", () => {
   });
 });
 
-describe("loop doctor — the log tail", () => {
+describe("taskctl doctor — the log tail", () => {
   it("falls back to the rotated generation, and calls a missing log missing", () => {
     const dir = tempDir();
     const { script } = sentinel(dir);
@@ -1564,7 +1564,7 @@ describe("loop doctor — the log tail", () => {
   });
 });
 
-describe("loop doctor — read-only", () => {
+describe("taskctl doctor — read-only", () => {
   it("issues no board write, and leaves the state directory alone", () => {
     const dir = tempDir();
     const { script, record } = sentinel(dir);
@@ -1602,7 +1602,7 @@ describe("loop doctor — read-only", () => {
   });
 });
 
-describe("loop doctor — the process boundary", () => {
+describe("taskctl doctor — the process boundary", () => {
   it("emits the raw report with --json and a digest without it", async () => {
     const dir = tempDir();
     const { script } = sentinel(dir);
@@ -1642,7 +1642,7 @@ describe("loop doctor — the process boundary", () => {
     out = "";
     const helpExit = await main(["--help"], { HOME: dir }, deps(), { out: (text) => (out += text) });
     assert.equal(helpExit, 0);
-    assert.match(out, /^Usage: taskctl loop doctor/);
+    assert.match(out, /^Usage: taskctl doctor/);
   });
 
   it("renders the looping block and caps its free text on one line", async () => {
@@ -1728,7 +1728,7 @@ describe("loop doctor — the process boundary", () => {
   });
 });
 
-describe("loop doctor — deferred admission and stale workspaces", () => {
+describe("taskctl doctor — deferred admission and stale workspaces", () => {
   it("flags a card whose admission keeps failing", () => {
     const dir = tempDir();
     const { script } = sentinel(dir, {
@@ -1844,7 +1844,7 @@ describe("loop doctor — deferred admission and stale workspaces", () => {
   });
 });
 
-describe("loop doctor — worker sessions", () => {
+describe("taskctl doctor — worker sessions", () => {
   it("reports blocked/stale worker sessions and a missing worktree", () => {
     const dir = tempDir();
     const { script } = sentinel(dir);
@@ -1876,7 +1876,7 @@ describe("loop doctor — worker sessions", () => {
   });
 });
 
-describe("loop doctor — the human queue and the loop's dead ends", () => {
+describe("taskctl doctor — the human queue and the loop's dead ends", () => {
   it("reports awaiting, unowned, a failed director row and an orphaned child", () => {
     const dir = tempDir();
     const app = join(dir, "app");

@@ -80,7 +80,7 @@ construction — the loop has no second detector to disagree with.
         ▼
   planSlaPatrol (pure) ── GET /api/v1/sla (taskctl sla list|get) ──►  alerts[]
                                                                           │
-  loop patrol pass:  + inspector_liveness (host-local marker)  ◄──────────┘
+  taskctl patrol:    + inspector_liveness (host-local marker)  ◄──────────┘
                      → drop keys already notified (ledger)
                      → re-read each surviving card row (sla get <ref> — the same detector)
                      → notify (--notify hook) → record → publish last-ok
@@ -820,7 +820,7 @@ Known limits, accepted:
 
 ## 14. Running it
 
-- **The pass** is `taskctl loop patrol`, also part of `taskctl loop tick`. Its cadence is
+- **The pass** is `taskctl patrol`, also part of `taskctl tick`. Its cadence is
   the loop's continue clock, not `P`; see `docs/scheduling.md`. A pass reads the board,
   notifies, writes the ledger and publishes the marker.
 - **Delivery** is the operator's `--notify <cmd>`: each alert is passed as JSON on the

@@ -26,7 +26,9 @@ IDs: `S` shared, `A` architecture, `R` reconstruction/audit, `I` implementation,
   and re-run, or ask through the board; the delivery gate refuses either on a baseline item.
   Reconstruction rows are prefixed `reconstructed — <evidence>`.
 - **S4.** A **leftover** is work the card surfaced but does not own: outside the frozen
-  acceptance, with the item, its owner and the follow-up card (or why none is needed). A
+  acceptance, with the item, its owner and the follow-up card; a non-defect leftover outside
+  the board's scope names why no card is needed. An out-of-scope defect is filed
+  by its finder in `backlog`, bug-labelled and `meta.fixes` = this card, and named here. A
   blocker, not a leftover: a red gate, a security finding, a missing acceptance item, a missing
   or invalid handoff path, or a published contract, schema or migration change.
 - **S5.** Re-run the gates you claim; a red gate is a blocker, not a leftover. The decision
@@ -45,6 +47,10 @@ records `n/a` and does not run them.
 | Coverage | line, branch and function all **≥80%** (or the project's stricter floor) |
 | Mocks | only at http / websocket / db / redis and comparable external boundaries; internal modules stay real |
 | Security scan | the project's documented scan — dependency audit (default `osv-scanner`), secret scan, SAST — each arm with the command the standard records or its recorded `n/a — <reason>`; no unaddressed high/critical |
+
+A gate outside the lane's reach — the push-time container gate (TS-34) with an unpushed branch
+and no CI run — is recorded as `n/a — gate unobservable in lane`. Record it, deliver the rest
+of the evidence, and leave the push-time run to the pre-push hook.
 
 ## Architecture branch
 

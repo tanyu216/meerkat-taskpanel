@@ -49,6 +49,13 @@ import {
 } from "../../../src/foundation/loop-state.mjs";
 
 import { runStep, systemdUserDir } from "./taskd-guard.mjs";
+import {
+  hasLegacyState,
+  liveHolders,
+  migrateLoopState,
+  recordLegacyLoopIds,
+  selectLegacySource,
+} from "./state-dir-migration.mjs";
 import { unitPath } from "./unit-path.mjs";
 
 /** The three actions of the single entry point. */
@@ -58,7 +65,7 @@ export const ACTIONS = Object.freeze(["enable", "disable", "status"]);
  * restart an install runs when it replaced the tree under a live supervisor.
  * Kept out of `ACTIONS` because that list is the documented user surface.
  */
-export const INTERNAL_ACTIONS = Object.freeze(["machine-status", "restart-if-changed"]);
+export const INTERNAL_ACTIONS = Object.freeze(["machine-status", "restart-if-changed", "relocate-state"]);
 /** The mechanisms `--scheduler` may name, plus `auto` (this platform's one). */
 export const SCHEDULERS = Object.freeze(["auto", "launchd", "systemd", "cron"]);
 /** The actor kinds that run the supervisor. OpenClaw is never among them (D8). */
@@ -387,14 +394,35 @@ export function supervisorPaths(options) {
     actorKind: options.actorKind,
     env,
     home,
+    configRoot,
+    // The pre-migration state directory; the read probes fall back to it and the
+    // relocation action uses it as its source.
     loopDir: join(agentBase, "meerkat-taskpanel"),
-    // The loop is `taskctl loop …`, shipped by the runtime tree. `install.sh` exports
+    legacyStateDir:
+      options.legacyStateDir !== undefined
+        ? resolve(options.legacyStateDir)
+        : join(agentBase, "meerkat-taskpanel"),
+    // Whether the operator named a source other than the per-kind default. The
+    // installer always passes the default, so comparing (not mere presence) is
+    // what keeps the cross-kind scan available.
+    legacyStateDirGiven:
+      options.legacyStateDir !== undefined &&
+      resolve(options.legacyStateDir) !== resolve(join(agentBase, "meerkat-taskpanel")),
+    // The loop is `taskctl run`, shipped by the runtime tree. `install.sh` exports
     // `TP_CLI` (the CLI entry) so the cron preview matches the rendered unit; without
     // it the agent-local shim is the honest fallback (it needs no interpreter).
     cli: env.TP_CLI || join(agentBase, "bin", "taskctl"),
     cliNeedsNode: typeof env.TP_CLI === "string" && env.TP_CLI !== "",
-    stateDir: join(agentBase, "meerkat-taskpanel"),
-    // One log for every actor kind, at the config root; the state stays per kind.
+    // One state directory per board installation, at the config root. `TP_STATE_DIR`
+    // is the installer's explicit override (persisted in the per-kind config when it
+    // differs from the default).
+    stateDir:
+      options.stateDir !== undefined
+        ? resolve(options.stateDir)
+        : typeof env.TP_STATE_DIR === "string" && env.TP_STATE_DIR.trim() !== ""
+          ? resolve(env.TP_STATE_DIR)
+          : join(configRoot, "loop"),
+    // One log for every actor kind, at the config root.
     log: join(configRoot, "logs", "supervisor.log"),
     config,
     legacyConfig: join(agentBase, "meerkat-taskpanel.env"),
@@ -470,13 +498,12 @@ export function cronContentLines(paths) {
   const node = env.TP_NODE || process.execPath;
   const cronPath = env.TP_UNIT_PATH_CRON || unitPath(dirname(node), { scheduler: "cron" });
 
-  // The unit runs `taskctl loop run …`; a bare shim needs no interpreter, a `.mjs`
+  // The unit runs `taskctl run …`; a bare shim needs no interpreter, a `.mjs`
   // entry is named through the pinned node above.
   const line = (schedule, once) =>
     [
       schedule,
       ...(paths.cliNeedsNode ? [node, paths.cli] : [paths.cli]),
-      "loop",
       "run",
       once,
       `--actor-kind ${paths.actorKind}`,
@@ -732,8 +759,19 @@ export function launchdMechanism({ paths, uid, run }) {
       const restarted = [];
       for (const unit of paths.launchd) {
         if (unit.kind !== "session" && unit.kind !== "subscribe") continue;
-        const loaded = runStep({ command: "launchctl", args: ["print", jobId(unit)] }, run).ok;
-        if (!loaded) continue;
+        const printed = runStep({ command: "launchctl", args: ["print", jobId(unit)] }, run);
+        if (!printed.ok) continue;
+        // `kickstart -k` reuses the loaded ProgramArguments. If the rendered
+        // definition changed (a relocated --state-dir, a changed flag), a
+        // kickstart would keep writing the old path — reload it through
+        // `enable` instead.
+        if (definitionDrift(unit.plist, printed.stdout) === "changed") {
+          return {
+            ok: true,
+            restarted: [],
+            reason: "the loaded unit's definition changed (state dir or flags); run install.sh --supervisor=enable to reload it",
+          };
+        }
         const outcome = runStep({ command: "launchctl", args: ["kickstart", "-k", jobId(unit)] }, run);
         if (!outcome.ok) {
           return { ok: false, reason: `launchctl kickstart exited ${outcome.status}: ${firstLine(outcome.stderr)}` };
@@ -862,6 +900,21 @@ export function systemdMechanism({ paths, run }) {
 
     /** See `launchdMechanism.restartLoaded`: active services only, never the timers. */
     restartLoaded() {
+      const sessionUnit = "meerkat-taskpanel-session.service";
+      try {
+        if (
+          readFileSync(join(paths.systemdUnitDir, sessionUnit), "utf8") !==
+          readFileSync(join(paths.systemdSrcDir, sessionUnit), "utf8")
+        ) {
+          return {
+            ok: true,
+            restarted: [],
+            reason: "the installed unit changed (state dir or flags); run install.sh --supervisor=enable to reload it",
+          };
+        }
+      } catch {
+        // A missing installed/source unit falls through to the normal restart.
+      }
       const active = SYSTEMD_SERVICES.filter(
         (unit) => runStep({ command: "systemctl", args: ["--user", "is-active", unit] }, run).ok,
       );
@@ -994,7 +1047,15 @@ export function machineStatus(options = {}) {
       ? options.enabled.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean)
       : [];
   const pathsFor = (kind) =>
-    supervisorPaths({ agentBase: join(home, AGENT_DIRS[kind]), agent, actorKind: kind, env, home });
+    supervisorPaths({
+      agentBase: join(home, AGENT_DIRS[kind]),
+      agent,
+      actorKind: kind,
+      env,
+      home,
+      stateDir: options.stateDir,
+      legacyStateDir: options.legacyStateDir,
+    });
 
   const kinds = LOOP_KINDS.map((kind) => {
     const all = mechanisms({ paths: pathsFor(kind), uid, run });
@@ -1090,6 +1151,89 @@ export function staleWarningLines(paths, mechanismName, platform) {
  *          platform?: string, uid?: number|null, user?: string, run?: typeof spawnSync,
  *          dryRun?: boolean, staleOnly?: boolean, log?: (line: string) => void}} options
  */
+/**
+ * Relocate the legacy state directory before an enable.
+ *
+ * Stops **every loaded loop kind** (an old multi-kind install could have more
+ * than the requested one), waits for the pool/subscriber/locks to quiesce, then
+ * copies + renames the state and leaves the source as a `.migrated-<ts>`
+ * backup. It never starts anything: the `enable` action loads the rendered
+ * definitions immediately after a successful relocation.
+ *
+ * @param {{paths: ReturnType<typeof supervisorPaths>, run: typeof spawnSync, platform: string,
+ *          scheduler: string, log: (line: string) => void, dryRun: boolean}} options
+ * @returns {{ok: boolean, moved: boolean, reason: string|null}}
+ */
+function relocateLegacyState(options) {
+  const { paths, run, log, dryRun } = options;
+  const home = dirname(paths.agentBase);
+  const candidates = Object.keys(AGENT_DIRS).map((kind) => ({
+    kind,
+    dir: join(home, AGENT_DIRS[kind], "meerkat-taskpanel"),
+  }));
+  // Nothing to move is the common case, and it must stay invisible: probing the
+  // service managers for an answer nobody needs would make a plain enable — and
+  // a dry run — ask them questions it never asked before.
+  const explicitDir = paths.legacyStateDirGiven ? paths.legacyStateDir : null;
+  const anyState =
+    (explicitDir !== null && hasLegacyState(explicitDir)) ||
+    candidates.some((entry) => hasLegacyState(entry.dir));
+  if (!anyState) return { ok: true, moved: false, reason: "no legacy loop state" };
+
+  const uid = process.getuid?.() ?? null;
+  const report = machineStatus({ home, agent: paths.agent, env: paths.env, run, uid });
+  const loadedKinds = report.kinds.filter((entry) => entry.loaded).map((entry) => entry.kind);
+  // The state is board-level now, so the source may sit under any actor kind. A
+  // loaded unit's directory is the live one; several leftovers are the
+  // operator's call, never a merge.
+  const selection = selectLegacySource({ candidates, loadedKinds, explicitDir });
+  if (!selection.ok) {
+    log(`supervisor: relocate-state — ${selection.reason}`);
+    return { ok: false, moved: false, reason: selection.reason };
+  }
+  if (selection.dir === null) {
+    return { ok: true, moved: false, reason: "no legacy loop state" };
+  }
+  if (resolve(selection.dir) === resolve(paths.stateDir)) {
+    return { ok: true, moved: false, reason: "already at the target" };
+  }
+  if (dryRun) {
+    log(`supervisor: dry-run — would relocate ${selection.dir} -> ${paths.stateDir}`);
+    return { ok: true, moved: false, reason: "dry-run" };
+  }
+
+  for (const entry of report.kinds) {
+    if (!entry.loaded) continue;
+    const kindPaths = supervisorPaths({
+      agentBase: join(home, AGENT_DIRS[entry.kind]),
+      agent: paths.agent,
+      actorKind: entry.kind,
+      env: paths.env,
+      home,
+      stateDir: paths.stateDir,
+      legacyStateDir: paths.legacyStateDir,
+    });
+    for (const name of entry.mechanisms) {
+      const outcome = mechanisms({ paths: kindPaths, uid, run })[name].disable();
+      if (!outcome.ok) {
+        const reason = `could not stop ${entry.kind} (${name}): ${outcome.reason}`;
+        log(`supervisor: relocate-state — ${reason}`);
+        return { ok: false, moved: false, reason };
+      }
+    }
+  }
+
+  // The service manager returns before the child has drained; wait for the
+  // pid/lock holders the migration itself refuses to move under.
+  for (let attempt = 0; attempt < 40 && liveHolders(selection.dir).length > 0; attempt += 1) {
+    settle(500);
+  }
+  const moved = migrateLoopState({ from: selection.dir, to: paths.stateDir, log });
+  if (!moved.ok) return { ok: false, moved: false, reason: moved.reason };
+  if (moved.moved) recordLegacyLoopIds([selection.dir], paths.stateDir);
+  return { ok: true, moved: moved.moved, reason: moved.reason };
+}
+
 export function runSupervisorAction(options) {
   const { action, paths } = options;
   const run = options.run ?? spawnSync;
@@ -1205,10 +1349,21 @@ export function runSupervisorAction(options) {
     return 0;
   }
 
+  if (action === "relocate-state") {
+    const relocated = relocateLegacyState({ paths, run, platform, scheduler, log, dryRun: options.dryRun });
+    if (!relocated.ok) {
+      log(`supervisor: relocate-state — ${relocated.reason}`);
+      return 1;
+    }
+    log(`supervisor: relocate-state — ${relocated.moved ? "moved to " + paths.stateDir : relocated.reason}`);
+    return 0;
+  }
+
   // enable
   if (options.dryRun) {
     log(`supervisor: dry-run — would enable (${withUnits(mechanism)})`);
     for (const line of mechanism.plan()) log(`supervisor: would run: ${line}`);
+    relocateLegacyState({ paths, run, platform, scheduler, log, dryRun: true });
     return 0;
   }
 
@@ -1229,6 +1384,14 @@ export function runSupervisorAction(options) {
           `taken down (${taken.reason}); two loaded units for one agent kind race for the same cards`,
       );
     }
+  }
+
+  const relocated = relocateLegacyState({ paths, run, platform, scheduler, log, dryRun: false });
+  if (!relocated.ok) {
+    // Exit 2, not the OS refusal's 1: the installer treats 1 as "reported, not
+    // fatal", and a half-migrated state is neither — the operator must act.
+    log(`supervisor: not enabled — the state relocation failed: ${relocated.reason}`);
+    return 2;
   }
 
   const outcome = mechanism.enable();
@@ -1350,6 +1513,8 @@ function main(argv) {
     else if (arg === "--agent-base") opts.agentBase = value();
     else if (arg === "--config") opts.config = value();
     else if (arg === "--scheduler") opts.scheduler = value();
+    else if (arg === "--state-dir") opts.stateDir = value();
+    else if (arg === "--legacy-state-dir") opts.legacyStateDir = value();
     else {
       process.stderr.write(`supervisor: unknown option: ${arg}\n`);
       return 2;
@@ -1377,6 +1542,8 @@ function main(argv) {
       actorKind: opts.actorKind,
       config: opts.config,
       env,
+      stateDir: opts.stateDir,
+      legacyStateDir: opts.legacyStateDir,
     }),
     user: env.USER ?? env.LOGNAME ?? "",
     dryRun: opts.dryRun,

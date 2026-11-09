@@ -80,32 +80,48 @@ export function resolveKindConfigPath(options = {}) {
 }
 
 /**
- * The agent-local files derived from `--home` and `--actor-kind`.
+ * The **legacy** loop state directory, `<home>/<agent-dir>/meerkat-taskpanel`.
  *
- * The machine-local config root is deliberately *not* derived here: it is one
- * per installation, not one per agent home, so callers use `resolveConfigDir`.
+ * The loop state now lives at the config root (`loopStateDir`); this path is the
+ * pre-migration location, read only as a compatibility fallback and used as the
+ * installer's migration source. It stays in this module because `AGENT_DIRS`
+ * lives here — putting it in `loop-state.mjs` would create an import cycle
+ * (`agent-paths -> loop-state -> agent-paths`).
+ *
+ * @param {string} home
+ * @param {string} actorKind
+ * @returns {string|null} absolute directory, or null for an unknown kind
+ */
+export function legacyLoopStateDir(home, actorKind) {
+  const agentDir = AGENT_DIRS[actorKind];
+  if (agentDir === undefined) return null;
+  if (typeof home !== "string" || home.trim() === "") return null;
+  return join(home, agentDir, "meerkat-taskpanel");
+}
+
+/**
+ * The agent-local skill files derived from `--home` and `--actor-kind`.
+ *
+ * The machine-local config root and the loop state are deliberately *not*
+ * derived here: they are one per installation, not one per agent home, so
+ * callers use `resolveConfigDir` / `loopStateDir`.
  *
  * @param {string} home
  * @param {string} actorKind
  * @returns {{
- *   state: string, agentDir: string,
- *   directorSkill: string, boardSkill: string, stateDir: string,
+ *   agentDir: string,
+ *   directorSkill: string, boardSkill: string,
  * }}
  */
 export function agentPaths(home, actorKind) {
   const dir = join(home, AGENT_DIRS[actorKind]);
-  const stateDir = join(dir, "meerkat-taskpanel");
   return {
-    state: join(dir, "meerkat-taskpanel", STATE_FILES.supervisor),
     agentDir: AGENT_DIRS[actorKind],
     // The two skills the resident sessions need: the director lane runs
     // `meerkat-director`; workers and reviewers use the board skill. Checked at
     // `--session` start, never assumed.
     directorSkill: join(dir, "skills", "meerkat-director"),
     boardSkill: join(dir, "skills", "meerkat"),
-    // The supervisor's state directory. Runtime state only — role skills live
-    // under `skills/`, never here.
-    stateDir,
   };
 }
 
@@ -114,8 +130,8 @@ export function agentPaths(home, actorKind) {
  *
  * Deliberately takes no actor kind. One file holds every kind's lines and each
  * carries `actor_kind=`, so the path answers "where are this product's logs"
- * without the agent-kind -> dot-directory table. The *state* directory stays
- * per kind: a shared queue or lock would be shared mutable state.
+ * without the agent-kind -> dot-directory table. The *state* directory is also
+ * one per board installation, at the config root (`loopStateDir`).
  *
  * Pure arithmetic — the config root is an argument, exactly like `agentPaths`.
  *

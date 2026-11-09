@@ -49,7 +49,9 @@ const EXPECTED_ALLOWED = {
   // TP-0125 — a delivered card can be abandoned in one move; the old two-hop
   // (`→ in_progress → canceled`) briefly returned it to the work cycle.
   in_review: ["done", "in_progress", "blocked", "canceled"],
-  blocked: ["todo", "in_progress", "in_review", "canceled"],
+  // TP-0127 — `backlog` is the exit that does not re-enter dispatch; the other
+  // three stay (unblock into the work, the review repair edge, abandon).
+  blocked: ["todo", "backlog", "in_progress", "in_review", "canceled"],
   // The reopen edge: a finished card may go back to the queue, and nowhere
   // else. `in_progress` is deliberately absent — it would be a work state
   // without the claim that a `todo → in_progress` move stamps.

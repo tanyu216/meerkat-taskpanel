@@ -36,7 +36,12 @@ import { mergeById } from "../lib/board-merge.js";
 
 export { authorLabel, isAgentKind, kindLabel, platformForActor, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
-import { acceptanceWaitingTasks, firstSentence, payloadCommentOf } from "../lib/waiting-queue.js";
+import {
+  acceptanceWaitingTasks,
+  firstSentence,
+  isBlockedDecision,
+  payloadCommentOf,
+} from "../lib/waiting-queue.js";
 // The preview's sentence rule moved into the projection (a row's field); it is
 // re-exported here so an existing import site keeps its one store entry point.
 export { firstSentence };
@@ -127,6 +132,13 @@ export function isAwaiting(task) {
  * `in_review` in one move. `in_progress → in_review|done` deliberately stays
  * out: delivery is the agent's `taskctl` act, and the board has no deliver
  * write. A `canceled` target asks for confirmation first (see `stores/confirm.js`).
+ *
+ * TP-0127 gives a `blocked` card its exits: `todo` (back to the ready queue),
+ * `backlog` (unqueue it again — the domain gained the edge for this) and
+ * `canceled`. The two work-cycle exits the domain also allows (`in_progress`,
+ * `in_review`) stay with the loop: they are the unblock and the review-time
+ * repair, not a person's acts. Leaving `blocked` asks for no reason, so none of
+ * the three needs a prompt beyond the shared cancel confirmation.
  */
 export const UI_TRANSITIONS = Object.freeze({
   backlog: Object.freeze(["todo", "canceled"]),
@@ -135,7 +147,11 @@ export const UI_TRANSITIONS = Object.freeze({
   in_progress: Object.freeze(["canceled", "todo", "backlog"]),
   awaiting: Object.freeze([]),
   in_review: Object.freeze(["done", "in_progress", "canceled"]),
-  blocked: Object.freeze([]),
+  // TP-0127 — a blocked card gets the three person-facing exits: back to the
+  // queue, release without blocking, abandon. `in_progress`/`in_review` stay
+  // CLI/loop moves (the unblock and the review-time repair), exactly as the
+  // work-cycle targets are withheld from a `todo` card.
+  blocked: Object.freeze(["todo", "backlog", "canceled"]),
   done: Object.freeze([]),
   canceled: Object.freeze([]),
 });
@@ -463,6 +479,11 @@ export const projectLoading = computed(() => board.loading && !board.loaded);
  * One predicate for both (design §8-05): the view and the count read the same
  * derivation, so they cannot disagree.
  *
+ * Two rungs feed it: an `awaiting` card (the question overlay) and a `blocked`
+ * card whose reason is `decision` (the loop's hold). A blocked decision keeps
+ * the card in the queue until a human moves it — the comment alone does not
+ * resume a blocked card.
+ *
  * Derived from `board.tasks` — the whole reading, unfiltered — rather than from
  * `visibleTasks`, and narrowed by the **assignee condition alone** (TP-0021).
  * The waiting view hides the filter bar, so a status / priority / label / search
@@ -472,7 +493,11 @@ export const projectLoading = computed(() => board.loading && !board.loaded);
  * The assignee narrowing stays because it is the sidebar's name narrowing —
  * *whose* queue is being read — not a board-view filter.
  */
-export const waitingTasks = computed(() => board.tasks.filter((task) => isAwaiting(task) && passesAssignee(task)));
+export const waitingTasks = computed(() =>
+  board.tasks.filter(
+    (task) => (isAwaiting(task) || isBlockedDecision(task)) && passesAssignee(task),
+  ),
+);
 
 /**
  * The cards whose **delivery** waits on this human: an `in_review` card whose
