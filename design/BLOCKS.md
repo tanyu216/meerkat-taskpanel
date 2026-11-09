@@ -742,8 +742,12 @@ driven in `web/scripts/dom-smoke.mjs` (run by `test/web/blocks.dom.test.mjs`).
 这是记录在案的扩展〕 The Acceptance tab also lists the review cards that audited
 the open card, oldest round first: `[data-detail-review-rounds]` → per row
 `[data-review-round]` (the round number), `[data-review-round-label]` (the round
-copy, or the identifier when the wire carries no round), `[data-review-identifier]`
-and `[data-review-status-text]`. The criteria rows keep their own
+copy, or the identifier when the wire carries no round), `[data-review-identifier]`,
+`[data-review-title]` (the review card's title, one line, ellipsised with the full
+value on the element's `title`) and `[data-review-status-chip]` — the **same** status
+chip as the drawer head and the list row (`badge badge-sm td-chip td-chip-status`,
+18px pill, 6px dot, `data-status` reading the shared colour map), whose word stays on
+`[data-review-status-text]`. The criteria rows keep their own
 `[data-detail-acceptance-list]` seat, so the round rows cannot be mistaken for
 verdict rows by a test that counts them. It is read-only: the review card is the loop's
 record of the round. The projection is

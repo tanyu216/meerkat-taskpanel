@@ -2091,9 +2091,25 @@ async function submitComment() {
                 <span class="td-dv-round-mono td-mono" data-review-round-label>{{
                   row.round === null ? row.identifier : $t("drawer.report.round", row.round)
                 }}</span>
-                <span class="td-dv-text">
+                <!-- The review card named the way the board names a card —
+                     identifier then title — and its status in the head's own
+                     chip (`badge badge-sm td-chip td-chip-status`: the same
+                     class set the drawer head and the list row carry, so a
+                     review's status reads exactly like the task's). The title
+                     takes the row's slack and truncates; the full value stays
+                     on its `title`. -->
+                <span class="td-dv-text td-dv-review-row">
                   <span class="td-mono" data-review-identifier>{{ row.identifier }}</span>
-                  <span v-if="row.status" class="td-dv-note" data-review-status-text>{{ $t(`status.${row.status}`) }}</span>
+                  <span class="td-dv-review-title" data-review-title :title="row.title">{{ row.title }}</span>
+                  <span
+                    v-if="row.status"
+                    class="badge badge-sm td-chip td-chip-status ms-auto shrink-0"
+                    data-review-status-chip
+                    :data-status="row.status"
+                  >
+                    <span class="td-status-dot" aria-hidden="true"></span>
+                    <span data-review-status-text>{{ $t(`status.${row.status}`) }}</span>
+                  </span>
                 </span>
               </li>
             </ul>

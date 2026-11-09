@@ -8429,11 +8429,17 @@ export async function run() {
         summary: document.querySelector("[data-detail-acceptance-summary]") !== null && document.querySelector("[data-detail-acceptance-summary]") !== undefined,
         accept: document.querySelector("[data-detail-accept]") !== null && document.querySelector("[data-detail-accept]") !== undefined,
         sendBack: document.querySelector("[data-detail-send-back]") !== null && document.querySelector("[data-detail-send-back]") !== undefined,
-        // ADR 0014 — the review cards that audited TD-1, read-only.
+        // ADR 0014 — the review cards that audited TD-1, read-only. Each row
+        // names the review by identifier **and title**, and its status wears the
+        // head's chip (`badge-sm td-chip td-chip-status`) rather than bare text.
         reviewRounds: [...document.querySelectorAll("[data-detail-review-rounds] [data-review-round]")].map((el) => ({
           round: el.getAttribute("data-review-round"),
           identifier: el.querySelector("[data-review-identifier]")?.textContent?.trim() ?? "",
+          title: el.querySelector("[data-review-title]")?.textContent?.trim() ?? "",
           status: el.getAttribute("data-review-status"),
+          statusChipClass: el.querySelector("[data-review-status-chip]")?.getAttribute("class") ?? "",
+          statusChipStatus: el.querySelector("[data-review-status-chip]")?.getAttribute("data-status") ?? null,
+          statusChipLabel: el.querySelector("[data-review-status-chip]")?.textContent?.trim() ?? "",
         })),
       }));
       acceptanceActCheck(notWaiting.accept === false, "a card that is not acceptance-waiting still offers Accept and close");
@@ -8442,7 +8448,28 @@ export async function run() {
       acceptanceActCheck(notWaiting.reviewRounds.length === 1, `the Acceptance tab lists ${notWaiting.reviewRounds.length} review rounds, expected 1`);
       acceptanceActCheck(notWaiting.reviewRounds[0]?.round === "1", `the review round reads ${JSON.stringify(notWaiting.reviewRounds[0]?.round)}, expected 1`);
       acceptanceActCheck(notWaiting.reviewRounds[0]?.identifier === "TD-REV", `the review round names ${JSON.stringify(notWaiting.reviewRounds[0]?.identifier)}, expected TD-REV`);
+      acceptanceActCheck(
+        notWaiting.reviewRounds[0]?.title === "Review the onboarding copy",
+        `the review round's title reads ${JSON.stringify(notWaiting.reviewRounds[0]?.title)}, expected the review card's title`,
+      );
       acceptanceActCheck(notWaiting.reviewRounds[0]?.status === "done", `the review round's status reads ${JSON.stringify(notWaiting.reviewRounds[0]?.status)}, expected done`);
+      // The status is the card's own chip, not a bare word: the same three daisyUI
+      // / brand classes the drawer head and the list row carry, reading the same
+      // `data-status` the `[data-status]` colour map keys on. A word alone would
+      // pass a text check while losing the dot and the pill.
+      const reviewChipClasses = String(notWaiting.reviewRounds[0]?.statusChipClass ?? "").split(/\s+/);
+      acceptanceActCheck(
+        ["badge", "badge-sm", "td-chip", "td-chip-status"].every((name) => reviewChipClasses.includes(name)),
+        `the review round's status chip classes read ${JSON.stringify(reviewChipClasses)}, expected badge badge-sm td-chip td-chip-status`,
+      );
+      acceptanceActCheck(
+        notWaiting.reviewRounds[0]?.statusChipStatus === "done",
+        `the review status chip reads ${JSON.stringify(notWaiting.reviewRounds[0]?.statusChipStatus)}, expected done`,
+      );
+      acceptanceActCheck(
+        (notWaiting.reviewRounds[0]?.statusChipLabel ?? "").length > 0,
+        "the review status chip carries no status word",
+      );
 
       await closeDrawer();
 
