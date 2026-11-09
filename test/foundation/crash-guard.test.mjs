@@ -25,6 +25,8 @@ import {
   CRASH_FATAL_TIMEOUT_MS,
   installCrashGuard,
   installEntryCrashGuard,
+  isLongLivedEntry,
+  registerLongLivedEntry,
 } from "../../src/foundation/crash-guard.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -193,6 +195,27 @@ describe("crash-guard — installation is idempotent and removable", () => {
     h.target.emit("uncaughtException", new Error("boom"), "uncaughtException");
     await settled();
     assert.deepEqual(h.records, [], "nothing is recorded after uninstall");
+  });
+});
+
+describe("crash-guard — a long-lived entry declares its lifetime", () => {
+  it("reports long-lived only while a registration is live, and unregister is idempotent", () => {
+    assert.equal(isLongLivedEntry(), false, "nothing marks the process at import");
+    const unregister = registerLongLivedEntry();
+    assert.equal(isLongLivedEntry(), true);
+    unregister();
+    assert.equal(isLongLivedEntry(), false);
+    unregister();
+    assert.equal(isLongLivedEntry(), false, "a second unregister changes nothing");
+  });
+
+  it("counts registrations: one unregister does not clear another entry's mark", () => {
+    const first = registerLongLivedEntry();
+    const second = registerLongLivedEntry();
+    first();
+    assert.equal(isLongLivedEntry(), true, "the second registration still stands");
+    second();
+    assert.equal(isLongLivedEntry(), false);
   });
 });
 
