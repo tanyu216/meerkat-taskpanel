@@ -451,7 +451,8 @@ _Avoid_: main platform, default agent, config key
 The pool's decision conversation for one project directory — the `meerkat-director` skill
 answering question, route, triage and escalation decisions. It is not a role, receives no
 card, draws no worker budget, and runs on the kind that carries the director skill (the
-primary kind first, then the configured kind order), discovered at session open.
+primary kind first, then the configured kind order), discovered at session open. Its write
+tools are denied: it reads and drives the board, and a fix becomes a card, never an edit.
 _中文_: 决策通道
 _Avoid_: project session, control lane
 

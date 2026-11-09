@@ -1,6 +1,6 @@
 # 0020 — Full tool access is the default; the reviewer is a deny list
 
-- **Status:** Accepted (2026-11-07)
+- **Status:** Accepted (2026-11-07); director-lane claim superseded by ADR 0023
 - **Context:** The loop ran every supervised session under a per-lane allowlist
   (`src/foundation/role-tools.mjs`), with a `--allow-all-tools` opt-in for unattended
   runs. `docs/scheduling.md` § Headless permission boundary made that a rule: no

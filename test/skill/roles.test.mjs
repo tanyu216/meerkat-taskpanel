@@ -18,7 +18,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
-import { reviewerDeniedTools } from "../../src/foundation/role-tools.mjs";
+import { readOnlyDeniedTools } from "../../src/foundation/role-tools.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SKILLS = join(ROOT, "skills");
@@ -1528,11 +1528,11 @@ describe("role workflows: plan, audit, execute, self-check and deliver", () => {
     }
   });
 
-  it("keeps the reviewer's only tool restriction to the write tools", () => {
+  it("keeps a read-only lane's only tool restriction to the write tools", () => {
     // A rule the lane cannot execute is a rule the reviewer learns to skip. The
     // reviewer runs the project's gate itself, so its deny list may name only
     // the file-edit tools — never a command surface.
-    const denied = reviewerDeniedTools("claude");
+    const denied = readOnlyDeniedTools("reviewer", "claude");
     assert.match(denied, /\bEdit\b/);
     assert.match(denied, /\bWrite\b/);
     assert.match(denied, /\bNotebookEdit\b/);

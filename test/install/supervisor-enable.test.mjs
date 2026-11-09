@@ -557,7 +557,7 @@ describe("install.sh: enable — launchd", () => {
     assert.match(after.stdout, /^supervisor:   session: not running \(no session state\)$/m);
     assert.match(
       after.stdout,
-      /^supervisor:   tools: full \(reviewer read-only\) — the project directory is not an isolation boundary$/m,
+      /^supervisor:   tools: full worker; read-only director and reviewer — the project directory is not an isolation boundary$/m,
     );
   });
 

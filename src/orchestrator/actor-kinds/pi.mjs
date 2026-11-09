@@ -17,7 +17,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { reviewerDeniedTools } from "../../foundation/role-tools.mjs";
+import { readOnlyDeniedTools } from "../../foundation/role-tools.mjs";
 import { lineSplitter, writeJsonLine } from "../kind-session.mjs";
 
 /** Per-turn cap used when the caller does not state one. */
@@ -28,8 +28,8 @@ export const DEFAULT_TURN_TIMEOUT_MS = 60 * 60 * 1000;
  *
  * `--approve` trusts project-local files; Pi has no sandbox of its own, so the
  * process always carries the user's OS permissions. With no `--tools` the
- * session gets Pi's whole builtin set; the reviewer drops its write tools with
- * `--exclude-tools`.
+ * session gets Pi's whole builtin set; the read-only lanes drop their write
+ * tools with `--exclude-tools`.
  *
  * @param {{opts?: object, role?: string, sessionId?: string|null, skillPath?: string|null,
  *   systemPrompt?: string|null}} input
@@ -58,9 +58,8 @@ export function sessionArgs(input = {}) {
     args.push("--append-system-prompt", input.systemPrompt);
   }
   args.push("--approve");
-  if (String(input.role ?? "worker") === "reviewer") {
-    args.push("--exclude-tools", reviewerDeniedTools("pi"));
-  }
+  const excluded = readOnlyDeniedTools(String(input.role ?? "worker"), "pi");
+  if (excluded !== null) args.push("--exclude-tools", excluded);
   return args;
 }
 

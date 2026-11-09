@@ -125,8 +125,8 @@ import {
   poolVerdict,
 } from "../foundation/loop-state.mjs";
 
-/** Actor kinds whose adapter turns `role` into a real reviewer deny list. */
-const REVIEWER_DENY_KINDS = new Set(["claude", "pi"]);
+/** Actor kinds whose adapter can enforce a read-only lane's deny list. */
+const READ_ONLY_DENY_KINDS = new Set(["claude", "pi"]);
 
 /**
  * How long a reaped orphan gets between SIGTERM and SIGKILL. A child that will
@@ -2052,7 +2052,7 @@ export function createSessionPool(input = {}) {
           ? selectRole(roleSet, row.agent, "reviewer")
           : (selectRole(roleSet, row.agent, "worker") ?? selectWorkerRole(roleSet));
       const sessionKind = String(row.actor_kind ?? opts.actorKind ?? "claude");
-      if (lane === "reviewer" && !REVIEWER_DENY_KINDS.has(sessionKind) && !warnedReviewerDeny) {
+      if (lane === "reviewer" && !READ_ONLY_DENY_KINDS.has(sessionKind) && !warnedReviewerDeny) {
         warnedReviewerDeny = true;
         log(
           `session: ${sessionKind} has no per-role tool surface — ` +
