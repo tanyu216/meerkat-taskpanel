@@ -778,9 +778,13 @@ async function main(argv) {
           })();
           if (survived) pass("epipe-survival", `pool ${pid} survived its closed stderr`);
           else fail("epipe-survival", `pool ${pid} died after its stderr reader closed`);
-          const status = statusOf(sandbox);
-          if (status.verdict !== "running") {
-            fail("status-running", `after EPIPE the verdict was ${status.verdict}`);
+          // The pool must still be healthy and live after the EPIPE. A card
+          // turn in flight (`busy`) is that healthy state, not a failure —
+          // demanding exactly `running` here is the same defect the final
+          // check had (TP-0151).
+          const afterEpipe = healthyStatusVerdict(statusOf(sandbox));
+          if (!afterEpipe.ok) {
+            fail("status-running", `after EPIPE ${afterEpipe.detail}`);
           }
         }
       } else {

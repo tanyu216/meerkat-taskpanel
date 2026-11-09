@@ -137,12 +137,14 @@ describe("healthyStatusVerdict", () => {
 describe("loop-soak wiring", () => {
   const source = readFileSync(join(ROOT, "scripts", "verify", "loop-soak.mjs"), "utf8");
 
-  it("judges both the final status and the CLI status through the shared predicate", () => {
+  it("judges the final status, the CLI status and the after-EPIPE status through the shared predicate", () => {
     const uses = source.match(/healthyStatusVerdict\(/g) ?? [];
-    assert.ok(uses.length >= 2, `expected the final and CLI checks to use the helper, found ${uses.length}`);
+    assert.ok(uses.length >= 3, `expected every status check to use the helper, found ${uses.length}`);
+    assert.doesNotMatch(source, /after EPIPE the verdict was/);
   });
 
-  it("no longer gates the final verdict on an exact `running`", () => {
+  it("no longer gates a status verdict on an exact `running`", () => {
     assert.doesNotMatch(source, /finalStatus\.verdict === "running"/);
+    assert.doesNotMatch(source, /status\.verdict !== "running"/);
   });
 });
