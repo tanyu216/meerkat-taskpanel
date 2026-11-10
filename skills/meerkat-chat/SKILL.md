@@ -91,8 +91,9 @@ derived, not a field: combine the uncovered `acceptance[]` items, the current re
 ## 2. Keep the waiting register
 
 `taskctl console --json` is the human-owned queue. Read `questions[]` — `awaiting` cards,
-`in_progress` cards carrying an unanswered agent question, and `blocked` cards whose
-`blocked_reason` is `decision` (the loop's rework/exhaustion hold) — and `pending_acceptance[]`
+`in_progress` cards carrying an unanswered agent question, `blocked` cards whose
+`blocked_reason` is `decision` (the loop's rework/exhaustion hold), and `blocked` cards whose
+`blocked_reason` is `external` (operator work no agent can move) — and `pending_acceptance[]`
 for `in_review` cards. `taskctl doctor --json` adds the health rows.
 
 - **One card at a time.** Present the oldest or most urgent first; the next card opens only
@@ -102,6 +103,9 @@ for `in_review` cards. `taskctl doctor --json` adds the health rows.
 - **A `blocked` decision is a held card, not a paused agent.** The loop parks it because it
   cannot decide; a board comment alone does not resume it. Answer it, then release the card
   (`blocked → todo`) in the same act — see §3.
+- **An `external` block is operator work.** No agent and no board decision can move it (a real
+  host, a manual acceptance, a restart). Report it with the card's age and the action it needs;
+  it leaves the list only when the operator records the result and releases it.
 - **A pending acceptance is not always the human's.** Read `acceptance_mode`: `human` is the
   human's; `auto` closes on the loop's `APPROVE`; `off` is the deliverer's. Say which and why.
 - Do not re-raise an item the human already handled. Re-read and confirm it left the list.
@@ -259,8 +263,9 @@ announces waiting cards only; health stays a one-shot read or an answer to a dir
 A `blocked` card is a board read: `issue list --status blocked --json` and `issue get <ref>
 --json` give its `blocked_reason`, age and assignee. A `blocked_reason=decision` hold is also a
 register item — `questions[]` carries it as `kind: "blocked-decision"` — because the human owes
-both the answer and the release. Every other block is report only — never unblock it behind the
-human's back.
+both the answer and the release. A `blocked_reason=external` card is a register item too —
+`kind: "blocked-external"` — because only an operator can move it. Every other block is report
+only — never unblock it behind the human's back.
 
 Corrective board edits — releasing a card, requeueing a stopped one, reassigning — are the
 human's call: when they authorize one, §6's shown-then-write rule applies. Never unblock a

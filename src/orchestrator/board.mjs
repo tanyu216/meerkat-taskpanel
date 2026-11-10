@@ -413,7 +413,7 @@ export async function runSlaPass(opts, log, periodSeconds = opts.patrolInterval)
   }
   log(
     `patrol: sla ${result.alerts.length} alert(s), ${result.suppressed.length} suppressed, ` +
-      `${result.dropped.length} dropped` +
+      `${result.dropped.length} dropped, ${result.undelivered?.length ?? 0} undelivered` +
       `${opts.slaPeer === null ? " [liveness: peer marker not configured — registered as a dependency]" : ""}`,
   );
   return { ok: true, ...result };

@@ -58,7 +58,7 @@ import {
   buildSlaAlert,
 } from "../../src/foundation/sla-patrol.mjs";
 import { applySlaOverrides } from "../../src/foundation/sla-config.mjs";
-import { notifySlaAlerts } from "../../src/orchestrator/runners.mjs";
+import { notifySlaAlerts, notifyReal } from "../../src/orchestrator/runners.mjs";
 
 /**
  * A fixed clock inside the Asia/Shanghai working window (18:00 local), placed
@@ -1710,6 +1710,37 @@ describe("notifySlaAlerts (the loop's half)", () => {
     const alert = result.alerts[0];
     assert.equal(alert.last_seen, NOW);
     assert.deepEqual(alert.observed_by, [MECHANISM]);
+  });
+
+  it("leaves an undelivered alert out of the ledger, so the next pass retries it", async () => {
+    const alerts = alertsFor([card({ status: "blocked", blocked_at: ago(130) })]);
+    const first = await notifySlaAlerts(notifyDeps({
+      alerts,
+      notify: () => false,
+      recheck: async () => ({ checked: true, alerts }),
+    }));
+    assert.equal(first.alerts.length, 0, "nothing was delivered");
+    assert.equal(first.undelivered.length, 1);
+    assert.equal(Object.keys(first.ledger.seen).length, 0, "an undelivered alert is not recorded");
+
+    const second = await notifySlaAlerts(notifyDeps({
+      alerts,
+      ledger: first.ledger,
+      notify: () => true,
+      recheck: async () => ({ checked: true, alerts }),
+    }));
+    assert.equal(second.alerts.length, 1, "the retry delivers and records");
+    assert.equal(second.undelivered.length, 0);
+  });
+});
+
+describe("notifyReal (the transport)", () => {
+  it("returns false and warns when the loop has no --notify command", () => {
+    const lines = [];
+    const notify = notifyReal({ notify: null }, (line, options) => lines.push({ line, options }));
+    assert.equal(notify({ kind: "test" }), false);
+    assert.match(lines[0].line, /no --notify command configured/);
+    assert.equal(lines[0].options?.level, "warn");
   });
 });
 

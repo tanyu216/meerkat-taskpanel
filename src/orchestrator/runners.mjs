@@ -535,16 +535,20 @@ export async function notifySlaAlerts(deps) {
     log(`patrol: dropped ${drop.card_id} ${drop.sla_row} (${drop.reason})`);
   }
 
-  // Notify first, then record — and enrich the emitted tuple from the ledger so
-  // `first_seen` / `last_seen` / `observed_by` have exactly one source.
-  const nextLedger = recordSlaAlerts(ledger, survivors, stamp, suppressed);
-  const sent = [];
+  // Notify first, then record only what the transport accepted — and enrich the
+  // emitted tuple from the ledger so `first_seen` / `last_seen` / `observed_by`
+  // have exactly one source. An explicit `false` from `notify` means the alert
+  // could not be delivered (no `--notify` command configured, or the command
+  // failed); recording it would suppress it on every later pass, so the first
+  // alert would be lost. Leave it out of the ledger and retry next pass.
+  const delivered = [];
+  const undelivered = [];
   for (const alert of survivors) {
-    const entry = nextLedger.seen[alert.dedup_key];
+    const entry = ledger?.seen?.[alert.dedup_key];
     const enriched = {
       ...alert,
-      first_seen: entry?.first_seen ?? alert.first_seen,
-      last_seen: entry?.last_seen ?? stamp,
+      first_seen: entry?.first_seen ?? alert.first_seen ?? stamp,
+      last_seen: stamp,
       observed_by: entry?.observed_by ?? [alert.mechanism],
     };
     const hint = alert.releasable ? ` [releasable: ${alert.releasable_basis}]` : "";
@@ -552,12 +556,14 @@ export async function notifySlaAlerts(deps) {
       `patrol: sla ${alert.alert_id} (${alert.severity}, ${alert.elapsed_working_min}m of ` +
         `${alert.threshold_min}m, ${alert.measure_start_kind})${hint}`,
     );
-    notify(enriched);
-    sent.push(enriched);
+    if (notify(enriched) === false) undelivered.push(enriched);
+    else delivered.push(enriched);
   }
+  const nextLedger = recordSlaAlerts(ledger, delivered, stamp, suppressed);
 
   return {
-    alerts: sent,
+    alerts: delivered,
+    undelivered,
     suppressed,
     dropped,
     ledger: nextLedger,
@@ -1565,7 +1571,13 @@ export function notifyNoResident(opts, log, pool, notify = notifyReal(opts, log)
 
 export function notifyReal(opts, log, { timeoutMs = NOTIFY_TIMEOUT_MS } = {}) {
   return (alert) => {
-    if (!opts.notify) return;
+    // A loop started without `--notify` has no delivery path. Say so and return
+    // false: the SLA pass must not record the alert as delivered, or the first
+    // alert is suppressed forever by the ledger.
+    if (!opts.notify) {
+      log("notify: no --notify command configured — the alert was not delivered", { level: "warn" });
+      return false;
+    }
     const run = spawnSync(opts.notify, {
       shell: true,
       input: JSON.stringify(alert),
@@ -1577,11 +1589,17 @@ export function notifyReal(opts, log, { timeoutMs = NOTIFY_TIMEOUT_MS } = {}) {
     // SIGTERM kill with no status on others; both mean the same thing here.
     if (run.error?.code === "ETIMEDOUT" || (run.signal === "SIGTERM" && run.status === null)) {
       log(`notify timed out after ${timeoutMs}ms`);
-    } else if (run.error) {
-      log(`notify failed: ${run.error.message}`, { level: "warn" });
-    } else if (run.status !== 0) {
-      log(`notify exited ${run.status}`);
+      return false;
     }
+    if (run.error) {
+      log(`notify failed: ${run.error.message}`, { level: "warn" });
+      return false;
+    }
+    if (run.status !== 0) {
+      log(`notify exited ${run.status}`);
+      return false;
+    }
+    return true;
   };
 }
 

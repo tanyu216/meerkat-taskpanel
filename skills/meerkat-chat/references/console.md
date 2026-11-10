@@ -45,6 +45,11 @@ The human-owned queue, already filtered to what is actually unanswered.
   carries `status: "blocked"` and `blocked_reason: "decision"`. **A comment does not resume a
   blocked card** — record the answer and then release it `blocked → todo` in the same act. The
   row disappears once the card is moved.
+- `kind: "blocked-external"` — a `blocked` card whose `blocked_reason` is `external`: operator
+  work no agent and no board decision can move (a real host, a manual acceptance, a restart).
+  The row carries `status: "blocked"`, `blocked_reason: "external"`, `question: null`, and
+  `age_ms` measured from `blocked_at`. It is listed whether or not a question is present, and
+  it leaves the list only when the operator records the result and releases the card.
 - `age_ms` is how long the question has waited (working time in the SLA sense is the
   board's, not this field). `answered_pending_release: true` means a later human comment
   exists but the card is still `in_progress` — the **director owes the release**; do not
