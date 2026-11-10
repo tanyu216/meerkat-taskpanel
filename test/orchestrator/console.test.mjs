@@ -59,6 +59,13 @@ const TASKS = {
       status: "blocked",
       blocked_reason: "decision",
     },
+    {
+      identifier: "T-10",
+      title: "Needs a real host",
+      status: "blocked",
+      blocked_reason: "external",
+      blocked_at: "2025-12-31T20:00:00Z",
+    },
   ],
 };
 
@@ -169,10 +176,11 @@ describe("the live-session console", () => {
     assert.equal(result.supervisor.verdict, "absent");
     assert.deepEqual(
       result.questions.map((entry) => entry.ref).sort(),
-      ["T-1", "T-2", "T-4", "T-6", "T-7"],
+      ["T-1", "T-10", "T-2", "T-4", "T-6", "T-7"],
       "T-5 is answered on an awaiting card (the board resumes it); T-2 and T-6 are answered " +
         "but not released, so the director still owes the release; T-7 is a blocked/decision " +
-        "hold; T-8 is a resource block and T-9 was answered, so both stay out",
+        "hold; T-10 is an external block (operator work); T-8 is a resource block and T-9 was " +
+        "answered, so both stay out",
     );
     assert.equal(result.questions.find((entry) => entry.ref === "T-1").kind, "awaiting");
     assert.equal(result.questions.find((entry) => entry.ref === "T-4").kind, "agent-question");
@@ -184,6 +192,11 @@ describe("the live-session console", () => {
     assert.equal(blocked.blocked_reason, "decision");
     assert.match(blocked.question, /narrow the baseline/i);
     assert.equal(blocked.answered_pending_release, false);
+    const external = result.questions.find((entry) => entry.ref === "T-10");
+    assert.equal(external.kind, "blocked-external");
+    assert.equal(external.blocked_reason, "external");
+    assert.equal(external.status, "blocked");
+    assert.equal(typeof external.age_ms, "number");
     assert.equal(typeof result.questions.find((entry) => entry.ref === "T-4").age_ms, "number");
     assert.deepEqual(result.pending_acceptance.map((entry) => entry.ref), ["T-3"]);
     assert.deepEqual(result.errors, []);

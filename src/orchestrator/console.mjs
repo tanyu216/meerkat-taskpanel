@@ -14,7 +14,10 @@
  *     with `answered_pending_release`);
  *   * `blocked` cards whose `blocked_reason` is `decision` and whose hold
  *     question is still unanswered — the loop's rework/exhaustion holds land
- *     here, and a board comment alone does not move a blocked card.
+ *     here, and a board comment alone does not move a blocked card;
+ *   * `blocked` cards whose `blocked_reason` is `external` — operator work no
+ *     agent and no board decision can move (a real host, a manual acceptance,
+ *     a restart), listed whether or not a question is present.
  * `in_review` cards are listed as pending acceptance. The card's own
  * `acceptance_mode` says who closes it — the loop for `off`/`auto`, a person
  * for `human` — so the list is a reading, not a claim about who owes the act.
@@ -123,6 +126,23 @@ export async function consoleCycle(opts, deps = {}) {
   const blocked = await tasksWithStatus(opts, agent, "blocked");
   if (blocked.error !== null) errors.push(`blocked: ${blocked.error}`);
   for (const task of blocked.tasks) {
+    // An external block is operator work: no agent and no board decision can
+    // move it, so it belongs in the human's queue even without a question.
+    if (task.blocked_reason === "external") {
+      const since = task.blocked_at ?? task.status_changed_at ?? null;
+      questions.push({
+        ref: task.identifier,
+        title: task.title ?? null,
+        status: "blocked",
+        blocked_reason: "external",
+        question: null,
+        asked_at: since,
+        age_ms: since === null ? null : ageMs(since),
+        answered_pending_release: false,
+        kind: "blocked-external",
+      });
+      continue;
+    }
     // A dependency/resource block is not the human's decision.
     if (task.blocked_reason !== "decision") continue;
     const { comments, error } = await commentsFor(opts, agent, task.identifier);
