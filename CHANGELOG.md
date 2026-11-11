@@ -7,6 +7,97 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-11
+
+### Added
+
+- **create:** one-description create surface with a three-row routing ladder
+- **console:** list an external block as operator work
+- **loop:** keep the director lane read-only; the director closes every open item at triage
+- **domain,web:** a blocked card may move to todo, backlog or canceled
+- **cli:** flatten the loop group and split board/loop status
+- **reviewer:** scenario-based audit architecture with project scenarios
+- **loop:** full tool access per session, with a deny list for the reviewer
+- **loop:** restore the reviewer's one-shot independent review subagent
+- **web:** name the review card and show its status chip in Acceptance
+- **loop:** surface blocked decision holds to the human register
+- **foundation:** add the cycle verdict and settled levels; the doctor reports cycle
+  verdicts and failing workflow actions
+- **loop:** a claim-cycle exit interrupts the turn
+- **board:** one automation identity (Board, kind system)
+- **loop:** name a lane by task, round and title slug
+- **health:** board health, liveness probe and loop visibility
+- **skills:** accept any task or plan and audit plans in three passes; file an
+  out-of-scope defect as a backlog follow-up
+- **web:** render drawer prose fields as Markdown
+- **skills:** project epic graphs with generic-layer decoupling
+- **supervisor:** open card sessions with a formatted system prompt
+- **loop:** keep long-lived units up and back off a failed boot
+- **events:** add `--hold` and `--event`, and hold the chat watch in the background
+- **list:** server-side filters and offset pagination
+- **board:** read a 500-card working set, active-first with a finish-time terminal
+- **web:** assignee filter, searchable task menu and task backfill
+- **drawer:** kind badge, recursive descendants and relation groups
+- **loop:** the ping is the pool's single kill authority; one liveness verdict in six
+  states with no startup window
+- **web:** one agent per sidebar row and searchable assignee/label menus
+- **web:** an Activity row opens its tab and focuses the entry
+
+### Changed
+
+- **install:** drop the OpenClaw target for a two-skill IM route
+- **web:** remove the drawer's inert Resume control
+- **supervisor:** keep the loop's state at the config root
+- **tools:** one lane-tool table for adapters and the installer
+- **deferrals:** expose the hold decision
+- **skill:** rename `reviewer_prompt` to `reviewer_handoff`
+- **prompt:** drop the team-role layer and thin the review prompts
+- **reviewer:** keep the universal audit floor in SKILL.md
+- **skills:** state role prompts and card-session rules as positive actions
+- **skill:** route each card operation to its own scenario page; split the card schema,
+  the lifecycle reference and `cli.md` by topic
+- **review:** complete the review-kind refactor across the fixtures, drawer badge and CLI doc
+
+### Fixed
+
+- **web:** hide archived projects from the rail, switcher and create form; hide
+  review-kind rows on the server-paged list
+- **health:** name the operator action and the ping's read-only probe
+- **create:** name who handles the work in one example only
+- **skill:** keep the meerkat bundle inside its budget after the merge
+- **rollup:** cite one anchor per done child and cap the epic evidence at the report limit
+- **patrol:** never record an alert the transport could not deliver
+- **verify:** accept a live busy verdict after EPIPE in the loop soak
+- **skills:** keep the director skill's boundary positive; leave the scope-changing
+  defect to the decision map
+- **cli:** name the reject unit in the remaining help surfaces; honor `--if-version` on
+  `issue meta`, `issue update` and `issue assign`
+- **loop:** stamp the hold marker at execution time and keep the same-tick hold when the
+  action cap splits the pair
+- **loop:** count review rejections, not delivery rounds
+- **loop:** route a landing conflict back as rework
+- **loop:** settle the remaining poll failure paths
+- **loop:** park a review after repeated crash recoveries; park cards after stale-claim
+  recovery is exhausted
+- **loop:** read a handoff round marker that carries its refs; make handoff turn
+  timeouts transient
+- **loop:** judge unlanded by the delivery round
+- **loop:** gate the previous-manager reap on pid and start token
+- **loop:** name an unclassified card before a round is spent
+- **loop:** reap orphaned children, re-own live claims and bound shutdown
+- **foundation:** a long-lived entry survives a closed stderr
+- **supervisor:** read the reviewed round from `review_round`
+- **skills:** carry the epic acceptance mode in the graph
+- **patrol:** settle admission and post-claim failures at their bounds; claim and
+  dispatch stale cards as the assignee
+- **claim:** cover the unassigned stale_same window, defer a claim whose route moved,
+  and keep the assignee's role on stale recovery
+- **orchestrator:** pass the container suite on Node 22
+- **orchestrator:** continue a rework in the same workspace and session
+- **orchestrator:** settle a failed handoff instead of leaving a dead claim
+- **web:** settle the settings focus and the prototype's dialog measurement
+- **drawer:** close the people rows' edit windows
+
 ## [0.2.1] - 2026-11-03
 
 ### Added
@@ -307,5 +398,6 @@ First public release.
 [0.1.2]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.2
 [0.2.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.2.0
 [0.2.1]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.2.1
-[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v0.2.1...HEAD
+[0.3.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.3.0
+[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v0.3.0...HEAD
 [0.1.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.0
