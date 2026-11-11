@@ -798,7 +798,9 @@ An epic's delivery report: the one report whose acceptance items name each child
 say whether that child's terminal state is acceptable. It is a behaviour *and* a marker —
 `task_reports.is_rollup` (`report.is_rollup` on the wire, 0033) — and it is the epic's
 acceptance evidence: `done` and an `APPROVE` refuse a missing (`ROLLUP_REQUIRED`) or stale
-(`ROLLUP_STALE`) one. A stale rollup is repaired by reworking the epic to a new round.
+(`ROLLUP_STALE`) one. Its evidence is one representative anchor per `done` child, cited by that
+child's item (ADR 0024); a child with no report says so explicitly. A stale rollup is repaired
+by reworking the epic to a new round.
 _中文_: 汇总报告（rollup）
 _Avoid_: summary, aggregate, container report
 

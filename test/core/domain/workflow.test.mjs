@@ -594,7 +594,8 @@ describe("planReviewOutcomes", () => {
       reportsByRef: {
         "E-1": {
           is_rollup: true,
-          acceptance: [{ text: "child done", status: "met", ref: "T-9" }],
+          acceptance: [{ text: "child done", status: "met", note: "evidence[1]", ref: "T-9" }],
+          evidence: [{ kind: "commit", sha: "abc1234" }],
         },
       },
       config: CONFIG,
@@ -1183,7 +1184,7 @@ describe("epics are reviewed like any other card", () => {
     reviewCard({ meta: { review_of: "E-1", flow: "B", review_round: 1 } });
   const rollup = (child) => ({
     is_rollup: true,
-    acceptance: [{ ref: child.identifier, status: "met", note: "done" }],
+    acceptance: [{ ref: child.identifier, status: "met", note: "done — evidence[1]" }],
     evidence: [{ kind: "commit", sha: "abc1234" }],
   });
 
@@ -1564,10 +1565,15 @@ describe("planAutoAccept — no review required", () => {
     });
     assert.equal(unmarked.alerts[0].reason, "rollup_unverified", "content without the marker is not a rollup");
 
+    const evidence = [{ kind: "commit", sha: "abc1234" }];
     const stale = planAutoAccept({
       tasks,
       reportsByRef: {
-        "E-1": { is_rollup: true, acceptance: [{ text: "done", status: "met", ref: "T-2" }] },
+        "E-1": {
+          is_rollup: true,
+          acceptance: [{ text: "done", status: "met", note: "evidence[1]", ref: "T-2" }],
+          evidence,
+        },
       },
       config,
     });
@@ -1581,14 +1587,41 @@ describe("planAutoAccept — no review required", () => {
         "E-1": {
           is_rollup: true,
           acceptance: [
-            { text: "done", status: "met", ref: "T-2" },
+            { text: "done", status: "met", note: "evidence[1] — the child's own anchor", ref: "T-2" },
             { text: "dropped", status: "not_applicable", note: "scope withdrawn", ref: "T-3" },
           ],
+          evidence,
         },
       },
       config,
     });
     assert.deepEqual(complete.actions.map((action) => action.type), ["auto_accept"]);
+  });
+
+  it("requires each done child's line to cite a resolving anchor", () => {
+    const epic = autoCard({ identifier: "E-1", kind: "epic" });
+    const children = [
+      card({ identifier: "T-2", status: "done", parent_id: "id-E-1" }),
+      card({ identifier: "T-3", status: "canceled", parent_id: "id-E-1" }),
+    ];
+    const tasks = [epic, ...children];
+    const plan = planAutoAccept({
+      tasks,
+      reportsByRef: {
+        "E-1": {
+          is_rollup: true,
+          acceptance: [
+            { text: "done", status: "met", ref: "T-2" },
+            { text: "dropped", status: "not_applicable", note: "scope withdrawn", ref: "T-3" },
+          ],
+          evidence: [{ kind: "commit", sha: "abc1234" }],
+        },
+      },
+      config: { ...CONFIG },
+    });
+    assert.deepEqual(plan.actions, []);
+    assert.equal(plan.alerts[0].reason, "rollup_stale");
+    assert.deepEqual(plan.alerts[0].uncitedChildren, [{ ref: "T-2", reason: "no_anchor" }]);
   });
 });
 

@@ -25,8 +25,10 @@
 - **An epic's delivery is a rollup, always.** A report written on an epic is marked as its
   rollup; a `--no-report` waiver cannot deliver a container. The rollup must name **every
   live child** by `ref`: a `done` child is `met`, a `canceled` child is `not_applicable` with
-  the reason it was acceptable, and at least one child must be `done`. A mismatch is
-  `ROLLUP_STALE`; a missing current-round rollup is `ROLLUP_REQUIRED`.
+  the reason it was acceptable, and at least one child must be `done`. Each `done` line also
+  cites that child's own anchor (`evidence[n]`); an uncited child — or one that points outside
+  the rollup's evidence — is `ROLLUP_STALE`. A missing current-round rollup is
+  `ROLLUP_REQUIRED`.
 - **An empty epic cannot be delivered.** No children means no rollup; cancel it or give it
   work.
 - **Nothing delivered, nothing to close.** Close by hand with a rollup: `report template
@@ -42,9 +44,13 @@
 - **`todo → in_review` is the epic-only repair edge** for a child attached after the container
   finished; it still passes the delivery gate.
 - **No parent closes over an open child.** `CHILDREN_OPEN` guards both `in_review` and `done`.
-- **Evidence is the children's, not the container's.** The rollup reads each child's latest
-  delivery report; the container's own earlier reports prove nothing, and a child delivered
-  under `--no-report` contributes no anchor. With no child evidence the container stays open.
+- **Evidence is the children's, not the container's.** The rollup carries one representative
+  anchor per `done` child, read from that child's **current-round delivery report** (strongest kind:
+  `commit > path > command > coverage`), and the child's line cites it. The container's own
+  earlier reports prove nothing. A child delivered under `--no-report` contributes no anchor
+  and its line says `no delivery evidence on the child card`; with no child evidence at all
+  the container stays open. The list is bounded by the fan-in cap, never by how much one child
+  reported.
 - **A terminal container never rolls up.** The sweep scans non-terminal epics only, so a
   `done`/`canceled` card promoted to an epic will never close over children attached later.
   A delivered card starts a new container instead.

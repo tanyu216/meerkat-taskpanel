@@ -551,13 +551,18 @@ function epicRollupIssue(epic, tasks, reportsByRef) {
   const children = (Array.isArray(tasks) ? tasks : [])
     .filter((task) => task?.parent_id === epic.id)
     .map((task) => ({ identifier: String(task.identifier ?? ""), status: task.status }));
-  const gap = rollupGapOf({ children, items: report.acceptance ?? [] });
+  const gap = rollupGapOf({
+    children,
+    items: report.acceptance ?? [],
+    evidence: report.evidence ?? [],
+  });
   if (gap.ok) return null;
   const key = [
     ...gap.missingChildren,
     ...gap.unexpectedChildren,
     ...gap.duplicates,
     ...gap.statusMismatches.map((mismatch) => `${mismatch.ref}:${mismatch.childStatus}`),
+    ...gap.uncitedChildren.map((uncited) => `${uncited.ref}:${uncited.reason}`),
   ]
     .sort()
     .join("|");
@@ -568,6 +573,7 @@ function epicRollupIssue(epic, tasks, reportsByRef) {
       missingChildren: gap.missingChildren,
       unexpectedChildren: gap.unexpectedChildren,
       statusMismatches: gap.statusMismatches,
+      uncitedChildren: gap.uncitedChildren,
     },
   };
 }

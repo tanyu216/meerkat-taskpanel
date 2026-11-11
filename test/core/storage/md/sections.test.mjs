@@ -418,7 +418,12 @@ describe("md/sections — report", () => {
         isRollup: true,
         conclusion: "Rollup.",
         acceptance: [
-          { text: "PROJ-0001 One (done)", status: "met", ref: "PROJ-0001" },
+          {
+            text: "PROJ-0001 One (done)",
+            status: "met",
+            note: "evidence[1] — this child's own delivery anchor",
+            ref: "PROJ-0001",
+          },
           { text: "PROJ-0002 Two (canceled)", status: "not_applicable", note: "scope dropped", ref: "PROJ-0002" },
         ],
         evidence: { items: [{ kind: "path", path: "x" }], truncated: false },
@@ -428,7 +433,10 @@ describe("md/sections — report", () => {
     const rendered = renderReportBlock(reports);
     assert.match(rendered, /^### R2 · .*\n\nrollup: yes\n\nRollup\./);
     assert.doesNotMatch(rendered, /^origin: /m, "0035 removed the provenance marker");
-    assert.match(rendered, /- \[met\] PROJ-0001 One \(done\) · ref: PROJ-0001/);
+    assert.match(
+      rendered,
+      /- \[met\] PROJ-0001 One \(done\) · ref: PROJ-0001 — evidence\[1\] — this child's own delivery anchor/,
+    );
     assert.match(rendered, /- \[not_applicable\] PROJ-0002 Two \(canceled\) · ref: PROJ-0002 — scope dropped/);
 
     const [back] = parseReportBlock(rendered);

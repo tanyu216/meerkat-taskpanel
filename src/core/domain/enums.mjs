@@ -225,6 +225,11 @@ export const ACCEPTANCE_STATUSES = Object.freeze([
 ]);
 
 /** Evidence anchor kinds (§4.5 — bounded, structured only). */
+/**
+ * Evidence anchor kinds. The order is the strength order: `report.mjs`'s
+ * `representativeAnchor` reads it to pick the one anchor a rollup line stands
+ * on, so a new kind must be placed where it belongs, not appended.
+ */
 export const EVIDENCE_KINDS = Object.freeze(["commit", "path", "command", "coverage"]);
 
 /** Attachment kinds. */

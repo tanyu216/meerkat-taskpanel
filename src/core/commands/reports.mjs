@@ -12,7 +12,7 @@
 import { DomainError } from "../../foundation/errors.mjs";
 import { assertWaiverRequest } from "../domain/delivery-gate.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
-import { normalizeReportCreate } from "../domain/report.mjs";
+import { evidenceFromJson, normalizeReportCreate } from "../domain/report.mjs";
 import { isTerminalStatus, transitionPolicyFor } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import {
@@ -84,7 +84,9 @@ export function writeReport(ctx, input) {
       // 0033 — a report on an epic *is* its rollup: it must describe every live
       // child, and it is marked as such. A plain `task` report is never a rollup.
       const isRollup = task.kind === TASK_KIND.EPIC;
-      if (isRollup) assertRollupCoverage(ctx, task, prepared.acceptance);
+      if (isRollup) {
+        assertRollupCoverage(ctx, task, prepared.acceptance, evidenceFromJson(prepared.evidence).items);
+      }
       const report = insertDeliveryReport(ctx, {
         taskId: task.id,
         prepared,
@@ -257,7 +259,9 @@ export function deliver(ctx, input) {
       // an APPROVE over a delivery the close gate refuses has no exit.
       assertOriginalDeliverable(ctx, task, prepared);
       const isRollup = task.kind === TASK_KIND.EPIC;
-      if (isRollup) assertRollupCoverage(ctx, task, prepared.acceptance);
+      if (isRollup) {
+        assertRollupCoverage(ctx, task, prepared.acceptance, evidenceFromJson(prepared.evidence).items);
+      }
       const report = insertDeliveryReport(ctx, {
         taskId: task.id,
         prepared,

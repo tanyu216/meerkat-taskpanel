@@ -235,7 +235,7 @@ const SCENARIOS = [
     reportsByRef: {
       "PROJ-0001": {
         is_rollup: true,
-        acceptance: [{ ref: "PROJ-0003", status: "met", note: "done" }],
+        acceptance: [{ ref: "PROJ-0003", status: "met", note: "done — evidence[1]" }],
         evidence: [{ kind: "commit", sha: "abc1234" }],
       },
     },
@@ -795,7 +795,7 @@ describe("workflow plan → execution", () => {
       reportsByRef: {
         "PROJ-0001": {
           is_rollup: true,
-          acceptance: [{ ref: "PROJ-0003", status: "met", note: "done" }],
+          acceptance: [{ ref: "PROJ-0003", status: "met", note: "done — evidence[1]" }],
           evidence: [{ kind: "commit", sha: "abc1234" }],
         },
       },

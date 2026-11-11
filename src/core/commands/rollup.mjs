@@ -61,22 +61,23 @@
  *     nothing, so it does not start the container;
  *   * **close**: the container's status is one it may be closed from (`todo`,
  *     `in_progress`, `blocked`), **every** child is terminal (`done` or
- *     `canceled`) **and at least one is `done`**, and the children's delivery
- *     evidence, taken together, is non-empty (a delivery report needs at least
- *     one anchor; a container whose children were all delivered under
- *     `--no-report` has nothing to stand a report on, and is left for a human to
- *     close). The two halves of the predicate live once, in
+ *     `canceled`) **and at least one is `done`**, and at least one done child
+ *     has current-round delivery evidence — each done child contributes one
+ *     representative anchor to the rollup, and a child with none carries the
+ *     explicit no-evidence marker instead. A container whose children were all
+ *     delivered under `--no-report` has nothing to stand a report on, and is left
+ *     for a human to close. The two halves of the predicate live once, in
  *     {@link allChildrenTerminal} and {@link hasDoneChild}, and both the event
  *     hook and the sweep read them — a refusal names the children that held the
  *     container open (`identifier` + `status`), never a bare "not closeable".
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
-import { REPORT_MAX_ITEMS } from "../../foundation/constants.mjs";
-import { rollupGapOf } from "../domain/acceptance.mjs";
+import { ROLLUP_NO_EVIDENCE_NOTE } from "../../foundation/constants.mjs";
+import { rollupEvidenceOf, rollupGapOf } from "../domain/acceptance.mjs";
 import { normalizeCommentCreate } from "../domain/comment.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
-import { normalizeReportCreate } from "../domain/report.mjs";
+import { evidenceFromJson, normalizeReportCreate, representativeAnchor } from "../domain/report.mjs";
 import { isTerminalStatus, transitionPolicyFor } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { BOARD_ACTOR } from "./context.mjs";
@@ -196,7 +197,7 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
     id: resolveActorId({ repos: ctx.repos, now }, { name: BOARD_ACTOR.id, actorKind: BOARD_ACTOR.kind }),
   };
   const prepared = normalizeReportCreate(
-    { ...rollupReport(ctx, container, plan.children, plan.evidence, plan.evidenceOmitted), author },
+    { ...rollupReport(ctx, container, plan.children, plan.evidence, plan.citations), author },
     { taskRound: container.deliveryRound, now },
   );
   const report = insertDeliveryReport(ctx, { taskId: container.id, prepared, isRollup: true });
@@ -392,7 +393,7 @@ export function reconcileContainers(ctx, options = {}) {
         record("none", "rollup_missing");
         continue;
       }
-      const gap = rollupGap(ctx, epic, rollup.acceptance);
+      const gap = rollupGap(ctx, epic, rollup.acceptance, evidenceFromJson(rollup.evidence).items);
       if (!gap.ok) {
         record("none", "rollup_stale", { blocking: rollupBlocking(gap) });
         continue;
@@ -490,7 +491,7 @@ function assessClose(ctx, container) {
     return { ok: false, reason: "no_child_done", blocking: namedChildren(children) };
   }
 
-  const { items: evidence, omitted: evidenceOmitted } = rollupEvidence(ctx, children);
+  const { items: evidence, citations } = rollupEvidence(ctx, children);
   // No evidence at all means every delivered child was delivered under
   // `--no-report`: there is nothing the gate should accept, so the container
   // stays open.
@@ -501,7 +502,7 @@ function assessClose(ctx, container) {
       blocking: namedChildren(children.filter((child) => child.status === STATUS.DONE)),
     };
   }
-  return { ok: true, children, evidence, evidenceOmitted };
+  return { ok: true, children, evidence, citations };
 }
 
 /**
@@ -606,71 +607,74 @@ function appendSystemNote(ctx, taskId, body, now, refs) {
  * @param {object} ctx
  * @param {object} container
  * @param {object[]} children
- * @param {object[]} evidence
- * @param {number} [omitted] anchors the union held beyond the report cap
+ * @param {object[]} evidence one representative anchor per done child
+ * @param {Map<string, number|null>} citations child ref → 1-based index, or null
  */
-function rollupReport(ctx, container, children, evidence, omitted = 0) {
+function rollupReport(ctx, container, children, evidence, citations) {
   const done = children.filter((child) => child.status === STATUS.DONE);
   const canceled = children.filter((child) => child.status === STATUS.CANCELED);
-  const capped =
-    omitted > 0
-      ? ` Evidence: ${evidence.length} of ${evidence.length + omitted} anchors retained by the ` +
-        `${REPORT_MAX_ITEMS}-anchor report cap.`
-      : "";
+  const uncited = done.filter((child) => (citations.get(child.identifier) ?? null) === null);
+  const cited = done.length - uncited.length;
+  const missingEvidence =
+    uncited.length === 0 ? "" : ` No delivery evidence on ${joinRefs(uncited)}.`;
   return {
     conclusion:
       `Auto-rollup: all ${children.length} child card(s) of ${container.identifier} are terminal — ` +
-      `${done.length} done (${joinRefs(done)}), ${canceled.length} canceled (${joinRefs(canceled)}).` +
-      capped,
-    acceptance: children.map((child) =>
-      child.status === STATUS.DONE
-        ? { text: `${child.identifier} ${child.title} (done)`, status: "met", ref: child.identifier }
-        : {
-            text: `${child.identifier} ${child.title} (canceled)`,
-            status: "not_applicable",
-            note: `canceled: ${cancellationReason(ctx, child)}`,
-            ref: child.identifier,
-          },
-    ),
+      `${done.length} done (${joinRefs(done)}), ${canceled.length} canceled (${joinRefs(canceled)}). ` +
+      `Evidence: ${cited} of ${done.length} done child(ren) cite a delivery anchor ` +
+      `(${evidence.length} distinct).${missingEvidence}`,
+    acceptance: children.map((child) => {
+      if (child.status !== STATUS.DONE) {
+        return {
+          text: `${child.identifier} ${child.title} (canceled)`,
+          status: "not_applicable",
+          note: `canceled: ${cancellationReason(ctx, child)}`,
+          ref: child.identifier,
+        };
+      }
+      const index = citations.get(child.identifier) ?? null;
+      return {
+        text: `${child.identifier} ${child.title} (done)`,
+        status: "met",
+        note:
+          index === null
+            ? ROLLUP_NO_EVIDENCE_NOTE
+            : `evidence[${index}] — this child's own delivery anchor`,
+        ref: child.identifier,
+      };
+    }),
     evidence,
   };
 }
 
 /**
- * The union of the children's latest delivery evidence, de-duplicated.
+ * The rollup's evidence: one representative anchor per `done` child.
  *
- * A child delivered under `--no-report` contributes nothing; one whose report
- * was written contributes the anchors it stood on, which is exactly the
- * container's own evidence — the work happened there, not here.
+ * The anchor comes from that child's **current-round** report — the round its
+ * `done` belongs to, so a rework cannot leave an older round's evidence behind.
+ * `representativeAnchor` picks the strongest kind, and a child with no report
+ * (delivered under `--no-report`) contributes `null`, which becomes the
+ * explicit marker note. The list is therefore bounded by the fan-in cap, never
+ * by how much any one child reported.
  *
  * @param {object} ctx
  * @param {object[]} children
- * @returns {{items: object[], omitted: number}} the union, capped at the
- *   report's anchor limit, and how many distinct anchors the cap dropped
+ * @returns {{items: object[], citations: Map<string, number|null>}}
  */
 function rollupEvidence(ctx, children) {
-  const out = [];
-  const seen = new Set();
+  const entries = [];
   for (const child of children) {
-    const reports = ctx.repos.reports.listByTask(child.id);
-    // `listByTask` is round-ascending: the last report is the one the current
-    // round was accepted on. 0035 removed the provenance filter, so the newest
-    // row is the evidence.
-    const latest = reports.at(-1);
-    if (latest === undefined || latest === null) continue;
-    for (const anchor of latest.evidence?.items ?? []) {
-      const key = JSON.stringify(anchor);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(anchor);
-    }
+    if (child.status !== STATUS.DONE) continue;
+    const report = ctx.repos.reports.latestForRound(child.id, child.deliveryRound);
+    entries.push({
+      ref: child.identifier,
+      anchor:
+        report === null || report === undefined
+          ? null
+          : representativeAnchor(evidenceFromJson(report.evidence).items),
+    });
   }
-  // A report is bounded at `REPORT_MAX_ITEMS` anchors, so a container with many
-  // children can outgrow it. Cap the union rather than refusing to close: the
-  // rollup's acceptance already names every child, and the conclusion records
-  // the truncation so it is never silent.
-  if (out.length <= REPORT_MAX_ITEMS) return { items: out, omitted: 0 };
-  return { items: out.slice(0, REPORT_MAX_ITEMS), omitted: out.length - REPORT_MAX_ITEMS };
+  return rollupEvidenceOf(entries);
 }
 
 // ---------------------------------------------------------------------------
@@ -714,9 +718,10 @@ export function currentRollup(ctx, epic) {
  * @param {object} ctx
  * @param {object} epic
  * @param {unknown[]} items the report's acceptance list
- * @returns {{ok: boolean, childCount: number, done: number, missingChildren: string[], unexpectedChildren: string[], statusMismatches: object[], duplicates: string[], reason?: string}}
+ * @param {unknown[]} [evidence] the report's own evidence list
+ * @returns {{ok: boolean, childCount: number, done: number, missingChildren: string[], unexpectedChildren: string[], statusMismatches: object[], duplicates: string[], uncitedChildren: {ref: string, reason: string}[], reason?: string}}
  */
-export function rollupGap(ctx, epic, items) {
+export function rollupGap(ctx, epic, items, evidence = []) {
   const children = childrenOf(ctx, epic.id);
   if (children === null) {
     return {
@@ -727,12 +732,13 @@ export function rollupGap(ctx, epic, items) {
       unexpectedChildren: [],
       statusMismatches: [],
       duplicates: [],
+      uncitedChildren: [],
       reason: "dangling_child_edge",
     };
   }
   // One rule, two readers: this reads the live children, the workflow planner
   // reads its board snapshot through the same pure function.
-  return rollupGapOf({ children, items });
+  return rollupGapOf({ children, items, evidence });
 }
 
 /** The rows a reconcile record shows for a stale rollup. */
@@ -744,25 +750,32 @@ export function rollupBlocking(gap) {
       identifier: mismatch.ref,
       status: mismatch.childStatus,
     })),
+    ...gap.uncitedChildren.map((uncited) => ({ identifier: uncited.ref, status: "uncited" })),
   ];
 }
 
 /**
  * Refuse a rollup that no longer describes the children.
  *
+ * The evidence reaches this gate so a `met` line can be judged: a done child's
+ * claim must point at an anchor inside the rollup, or say explicitly that the
+ * child had none to give.
+ *
  * @param {object} ctx
  * @param {object} epic
  * @param {unknown[]} items
+ * @param {unknown[]} [evidence]
  * @throws {DomainError} ROLLUP_STALE
  */
-export function assertRollupCoverage(ctx, epic, items) {
-  const gap = rollupGap(ctx, epic, items);
+export function assertRollupCoverage(ctx, epic, items, evidence = []) {
+  const gap = rollupGap(ctx, epic, items, evidence);
   if (gap.ok) return true;
   const parts = [];
   if (gap.missingChildren.length > 0) parts.push(`${gap.missingChildren.length} missing child(ren)`);
   if (gap.unexpectedChildren.length > 0) parts.push(`${gap.unexpectedChildren.length} unexpected ref(s)`);
   if (gap.statusMismatches.length > 0) parts.push(`${gap.statusMismatches.length} status mismatch(es)`);
   if (gap.duplicates.length > 0) parts.push(`${gap.duplicates.length} duplicate ref(s)`);
+  if (gap.uncitedChildren.length > 0) parts.push(`${gap.uncitedChildren.length} uncited child(ren)`);
   if (gap.childCount === 0) parts.push("no children");
   else if (gap.done === 0) parts.push("no done child");
   throw new DomainError("ROLLUP_STALE", {
@@ -779,6 +792,7 @@ export function assertRollupCoverage(ctx, epic, items) {
       unexpectedChildren: gap.unexpectedChildren,
       statusMismatches: gap.statusMismatches,
       duplicates: gap.duplicates,
+      uncitedChildren: gap.uncitedChildren,
       ...(gap.reason === undefined ? {} : { reason: gap.reason }),
     },
     hint: {
@@ -811,6 +825,6 @@ export function assertEpicRollupReady(ctx, epic) {
       },
     });
   }
-  assertRollupCoverage(ctx, epic, rollup.acceptance);
+  assertRollupCoverage(ctx, epic, rollup.acceptance, evidenceFromJson(rollup.evidence).items);
   return true;
 }

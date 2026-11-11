@@ -211,7 +211,11 @@ Four shape rules ride along:
 - **An `epic` delivers a rollup.** A report written on an epic is marked `is_rollup = 1`; a
   waiver cannot stand in, because a container has nothing to deliver but its children's work.
   The rollup must name every live child — `done` is `met`, `canceled` is `not_applicable` with
-  a reason — and at least one child must be `done`.
+  a reason — and at least one child must be `done`. Each `done` line also cites that child's
+  own anchor (`evidence[n]`): the rollup carries one representative anchor per done child,
+  chosen by `commit > path > command > coverage`, and a child delivered under `--no-report`
+  carries the explicit `no delivery evidence on the child card` marker instead. An uncited
+  done child is `ROLLUP_STALE`.
 - **A report is part of the move, not a separate step.** `issue deliver` writes the report and
   moves the card in one transaction. `--to done` is the `off` mode's direct acceptance and
   still consults the gate for a non-empty baseline.
@@ -553,9 +557,10 @@ edge: `todo` is its ready state, and without an exit there a container could nev
 delivered.
 
 The board also performs the container's delivery: when every child is terminal, at least one is
-`done`, and there is evidence to roll up, `rollup.mjs` writes the rollup report and moves the
-epic to `in_review`. Acceptance stays separate — the epic is reviewed like any other card and
-closed only after an `APPROVE`, unless its mode is the explicit `off`.
+`done`, and at least one done child has current-round evidence to roll up, `rollup.mjs` writes
+the rollup report and moves the epic to `in_review`. Acceptance stays separate — the epic is
+reviewed like any other card and closed only after an `APPROVE`, unless its mode is the explicit
+`off`.
 
 The rules that make that safe:
 
@@ -564,6 +569,11 @@ The rules that make that safe:
 - **A rollup is the only delivery evidence.** A missing current-round rollup is
   `ROLLUP_REQUIRED`; one that no longer matches the children is `ROLLUP_STALE`. A stale rollup
   blocks acceptance, not the board: repair is a rework, which starts a new round.
+- **One anchor per done child.** The rollup's evidence is not a union: each `done` child
+  contributes its strongest current-round anchor, and its acceptance line cites that anchor
+  (`evidence[n]`). The list is therefore bounded by the fan-in cap, never by how much any one
+  child reported. A child with no report carries the explicit no-evidence marker, so silence is
+  never read as proof.
 - **An empty epic cannot be delivered.** No children means no rollup; cancel it or give it
   work.
 - **A rejected epic gets a fix child first**, so `reconcile` cannot re-close the container

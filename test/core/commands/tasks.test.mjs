@@ -17,6 +17,7 @@ import test, { after, describe, it } from "node:test";
 import { createCommands, createContext } from "../../../src/core/commands/index.mjs";
 import { advanceContainer } from "../../../src/core/commands/rollup.mjs";
 import { createRepositories } from "../../../src/core/storage/repositories/index.mjs";
+import { ROLLUP_NO_EVIDENCE_NOTE } from "../../../src/foundation/constants.mjs";
 import { DomainError } from "../../../src/foundation/errors.mjs";
 import {
   TS,
@@ -990,13 +991,14 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
     });
   });
 
-  it("caps the rollup evidence at the report limit instead of refusing to close", async () => {
+  it("cites one representative anchor per done child and stays under the cap", async () => {
     await board(async ({ db, commands }) => {
-      // Four children x 20 distinct commit anchors = 80 distinct anchors, over
-      // REPORT_MAX_ITEMS (64). Before the cap, normalizeReportCreate refused
-      // the rollup and a large epic could never close.
+      // Seven children x 20 distinct commit anchors — the TP-0035 shape (86
+      // anchors, over the 64 cap). The rollup does not union them: each child
+      // contributes its one representative anchor, so the evidence list is
+      // bounded by the fan-in cap, not by how much each child reported.
       const children = [];
-      for (let c = 0; c < 4; c += 1) {
+      for (let c = 0; c < 7; c += 1) {
         const child = linusTask(commands, { title: `Bulk ${c}`, allowDup: true });
         commands.claim({ id: child.id, actor: AGENT });
         const evidence = Array.from({ length: 20 }, (_, i) => ({
@@ -1013,10 +1015,124 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
 
       assert.equal(commands.getTask({ id: epic.id }).status, "in_review", "the container still closes");
       const row = db
-        .prepare("SELECT conclusion, evidence_json FROM task_reports WHERE task_id = ? AND is_rollup = 1")
+        .prepare("SELECT conclusion, acceptance_json, evidence_json FROM task_reports WHERE task_id = ? AND is_rollup = 1")
         .get(epic.id);
-      assert.equal(JSON.parse(row.evidence_json).length, 64, "the union stops at the report cap");
-      assert.match(row.conclusion, /64 of 80 anchors retained/);
+      assert.equal(JSON.parse(row.evidence_json).length, 7, "one anchor per child, not 140");
+      const items = JSON.parse(row.acceptance_json);
+      assert.deepEqual(
+        items.map((item) => item.note),
+        items.map((_, index) => `evidence[${index + 1}] — this child's own delivery anchor`),
+        "each done child cites its own anchor",
+      );
+      assert.match(row.conclusion, /7 of 7 done child\(ren\) cite a delivery anchor \(7 distinct\)/);
+      assert.doesNotMatch(row.conclusion, /retained|anchor cap/);
+    });
+  });
+
+  it("picks the strongest anchor per child and folds a shared anchor to one index", async () => {
+    await board(async ({ db, commands }) => {
+      const strong = linusTask(commands, { title: "Strong" });
+      commands.claim({ id: strong.id, actor: AGENT });
+      commands.deliver({
+        taskId: strong.id,
+        report: report({
+          evidence: [
+            { kind: "coverage", lines: 91 },
+            { kind: "command", cmd: "npm test", exit_code: 0 },
+            { kind: "commit", sha: "abc1234" },
+          ],
+        }),
+        actor: AGENT,
+      });
+      const shared = linusTask(commands, { title: "Shared", allowDup: true });
+      commands.claim({ id: shared.id, actor: AGENT });
+      commands.deliver({ taskId: shared.id, report: report({ evidence: [{ kind: "commit", sha: "abc1234" }] }), actor: AGENT });
+
+      const epic = epicWith(commands, [strong, shared]);
+      commands.moveStatus({ id: strong.id, to: "done", actor: AGENT });
+      commands.moveStatus({ id: shared.id, to: "done", actor: AGENT });
+
+      const row = db
+        .prepare("SELECT acceptance_json, evidence_json FROM task_reports WHERE task_id = ? AND is_rollup = 1")
+        .get(epic.id);
+      assert.deepEqual(JSON.parse(row.evidence_json), [{ kind: "commit", sha: "abc1234" }]);
+      assert.deepEqual(
+        JSON.parse(row.acceptance_json).map((item) => item.note),
+        [
+          "evidence[1] — this child's own delivery anchor",
+          "evidence[1] — this child's own delivery anchor",
+        ],
+        "a shared anchor is one item both children cite",
+      );
+    });
+  });
+
+  it("closes with a no-report child and marks its line explicitly", async () => {
+    await board(async ({ db, commands }) => {
+      const delivered = linusTask(commands, { title: "Delivered" });
+      const waived = linusTask(commands, { title: "Waived", allowDup: true });
+      const epic = epicWith(commands, [delivered, waived]);
+      finish(commands, delivered, "abc1234");
+      commands.claim({ id: waived.id, actor: AGENT });
+      commands.moveStatus({
+        id: waived.id,
+        to: "in_review",
+        noReport: true,
+        reason: "delivered under an audited waiver",
+        actor: AGENT,
+      });
+      commands.moveStatus({ id: waived.id, to: "done", actor: AGENT });
+
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
+      const row = db
+        .prepare("SELECT acceptance_json, evidence_json FROM task_reports WHERE task_id = ? AND is_rollup = 1")
+        .get(epic.id);
+      assert.equal(JSON.parse(row.evidence_json).length, 1);
+      const byRef = new Map(JSON.parse(row.acceptance_json).map((item) => [item.ref, item]));
+      assert.equal(byRef.get(delivered.identifier).note, "evidence[1] — this child's own delivery anchor");
+      assert.equal(byRef.get(waived.identifier).note, ROLLUP_NO_EVIDENCE_NOTE);
+    });
+  });
+
+  it("refuses a handwritten rollup that leaves a done child uncited", async () => {
+    await board(async ({ commands }) => {
+      const child = linusTask(commands, { title: "Child" });
+      const epic = epicWith(commands, [child]);
+      finish(commands, child, "abc1234");
+      commands.moveStatus({ id: epic.id, to: "in_progress", actor: AGENT });
+
+      assert.throws(
+        () =>
+          commands.deliver({
+            taskId: epic.id,
+            report: report({
+              acceptance: [{ text: `${child.identifier} done`, status: "met", ref: child.identifier }],
+            }),
+            actor: AGENT,
+          }),
+        (err) => {
+          assert.equal(err.code, "ROLLUP_STALE");
+          assert.deepEqual(err.details.uncitedChildren, [{ ref: child.identifier, reason: "no_anchor" }]);
+          return true;
+        },
+      );
+
+      // The same rollup with the pointer is accepted.
+      const delivered = commands.deliver({
+        taskId: epic.id,
+        report: report({
+          acceptance: [
+            {
+              text: `${child.identifier} done`,
+              status: "met",
+              note: "evidence[1] — this child's own delivery anchor",
+              ref: child.identifier,
+            },
+          ],
+        }),
+        actor: AGENT,
+      });
+      assert.equal(delivered.report.isRollup, true);
     });
   });
 
@@ -1110,6 +1226,10 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
           acceptance: [one, two].map((child) => ({
             text: `${child.identifier} done`,
             status: "met",
+            // Both children were delivered under an audited waiver, so there is
+            // no child anchor to cite — the explicit marker is the only honest
+            // line, and the rollup gate accepts it.
+            note: ROLLUP_NO_EVIDENCE_NOTE,
             ref: child.identifier,
           })),
         }),

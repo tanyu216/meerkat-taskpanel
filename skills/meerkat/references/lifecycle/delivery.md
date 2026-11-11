@@ -14,8 +14,8 @@ report counts only for the round it was written in.
   working tree, and an uncommitted tree can be stashed or reset before the reviewer reads it.
   The board checks the shape only — the reviewer verifies that the sha resolves and that every
   path exists at it. Review cards and epics are exempt (a reviewer's paths name what it read;
-  a container's evidence is its rollup union, whose children passed the same gate). A waiver
-  carries no evidence, so the rule does not apply to it.
+  a container's evidence is one representative anchor per done child, each of which passed the
+  same gate). A waiver carries no evidence, so the rule does not apply to it.
 - The escape hatch is the **audited waiver**: `--no-report --reason "<why>"` on a move to
   `in_review` (or on `issue deliver`). The reason needs at least **8 characters** after
   trimming; the waiver is stamped on the task row, recorded as a `report_waived` activity and
