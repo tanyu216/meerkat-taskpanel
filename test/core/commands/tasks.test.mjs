@@ -990,6 +990,36 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
     });
   });
 
+  it("caps the rollup evidence at the report limit instead of refusing to close", async () => {
+    await board(async ({ db, commands }) => {
+      // Four children x 20 distinct commit anchors = 80 distinct anchors, over
+      // REPORT_MAX_ITEMS (64). Before the cap, normalizeReportCreate refused
+      // the rollup and a large epic could never close.
+      const children = [];
+      for (let c = 0; c < 4; c += 1) {
+        const child = linusTask(commands, { title: `Bulk ${c}`, allowDup: true });
+        commands.claim({ id: child.id, actor: AGENT });
+        const evidence = Array.from({ length: 20 }, (_, i) => ({
+          kind: "commit",
+          sha: `${c}${String(i).padStart(6, "0")}`,
+        }));
+        commands.deliver({ taskId: child.id, report: report({ evidence }), actor: AGENT });
+        children.push(child);
+      }
+      const epic = epicWith(commands, children);
+      for (const child of children) {
+        commands.moveStatus({ id: child.id, to: "done", actor: AGENT });
+      }
+
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review", "the container still closes");
+      const row = db
+        .prepare("SELECT conclusion, evidence_json FROM task_reports WHERE task_id = ? AND is_rollup = 1")
+        .get(epic.id);
+      assert.equal(JSON.parse(row.evidence_json).length, 64, "the union stops at the report cap");
+      assert.match(row.conclusion, /64 of 80 anchors retained/);
+    });
+  });
+
   it("names the unfinished child in the sweep report", async () => {
     await board(async ({ commands }) => {
       const done = linusTask(commands, { title: "Done" });
