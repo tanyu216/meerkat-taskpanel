@@ -72,6 +72,7 @@
  */
 
 import { DomainError } from "../../foundation/errors.mjs";
+import { REPORT_MAX_ITEMS } from "../../foundation/constants.mjs";
 import { rollupGapOf } from "../domain/acceptance.mjs";
 import { normalizeCommentCreate } from "../domain/comment.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
@@ -195,7 +196,7 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
     id: resolveActorId({ repos: ctx.repos, now }, { name: BOARD_ACTOR.id, actorKind: BOARD_ACTOR.kind }),
   };
   const prepared = normalizeReportCreate(
-    { ...rollupReport(ctx, container, plan.children, plan.evidence), author },
+    { ...rollupReport(ctx, container, plan.children, plan.evidence, plan.evidenceOmitted), author },
     { taskRound: container.deliveryRound, now },
   );
   const report = insertDeliveryReport(ctx, { taskId: container.id, prepared, isRollup: true });
@@ -489,7 +490,7 @@ function assessClose(ctx, container) {
     return { ok: false, reason: "no_child_done", blocking: namedChildren(children) };
   }
 
-  const evidence = rollupEvidence(ctx, children);
+  const { items: evidence, omitted: evidenceOmitted } = rollupEvidence(ctx, children);
   // No evidence at all means every delivered child was delivered under
   // `--no-report`: there is nothing the gate should accept, so the container
   // stays open.
@@ -500,7 +501,7 @@ function assessClose(ctx, container) {
       blocking: namedChildren(children.filter((child) => child.status === STATUS.DONE)),
     };
   }
-  return { ok: true, children, evidence };
+  return { ok: true, children, evidence, evidenceOmitted };
 }
 
 /**
@@ -606,14 +607,21 @@ function appendSystemNote(ctx, taskId, body, now, refs) {
  * @param {object} container
  * @param {object[]} children
  * @param {object[]} evidence
+ * @param {number} [omitted] anchors the union held beyond the report cap
  */
-function rollupReport(ctx, container, children, evidence) {
+function rollupReport(ctx, container, children, evidence, omitted = 0) {
   const done = children.filter((child) => child.status === STATUS.DONE);
   const canceled = children.filter((child) => child.status === STATUS.CANCELED);
+  const capped =
+    omitted > 0
+      ? ` Evidence: ${evidence.length} of ${evidence.length + omitted} anchors retained by the ` +
+        `${REPORT_MAX_ITEMS}-anchor report cap.`
+      : "";
   return {
     conclusion:
       `Auto-rollup: all ${children.length} child card(s) of ${container.identifier} are terminal — ` +
-      `${done.length} done (${joinRefs(done)}), ${canceled.length} canceled (${joinRefs(canceled)}).`,
+      `${done.length} done (${joinRefs(done)}), ${canceled.length} canceled (${joinRefs(canceled)}).` +
+      capped,
     acceptance: children.map((child) =>
       child.status === STATUS.DONE
         ? { text: `${child.identifier} ${child.title} (done)`, status: "met", ref: child.identifier }
@@ -637,7 +645,8 @@ function rollupReport(ctx, container, children, evidence) {
  *
  * @param {object} ctx
  * @param {object[]} children
- * @returns {object[]}
+ * @returns {{items: object[], omitted: number}} the union, capped at the
+ *   report's anchor limit, and how many distinct anchors the cap dropped
  */
 function rollupEvidence(ctx, children) {
   const out = [];
@@ -656,7 +665,12 @@ function rollupEvidence(ctx, children) {
       out.push(anchor);
     }
   }
-  return out;
+  // A report is bounded at `REPORT_MAX_ITEMS` anchors, so a container with many
+  // children can outgrow it. Cap the union rather than refusing to close: the
+  // rollup's acceptance already names every child, and the conclusion records
+  // the truncation so it is never silent.
+  if (out.length <= REPORT_MAX_ITEMS) return { items: out, omitted: 0 };
+  return { items: out.slice(0, REPORT_MAX_ITEMS), omitted: out.length - REPORT_MAX_ITEMS };
 }
 
 // ---------------------------------------------------------------------------
