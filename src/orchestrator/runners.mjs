@@ -427,6 +427,83 @@ export function runQuestionTick(deps) {
 }
 
 /**
+ * Enqueue one decision row per pending intake request.
+ *
+ * Poll calls this before its concurrency budget, like the question lane: a
+ * request is a decision conversation, not a worker dispatch. A request that has
+ * spent its turns is **settled**, not skipped — the tick's `adopt` dep runs the
+ * recovery/refusal and records the terminal state, because an intake request has
+ * no card for the human to find later.
+ *
+ * The row carries the description (`request_text`), the human who asked
+ * (`requested_by`) and no card ref: the decision lane creates cards, and idempotency
+ * lives on the request's own id.
+ *
+ * @param {{
+ *   requests?: object[],
+ *   resolveDir: (project: string) => {ok: boolean, dir?: string, code?: string},
+ *   enqueue: (row: object) => {ok: boolean, coalesced?: boolean, error?: string},
+ *   dispatches?: (dispatchKey: string) => number,
+ *   adopt?: ((row: {request_id: string}) => void)|null,
+ *   agent?: string|null,
+ *   maxAttempts?: number,
+ *   log?: (line: string) => void,
+ * }} deps
+ */
+export function runIntakeTick(deps) {
+  const {
+    requests = [],
+    resolveDir,
+    enqueue,
+    dispatches = () => 0,
+    adopt = null,
+    agent = null,
+    maxAttempts = 2,
+    log = () => {},
+  } = deps;
+  let enqueued = 0;
+  let skipped = 0;
+  for (const request of requests) {
+    const rowId = `intake:${request.id}`;
+    if (dispatches(rowId) >= maxAttempts) {
+      log(`intake ${request.id}: attempt cap reached — settling the request`);
+      if (adopt !== null) adopt({ request_id: request.id });
+      skipped += 1;
+      continue;
+    }
+    const resolved = resolveDir(request.project);
+    if (resolved?.ok !== true) {
+      log(`intake ${request.id}: ${resolved?.code ?? "no project directory"}`);
+      skipped += 1;
+      continue;
+    }
+    const queued = enqueue({
+      id: rowId,
+      queue_kind: "question",
+      role: "intake",
+      card: null,
+      intake: true,
+      request_id: request.id,
+      request_text: request.text,
+      requested_by: request.requested_by ?? null,
+      project: request.project,
+      agent: agent ?? request.requested_by ?? null,
+      target_dir: resolved.dir,
+      question_id: rowId,
+      dispatch_key: rowId,
+    });
+    if (queued?.ok !== true) {
+      log(`intake ${request.id}: ${queued?.error ?? "enqueue failed"}`, { level: "warn" });
+      skipped += 1;
+      continue;
+    }
+    if (queued.coalesced === true) skipped += 1;
+    else enqueued += 1;
+  }
+  return { ok: true, enqueued, skipped };
+}
+
+/**
  * One patrol pass. Alerts are logged and notified; the LLM stays off unless
  * `config.patrolLlm` is explicitly on.
  *

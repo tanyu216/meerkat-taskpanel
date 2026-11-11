@@ -161,7 +161,10 @@ export const api = {
 
   tasks: (query) => get("/tasks", query),
   task: (ref) => get(`/tasks/${encodeURIComponent(ref)}`),
-  createTask: (body) => post("/tasks", body),
+  // 0007 — the create surface submits a description, not a card. The request is
+  // read back by id when its terminal event arrives.
+  createIntake: (body) => post("/intake", body),
+  intake: (id) => get(`/intake/${encodeURIComponent(id)}`),
   patchTask: (ref, body) => patch(`/tasks/${encodeURIComponent(ref)}`, body),
   moveTask: (ref, body) => post(`/tasks/${encodeURIComponent(ref)}/move`, body),
   reopenTask: (ref, body) => post(`/tasks/${encodeURIComponent(ref)}/reopen`, body),

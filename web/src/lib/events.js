@@ -123,6 +123,13 @@ const KNOWN_EVENTS = new Set([
   "attachment_updated",
   "attachment_removed",
   "task_heartbeat",
+  // 0007 — the intake request's three signals. They are task-less: the request
+  // is read by id when a consumer needs it (`GET /intake/:id`), never rebuilt
+  // from `changes`. They are known so the composer's own toast path and the
+  // "unknown event" warning stay quiet; they do not reload the board.
+  "intake_requested",
+  "intake_consumed",
+  "intake_failed",
 ]);
 
 /** @param {string|null|undefined} event */

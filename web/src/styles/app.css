@@ -2857,31 +2857,7 @@ button.td-prop-value:hover {
 .td-gfm.td-dv-note > :first-child,
 .td-gfm.td-dv-text > :first-child { margin-top: 0; }
 
-/* R10 ③ — the description fills the column it sits in.
-   The chain runs one way only: the two-column grid stretches its tracks, each
-   track is a column flex box, the description's own field fills that box, the
-   editor fills the field and the panes fill the editor. Every link has to be a
-   flex container for the next one's `flex: 1 1 auto` to resolve — a single block
-   container in the middle hands its child the content height and nothing more,
-   which is exactly how the editor ended up 240px above the dialog's footer with
-   an empty band beneath it (measured; `verify/probe-before.json`).
-   The height comes from the **row**, never from the viewport: the panes' old
-   `clamp(280px, 46vh, 520px)` was a viewport rule, so the box could grow and the
-   editing area could not. `min-height: 200px` is the floor that keeps a short
-   viewport usable; `.td-modal-box` keeps R4's viewport cap and its own scroller. */
-[data-create-two-col] { align-items: stretch; }
-[data-create-left],
-[data-create-right] {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.td-field-grow {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-}
+/* The drawer's Markdown editor is a column flex box so its panes can fill it. */
 [data-md-editor] {
   display: flex;
   flex-direction: column;
@@ -2890,10 +2866,9 @@ button.td-prop-value:hover {
 }
 
 /* The three editor modes, one CSS state machine on `[data-md-mode]`. The panes
-   also carry the last two links of the R10 ③ chain above — `flex: 1 1 auto` (they
-   take what the editor leaves them) and the `min-height` floor — stated in this
-   one declaration rather than a second block, so the box and its mode rules can
-   never be read apart. */
+   fill what the editor leaves them (`flex: 1 1 auto`) with a `min-height` floor,
+   stated in one declaration so the box and its mode rules can never be read
+   apart. The drawer is the only surface that carries this editor since R17. */
 .td-md-panes {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

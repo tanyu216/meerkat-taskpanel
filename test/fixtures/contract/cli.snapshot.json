@@ -4575,6 +4575,117 @@
       ]
     },
     {
+      "name": "intake",
+      "default_command": null,
+      "commands": [
+        {
+          "name": "complete",
+          "positionals": [
+            {
+              "name": "id"
+            }
+          ],
+          "flags": [
+            {
+              "flag": "created",
+              "as": "string",
+              "value": "<ref>",
+              "required": true,
+              "repeat": true,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "create",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "idem",
+              "as": "string",
+              "value": "<key>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project",
+              "as": "string",
+              "value": "<id>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "text",
+              "as": "string",
+              "value": "<text>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "fail",
+          "positionals": [
+            {
+              "name": "id"
+            }
+          ],
+          "flags": [
+            {
+              "flag": "reason",
+              "as": "string",
+              "value": "<text>",
+              "required": true,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "positionals": [
+            {
+              "name": "id"
+            }
+          ],
+          "flags": []
+        },
+        {
+          "name": "list",
+          "positionals": [],
+          "flags": [
+            {
+              "flag": "limit",
+              "as": "number",
+              "value": "<n>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "project",
+              "as": "string",
+              "value": "<id>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            },
+            {
+              "flag": "status",
+              "as": "string",
+              "value": "<status>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "issue",
       "default_command": null,
       "commands": [

@@ -86,12 +86,12 @@ export const accessOpen = ref(false);
 /** B10 create-task and B11 create-project modals. */
 export const createTaskOpen = ref(false);
 export const createProjectOpen = ref(false);
-/** The status a `[data-column-add]` press wants the new task to start in. */
-export const createTaskStatus = ref(null);
 
-/** Open the create dialog, optionally aimed at a column. */
-export function openCreateTask(status = null) {
-  createTaskStatus.value = status;
+/**
+ * Open the create composer. Every opener is the same act: the decision lane
+ * chooses the card's status, so a column's `+` no longer carries one.
+ */
+export function openCreateTask() {
   createTaskOpen.value = true;
 }
 

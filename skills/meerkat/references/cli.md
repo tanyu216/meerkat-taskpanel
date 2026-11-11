@@ -98,6 +98,15 @@ a missing skill, an unsupported Node) — a service manager must not restart it.
 | `relation add <ref> --type parent\|blocks\|related --target <ref> [--force]` | See [cli/files.md](cli/files.md). |
 | `relation remove <ref> <relation-id>` | See [cli/files.md](cli/files.md). |
 | `relation list <ref>` | See [cli/files.md](cli/files.md). |
+### `intake`
+
+| Command | Purpose |
+|---|---|
+| `intake create --project <id> --text <text> [--idem <key>]` | Submit a free-text work description; the decision lane files the cards. `--idem` makes a retried submit return the first request. |
+| `intake list [--status pending\|consumed\|failed] [--project <id>] [--limit <n>]` | Read requests oldest first; the supervisor's pending scan. |
+| `intake get <id>` | Read one request. |
+| `intake complete <id> --created <ref> [--created <ref>]…` | Record the cards a request produced (comma-separated lists are accepted). |
+| `intake fail <id> --reason <text>` | Record that the description could not become work, and why. |
 ### `attachment`
 
 | Command | Purpose |

@@ -621,6 +621,20 @@ export const ATTACHMENTS_DIRNAME = "attachments";
  */
 export const ATTACHMENT_MAX_BYTES = 64 * 1024 * 1024;
 
+// ---------------------------------------------------------------------------
+// Intake requests (0007)
+// ---------------------------------------------------------------------------
+
+/**
+ * Upper bound on a human's free-text intake description (20 000 chars).
+ *
+ * The description travels into the director's turn prompt, which already bounds
+ * its own body (`QUESTION_PROMPT_BODY_MAX`); this is the write-side bound, so a
+ * request that could never be asked is refused at submit instead of stored and
+ * truncated later. 20k is deliberately generous — a short brief, not a file.
+ */
+export const INTAKE_TEXT_MAX = 20_000;
+
 /**
  * The `content_type` values an attachment row may declare (T-20261014-212017-4).
  *

@@ -11,6 +11,7 @@ complete from its content.
 
 Read exactly the file the decision names — one branch, plus this core:
 
+- a human submitted a description → this file + `intake.md`
 - a worker needs a choice → this file + `question.md`
 - a card has no accountable role → this file + `route.md`
 - an accepted card carries a required handoff → this file + `triage.md`
@@ -41,6 +42,9 @@ is a **new worker** that re-reads the comments (ADR 0017).
   separate children; a scope expansion is E1.
 - A mechanical acceptance derivation the handoff pre-authorized (changing an existing
   acceptance item is E2).
+- Splitting a human's submitted description into deliverable cards, and recording whether
+  cards were filed or the description named no work. The card's reporter is the submitter,
+  and one accountable role owns each card. The routing detail is `intake.md`.
 - Creating a downstream card from a required handoff. An out-of-scope defect's disposition
   defaults to a `backlog` follow-up the finder files: bug label, `meta.fixes` = the source
   identifier, acceptance seeded from the defect, and the card continues. The director decides

@@ -128,6 +128,9 @@ const MUTATORS = {
   labels: ["upsert", "addUse", "removeUse", "archive"],
   dictionary: ["upsert", "remove"],
   projects: ["create", "update", "allocateIdentifier"],
+  // 0007 — the request row and its two terminal writes each append their own
+  // activity row in the same transaction.
+  intake: ["insert", "complete", "fail"],
   sessions: ["upsertByNaturalKey", "close", "closeByNaturalKey"],
 };
 
@@ -136,6 +139,7 @@ const READERS = {
   activities: ["list"],
   comments: ["list", "listDecisions"],
   dictionary: ["getById", "list", "search"],
+  intake: ["get", "findByProjectIdem", "list"],
   labels: ["getByNorm", "list", "listUnusedActive", "referenceCount", "usedColors"],
   projects: ["get", "list"],
   relations: [

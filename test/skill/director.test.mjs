@@ -37,6 +37,7 @@ describe("director skill: docs only", () => {
     assert.ok(existsSync(join(DIRECTOR_SKILL, "SKILL.md")), "the skill must keep its charter");
     for (const name of [
       "decision-policy.md",
+      "intake.md",
       "question.md",
       "route.md",
       "triage.md",
@@ -132,7 +133,7 @@ describe("director skill: references", () => {
       readdirSync(refsDir)
         .filter((name) => name.endsWith(".md"))
         .sort(),
-      ["decision-policy.md", "escalation.md", "question.md", "rounds.md", "route.md", "triage.md"],
+      ["decision-policy.md", "escalation.md", "intake.md", "question.md", "rounds.md", "route.md", "triage.md"],
     );
   });
 
@@ -272,6 +273,7 @@ describe("director skill: references", () => {
     const lines = (name) => readFileSync(join(refsDir, name), "utf8").split("\n").length;
     for (const name of [
       "decision-policy.md",
+      "intake.md",
       "question.md",
       "route.md",
       "triage.md",

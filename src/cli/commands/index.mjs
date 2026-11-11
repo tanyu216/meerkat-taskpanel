@@ -22,6 +22,7 @@ import { COMMANDS as commentCommands } from "./comment.mjs";
 import { COMMANDS as actorCommands } from "./dict.mjs";
 import { COMMANDS as eventCommands } from "./events.mjs";
 import { COMMANDS as exportCommands } from "./export.mjs";
+import { COMMANDS as intakeCommands } from "./intake.mjs";
 import { COMMANDS as issueCommands } from "./issue.mjs";
 import { COMMANDS as labelCommands } from "./labels.mjs";
 import { COMMANDS as loopCommands } from "./loop.mjs";
@@ -39,6 +40,7 @@ export const groups = Object.freeze([
   { name: "issue", summary: "Tasks: create, move, deliver.", commands: issueCommands },
   { name: "comment", summary: "The append-only discussion trail.", commands: commentCommands },
   { name: "relation", summary: "Parent/child, blocks, related.", commands: relationCommands },
+  { name: "intake", summary: "Free-text work requests: submit, read, settle.", commands: intakeCommands },
   { name: "attachment", summary: "A card's files: add, list, download, remove.", commands: attachmentCommands },
   { name: "session", summary: "Agent sessions per task.", commands: sessionCommands },
   { name: "actors", summary: "Read-only dictionary of actors (assignees and reporters).", commands: actorCommands },

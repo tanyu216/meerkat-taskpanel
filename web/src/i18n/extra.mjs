@@ -87,6 +87,7 @@ export const EXTRA = {
     // must not be the wire's own words.
     "error.generic": "That action did not complete — retry, or contact an administrator.",
     "error.notFound": "%s is no longer on the board — reload it.",
+    "error.intakeNotFound": "That request is no longer on the board.",
     "error.busy": "The board is writing — try again in a moment.",
     "error.network": "The board did not respond. Check that taskd is running, then retry.",
     "error.notAssignee": "%s is assigned to somebody else.",
@@ -312,6 +313,7 @@ export const EXTRA = {
     "toast.relationNone": "无关联",
     "error.generic": "操作未完成，请重试或联系管理员。",
     "error.notFound": "%s 已不在看板上 —— 请重新载入。",
+    "error.intakeNotFound": "那条需求已不在看板上。",
     "error.busy": "看板正在写入 —— 请稍后重试。",
     "error.network": "看板没有响应。请确认 taskd 正在运行，然后重试。",
     "error.notAssignee": "%s 已指派给他人。",

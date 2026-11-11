@@ -1302,6 +1302,39 @@ export function buildQuestionPrompt(rows, input = {}) {
       );
       return;
     }
+    if (row.intake === true) {
+      const requestId = String(row.request_id ?? "");
+      const projectId = String(row.project ?? project);
+      const asked = row.requested_by ? ` (asked by ${row.requested_by})` : "";
+      lines.push(`${index + 1}) intake ${requestId}${asked} — a description for ${projectId}:`);
+      // The description is the whole request; it is bounded like a question so
+      // one long submit cannot make the turn impossible to finish.
+      const description = String(row.request_text ?? "");
+      const bounded = description.length > QUESTION_PROMPT_BODY_MAX
+        ? `${description.slice(0, QUESTION_PROMPT_BODY_MAX)}\n[truncated]`
+        : description;
+      for (const line of bounded.split("\n")) lines.push(`   ${line}`);
+      lines.push(
+        "   This is the human's own words. Turn it into deliverable cards in this project:",
+        `   First look for cards a previous turn already filed: taskctl issue list --meta intake_request=${requestId} --json ${flags}`,
+        "   Reuse what it lists, create only what is missing, and reuse the same card number",
+        "   for the same card after a retry.",
+        `   Resolve the project directory: taskctl project dir ${projectId} --json`,
+        "   Read <dir>/docs/agents/epic-graphs.md when the project carries one, and adopt its",
+        "   shape; otherwise split into 1..N cards, each one thing a role can land alone.",
+        `   Create each card: taskctl issue create --project ${projectId} --title "..." --assignee <role>`,
+        `     --target <scope-slug> --acceptance "..." --description "..." --reporter "${row.requested_by ?? "<human>"}"`,
+        `     --meta intake_request=${requestId} --idem "intake|${requestId}|<n>" ${flags}`,
+        "   Number <n> 1..N in creation order. Use exactly one accountable role per card from",
+        "   the routing table below. You may create cards; claim none, implement none, and",
+        "   use no --as-human.",
+        `   When the cards exist: taskctl intake complete ${requestId} --created <refs> ${flags}`,
+        `   When the description names no work: taskctl intake fail ${requestId} --reason "..." ${flags}`,
+        "   INTAKE_NOT_PENDING on complete means another lane finished it: stop, it is settled.",
+        "",
+      );
+      return;
+    }
     if (row.route === true) {
       const title = row.title ? ` — ${row.title}` : "";
       const since = row.updated_at ? ` (unowned since ${row.updated_at})` : "";

@@ -5,9 +5,9 @@ Tailwind class names are never part of the contract, and no anchor is positional
 
 Counts in the current build, measured in the live DOM: **7 columns · 18 cards ·
 18 detail templates** (`[data-slot]`: 18 description · 18 activity · 16 comments ·
-15 agent-session · 11 attachments · 9 relations) · **842 `data-i18n*` hooks** in the
-shipped document (540 `data-i18n`, 188 `data-i18n-arg` and 114 `aria-label` /
-`placeholder` / `title` variants) · **292 catalogue keys, `en` and `zh` in exact
+15 agent-session · 11 attachments · 9 relations) · **804 `data-i18n*` hooks** in the
+shipped document (514 `data-i18n`, 188 `data-i18n-arg` and 102 `aria-label` /
+`placeholder` / `title` variants) · **288 catalogue keys, `en` and `zh` in exact
 parity.**
 
 **"35 blocks" means 35 *contract entries*, not 35 DOM blocks.** The DOM block
@@ -878,93 +878,40 @@ where the stamp is `[data-activity-at]` — 实测全文档 `[data-activity-row]
 **只在 `[data-activity-row]` / `[data-activity-actor]` 这两枚属性上同名**；抽屉族的
 `[data-activity-ts]` 与 B26 的 `[data-activity-at]` 不同名，不冲突。
 
-## B10 · Create-task modal — two columns
+## B10 · Create-task composer — one description
 
-`dialog[data-create-task]` → `.td-modal-box` → `form[data-create-task-form]` →
-`[data-create-two-col]`, which holds exactly two tracks:
+`dialog[data-create-task]` → `.td-modal-box.td-intake-box` → `form[data-create-task-form]`.
+One field and one project:
 
-| Column | Hook | Fields |
-|---|---|---|
-| Left — the work | `[data-create-left]` | `[data-create-task-title]` (+ hint) · `[data-create-task-description]`, which is `[data-md-source]` inside **B23** |
-| Right — its routing | `[data-create-right]` | `[data-create-task-priority]` · **assignee** (**B22**) · `[data-create-task-project]` · `[data-create-task-status]` · **reporter** (**B22**) · **labels** (**B25**) · **parent** (**B24**) · **depends-on** (**B24**) |
-
-> **No `kind` field — ruling C-KIND-1 (T-20261017-063826).** The routing column is exactly
-> those eight fields, plus the card's acceptance-mode control (`data-create-task-acceptance`):
-> the dialog files plain `task` cards, and the missing `kind` is a decision rather than a
-> missing control. `deploy` is not a card kind at all (0039), and an `epic` made here would be
-> born `todo` — the one state an epic provably cannot leave (T-20261017-063808). An `epic` comes from an agent promoting a card in place, which is what
-> `skills/meerkat/SKILL.md` §"When the card is a container" already assumes. The
-> machine face is `test/web/create-dialog-kind.test.mjs` (K1–K3) — adding the field is a design
-> round, not a ninth `<select>`.
-
-**R4 — the dialog grew and the left column leads.** `.td-modal-box` is
-`min(1120px, 100vw − 32px)` tall to `100vh − 48px` with its own scroller (R3: 880px
-wide, sized to its content). The two tracks are `minmax(0, 1.6fr)` / `minmax(0, 1fr)`,
-so the description editor holds the wider and much taller pane the work deserves while the
-routing column keeps a compact one. Both tracks stay `minmax(0, …)`, so neither a long
-title nor the editor can push the dialog wider than its own box — no horizontal overflow
-at 1512 / 1240 / 980 / 760 / 430.
-
-At ≤760px the tracks stack (`.td-two-col` collapses to one column) and the dialog scrolls
-internally, so every field stays reachable on a phone-width window.
-
-`[data-modal-close]` closes it, and `resetCreateTask()` is the single writer of its opening
-state — it also serves as the reset after a submit, so a second task starts exactly where
-the first one did. R4 taught it two more things to clear: the relation controls' inputs,
-and the depends-on chips, which a native form reset cannot reach. R5 taught it the same for
-the label control — `[data-label-input]`, the `[data-label-chips]` chips and the generated
-`[data-label-menu]`.
-
-The assignee is no longer a `<select>`; see B22. Labels are a field as of R5 — the same
-combo control, many per task — see **B25**. The two relation controls are marked
-**Optional** and leave the task creatable when empty; see B24.
-
-**R10 ③ — the left column is stretched, so the description fills it.** The description used
-to stop at its own content height while the routing column ran on, leaving a band of empty
-dialog under the editor. Five links carry the fill, and breaking any one of them puts the
-band back:
-
-| Link | Rule |
+| Field | Hook |
 |---|---|
-| 1 · the two tracks | `.td-two-col{align-items: stretch}` |
-| 2 · the left column | `.td-col-left` is already a column flex container |
-| 3 · the growing field | `.td-field-grow{display:flex; flex-direction:column; flex:1 1 auto; min-height:0}` |
-| 4 · the editor | `.td-md-editor{flex: 1 1 auto}` |
-| 5 · the panes | `.td-md-panes{flex: 1 1 auto; min-height: 200px}` — **no fixed height** |
+| The description | `[data-create-task-text]` — a `.td-textarea`, 8rem floor, labelled "Describe the work" |
+| Three examples | `[data-create-task-example]` × 3 (`data-example-kind="simple|medium|complex"`) — a press **fills** the box |
+| The project | `[data-create-task-project]` — the request's project; the default is the working one |
+| Hint | `[data-create-task-hint]` — says the supervisor hands this to the director, which files the cards |
+| Submit | `[data-create-task-submit]` — disabled until the box holds text and a project is chosen |
 
-Link 3 is the one the round's first draft missed: `.td-field-grow` was a **block** container,
-so the editor's `flex: 1 1 auto` had no flex parent to resolve against and fell back to its
-content height — which is why fixing only 1 / 4 / 5 still measured a 302px gap. Links 1 and 5
-are equally load-bearing: `align-items: start` leaves the left column content-sized, and the
-`clamp(280px, 46vh, 520px)` that R4 put on `.td-md-panes` is a **viewport** rule, so a taller
-dialog could never give the editing area any of the difference.
+> **R18 — the routing left this surface.** The dialog used to carry the eight routing fields
+> (priority, assignee, project, status, reporter, labels, parent, depends-on) plus the
+> acceptance mode. The create surface now submits an **intake request**; the director lane
+> decides the cards' fields. Priority, status, assignee, labels, description and prerequisites
+> stay editable in the **drawer** (B09/B22/B23/B25), so a human can still correct a card once
+> it exists. The retired relation fields are B24.
 
-`.td-modal-box` keeps R4's `max-height: calc(100vh - 48px)` and its own scroller — the dialog
-still caps against the viewport and scrolls internally rather than running off the screen, and
-at ≤760px the tracks stack so the panes are bounded rather than stretched. Measured at
-1512×950: the editor's bottom edge lands on the column's (0px gap) and `.td-md-panes` is
-502px; the board's own geometry and the box's 1120×800 overflow are both unchanged. Contract:
-`design/fidelity-r10.md` §2.3.
+**The panel is narrower than the old form.** `.td-modal-box.td-intake-box` is
+`min(640px, calc(100vw − 32px))`; the scrim keeps a 16px gutter per side. The two classes are
+deliberate: `.td-modal-box` also sets a width (and its ≤760 branch another), so the composer's
+rule names both to win on specificity. Both trees measure 640px at 1512 and at 760
+(`R18`; `design/fidelity-r18.md`).
 
-**R8 — in the dark the dialog separates on all three layers.** On a `#0f1417` canvas
-the panel (`bg .td-modal-box` = `--color-td-surface` `#161b1e`) is only marginally
-lighter than the canvas, so the dialog read as part of its own backdrop. Three scoped
-overrides fix it, and **only in the dark**:
+**An example is a sentence, not a label.** `.td-intake-examples .btn` wraps
+(`white-space: normal`, `max-width: 100%`, `height: auto`), so the complex example fills the
+row instead of widening the panel.
 
-| Layer | Light (unchanged) | Dark |
-|---|---|---|
-| Veil — the `dialog.modal` itself (`background-color: var(--scrim)`) | `rgba(15, 20, 23, 0.32)` | **`rgba(0, 0, 0, 0.55)`** |
-| Panel edge — `.modal-box` `border-color` | `--color-td-line` `#e6e8eb` | **`--color-td-line-strong` `#313b41`** |
-| Panel elevation — `.modal-box` `box-shadow` | `--shadow-pop` (canvas-tinted) | **`0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5)`** |
-
-The panel's own surface colour is **not** changed, and neither is anything in the
-light. `.td-modal-box` inherits `.modal-box`, so **B11** (create-project) gets the same
-treatment from the same rules. The drawer's `.td-scrim` reads the same `--scrim`, so the
-drawer veil deepens with the modal's — one token, every veil.
-
-> The implementation mirrors this with a `--brand-scrim` token; see `design/fidelity-r8.md`
-> §2.1, which also records that the implementation's light veil is a *pre-existing*
-> different value and must not be churned by this round.
+**The receipt is a toast.** The prototype's submit shows `toast.intakeAccepted` and clears the
+dialog; the implementation posts `POST /api/v1/intake` and reads the request back when its
+terminal event lands (`intake_consumed` / `intake_failed`). The dialog is always in the
+document and toggled by `hidden`, so the single `[data-create-task]` holds at rest.
 
 ## B11 · Create-project modal
 
@@ -1193,148 +1140,103 @@ open — the drawer, the states showcase, the access panel and now both floating
 
 ---
 
-## B22 · Assignee / Reporter control (R3)
+## B22 · Assignee control (drawer)
 
-One control, two rosters, three editable placements (the create dialog's assignee and reporter, and the drawer's assignee; the drawer's reporter is read-only since TP-0075 round 2).
+One control, one editable placement since R18: the drawer's assignee
+(`[data-detail-assignee-label]`, which the shipped markup also marks with
+`[data-assignee-input]`, so the two hook families meet on one element). The drawer's
+reporter is a **read-only value** (TP-0075 round 2): `[data-detail-reporter-label]` on a
+span, no input or menu. The create dialog's assignee and reporter fields retired with the
+routing form.
 
 | | |
 |---|---|
-| Hooks | `[data-assignee-input]` · `[data-assignee-menu]` · `[data-assignee-option]` (`data-assignee-value`, `data-assignee-kind`, `data-agent-platform`) · `[data-reporter-input]` · `[data-reporter-menu]` · `[data-reporter-option]` (`data-reporter-value`) |
+| Hooks | `[data-assignee-input]` · `[data-assignee-menu]` · `[data-assignee-option]` (`data-assignee-value`, `data-assignee-kind`, `data-agent-platform`) · `[data-assignee-value]` |
 | Shell | `.td-combo` (positioned) → `input.input` + `ul.menu.td-combo-menu` (daisyUI `menu`) |
-| Placements | create dialog — assignee and reporter (B10) · detail drawer — `[data-detail-assignee-label]` is the input (editable only in `backlog`/`todo`, else disabled), inside `.td-prop-combo`; the drawer's `[data-detail-reporter-label]` is a **read-only value** since TP-0075 round 2 |
-| Options | generated from the roster on every keystroke; the static seven on the assignee menu and the one on the reporter menu are the no-JS floor |
+| Editable branch | only in `backlog`/`todo`; elsewhere the input is disabled and the menu cannot open |
+| Options | generated from the roster on every keystroke; the static rows are the no-JS floor |
 | Keyboard | `↑`/`↓` move `aria-selected`, `Enter` accepts, `Esc` dismisses (`stopPropagation`, because the drawer also listens), `Tab` closes |
 | **No management entry** | there is no control anywhere that adds, renames or removes a roster entry — the list grows only by being used |
-
-The two rosters (DESIGN.md §18.3):
-
-| roster | seeded from | grows when |
-|---|---|---|
-| assignee | the seven handles the board names, each with its kind and platform | a task is created or re-assigned with a name the roster does not hold |
-| reporter | `data-reporter` across the 18 cards, read at first pass | a task is created with a new reporter |
 
 Matching is a case-insensitive substring, ranked prefix → contains → subsequence; the
 subsequence pass runs only when nothing contains the query. A name that is not in the
 roster is offered as a `· new` row while you type and is added the moment it is used. An
 unknown assignee defaults to `human`, because a handle the board has never seen carries no
-platform to claim. Both rosters live in memory and are written to nothing.
+platform to claim. The roster lives in memory and is written to nothing.
 
-## B23 · Markdown editor (R3)
+## B23 · Markdown editor (drawer, R3)
 
 | | |
 |---|---|
 | Root | `[data-md-editor]` |
-| Mode | `[data-md-toggle="write \| preview \| split"]` (`aria-pressed`) sets `data-md-mode` on `.td-md-panes`; `setMarkdownMode()` is the only writer |
-| Source | `[data-md-source]` — a `<textarea>`, also `[data-create-task-description]` |
+| Mode | `[data-md-toggle="write | preview | split"]` (`aria-pressed`) sets `data-md-mode` on `.td-md-panes`; `setMarkdownMode()` is the only writer |
+| Source | `[data-md-source]` — a `<textarea>` |
 | Highlight layer | `[data-md-highlight]` — a `<pre>` painted behind the textarea, `aria-hidden`, scrolled from it |
 | Preview | `[data-md-preview]` — rendered HTML inside `.td-gfm` |
 | Vendored | `vendor/markdown-lite.js` (`MarkdownLite.render`) · `vendor/highlight-lite.js` (`HighlightLite.markdown`, `HighlightLite.code`) |
+
+**R18 — the drawer is the editor's only surface.** The create dialog's description editor
+retired with the routing form; the drawer's Description section opens it in edit mode
+(`[data-detail-description-edit]`), and that is where the block's geometry is measured
+(`when: "drawer editing"` in the contract).
 
 The source pane is a **transparent textarea stacked on a highlighted `<pre>`**; both carry
 `.td-md-text`, which owns every property that can move a glyph, so the painted layer and the
 real input break lines in the same place. The `pre` and the textarea are the *only* two
 elements in the editor whose geometry must agree — everything else follows from them.
 
-**R4 — both panes scroll, and the highlight layer follows.** The edit side `.td-md-source`
-carries an explicit `height: 100%` beside `overflow-y: auto`, so overflowing source scrolls
-the way the preview always did; with scripting off the textarea keeps that native scroller
-and the layout is unchanged. `.td-md-panes` was `clamp(280px, 46vh, 520px)` — a markedly
-taller editing area than R3's fixed 230px.
+**R4 — both panes scroll, and the highlight layer follows.** `.td-md-source` carries an
+explicit `height: 100%` beside `overflow-y: auto`; with scripting off the textarea keeps
+that native scroller.
 
-**R10 ③ — the height is no longer a viewport rule.** That `clamp` was the block's second
-half: a height written in `vh` cannot follow the *dialog's* growth, so a taller box left the
-difference under the editor. `.td-md-panes` is now `flex: 1 1 auto` with `min-height: 200px`
-— a floor, not a ceiling — and its parents (`.td-field-grow`, `.td-md-editor`) take
-`flex: 1 1 auto` so the editor reaches the bottom of the column it sits in. `.td-md-source`
-keeps `height: 100%` and its own scroller, so the writing hand feels exactly as it did.
-Below 760px the tracks stack and the panes keep a bounded height under the same floor.
-Measured at 1512×950: panes 437px → **502px**; see B10's R10 table for the five-link chain.
+**R10 ③ — the height is no longer a viewport rule.** `.td-md-panes` is `flex: 1 1 auto` with
+`min-height: 200px` — a floor, not a ceiling — and the editor is a column flex box that takes
+what the drawer's Description section leaves it. `.td-md-source` keeps `height: 100%` and its
+own scroller.
 
-The scroll binding is **direct**, not delegated: `scroll` does not bubble, so R3's
-`$(editor).on("scroll", "[data-md-source]", …)` never fired and the highlight `<pre>` stayed
-put while the text scrolled under it — the "Write mode will not scroll" report. Binding the
-handler to each source (`.on("scroll")` on the element, keyed off the same
-`[data-md-source]` hook) puts the two back on one `scrollTop`.
-
-Both vendored files are loaded with a plain `<script>` tag from `prototype/vendor/`, make
-no network request, read no storage, and are first-party rather than downloaded (DESIGN.md
-§18.4). Nothing is submitted, fetched or stored: the editor renders what is typed, in the
-page.
+The scroll binding is **direct**, not delegated: `scroll` does not bubble, so the highlight
+`<pre>` is bound on the element itself and travels with the text. Both vendored files are
+loaded with a plain `<script>` tag, make no network request and read no storage.
 
 ---
 
-## B24 · Parent / Depends-on control (R4)
+## B24 · Parent / Depends-on control — retired in R18
 
-Two optional relation fields in B10's right column. They are B22's control pointed at a
-different source: the **current project's cards**, not a people roster.
+The create dialog carried two optional relation fields (Parent, and a multi-valued Depends
+on). R18 removed the routing form, so both fields and their hooks are gone from the
+prototype and the implementation. The drawer's own prerequisite control (B09) is unaffected.
 
-| | Parent | Depends on |
-|---|---|---|
-| Root | `[data-create-task-parent]` (`.td-combo`) | `[data-create-task-depends]` (`.td-combo`) |
-| Input | `[data-parent-input]` | `[data-depends-input]` |
-| Menu | `[data-parent-menu]` → `[data-parent-option]` (`data-parent-value`) | `[data-depends-menu]` → `[data-depends-option]` (`data-depends-value`) |
-| Selection | single — the input states the identifier, `[data-parent-clear]` empties it | multi — one `[data-depends-chips]` chip per task (`[data-depends-chip]`, each with `[data-depends-remove]`) |
-| Semantics | `task_relations.type='parent'`, **one** parent | prerequisite DAG (no cycles) |
-
-Both are labelled **Optional** and both leave the task creatable when empty.
-
-| | |
-|---|---|
-| Options | read from `[data-card]` filtered to the project selected in `[data-create-task-project]` (default: the working project), as **identifier + title** — `identifier` is the value, the title is the row's trailing text and the chip's tooltip |
-| Ranking | the same substring ranking as B22 (prefix → contains → subsequence), over identifier and title together |
-| Free text | **off** (`freeText: false`): a relation can only point at a task that already exists, so there is no `· new` row and nothing is added to any roster |
-| Dedupe | a chosen chip is dropped from the menu on the next render; choosing it twice is a no-op |
-| Markup | the menus ship a 12-row inert seed (the working project's tasks) as the no-JS floor, redrawn from the live board the moment the control is focused |
-| Keyboard | `↑`/`↓` move, `Enter` accepts (opens the menu when it is closed, so it can never submit the form from these inputs), `Esc` dismisses, `Tab` closes — the B22 loop, keyed off these hooks |
-
-**Menus never tear the dialog.** `.td-combo-menu` is `flex-wrap: nowrap` with `flex: none`
-rows, because daisyUI's `menu` is `column wrap` and turned a twelve-task list into two
-narrow columns. Inside the dialog the menu is clipped by `.td-modal-box`'s own scroller, so
-`positionComboMenu()` measures the row and flips the menu above its control (CSS
-`.td-combo[data-drop="up"]`) when there is not room below — the depends-on field, last in
-the column, opens upward.
-
-**UI only.** No relation is written anywhere: no graph is built, no cycle is checked, and
-the chips reach neither the created card nor any store. The plan's ≤8 chain length and ≤8
-fan-in are noted in the spec, not enforced here.
+`design/fidelity-r18.md` records the retirement; the block keeps its id so the inventory has
+no gap and the contract asserts the hooks' **absence** (`[data-create-task-parent]`,
+`[data-create-task-depends]`, `[data-parent-input]`, `[data-depends-input]`).
 
 ---
 
-## B25 · Label control (R5)
+## B25 · Label control (drawer, R5)
 
-One field in B10's right column, between **Reporter** (B22) and **Parent** (B24), plus the
-same control in the **B09** drawer's property grid. It is **B22's control used many times
-at once**: free text over a fuzzy-matched list, and the multi/chips half of **B24**.
-Authority: `ARCHITECTURE §4.4`; narrative: DESIGN.md **§22**.
+The drawer's property grid carries the label control; the create dialog's copy retired with
+the routing form (R18). It is **B22's control used many times at once**: free text over a
+fuzzy-matched list, with removable chips. Authority: `ARCHITECTURE §4.4`; narrative:
+DESIGN.md **§22**.
 
 | | |
 |---|---|
-| Root | `[data-create-task-labels]` (`.td-combo`) |
-| Chips | `[data-label-chips]` → one `[data-label-chip]` per label (`data-label-value`), each with a `[data-label-remove]` |
-| Input | `[data-label-input]` — `role="combobox"`, `aria-controls="td-label-menu-create"` |
-| Menu | `[data-label-menu]` → `[data-label-option]` (`data-label-value`) |
-| Drawer | `[data-detail-labels]` — the **same editable control** in the drawer's own hook family: root `[data-detail-label-chips]` — one `[data-detail-label-chip]` per label (`data-detail-label-value`), each with a `[data-detail-label-remove]` · input `[data-detail-label-input]` (`aria-controls="td-label-menu-detail"`) · menu `[data-detail-label-menu]` → `[data-detail-label-option]` (`data-detail-label-value`). `freeText: true`, `multi: true` — the B22 Assignee/Reporter paradigm; the card's `data-labels` fill its chips on open |
+| Root | `[data-detail-labels]` (`.td-combo`) |
+| Chips | `[data-detail-label-chips]` → one `[data-detail-label-chip]` per label (`data-detail-label-value`), each with a `[data-detail-label-remove]` |
+| Input | `[data-detail-label-input]` — `role="combobox"`, `aria-controls="td-label-menu-detail"` |
+| Menu | `[data-detail-label-menu]` → `[data-detail-label-option]` (`data-detail-label-value`) |
 | Roster | read off the board's cards (`data-labels`) at first pass — **no preset list, no enum** |
-| Free text | **on** (`freeText: true`): a name the roster does not hold is offered as a `· new` row and is created by being used |
-| Multi | **on**: every accepted name becomes a removable chip; the menu drops what is already chosen, and choosing it twice is a no-op |
-| Normalisation | case- and whitespace-insensitive (`bug` / `Bug` / `bug ` are one label); the entry keeps the **first spelling**, and that is what every surface shows |
-| Keyboard | `↑`/`↓` move, `Enter` accepts (opens the menu when it is closed, so it can never submit the form from this input), `Esc` dismisses, `Tab` closes — the B22/B24 loop, keyed off these hooks |
-| Markup | the menu ships an 11-row inert seed (the board's own labels) as the no-JS floor, redrawn from the live roster the moment the control is focused |
+| Free text | **on**: a name the roster does not hold is offered as a `· new` row and is created by being used |
+| Multi | **on**: every accepted name becomes a removable chip; the menu drops what is already chosen |
+| Normalisation | case- and whitespace-insensitive (`bug` / `Bug` / `bug ` are one label); the entry keeps the **first spelling** |
+| Keyboard | `↑`/`↓` move, `Enter` accepts, `Esc` dismisses, `Tab` closes |
 
-The two placements share one implementation (`COMBO.labels` in the dialog,
-`COMBO.detailLabels` in the drawer) and one roster, and differ only in the hook family they
-answer to — `data-label-*` in the dialog, `data-detail-label-*` in the drawer — so their
-delegated selectors never collide in the single document. The drawer's chips are rendered
-from the card's `data-labels` on open and are **editable**: type to fuzzy-match, accept to
-add a chip, remove to drop one, exactly as in the dialog.
+**No management entry** — the hard constraint, shared with B22. No "manage labels" /
+"label library" / "delete label" / "edit labels" control exists anywhere, and no button adds,
+renames, merges or expires a label. Auto-cleanup is a backend concern (DESIGN.md §22.4).
 
-**No management entry** — the hard constraint, shared with B22. There is **no "manage
-labels" / "label library" / "delete label" / "edit labels"** control anywhere in the
-prototype, and no button that adds, renames, merges or expires a label. Auto-cleanup of
-unused labels is a **backend** concern (DESIGN.md §22.4) and has no UI here.
-
-**UI only.** Nothing is stored, sent or filtered: the chips reach the created card's
-`data-labels` attribute and the drawer, and go no further.
+**UI only.** Nothing is stored, sent or filtered: the chips reach the drawer and go no
+further.
 
 ---
 

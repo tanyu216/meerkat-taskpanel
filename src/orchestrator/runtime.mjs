@@ -26,7 +26,13 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { CLI_TIMEOUT_MS, EVENT_STREAM_LINE, URL_ENV } from "../foundation/constants.mjs";
+import {
+  BOARD_ACTOR_ID,
+  CLI_TIMEOUT_MS,
+  EVENT_STREAM_LINE,
+  SYSTEM_KIND,
+  URL_ENV,
+} from "../foundation/constants.mjs";
 import { pidMatches, processStartToken } from "../foundation/daemon-state.mjs";
 import { markerMatches } from "../foundation/handoff-round.mjs";
 import { STOP_DRAIN_MS, wedgeKillAction } from "../foundation/loop-state.mjs";
@@ -502,6 +508,102 @@ export function readQuestionOutcome(opts, ref, questionId, log = () => {}, run =
   const task = read.data?.task ?? {};
   const comments = Array.isArray(read.data?.comments) ? read.data.comments : [];
   return { ok: true, ...classifyQuestionOutcome({ task, comments, questionId }) };
+}
+
+/**
+ * Did the decision lane settle one intake request?
+ *
+ * The request's own status is the authority: `consumed` (cards filed) and
+ * `failed` (a recorded refusal) are both terminal, and `pending` means the turn
+ * did not finish the job. The row's exit code proves nothing — a turn can exit 0
+ * after creating cards and before recording them.
+ *
+ * @param {object} opts
+ * @param {string} requestId
+ * @param {(line: string) => void} [log]
+ * @param {Function} [run]
+ * @returns {{ok: boolean, settled?: boolean, status?: string|null, error: string|null}}
+ */
+export function readIntakeOutcome(opts, requestId, log = () => {}, run = runCli) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, error: "no agent configured" };
+  const read = run(opts, agent, ["intake", "get", String(requestId), "--json"]);
+  if (!read.ok) {
+    log(`intake outcome for ${requestId} failed: ${read.error}`);
+    return { ok: false, error: read.error };
+  }
+  const request = read.data?.request ?? {};
+  const status = typeof request.status === "string" ? request.status : null;
+  return { ok: true, settled: status !== null && status !== "pending", status, error: null };
+}
+
+/** A non-empty trimmed string, or null. */
+function runtimeText(value) {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+/**
+ * End an intake request that used up its decision turns.
+ *
+ * The request has no card to park, so this is the lane's last act: adopt any
+ * cards the lane did create (they carry `meta.intake_request`) and record them
+ * as `consumed`; with none, record the refusal. Writing as `Board` is the
+ * board's own housekeeping identity (ADR 0018), not the decision lane's.
+ *
+ * @param {object} opts
+ * @param {{request_id?: string}} row
+ * @param {(line: string) => void} [log]
+ * @param {Function} [run]
+ * @returns {{ok: boolean, outcome?: "consumed"|"failed", refs?: string[], error: string|null}}
+ */
+export function settleIntakeExhausted(opts, row, log = () => {}, run = runCli) {
+  const requestId = runtimeText(row?.request_id);
+  if (requestId === null) return { ok: false, error: "intake row has no request_id" };
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, error: "no agent configured" };
+  const listed = run(opts, agent, [
+    "issue",
+    "list",
+    "--meta",
+    `intake_request=${requestId}`,
+    "--json",
+    "--limit",
+    String(opts.boardLimit),
+  ]);
+  const tasks = listed.ok && Array.isArray(listed.data?.tasks) ? listed.data.tasks : [];
+  const refs = [];
+  for (const task of tasks) {
+    const ref = runtimeText(task?.identifier);
+    if (ref !== null && !refs.includes(ref)) refs.push(ref);
+  }
+  const automation = { actorKind: SYSTEM_KIND };
+  if (refs.length > 0) {
+    const done = run(opts, BOARD_ACTOR_ID, [
+      "intake",
+      "complete",
+      requestId,
+      "--created",
+      refs.join(","),
+    ], automation);
+    if (!done.ok) {
+      log(`intake ${requestId}: recovery complete failed: ${done.error}`);
+      return { ok: false, error: done.error };
+    }
+    log(`intake ${requestId}: recovered ${refs.length} card(s) the lane did not record`);
+    return { ok: true, outcome: "consumed", refs, error: null };
+  }
+  const failed = run(opts, BOARD_ACTOR_ID, [
+    "intake",
+    "fail",
+    requestId,
+    "--reason",
+    "the decision lane did not turn the request into cards",
+  ], automation);
+  if (!failed.ok) {
+    log(`intake ${requestId}: failure write failed: ${failed.error}`);
+    return { ok: false, error: failed.error };
+  }
+  return { ok: true, outcome: "failed", refs: [], error: null };
 }
 
 /**

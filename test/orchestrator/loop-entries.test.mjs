@@ -32,7 +32,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 
-import { readOpenQuestions } from "../../src/orchestrator/board.mjs";
+import { readOpenQuestions, readPendingIntake } from "../../src/orchestrator/board.mjs";
 import {
   claimPatrolCard,
   createProjectAdmission,
@@ -46,15 +46,22 @@ import { createDeferralRecorder, readDeferralLedger } from "../../src/orchestrat
 import { holdCard, releaseCard } from "../../src/orchestrator/holds.mjs";
 import { claimCards, enqueueCard, QUEUE_FILES, readCards } from "../../src/orchestrator/queue.mjs";
 import { findWorkspace, upsertWorkspaceRecord } from "../../src/orchestrator/workspace.mjs";
-import { runContinue, runPollTick, runQuestionTick } from "../../src/orchestrator/runners.mjs";
+import {
+  runContinue,
+  runIntakeTick,
+  runPollTick,
+  runQuestionTick,
+} from "../../src/orchestrator/runners.mjs";
 import {
   BOARD_UNRESPONSIVE_AFTER,
   acquireContinueLock,
   boardProbeUrl,
   loadContinueLock,
   readCardForRedispatch,
+  readIntakeOutcome,
   readRouteOutcome,
   recordContinuePid,
+  settleIntakeExhausted,
   killWedgedPool,
   probeBoardHealth,
   releaseContinueLock,
@@ -942,6 +949,58 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     );
   });
 
+  it("poll enqueues a pending intake request for the decision lane, without a card", () => {
+    const dir = tempDir("tp-intake-lane-");
+    const app = join(dir, "app");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(dir, "projects.json"), JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
+    writeLivePool(dir, { version: 3, capabilities: ["question-lane", "intake-lane"] });
+    const record = join(dir, "calls.jsonl");
+    const script = join(dir, "intake-cli.mjs");
+    writeFileSync(
+      script,
+      [
+        'import { appendFileSync } from "node:fs";',
+        "const argv = process.argv.slice(2);",
+        "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(argv)}\\n`);",
+        "let data = { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } };",
+        "const at = argv.indexOf('intake');",
+        "if (at !== -1 && argv[at + 1] === 'list') {",
+        "  data = { requests: [{ id: 'r-1', project_id: 'P', text: 'Fix the blank paint', created_by: 'Terry', created_at: '2026-11-11T00:00:00Z' }] };",
+        "}",
+        'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
+      ].join("\n"),
+    );
+    const run = runEntry(
+      "passes.mjs",
+      [
+        "--actor-kind", "claude", "--agent", "alice",
+        "--cli", script, "--repo", dir,
+        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+      ],
+      { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
+      "poll",
+    );
+    assert.equal(run.status, 0, run.stderr);
+
+    const rows = readCards(dir).value.cards.filter((row) => row.id === "intake:r-1");
+    assert.equal(rows.length, 1);
+    const [row] = rows;
+    assert.equal(row.queue_kind, "question");
+    assert.equal(row.role, "intake");
+    assert.equal(row.card, null);
+    assert.equal(row.intake, true);
+    assert.equal(row.request_id, "r-1");
+    assert.equal(row.request_text, "Fix the blank paint");
+    assert.equal(row.requested_by, "Terry");
+    assert.equal(row.target_dir, app);
+    assert.equal(
+      calls(record).some((call) => call.includes("claim")),
+      false,
+      "the intake lane never claims a card",
+    );
+  });
+
   it("caps the director's route lane at two dispatches per unowned card", () => {
     const dir = tempDir("tp-route-cap-");
     const app = join(dir, "app");
@@ -1618,6 +1677,189 @@ describe("runQuestionTick", () => {
   it("treats a coalesced row as skipped", () => {
     const d = deps({ enqueue: () => ({ ok: true, coalesced: true }) });
     assert.equal(runQuestionTick(d).enqueued, 0);
+  });
+});
+
+describe("runIntakeTick", () => {
+  const request = {
+    id: "r-1",
+    project: "P",
+    text: "Fix the blank first paint",
+    requested_by: "Terry",
+    created_at: "2026-11-11T00:00:00Z",
+  };
+
+  function deps(overrides = {}) {
+    const rows = [];
+    const adopted = [];
+    return {
+      requests: [request],
+      resolveDir: () => ({ ok: true, dir: "/work/app" }),
+      enqueue: (row) => {
+        rows.push(row);
+        return { ok: true, coalesced: false };
+      },
+      dispatches: () => 0,
+      adopt: (row) => adopted.push(row),
+      agent: "alice",
+      log: () => {},
+      rows,
+      adopted,
+      ...overrides,
+    };
+  }
+
+  it("enqueues a cardless decision row carrying the description", () => {
+    const d = deps();
+    const result = runIntakeTick(d);
+    assert.equal(result.enqueued, 1);
+    const [row] = d.rows;
+    assert.equal(row.id, "intake:r-1");
+    assert.equal(row.queue_kind, "question");
+    assert.equal(row.role, "intake");
+    assert.equal(row.card, null, "an intake request has no card ref");
+    assert.equal(row.intake, true);
+    assert.equal(row.request_id, "r-1");
+    assert.equal(row.request_text, "Fix the blank first paint");
+    assert.equal(row.requested_by, "Terry");
+    assert.equal(row.question_id, "intake:r-1");
+    assert.equal(row.target_dir, "/work/app");
+    assert.equal(row.agent, "alice");
+  });
+
+  it("settles at the attempt cap instead of leaving the request pending", () => {
+    const d = deps({ dispatches: () => 2 });
+    const result = runIntakeTick(d);
+    assert.equal(result.enqueued, 0);
+    assert.deepEqual(d.rows, []);
+    assert.deepEqual(d.adopted, [{ request_id: "r-1" }]);
+  });
+
+  it("skips an unmapped project without settling", () => {
+    const d = deps({ resolveDir: () => ({ ok: false, code: "PROJECT_DIR_UNMAPPED" }) });
+    const result = runIntakeTick(d);
+    assert.equal(result.skipped, 1);
+    assert.deepEqual(d.rows, []);
+    assert.deepEqual(d.adopted, []);
+  });
+
+  it("treats a coalesced row as skipped", () => {
+    const d = deps({ enqueue: () => ({ ok: true, coalesced: true }) });
+    assert.equal(runIntakeTick(d).enqueued, 0);
+  });
+});
+
+describe("readPendingIntake", () => {
+  const opts = { agents: ["alice"], boardLimit: 50 };
+
+  it("reads pending requests through the intake CLI", () => {
+    const seen = [];
+    const run = (o, agent, args) => {
+      seen.push(args);
+      return {
+        ok: true,
+        data: {
+          requests: [
+            {
+              id: "r-1",
+              project_id: "P",
+              text: "Fix it",
+              created_by: "Terry",
+              created_at: "2026-11-11T00:00:00Z",
+            },
+            { id: null, project_id: "P", text: "broken row" },
+          ],
+        },
+      };
+    };
+    const result = readPendingIntake(opts, () => {}, run);
+    assert.equal(result.ok, true);
+    assert.deepEqual(seen[0], [
+      "intake",
+      "list",
+      "--status",
+      "pending",
+      "--limit",
+      "50",
+      "--json",
+    ]);
+    assert.deepEqual(result.rows, [
+      {
+        id: "r-1",
+        project: "P",
+        text: "Fix it",
+        requested_by: "Terry",
+        created_at: "2026-11-11T00:00:00Z",
+      },
+    ]);
+  });
+
+  it("reports an unreadable read instead of throwing", () => {
+    const result = readPendingIntake(opts, () => {}, () => ({ ok: false, error: "down" }));
+    assert.equal(result.ok, false);
+    assert.equal(result.error, "down");
+    assert.deepEqual(result.rows, []);
+  });
+});
+
+describe("readIntakeOutcome", () => {
+  const opts = { agents: ["alice"] };
+
+  it("settles on consumed and failed, and stays open on pending", () => {
+    const at = (status) =>
+      readIntakeOutcome(opts, "r-1", () => {}, () => ({
+        ok: true,
+        data: { request: { status } },
+      }));
+    assert.deepEqual(at("consumed"), { ok: true, settled: true, status: "consumed", error: null });
+    assert.deepEqual(at("failed"), { ok: true, settled: true, status: "failed", error: null });
+    assert.deepEqual(at("pending"), { ok: true, settled: false, status: "pending", error: null });
+  });
+
+  it("reports an unreadable check instead of throwing", () => {
+    const result = readIntakeOutcome(opts, "r-1", () => {}, () => ({ ok: false, error: "down" }));
+    assert.deepEqual(result, { ok: false, error: "down" });
+  });
+});
+
+describe("settleIntakeExhausted", () => {
+  const opts = { agents: ["alice"], boardLimit: 50 };
+  const row = { request_id: "r-1" };
+
+  it("adopts the cards the lane created, writing as Board", () => {
+    const calls = [];
+    const run = (o, agent, args) => {
+      calls.push({ agent, args });
+      if (args[0] === "issue") {
+        return { ok: true, data: { tasks: [{ identifier: "TP-1" }, { identifier: "TP-2" }] } };
+      }
+      return { ok: true, data: { request: { status: "consumed" } } };
+    };
+    const result = settleIntakeExhausted(opts, row, () => {}, run);
+    assert.deepEqual(result, { ok: true, outcome: "consumed", refs: ["TP-1", "TP-2"], error: null });
+    const write = calls.at(-1);
+    assert.equal(write.agent, "Board");
+    assert.deepEqual(write.args, [
+      "intake",
+      "complete",
+      "r-1",
+      "--created",
+      "TP-1,TP-2",
+    ]);
+  });
+
+  it("records a refusal when the lane created nothing", () => {
+    const calls = [];
+    const run = (o, agent, args) => {
+      calls.push({ agent, args });
+      if (args[0] === "issue") return { ok: true, data: { tasks: [] } };
+      return { ok: true, data: { request: { status: "failed" } } };
+    };
+    const result = settleIntakeExhausted(opts, row, () => {}, run);
+    assert.equal(result.outcome, "failed");
+    assert.equal(calls.at(-1).agent, "Board");
+    assert.equal(calls.at(-1).args[0], "intake");
+    assert.equal(calls.at(-1).args[1], "fail");
   });
 });
 

@@ -72,6 +72,7 @@ import {
   activityToWire,
   commentToWire,
   dictionaryEntryToWire,
+  intakeToWire,
   labelToWire,
   projectToWire,
   relationToWire,
@@ -241,6 +242,21 @@ const PROBE_PROJECT = {
   archivedAt: "probe",
   createdAt: "probe",
   updatedAt: "probe",
+};
+
+const PROBE_INTAKE = {
+  id: "probe",
+  projectId: "probe",
+  text: "probe",
+  status: "pending",
+  createdBy: "probe",
+  createdKind: "probe",
+  createdAt: "probe",
+  settledAt: "probe",
+  settledBy: "probe",
+  settledByKind: "probe",
+  createdRefs: ["probe"],
+  lastError: "probe",
 };
 
 const PROBE_RELATION = {
@@ -437,6 +453,7 @@ export function collectWire() {
     activity: activityToWire(PROBE_ACTIVITY),
     comment,
     dictionary_entry: dictionaryEntryToWire(PROBE_DICTIONARY_ENTRY),
+    intake: intakeToWire(PROBE_INTAKE),
     label: labelToWire(PROBE_LABEL),
     project: projectToWire(PROBE_PROJECT),
     relation: relationToWire(PROBE_RELATION),

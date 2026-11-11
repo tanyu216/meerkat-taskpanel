@@ -50,7 +50,7 @@ import {
 } from "./interrupts.mjs";
 import { createKindPool } from "./kind-session.mjs";
 import { agentPaths } from "./options.mjs";
-import { drainInFlight, readCardForRedispatch, readQuestionOutcome, readRedispatchContext, readRouteOutcome, readTriageOutcome, runCli, runCliAsync } from "./runtime.mjs";
+import { drainInFlight, readCardForRedispatch, readIntakeOutcome, readQuestionOutcome, readRedispatchContext, readRouteOutcome, readTriageOutcome, runCli, runCliAsync, settleIntakeExhausted } from "./runtime.mjs";
 import { createBoardSession } from "./board-session.mjs";
 import { isTurnTimeoutError } from "./turn-errors.mjs";
 import {
@@ -390,6 +390,10 @@ export function createSessionPool(input = {}) {
   // A triage row's producer is already `done`; its decision is the marker, and
   // a producer that moved on makes the row stale rather than unsettled.
   const triageOutcome = typeof input.triageOutcome === "function" ? input.triageOutcome : null;
+  // An intake row is settled by the request's own status, never by the turn's
+  // exit code: the decision lane may have created the cards and stopped early.
+  const intakeOutcome =
+    typeof input.intakeOutcome === "function" ? input.intakeOutcome : null;
   const stateDir = dirname(String(opts.state));
   const reapGraceMs = Number.isFinite(input.reapGraceMs) && input.reapGraceMs >= 0
     ? Number(input.reapGraceMs)
@@ -688,7 +692,7 @@ export function createSessionPool(input = {}) {
       // release only enqueues question rows when the live pool advertises the
       // capability, and worker rows carry their own `worker:` session key.
       version: 3,
-      capabilities: ["question-lane", "worker-sessions"],
+      capabilities: ["question-lane", "worker-sessions", "intake-lane"],
       // The pool manager's own pid, not an agent child's: an orphaned agent process
       // would otherwise keep answering "resident" after its manager died. A
       // stopping pool publishes no pid, so the next start is not refused by a
@@ -1723,6 +1727,19 @@ export function createSessionPool(input = {}) {
         const settled = [];
         const unsettled = [];
         for (const row of claimed.cards) {
+          if (row.intake === true) {
+            // The request's own status is the proof. A turn that exits 0 after
+            // creating cards but before recording them stays unsettled until
+            // the exhaustion path adopts what it created.
+            if (intakeOutcome === null) {
+              settled.push(row);
+              continue;
+            }
+            const live = await intakeOutcome({ requestId: row.request_id, row });
+            if (live?.ok === true && live.settled !== true) unsettled.push(row);
+            else settled.push(row);
+            continue;
+          }
           if (row.triage === true) {
             // The producer is `done`: a question-style outcome would settle on
             // "not in_progress" before the director did anything. The marker is
@@ -1780,6 +1797,13 @@ export function createSessionPool(input = {}) {
           // pass with nobody to act on it.
           for (const row of unsettled) {
             if (!(retried.failedIds ?? []).includes(String(row.id))) continue;
+            if (row.intake === true) {
+              // No card to park: adopt the cards the lane did create, or record
+              // the refusal, so the request reaches a terminal state the human
+              // can read.
+              settleIntakeExhausted(opts, row, log);
+              continue;
+            }
             if (row.triage === true) {
               // The producer is terminal: parkCard would try a move the state
               // machine refuses (and write a `question` nobody can answer).
@@ -1799,7 +1823,9 @@ export function createSessionPool(input = {}) {
             );
           }
           log(
-            `session: director did not settle ${unsettled.map((card) => card.card).join(", ")} — ` +
+            `session: director did not settle ${unsettled
+              .map((card) => card.card ?? card.request_id)
+              .join(", ")} — ` +
               (retried.failed > 0 ? "row failed after 2 attempts" : "retry scheduled"),
           );
         }
@@ -1809,11 +1835,18 @@ export function createSessionPool(input = {}) {
       // A persistent spawn/turn failure must not spin: the question interval
       // runs every second, so the row waits out the same backoff as an unsettled
       // turn, with the same two-turn budget.
-      requeueCards(stateDir, claimed.cards.map((card) => card.id), {
+      const retried = requeueCards(stateDir, claimed.cards.map((card) => card.id), {
         maxAttempts: DIRECTOR_MAX_ATTEMPTS,
         error: outcome?.error ?? "question turn failed",
         retryAt: new Date(now() + QUESTION_RETRY_BACKOFF_MS).toISOString(),
       });
+      // An intake row whose turn kept crashing has no card to park: adopt what
+      // the lane created or record the refusal, then let the row go.
+      for (const row of claimed.cards) {
+        if (row.intake !== true) continue;
+        if (!(retried.failedIds ?? []).includes(String(row.id))) continue;
+        settleIntakeExhausted(opts, row, log);
+      }
       log(`session: question turn for ${dir} failed: ${outcome?.error ?? "unknown error"} — retry scheduled`);
       if (/closed|exited|spawn error|timed out/.test(String(outcome?.error ?? ""))) {
         await closeEntry(entry, { dropSession: false });
@@ -3272,6 +3305,7 @@ export async function runSession(opts, deps = {}) {
       readQuestionOutcome(opts, input.card, input.questionId, log),
     routeOutcome: (input) => readRouteOutcome(opts, input.card, log),
     triageOutcome: (input) => readTriageOutcome(opts, input.card, input.round, log),
+    intakeOutcome: (input) => readIntakeOutcome(opts, input.requestId, log),
   });
   let started;
   try {

@@ -1,13 +1,10 @@
 /**
  * The browser layer (L2) of the block contract, behind a skip guard.
  *
- * The real work lives in three host-side legs, all kept out of `test/**` so
+ * The real work lives in two host-side legs, both kept out of `test/**` so
  * `node --test` never collects them as suites: `web/scripts/dom-smoke.mjs` (the
- * block contract's DOM rules), `web/scripts/combo-menu-geometry.mjs` (the
- * combobox popup's box and row metrics, C-COMBO-1) and
- * `web/scripts/dialog-track-parity.mjs` (the create dialog's box gutter and the
- * two tracks it feeds, prototype against implementation). This wrapper runs each
- * and:
+ * block contract's DOM rules) and `web/scripts/combo-menu-geometry.mjs` (the
+ * combobox popup's box and row metrics, C-COMBO-1). This wrapper runs each and:
  *
  *   * **skips** with a printed reason when a leg reports "cannot run" (exit 2)
  *     — no `web/dist`, no Playwright, no launchable Chromium, or (for the parity
@@ -37,7 +34,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../..");
 const SCRIPT = resolve(ROOT, "web/scripts/dom-smoke.mjs");
 const COMBO_SCRIPT = resolve(ROOT, "web/scripts/combo-menu-geometry.mjs");
-const TRACK_SCRIPT = resolve(ROOT, "web/scripts/dialog-track-parity.mjs");
 const HAS_DIST = existsSync(resolve(ROOT, "web/dist/index.html"));
 
 /** Run one host-side leg and translate its exit code into skip / fail / pass. */
@@ -63,9 +59,5 @@ describe("web/blocks.dom — the browser layer", () => {
 
   it("holds the combo popup's box and row metrics on both surfaces", (t) => {
     runLeg(t, COMBO_SCRIPT, "the combo-menu geometry leg");
-  });
-
-  it("holds the create dialog's track against the prototype at every two-column viewport", (t) => {
-    runLeg(t, TRACK_SCRIPT, "the create-dialog track parity leg");
   });
 });

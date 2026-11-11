@@ -2192,6 +2192,27 @@ export async function run() {
     }));
     const drawerResults = await evaluateRuleSet(drawerRules);
 
+    // B23 — the drawer's editor exists only while the description is in edit
+    // mode (`descriptionMode === "edit"`), so its own layout rules are read
+    // between the edit control's press and its cancel.
+    let drawerEditingResults = [];
+    const editControl = await page.$("[data-detail-description-edit]");
+    if (editControl !== null) {
+      await editControl.click();
+      await page.waitForTimeout(200);
+      const editingRules = EVALUATED_RULES.filter((entry) => entry.rule.when === "drawer editing").map((entry) => ({
+        block: entry.block,
+        rule: entry.rule,
+      }));
+      drawerEditingResults = await evaluateRuleSet(editingRules);
+      await page.evaluate(() => document.querySelector("[data-detail-description-cancel]")?.click());
+      await page.waitForTimeout(120);
+      // The edit pass moved focus into the editor; R14 reads the drawer's
+      // OPENING hand-off next, so put the panel back in the seat it opened in.
+      await page.evaluate(() => document.querySelector("[data-detail-drawer]")?.focus());
+      await page.waitForTimeout(60);
+    }
+
     /* ---- R14 ①② — the drawer's focus hand-off and its category words --------
        Both leftovers live on the drawer that is open right here (TD-1), so both
        are measured on the same screen, between the open and the Escape.
@@ -4132,7 +4153,7 @@ export async function run() {
     await page.click('[data-view="board"]');
     await page.waitForTimeout(120);
 
-    // ---- R10 · the board's own empty state, the drawer's saves, the fill -----
+    // ---- R10 · the board's own empty state and the drawer's saves ------------
     //
     // Three of the round's facts a document probe cannot state: which of the two
     // board members is *painted* at one instant (a relation between two elements,
@@ -4455,460 +4476,86 @@ export async function run() {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(250);
 
-    // ③ — the description fills the column, measured as the relation it is. The
-    // editor's bottom lands exactly on the left column's content edge; the only
-    // space under it is the dialog's own padding. A fixed-height panes box put
-    // 240px between the two.
+    // --- B10 · the create-task composer (R18) --------------------------------
     //
-    // The probes below are scoped to `[data-create-task]` on purpose
-    // (T-20261014-212017-4). There are **two** `[data-md-editor]`s in the
-    // document since the drawer's Description section grew one, and the drawer
-    // renders *before* the dialog in `App.vue`, so a bare `document.querySelector`
-    // would measure the drawer's — which is `hidden` at rest and 0px tall.
+    // The dialog is one description plus the project it belongs to. The routing
+    // fields left this surface (the decision lane chooses them), so the old
+    // two-column, editor and relation legs retired with them; these are the
+    // composer's own facts: three examples, a project, a gated submit, and a
+    // reset that returns the opening state.
+    const composerFailures = [];
+    const composerCheck = (ok, message) => { if (!ok) composerFailures.push(message); };
+
     await page.click("[data-new-task]");
     await page.waitForTimeout(300);
-    const fill = await page.evaluate(() => {
-      const round = (n) => Math.round(n * 100) / 100;
-      const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
-      const row = rect("[data-create-two-col]");
-      const left = rect("[data-create-left]");
-      const editor = rect("[data-create-task] [data-md-editor]");
-      const panes = rect("[data-create-task] .td-md-panes");
-      const source = rect("[data-create-task] [data-md-source]");
-      const rowStyle = row ? getComputedStyle(document.querySelector("[data-create-two-col]")) : null;
+    const composerState = await page.evaluate(() => {
+      const field = document.querySelector("[data-create-task] [data-create-task-text]");
+      const project = document.querySelector("[data-create-task] [data-create-task-project]");
+      const submit = document.querySelector("[data-create-task] [data-create-task-submit]");
       return {
-        rowBottom: round(row?.bottom ?? 0),
-        rowPaddingBottom: round(Number.parseFloat(rowStyle?.paddingBottom ?? "0")),
-        leftBottom: round(left?.bottom ?? 0),
-        editorBottom: round(editor?.bottom ?? 0),
-        editorHeight: round(editor?.height ?? 0),
-        panesHeight: round(panes?.height ?? 0),
-        sourceHeight: round(source?.height ?? 0),
-        sourceScrolls: (() => {
-          const el = document.querySelector("[data-create-task] [data-md-source]");
-          return el ? getComputedStyle(el).overflowY : null;
-        })(),
+        fieldTag: field?.tagName ?? null,
+        projectTag: project?.tagName ?? null,
+        projectValue: project?.value ?? null,
+        optionCount: project ? project.options.length : 0,
+        submitDisabled: submit?.disabled ?? null,
+        examples: document.querySelectorAll("[data-create-task] [data-create-task-example]").length,
+        twoCol: document.querySelectorAll("[data-create-task] [data-create-two-col]").length,
+        titleField: document.querySelectorAll("[data-create-task] [data-create-task-title]").length,
       };
     });
-    r10Check(
-      Math.abs(fill.editorBottom - fill.leftBottom) <= 1,
-      `the editor ends at ${fill.editorBottom}px and its column's content at ${fill.leftBottom}px`,
-    );
-    r10Check(
-      Math.abs(fill.rowBottom - fill.editorBottom - fill.rowPaddingBottom) <= 1,
-      `the only space under the editor is the dialog's ${fill.rowPaddingBottom}px padding, measured ${Math.round((fill.rowBottom - fill.editorBottom) * 100) / 100}px`,
-    );
-    // The panes used to be a fixed `clamp(280px, 46vh, 520px)` — 225px as built.
-    // Growing past 280 is what says the height now follows the row rather than
-    // the viewport; the floor keeps a single-column dialog usable.
-    r10Check(fill.panesHeight > 280, `the panes are ${fill.panesHeight}px tall, which the old viewport rule allowed them to exceed anyway`);
-    r10Check(Math.abs(fill.sourceHeight - fill.panesHeight) <= 1, `the write side is ${fill.sourceHeight}px inside ${fill.panesHeight}px panes`);
-    r10Check(fill.sourceScrolls === "auto", `the write side scrolls as ${fill.sourceScrolls}`);
+    composerCheck(composerState.fieldTag === "TEXTAREA", `the description is a <${composerState.fieldTag}>, not a textarea`);
+    composerCheck(composerState.projectTag === "SELECT" && composerState.optionCount > 0, `the project control is ${composerState.projectTag} with ${composerState.optionCount} options`);
+    composerCheck(composerState.projectValue !== null && composerState.projectValue !== "", "the composer opened with no project selected");
+    composerCheck(composerState.submitDisabled === true, "an empty box leaves the submit enabled");
+    composerCheck(composerState.examples === 3, `found ${composerState.examples} example chips, expected 3`);
+    composerCheck(composerState.twoCol === 0 && composerState.titleField === 0, "the old two-column routing form is still rendered");
 
-    // R4 · the containing box, and the **field track** it feeds
-    // (T-20261015-215028). The routing column's width *is* the track every
-    // combobox menu sizes against (`.td-combo-menu { width: max(100%, 220px) }`
-    // resolves `100%` against it), and it is arithmetic, not taste:
-    // `(1120 − 2 hairline − 2×20 gutter − 24 gap) / 2.6 = 405.3846`, which the
-    // browser snaps to 405.391 on both sides. 1120/20/24 are the prototype's own
-    // R4 geometry (`design/prototype/src/input.css`: `.td-modal-box`,
-    // `.td-two-col`); `T-20261015-215028` ① measured the track *ratio* identical
-    // on the two sides and the box the only difference.
-    //
-    // This is a **pin, not a description**: the implementation shipped
-    // 960/16/16 for several rounds, which put this column at 350px and was
-    // invisible to every gate — nothing asserted the box, so nothing reddened
-    // when it stopped matching the prototype. Same family as the two relations
-    // above: a number the contract states, measured where it can be measured.
-    const track = await page.evaluate(() => {
-      const round = (n) => Math.round(n * 100) / 100;
-      const width = (selector) => round(document.querySelector(selector)?.getBoundingClientRect().width ?? 0);
-      const grid = document.querySelector("[data-create-two-col]");
-      const style = grid ? getComputedStyle(grid) : null;
-      return {
-        panel: width("[data-create-task-panel]"),
-        left: width("[data-create-left]"),
-        right: width("[data-create-right]"),
-        gutter: round(Number.parseFloat(style?.paddingRight ?? "0")),
-        gap: round(Number.parseFloat(style?.columnGap ?? "0")),
-      };
-    });
-    r10Check(
-      Math.abs(track.right - 405.391) <= 0.5,
-      `the routing column is ${track.right}px; the prototype's field track is 405.391px ` +
-        `(panel ${track.panel}, gutter ${track.gutter}, column gap ${track.gap})`,
-    );
-    r10Check(
-      Math.abs(track.left / track.right - 1.6) <= 0.005,
-      `the create dialog's two tracks are ${track.left}/${track.right}, not the prototype's 1.6 : 1`,
-    );
-
-    // …and the same chain one breakpoint down, where there is no neighbour to
-    // stretch to: the panes' floor is what keeps the editor usable.
-    await page.setViewportSize({ width: 500, height: 900 });
-    await page.waitForTimeout(250);
-    const narrowFill = await page.evaluate(() => {
-      const round = (n) => Math.round(n * 100) / 100;
-      const editor = document.querySelector("[data-create-task] [data-md-editor]")?.getBoundingClientRect();
-      const panes = document.querySelector("[data-create-task] .td-md-panes")?.getBoundingClientRect();
-      const source = document.querySelector("[data-create-task] [data-md-source]")?.getBoundingClientRect();
-      const de = document.documentElement;
-      return {
-        editorHeight: round(editor?.height ?? 0),
-        panesHeight: round(panes?.height ?? 0),
-        sourceHeight: round(source?.height ?? 0),
-        overflow: de.scrollWidth > de.clientWidth + 1,
-      };
-    });
-    r10Check(narrowFill.panesHeight >= 200, `the single-column panes fell to ${narrowFill.panesHeight}px`);
-    r10Check(narrowFill.sourceHeight <= narrowFill.panesHeight + 1, `the write side (${narrowFill.sourceHeight}px) overflows its ${narrowFill.panesHeight}px pane`);
-    r10Check(narrowFill.overflow === false, "the single-column dialog overflows horizontally");
-    await page.click("[data-create-task] [data-modal-close]");
-    await page.waitForTimeout(250);
-    await page.setViewportSize({ width: 1512, height: 950 });
-    await page.waitForTimeout(150);
-
-    // --- B24 · the relation rows and the chips they accept --------------------
-    //
-    // T-20261014-001418. The design source froze two display rules for the
-    // create dialog's Parent / Depends-on fields (`design/prototype/app.js`
-    // `comboOptionMarkup` / `addComboChip`, the one `identifierText` cap), and
-    // this is the impl-side drive of both:
-    //
-    //   ① an **option row** names its task as identifier-then-title, the
-    //      identifier under the board's single cap and the title on one line,
-    //      ellipsised when it does not fit;
-    //   ② the accepted value stays **visible in the field** — one chip for the
-    //      single-valued parent, one per task for the multi-valued depends-on,
-    //      both reading like the row they came from, and the field's clear ✕
-    //      still empties the chip and the box together.
-    //
-    // The menu rows are activated with the event the control listens for
-    // (`mousedown`) rather than `page.click`: a row can sit under the dialog's
-    // own scroller, and an actionability wait there costs 30s of a harness that
-    // has a spawn timeout over it (the same reason the B26 sweep clicks in page).
-    const r8cFailures = [];
-    const r8cCheck = (ok, message) => { if (!ok) r8cFailures.push(message); };
-
-    // The viewport where the right-hand column is narrow enough that the
-    // fixture's 40-character title cannot fit its row.
-    //
-    // It used to be 980, and — this is the part that changed — that number was
-    // never really about the viewport. The popup took its width from its
-    // positioning ancestor, which was the *shrink-wrapped* control (172px), so
-    // `.td-combo-menu` resolved `max(100%, 220px)` to **220px at every width**:
-    // the same row was clipped at 1512 as at 980, and the design lane's 980 was
-    // one reading of a viewport-independent fact.
-    //
-    // T-20261016-113131 puts the control on its track, so the popup now *is* the
-    // track (`max(100%, 220px)` with 100% = the control = the field's column) and
-    // the clipping is genuinely viewport-dependent: the track is
-    // `(width − 98) / 2.6` above 760 (98 = the 2px hairline + 2×20 gutter + 24 gap
-    // + the overlay's 2×16 gutter — 114 until T-20261016-130046-2 widened the
-    // dialog to the prototype's own box, which moved 980 to 339.23 and 900 to
-    // 308.47). At 980 the title fits (0 of 13 rows clipped); at 900 it does not
-    // (1 of 13 — the 40-character row needs 248px of a 238px box, so 10px of
-    // overflow, measured on the widened track). The assertion below is the design
-    // criterion — "a title that does not fit is ellipsised, not wrapped and not
-    // lost" — so the viewport below stays at 900 for the dialog's layout.
-    //
-    // The clipping assertion itself is a probe, not a count of fixture rows that
-    // happen to clip. The 10px margin above is a font-metrics fact: it holds on
-    // the design face and disappears under a runner's fallback face, where the
-    // same row fits and "some row is clipped" failed for a reason that was not
-    // the rule. The probe injects an unmistakably over-long title, so it
-    // overflows in any face. (T-20261015-233122 A6 #5 forbids deleting the
-    // assertion; this is the same criterion, measured without the font.)
-    await page.setViewportSize({ width: 900, height: 900 });
-    await page.click("[data-new-task]");
-    await page.waitForTimeout(300);
-
-    const chipsAtRest = await page.evaluate(() => {
-      const parent = document.querySelector("[data-create-task-parent] [data-parent-chips]");
-      return {
-        parentContainer: parent !== null,
-        parentChips: document.querySelectorAll("[data-parent-chip]").length,
-        dependsContainer: document.querySelector("[data-create-task-depends] [data-depends-chips]") !== null,
-      };
-    });
-    r8cCheck(chipsAtRest.parentContainer, "[data-parent-chips] is not in the parent field");
-    r8cCheck(chipsAtRest.dependsContainer, "[data-depends-chips] is not in the depends-on field");
-    r8cCheck(chipsAtRest.parentChips === 0, `the dialog opens with ${chipsAtRest.parentChips} parent chips, expected 0`);
-
-    await page.click("[data-parent-input]");
-    await page.waitForTimeout(250);
-    const optionRows = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll("[data-parent-option]")];
-      return rows.map((row) => {
-        const id = row.querySelector(".td-combo-id");
-        const title = row.querySelector(".td-combo-title");
-        const cs = title ? getComputedStyle(title) : null;
-        return {
-          value: row.getAttribute("data-parent-value"),
-          idText: id ? (id.textContent ?? "").trim() : null,
-          titleText: title ? (title.textContent ?? "").trim() : null,
-          titleAttr: row.getAttribute("title"),
-          whiteSpace: cs?.whiteSpace ?? null,
-          overflow: cs?.overflow ?? null,
-          textOverflow: cs?.textOverflow ?? null,
-          clipped: title ? title.scrollWidth > title.clientWidth : null,
-        };
-      });
-    });
-    r8cCheck(optionRows.length > 0, "the parent menu offers no rows to read");
-    for (const row of optionRows) {
-      // The fixture's ids are all ≤ 9 characters, so each is below the ten-
-      // character cap: the row shows the whole value and gains no ellipsis. A
-      // row that still sliced at eight would render `PROJ-000…` and fail here.
-      r8cCheck(row.idText === row.value, `the row for ${JSON.stringify(row.value)} renders ${JSON.stringify(row.idText)}`);
-      r8cCheck(!(row.idText ?? "").includes("…"), `a ${row.value.length}-character id was truncated: ${JSON.stringify(row.idText)}`);
-      r8cCheck(row.titleText === row.titleAttr, `the row for ${JSON.stringify(row.value)} renders ${JSON.stringify(row.titleText)}, its title is ${JSON.stringify(row.titleAttr)}`);
-      r8cCheck(row.whiteSpace === "nowrap", `a row's title is ${row.whiteSpace}, expected nowrap`);
-      r8cCheck(row.overflow === "hidden", `a row's title overflow is ${row.overflow}, expected hidden`);
-      r8cCheck(row.textOverflow === "ellipsis", `a row's title text-overflow is ${row.textOverflow}, expected ellipsis`);
-    }
-    // Prove the ellipsis actually fires, independently of the runner's font.
-    // The title is restored in the same evaluate, so the chip assertions below
-    // still read the fixture's own text.
-    const clippingProbe = await page.evaluate(() => {
-      const title = document.querySelector("[data-parent-option] .td-combo-title");
-      if (!title) return { found: false };
-      const original = title.textContent;
-      title.textContent = "W".repeat(200);
-      const cs = getComputedStyle(title);
-      const result = {
-        found: true,
-        clipped: title.scrollWidth > title.clientWidth,
-        whiteSpace: cs.whiteSpace,
-        overflow: cs.overflow,
-        textOverflow: cs.textOverflow,
-      };
-      title.textContent = original;
-      return result;
-    });
-    r8cCheck(clippingProbe.found, "no parent option title to probe");
-    r8cCheck(clippingProbe.clipped === true, "an over-long option title does not overflow its row");
-    r8cCheck(clippingProbe.whiteSpace === "nowrap", `the probe title is ${clippingProbe.whiteSpace}, expected nowrap`);
-    r8cCheck(clippingProbe.overflow === "hidden", `the probe title overflow is ${clippingProbe.overflow}, expected hidden`);
-    r8cCheck(clippingProbe.textOverflow === "ellipsis", `the probe title text-overflow is ${clippingProbe.textOverflow}, expected ellipsis`);
-
-    // ② — accepting a row puts the task in the field as a chip: identifier (same
-    // cap) then title, with a way out of it, and the box hands the display over.
-    const chosen = optionRows.find((row) => (row.titleText ?? "").length > 20) ?? optionRows[0];
-    await page.evaluate((value) => {
-      const row = document.querySelector(`[data-parent-option][data-parent-value="${value}"]`);
-      row?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    }, chosen.value);
-    await page.waitForTimeout(200);
-    const parentPicked = await page.evaluate(() => {
-      const container = document.querySelector("[data-create-task-parent] [data-parent-chips]");
-      const chip = container?.querySelector("[data-parent-chip]") ?? null;
-      const menu = document.querySelector("[data-parent-menu]");
-      return {
-        count: container ? container.querySelectorAll("[data-parent-chip]").length : 0,
-        mono: chip?.querySelector(".td-mono")?.textContent?.trim() ?? null,
-        title: chip?.querySelector(".td-combo-title")?.textContent?.trim() ?? null,
-        chipTitle: chip?.getAttribute("title") ?? null,
-        value: chip?.getAttribute("data-parent-value") ?? null,
-        remove: chip ? chip.querySelector("[data-parent-remove]") !== null : false,
-        input: document.querySelector("[data-parent-input]")?.value ?? null,
-        menuDisplay: menu ? getComputedStyle(menu).display : null,
-      };
-    });
-    r8cCheck(parentPicked.count === 1, `selecting a parent left ${parentPicked.count} chips, expected exactly 1`);
-    r8cCheck(parentPicked.value === chosen.value, `the chip carries ${JSON.stringify(parentPicked.value)}, expected ${JSON.stringify(chosen.value)}`);
-    r8cCheck(parentPicked.mono === chosen.value, `the chip's identifier is ${JSON.stringify(parentPicked.mono)}, expected ${JSON.stringify(chosen.value)}`);
-    r8cCheck(parentPicked.title === chosen.titleText, `the chip's title is ${JSON.stringify(parentPicked.title)}, expected ${JSON.stringify(chosen.titleText)}`);
-    r8cCheck(parentPicked.chipTitle === chosen.titleText, `the chip's title attribute is ${JSON.stringify(parentPicked.chipTitle)}, expected the whole title`);
-    r8cCheck(parentPicked.remove, "the parent chip carries no [data-parent-remove]");
-    r8cCheck(parentPicked.input === "", `the chip did not take over the display — the box still holds ${JSON.stringify(parentPicked.input)}`);
-    r8cCheck(parentPicked.menuDisplay === "none", `the menu is still shown (display: ${parentPicked.menuDisplay}) after a single-valued accept`);
-
-    // The chip's ✕ empties the field on its own, and so does the field's clear
-    // control — both leave the container empty and the box empty.
-    await page.evaluate(() => {
-      document.querySelector("[data-parent-chip] [data-parent-remove]")?.click();
-    });
-    await page.waitForTimeout(150);
-    const afterChipRemove = await page.evaluate(() => ({
-      chips: document.querySelectorAll("[data-parent-chip]").length,
-      input: document.querySelector("[data-parent-input]")?.value ?? null,
+    // an example fills the box; the submit wakes up
+    await page.click('[data-create-task] [data-create-task-example][data-example-kind="medium"]');
+    await page.waitForTimeout(120);
+    const composerFilled = await page.evaluate(() => ({
+      text: document.querySelector("[data-create-task] [data-create-task-text]")?.value ?? "",
+      submitDisabled: document.querySelector("[data-create-task] [data-create-task-submit]")?.disabled ?? null,
     }));
-    r8cCheck(afterChipRemove.chips === 0, `the chip's own ✕ left ${afterChipRemove.chips} chips`);
+    composerCheck(composerFilled.text.length > 0, "the example chip did not fill the box");
+    composerCheck(composerFilled.submitDisabled === false, "the submit stays disabled after the box has text");
 
-    await page.evaluate((value) => {
-      const row = document.querySelector(`[data-parent-option][data-parent-value="${value}"]`);
-      row?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    }, chosen.value);
-    await page.waitForTimeout(150);
-    await page.evaluate(() => {
-      const input = document.querySelector("[data-parent-input]");
-      input.value = "td";
-      input.dispatchEvent(new Event("input", { bubbles: true }));
+    // the submit posts the intake request and closes the dialog
+    const posted = [];
+    await page.route("**/api/v1/intake", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      posted.push(JSON.parse(route.request().postData() ?? "{}"));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: { request: { id: "r-fixture", status: "pending" } } }),
+      });
     });
-    await page.waitForTimeout(150);
-    await page.click("[data-parent-clear]");
-    await page.waitForTimeout(150);
-    const afterClear = await page.evaluate(() => {
-      const menu = document.querySelector("[data-parent-menu]");
-      return {
-        chips: document.querySelectorAll("[data-parent-chip]").length,
-        input: document.querySelector("[data-parent-input]")?.value ?? null,
-        menuDisplay: menu ? getComputedStyle(menu).display : null,
-      };
-    });
-    r8cCheck(afterClear.chips === 0, `[data-parent-clear] left ${afterClear.chips} parent chips`);
-    r8cCheck(afterClear.input === "", `[data-parent-clear] left the box holding ${JSON.stringify(afterClear.input)}`);
-    r8cCheck(afterClear.menuDisplay === "none", `[data-parent-clear] re-opened the menu (display: ${afterClear.menuDisplay})`);
+    await page.click("[data-create-task] [data-create-task-submit]");
+    await page.waitForTimeout(300);
+    const composerSubmitted = await page.evaluate(() => ({
+      hidden: document.querySelector("[data-create-task]")?.hidden ?? null,
+      toasts: [...document.querySelectorAll("[data-toast-region] [data-toast-text]")].map((el) => el.textContent.trim()),
+    }));
+    composerCheck(posted.length === 1, `the submit posted ${posted.length} intake requests`);
+    composerCheck(posted[0]?.text === composerFilled.text, "the posted text is not the box's text");
+    composerCheck(typeof posted[0]?.project_id === "string" && posted[0].project_id !== "", "the posted project_id is empty");
+    composerCheck(typeof posted[0]?.idem === "string" && posted[0].idem.length > 0, "the submit carries no idempotency key");
+    composerCheck(composerSubmitted.hidden === true, "a successful submit left the dialog open");
+    composerCheck(composerSubmitted.toasts.some((line) => line.includes("Received")), `the receipt toast did not appear (${JSON.stringify(composerSubmitted.toasts)})`);
+    await page.unroute("**/api/v1/intake");
 
-    // Depends-on is the same reading, many times over: two accepted tasks are
-    // two chips, each with the identifier and the title, each removable.
-    await page.click("[data-depends-input]");
+    // reopening starts clean
+    await page.click("[data-new-task]");
     await page.waitForTimeout(250);
-    const dependsValues = await page.evaluate(() => [...document.querySelectorAll("[data-depends-option]")].map((row) => row.getAttribute("data-depends-value")));
-    r8cCheck(dependsValues.length >= 2, `the depends-on menu offers ${dependsValues.length} rows, expected at least 2`);
-    for (const value of dependsValues.slice(0, 2)) {
-      await page.evaluate((v) => {
-        const row = document.querySelector(`[data-depends-option][data-depends-value="${v}"]`);
-        row?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-      }, value);
-      await page.waitForTimeout(150);
-    }
-    const dependsChips = await page.evaluate(() => {
-      const container = document.querySelector("[data-create-task-depends] [data-depends-chips]");
-      const chips = [...(container?.querySelectorAll("[data-depends-chip]") ?? [])];
-      return chips.map((chip) => ({
-        mono: chip.querySelector(".td-mono")?.textContent?.trim() ?? null,
-        title: chip.querySelector(".td-combo-title")?.textContent?.trim() ?? null,
-        value: chip.getAttribute("data-depends-value"),
-        chipTitle: chip.getAttribute("title"),
-        remove: chip.querySelector("[data-depends-remove]") !== null,
-      }));
-    });
-    r8cCheck(dependsChips.length === 2, `accepting two depends-on tasks left ${dependsChips.length} chips`);
-    for (const chip of dependsChips) {
-      r8cCheck(chip.mono === chip.value, `a depends-on chip's identifier is ${JSON.stringify(chip.mono)}, expected ${JSON.stringify(chip.value)}`);
-      r8cCheck(!(chip.mono ?? "").includes("…"), `a ${chip.value?.length}-character id was truncated in a chip: ${JSON.stringify(chip.mono)}`);
-      r8cCheck(typeof chip.title === "string" && chip.title.length > 0, `a depends-on chip carries no title: ${JSON.stringify(chip)}`);
-      r8cCheck(chip.chipTitle === chip.title, `a depends-on chip's title attribute is ${JSON.stringify(chip.chipTitle)}, expected the whole title`);
-      r8cCheck(chip.remove, "a depends-on chip carries no [data-depends-remove]");
-    }
-    await page.evaluate(() => {
-      document.querySelector("[data-depends-chip] [data-depends-remove]")?.click();
-    });
-    await page.waitForTimeout(150);
-    const dependsLeft = await page.evaluate(() => document.querySelectorAll("[data-depends-chip]").length);
-    r8cCheck(dependsLeft === 1, `removing one depends-on chip left ${dependsLeft}`);
-
+    const composerReopened = await page.evaluate(() => ({
+      text: document.querySelector("[data-create-task] [data-create-task-text]")?.value ?? "",
+      submitDisabled: document.querySelector("[data-create-task] [data-create-task-submit]")?.disabled ?? null,
+    }));
+    composerCheck(composerReopened.text === "", "the composer kept the previous description");
+    composerCheck(composerReopened.submitDisabled === true, "the reopened composer has an enabled submit");
     await page.click("[data-create-task] [data-modal-close]");
-    await page.waitForTimeout(250);
-    await page.setViewportSize({ width: 1512, height: 950 });
-    await page.waitForTimeout(150);
-
-    // --- B24 · the parent control on its field's whole track --------------------
-    //
-    // T-20261016-113131. The **geometry** half of the seven structural rules the
-    // contract states for this control (B24), read at the two viewports the
-    // design lane measured the defect at (T-20261015-233122 §①).
-    //
-    // Everything here is written against `track` — the width of the field group
-    // itself — and never against a literal 405.391. That is not tidiness: the
-    // track is the one reading the prototype and the implementation already
-    // agree on, so a constant would make the identity below true by
-    // construction and hide the very defect the leg exists to catch. The defect
-    // was never the track; it was that the control inside it ignored it.
-    //
-    // Why not in the contract layer: B24's rules carry no `when`, so they
-    // evaluate in the **board** state, where the create dialog is `hidden` and
-    // every `getBoundingClientRect` reads 0 — a box rule there would fail on
-    // `0 != 405.391` for reasons that have nothing to do with the layout. And a
-    // *computed-width* rule is worse than useless here: before this change the
-    // box computes to `flex: 1 1 auto`, i.e. `width: auto`, `parseFloat → NaN`,
-    // and `Math.abs(NaN − 405.391) > 0.5` is **false** — the rule passes
-    // silently, which is exactly how the bug survived (T-20261015-233122 §③.4).
-    const round2 = (n) => Math.round(n * 100) / 100;
-    const near = (a, b) => Math.abs(a - b) <= 0.5;
-
-    /** Open a fresh dialog at a viewport and read the parent field twice. */
-    const parentTrackAt = async (width, height) => {
-      await page.setViewportSize({ width, height });
-      await page.click("[data-new-task]");
-      await page.waitForTimeout(300);
-      const read = () =>
-        page.evaluate(() => {
-          const r = (n) => Math.round(n * 100) / 100;
-          const group = document.querySelector("[data-create-task-parent]");
-          const row = document.querySelector(".td-combo-field");
-          const input = document.querySelector("[data-parent-input]");
-          const clear = document.querySelector("[data-parent-clear]");
-          const menu = document.querySelector("[data-parent-menu]");
-          const track = group.getBoundingClientRect();
-          const box = input.getBoundingClientRect();
-          const cross = clear.getBoundingClientRect();
-          return {
-            track: r(track.width),
-            trackRight: r(track.right),
-            gap: row ? Number.parseFloat(getComputedStyle(row).columnGap) : null,
-            input: r(box.width),
-            clearDisplay: getComputedStyle(clear).display,
-            clearWidth: r(cross.width),
-            clearHeight: r(cross.height),
-            clearRight: r(cross.right),
-            menuDisplay: getComputedStyle(menu).display,
-            menuWidth: r(menu.getBoundingClientRect().width),
-          };
-        });
-      // A true rest: the dialog's `reset()` clears the form, but the box's own
-      // query lives in the control, which is never unmounted (the dialog is
-      // toggled by `hidden`) — so a query left behind by an earlier pass
-      // survives the reopen and the field is not empty. Empty it by hand rather
-      // than assert on whatever the previous leg typed.
-      await page.evaluate(() => {
-        const input = document.querySelector("[data-parent-input]");
-        input.focus(); // a `blur()` on an unfocused input fires nothing, and the menu would stay open
-        input.value = "";
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        input.blur();
-      });
-      await page.waitForTimeout(150);
-      const rest = await read();
-      // Type into the box. The field now carries a value, so the ✕ is drawn —
-      // and the menu is open, which is the only state its width can be read in.
-      await page.evaluate(() => {
-        const input = document.querySelector("[data-parent-input]");
-        input.focus();
-        input.value = "td";
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      });
-      await page.waitForTimeout(200);
-      const valued = await read();
-      await page.click("[data-create-task] [data-modal-close]");
-      await page.waitForTimeout(250);
-      return { rest, valued };
-    };
-
-    const parentTrackReadings = {};
-    for (const [label, width, height] of [["1512×950", 1512, 950], ["980×900", 980, 900]]) {
-      const { rest, valued } = await parentTrackAt(width, height);
-      parentTrackReadings[label] = { rest, valued };
-      r8cCheck(rest.track > 0, `at ${label} the parent field group measures ${rest.track}px — the dialog did not lay out`);
-      // Rest: the box takes the whole track, and an empty field draws no ✕.
-      r8cCheck(near(rest.input, rest.track), `at ${label} the empty box is ${rest.input}px inside a ${rest.track}px track`);
-      r8cCheck(rest.clearDisplay === "none", `at ${label} the ✕ is drawn (display: ${rest.clearDisplay}) on an empty field`);
-      // The identity — the arithmetic the prototype's own numbers satisfy.
-      r8cCheck(rest.gap === 4, `at ${label} the field row's gap is ${rest.gap}px, expected 4`);
-      r8cCheck(
-        near(valued.input + valued.gap + valued.clearWidth, valued.track),
-        `at ${label} the valued field is ${valued.input} + ${valued.gap} + ${valued.clearWidth} = ${round2(valued.input + valued.gap + valued.clearWidth)}px against a ${valued.track}px track`,
-      );
-      r8cCheck(valued.clearDisplay !== "none", `at ${label} the ✕ is not drawn (display: ${valued.clearDisplay}) on a field that carries a value`);
-      // The ✕ itself: the 20×20 box, its right edge on the track's right edge.
-      r8cCheck(near(valued.clearWidth, 20) && near(valued.clearHeight, 20), `at ${label} the ✕ box is ${valued.clearWidth}×${valued.clearHeight}, expected 20×20`);
-      r8cCheck(near(valued.clearRight, valued.trackRight), `at ${label} the ✕'s right edge is at ${valued.clearRight}, the track's at ${valued.trackRight}`);
-      // The popup: positioned from the control, so it is as wide as the track.
-      r8cCheck(valued.menuDisplay !== "none", `at ${label} the parent menu is not open (display: ${valued.menuDisplay})`);
-      r8cCheck(near(valued.menuWidth, valued.track), `at ${label} the menu is ${valued.menuWidth}px wide against a ${valued.track}px track`);
-    }
+    await page.waitForTimeout(200);
 
     // --- R12 · the filters bar's one line, and the board's equal-height chain ---
     //
@@ -8027,90 +7674,6 @@ export async function run() {
       ui.barOverflow = await page.evaluate(() => getComputedStyle(document.querySelector("[data-filters]")).overflowX);
       uiCheck(ui.barOverflow === "auto", `[data-filters] overflow-x is ${ui.barOverflow}, the contract expects auto`);
 
-      // ② The reporter shows what it holds, for a roster row and for a new name.
-      await page.click("[data-new-task]");
-      await page.waitForTimeout(120);
-      const reporterInput = page.locator("[data-create-task] [data-reporter-input]");
-      await reporterInput.click();
-      await reporterInput.fill("linus");
-      await page.waitForTimeout(80);
-      await page.locator('[data-create-task] [data-reporter-option][data-reporter-value="linus"]').click();
-      await page.waitForTimeout(80);
-      ui.reporterPicked = await reporterInput.inputValue();
-      uiCheck(ui.reporterPicked === "linus", `the reporter box shows ${JSON.stringify(ui.reporterPicked)} after choosing linus`);
-      await reporterInput.click();
-      await reporterInput.fill("New Reporter");
-      await page.waitForTimeout(80);
-      await page.keyboard.press("Enter");
-      await page.waitForTimeout(80);
-      ui.reporterNew = await reporterInput.inputValue();
-      uiCheck(ui.reporterNew === "New Reporter", `the reporter box shows ${JSON.stringify(ui.reporterNew)} after typing a new name`);
-
-      // ③ The status control is a dropdown whose rows (and trigger) wear the
-      //    board's coloured dot.
-      const statusControl = page.locator("[data-create-task-status]");
-      ui.statusTag = await statusControl.evaluate((el) => el.tagName);
-      uiCheck(ui.statusTag === "DETAILS", `[data-create-task-status] is a <${ui.statusTag}>, not the dot-bearing dropdown`);
-      await statusControl.locator("summary").click();
-      await page.waitForTimeout(60);
-      ui.statusRows = await statusControl.locator("[data-create-task-status-option]").count();
-      ui.statusDots = await statusControl.locator("[data-create-task-status-option] .td-status-dot").count();
-      uiCheck(ui.statusRows === 5 && ui.statusDots === 5, `the status menu has ${ui.statusRows} rows and ${ui.statusDots} dots, expected 5/5`);
-      await statusControl.locator('[data-create-task-status-option][data-status-value="blocked"]').click();
-      await page.waitForTimeout(60);
-      ui.statusValue = await statusControl.getAttribute("data-create-task-status-value");
-      ui.statusDot = await statusControl.evaluate((el) => {
-        const dot = el.querySelector("summary .td-status-dot");
-        const probe = document.createElement("span");
-        probe.className = "td-status-dot";
-        probe.setAttribute("data-status", "blocked");
-        document.body.append(probe);
-        const expected = getComputedStyle(probe).backgroundColor;
-        probe.remove();
-        return { got: getComputedStyle(dot).backgroundColor, expected };
-      });
-      uiCheck(ui.statusValue === "blocked", `the status value is ${ui.statusValue} after choosing blocked`);
-      uiCheck(ui.statusDot.got === ui.statusDot.expected, `the trigger dot is ${ui.statusDot.got}, expected the blocked token ${ui.statusDot.expected}`);
-
-      // ④ A long relation title cannot grow the chip past the routing track.
-      await page.locator("[data-create-task] [data-parent-input]").click();
-      await page.locator("[data-create-task] [data-parent-input]").fill("TD");
-      await page.waitForTimeout(80);
-      await page.locator("[data-create-task] [data-parent-option]").first().click();
-      await page.waitForTimeout(80);
-      ui.chip = await page.evaluate(() => {
-        const chip = document.querySelector("[data-create-task] [data-parent-chip]");
-        const title = chip?.querySelector(".td-combo-title");
-        if (title) title.textContent = "A very long parent title ".repeat(20);
-        const track = document.querySelector("[data-create-right]");
-        const panel = document.querySelector("[data-create-task-panel]");
-        const rect = chip?.getBoundingClientRect();
-        return {
-          chipRight: rect?.right,
-          panelRight: panel?.getBoundingClientRect().right,
-          chipWidth: rect?.width,
-          trackWidth: track?.getBoundingClientRect().width,
-          titleScroll: title?.scrollWidth,
-          titleClient: title?.clientWidth,
-          documentOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        };
-      });
-      uiCheck(
-        ui.chip.chipRight !== undefined && ui.chip.chipRight <= ui.chip.panelRight + 1,
-        `the relation chip ends at ${ui.chip.chipRight}, past the dialog's ${ui.chip.panelRight}`,
-      );
-      uiCheck(
-        ui.chip.chipWidth <= ui.chip.trackWidth + 1,
-        `the relation chip is ${ui.chip.chipWidth}px in a ${ui.chip.trackWidth}px track`,
-      );
-      uiCheck(
-        ui.chip.titleScroll > ui.chip.titleClient,
-        `the chip title did not ellipsise (${ui.chip.titleScroll} / ${ui.chip.titleClient})`,
-      );
-      uiCheck(ui.chip.documentOverflow <= 0, `the dialog overflows the document by ${ui.chip.documentOverflow}px`);
-      await page.click("[data-modal-close]");
-      await page.waitForTimeout(80);
-
       // ⑤ A roster press narrows Activity and Waiting, not only board/list.
       await page.locator('[data-agent-assignee="linus"]').click();
       await page.waitForTimeout(80);
@@ -8603,6 +8166,7 @@ export async function run() {
       ...railResults,
       ...panelResults,
       ...drawerResults,
+      ...drawerEditingResults,
       ...listEn.loadingResults,
       ...activityResults,
       ...waitingResults,
@@ -8627,7 +8191,7 @@ export async function run() {
       r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
       r7: { failures: r7Failures, wide, rail: railBand, drawerHead: closeR7 },
       r8: { failures: r8Failures, headWide, headNarrow, identifiers, drawerIdentifier, dark, light },
-      r8c: { failures: r8cFailures, optionRows, parentPicked, afterClear, dependsChips, parentTrack: parentTrackReadings },
+      b10: { failures: composerFailures },
       r9: { failures: r9Failures, register, controls, listEn, listZh, loadingRules: listLoadingRules.length },
       r10: {
         failures: r10Failures,
@@ -8637,8 +8201,6 @@ export async function run() {
         trulyEmpty,
         restored,
         drawerRest,
-        fill,
-        narrowFill,
       },
       skeleton: { failures: skeletonFailures, readings: skeletonReadings },
       r12: {
@@ -8777,7 +8339,7 @@ if (isEntryPoint) run().then(
         console.log(`R10 (fidelity) — ${report.r10.failures.length} failed:`);
         for (const failure of report.r10.failures) console.log(`  ✗ ${failure}`);
       } else {
-        console.log("R10 (fidelity) — the board's two states, the drawer's four save states and the description's fill all pass");
+        console.log("R10 (fidelity) — the board's two states and the drawer's four save states all pass");
       }
       if (report.skeleton.failures.length > 0) {
         console.log(`Skeletons (loading) — ${report.skeleton.failures.length} failed:`);
@@ -8791,14 +8353,11 @@ if (isEntryPoint) run().then(
             `drawer ${read.s6?.detail.skeletons} blocks then the real head — all pass`,
         );
       }
-      if (report.r8c.failures.length > 0) {
-        console.log(`B24 (fidelity) — ${report.r8c.failures.length} failed:`);
-        for (const failure of report.r8c.failures) console.log(`  ✗ ${failure}`);
+      if (report.b10.failures.length > 0) {
+        console.log(`B10 (composer) — ${report.b10.failures.length} failed:`);
+        for (const failure of report.b10.failures) console.log(`  ✗ ${failure}`);
       } else {
-        console.log(`B24 (fidelity) — ${report.r8c.optionRows.length} relation rows carry identifier + one-line title (${report.r8c.optionRows.filter((row) => row.clipped).length} actually clipped), the parent field shows one chip (${JSON.stringify(report.r8c.parentPicked.mono)} …) and the depends-on field ${report.r8c.dependsChips.length} chips, all pass`);
-        for (const [label, reading] of Object.entries(report.r8c.parentTrack)) {
-          console.log(`B24 (fidelity) — parent field @${label}: track ${reading.rest.track}px, box ${reading.rest.input}px and no ✕ at rest (${reading.rest.clearDisplay}); with a value box ${reading.valued.input} + gap ${reading.valued.gap} + ✕ ${reading.valued.clearWidth} = ${Math.round((reading.valued.input + reading.valued.gap + reading.valued.clearWidth) * 100) / 100}px (${reading.valued.clearDisplay}), ✕ right edge ${reading.valued.clearRight} vs track right ${reading.valued.trackRight}, menu ${reading.valued.menuWidth}px — all pass`);
-        }
+        console.log("B10 (composer) — one description, three examples, a project and a gated submit all pass");
       }
       if (report.r12.failures.length > 0) {
         console.log(`R12 (fidelity) — ${report.r12.failures.length} failed:`);
@@ -8880,9 +8439,6 @@ if (isEntryPoint) run().then(
       } else {
         console.log(
           `UI fixes — the four filter dropdowns anchor unclipped (bar overflow ${report.ui.barOverflow}), ` +
-            `reporter holds ${JSON.stringify(report.ui.reporterPicked)} / ${JSON.stringify(report.ui.reporterNew)}, ` +
-            `status is a ${report.ui.statusTag} with ${report.ui.statusDots} dot rows and chooses ${report.ui.statusValue}, ` +
-            `the long parent chip stays in its ${Math.round(report.ui.chip.trackWidth)}px track, ` +
             `Activity narrows to ${JSON.stringify(report.ui.activityActors)} and Waiting to ${JSON.stringify(report.ui.waitingActors)}, ` +
             `and the Gemini platform badge resolves ${report.ui.brand.light} / ${report.ui.brand.dark} (light/dark) with names left alone`,
         );
@@ -8960,7 +8516,7 @@ if (isEntryPoint) run().then(
       report.r6.failures.length === 0 &&
       report.r7.failures.length === 0 &&
       report.r8.failures.length === 0 &&
-      report.r8c.failures.length === 0 &&
+      report.b10.failures.length === 0 &&
       report.r9.failures.length === 0 &&
       report.r10.failures.length === 0 &&
       report.skeleton.failures.length === 0 &&

@@ -11,6 +11,7 @@ import { createAgentSessionsRepository } from "./agent-sessions.mjs";
 import { createAttachmentsRepository } from "./attachments.mjs";
 import { createCommentsRepository } from "./comments.mjs";
 import { createDictionaryRepository } from "./dictionary.mjs";
+import { createIntakeRepository } from "./intake.mjs";
 import { createLabelsRepository } from "./labels.mjs";
 import { createProjectsRepository } from "./projects.mjs";
 import { createRelationsRepository } from "./relations.mjs";
@@ -32,6 +33,7 @@ export function createRepositories(db) {
     sessions: createAgentSessionsRepository(db),
     attachments: createAttachmentsRepository(db),
     activities: createActivitiesRepository(db),
+    intake: createIntakeRepository(db),
   };
 }
 
@@ -41,6 +43,7 @@ export {
   createAttachmentsRepository,
   createCommentsRepository,
   createDictionaryRepository,
+  createIntakeRepository,
   createLabelsRepository,
   createProjectsRepository,
   createRelationsRepository,

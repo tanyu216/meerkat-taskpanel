@@ -59,6 +59,8 @@ const PLANNED = [
   "storage/repositories/agent-sessions.mjs",
   "storage/repositories/attachments.mjs",
   "storage/repositories/activities.mjs",
+  // 0007 — the intake request's state (a human's description before any card).
+  "storage/repositories/intake.mjs",
   "storage/repositories/index.mjs",
   "storage/md/frontmatter.mjs",
   "storage/md/sections.mjs",
@@ -75,6 +77,8 @@ const PLANNED = [
   // M6 — the acceptance guards shared by moveStatus and deliver.
   "commands/acceptance.mjs",
   "commands/comments.mjs",
+  // 0007 — submit, read and settle an intake request.
+  "commands/intake.mjs",
   "commands/relations.mjs",
   "commands/rollup.mjs",
   "commands/workflow.mjs",

@@ -352,7 +352,7 @@ describe("install.sh: the team skills' distribution", () => {
         existsSync(join(dest, "references", "decision-policy.md")),
         `${kind}: its decision policy must land`,
       );
-      for (const name of ["question.md", "route.md", "triage.md", "escalation.md", "rounds.md"]) {
+      for (const name of ["intake.md", "question.md", "route.md", "triage.md", "escalation.md", "rounds.md"]) {
         assert.ok(
           existsSync(join(dest, "references", name)),
           `${kind}: references/${name} must land`,

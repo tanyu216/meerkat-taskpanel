@@ -42,11 +42,13 @@
  * The colour leg compares against the *token* the rule names, so it holds in the
  * dark theme too rather than pinning a light-theme hex.
  *
- * **Two surfaces, one value set.** The card's ② is "create dialog and drawer land
- * the same group of values" — so the leg reads both and D7 asserts the two sets are
- * equal, not merely that each matches the table.
+ * **One surface since R18.** The create dialog dropped its comboboxes with the
+ * routing form, so the drawer is the leg's only surface. The old two-surface
+ * equality (D7/D9, "the create dialog and the drawer land the same group of
+ * values") retired with that surface; the drawer still matches the prototype's
+ * table rule for rule, and that is the claim the leg keeps.
  *
- * **D5/D9 — the selected row's state face.** The row above is sampled
+ * **D5 — the selected row's state face.** The row above is sampled
  * *unselected* on purpose (D3 is the resting row, and a state background would
  * have leaked a second variable into it). The state face is read separately:
  * `design/prototype/src/input.css:2986` (→ `tw.css:5664`) paints
@@ -57,9 +59,7 @@
  * `--brand-active` with the row's ink untouched, so the state differed from the
  * base row by a wash alone. D5 asserts the pair the rule must name (and that it
  * is **not** `--brand-active` — the defect's signature, in the shape R6 ② pins
- * on the nav row); D9 asserts the drawer and the create dialog carry the *same*
- * pair, which is the card's ① "one rule, no fork" stated as a measurement
- * rather than as a reading of the stylesheet.
+ * on the nav row).
  *
  * Usage: node web/scripts/combo-menu-geometry.mjs [options]
  *   --json <path>   write the full artifact (default: stdout summary only)
@@ -115,7 +115,7 @@ if (!playwright) {
 
 /* ------------------------------------------------------------- the readings */
 
-/** The drawer's menu and its option rows, plus the create dialog's, in one shape. */
+/** The drawer's menu and its option rows. */
 function readMenus() {
   const round = (n) => +n.toFixed(2);
   const box = (el) => {
@@ -218,12 +218,9 @@ function readMenus() {
   };
 
   const drawerMenu = document.querySelector("[data-detail-status-menu]");
-  const out = {
+  return {
     drawer: drawerMenu === null ? null : read(drawerMenu, rowOf(drawerMenu), selectedOf(drawerMenu)),
-    create: null,
   };
-  const createMenu = document.querySelector("[data-create-task] [data-parent-menu]");
-  if (createMenu !== null) out.create = read(createMenu, rowOf(createMenu), selectedOf(createMenu));
   return out;
 }
 
@@ -237,27 +234,6 @@ function openDrawerStatusMenu() {
     document.querySelector('[data-card][data-status="todo"]') ??
     document.querySelector('[data-card][data-status="in_review"]');
   (card?.querySelector("[data-card-title]") ?? card)?.click();
-  return true;
-}
-
-/** Open the create dialog from the board's own trigger. */
-function openCreateDialog() {
-  document.querySelector("[data-new-task]")?.click();
-  return true;
-}
-
-/**
- * Open the Parent combo. The control opens on **focus** with the query still
- * empty (`ComboField.vue` `@focus="onInput"`), which is deliberate: it offers the
- * whole candidate list, so the row leg has rows to read without depending on how
- * a search string happens to match the fixture's titles.
- */
-function focusParentCombo() {
-  const input = document.querySelector("[data-create-task] [data-parent-input]");
-  if (input === null) return false;
-  input.focus();
-  input.click?.();
-  input.dispatchEvent(new Event("input", { bubbles: true }));
   return true;
 }
 
@@ -328,22 +304,9 @@ try {
     throw Object.assign(new Error("drawer menu missing"), { code: "SKIP" });
   }
 
-  /* ---- the create dialog (the same rule family's other surface) ---- */
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(300);
-  await page.evaluate(`(${openCreateDialog})()`);
-  await page.waitForTimeout(400);
-  await page.evaluate(`(${focusParentCombo})()`);
-  await page.waitForTimeout(350);
-  const create = await page.evaluate(readMenus);
-  if (!readable(create.create)) {
-    process.stderr.write("the create dialog's parent menu did not render — the leg cannot read it\n");
-    throw Object.assign(new Error("create menu missing"), { code: "SKIP" });
-  }
-
   /* ------------------------------------------------------------ the table */
 
-  for (const [surface, side] of [["drawer", drawer.drawer], ["create", create.create]]) {
+  for (const [surface, side] of [["drawer", drawer.drawer]]) {
     suite(`${surface} · 菜单盒 .td-combo-menu`);
     const want = Math.max(BOX_FLOOR, side.menu.containing.w);
     check(`D1 width = max(containing block, ${BOX_FLOOR}) — 不塌到内容宽`, near(side.menu.w, want), `w=${side.menu.w} want=${round2(want)} containing=${side.menu.containing.classes} ${side.menu.containing.w}px`);
@@ -374,27 +337,11 @@ try {
     }
   }
 
-  suite("两处同时落同一组值（卡 ②）");
-  const a = valueSet(drawer.drawer);
-  const b = valueSet(create.create);
-  const drifted = Object.keys(a).filter((k) => a[k] !== b[k]);
-  check("D7 create 对话框与详情抽屉的值集全等", drifted.length === 0, drifted.length === 0 ? `${Object.keys(a).length} 条逐字相同` : drifted.map((k) => `${k}: ${a[k]} vs ${b[k]}`).join("; "));
-
-  suite("选中行两处同一对色（卡 ①：同一条规则，不得分叉）");
-  const sa = drawer.drawer.selected;
-  const sb = create.create.selected;
-  const bothRead = sa.has_row && sb.has_row;
-  check(
-    "D9 create 对话框与详情抽屉的选中行色对全等",
-    bothRead && sa.color === sb.color && sa.background_color === sb.background_color,
-    `drawer ${sa.color ?? "—"} / ${sa.background_color ?? "—"} vs create ${sb.color ?? "—"} / ${sb.background_color ?? "—"}`,
-  );
-
   suite("硬门");
   check("D8 console/page error = 0", consoleErrors.length === 0 && pageErrors.length === 0, `${consoleErrors.length} console / ${pageErrors.length} page${consoleErrors.length || pageErrors.length ? `: ${[...consoleErrors, ...pageErrors].slice(0, 3).join(" | ")}` : ""}`);
 
   if (opt.json) {
-    writeFileSync(opt.json, `${JSON.stringify({ viewport: "1512x950", lang: opt.lang, drawer, create, results }, null, 2)}\n`);
+    writeFileSync(opt.json, `${JSON.stringify({ viewport: "1512x950", lang: opt.lang, drawer, results }, null, 2)}\n`);
     process.stdout.write(`\nwrote ${opt.json}\n`);
   }
 } catch (err) {

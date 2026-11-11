@@ -27,6 +27,7 @@ export const TABLES = Object.freeze([
   "attachments",
   "agent_sessions",
   "task_reports",
+  "intake_requests",
   "global_revision",
   "schema_migrations",
 ]);
@@ -35,7 +36,10 @@ export const TABLES = Object.freeze([
  * Tables whose writes bump `global_revision`.
  *
  * Deliberately excludes `global_revision` itself (self-reference) and
- * `schema_migrations` (M0-style bookkeeping, not board content).
+ * `schema_migrations` (M0-style bookkeeping, not board content). It also
+ * excludes `intake_requests` (0007): every write there appends its
+ * `task_activities` row in the same transaction, so the cursor already moves
+ * once per change and a table trigger would move it twice.
  */
 export const REVISION_TABLES = Object.freeze([
   "projects",

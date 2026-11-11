@@ -1277,6 +1277,7 @@ assignee, and never appears in the scan set.
 
 | Row | Source | The director's move |
 |---|---|---|
+| `intake` | a human submitted a free-text description (`intake_requests`) | split it into 1..N deliverable cards in the named project, then `intake complete --created`; a description that names no work becomes `intake fail --reason`. No card is claimed |
 | `question` | a worker wrote an agent `question` and is waiting | answer with an agent `note` and **release** the card to `todo`; or escalate. A note without the release is retried |
 | `route` | an unassigned `todo` card past 30 minutes | assign the one role the generated routing table names. A card assigned to an agent no worker lane can claim is the workflow's `assignee_not_scanned` finding, not a route decision |
 | `triage` | an accepted producer carries `meta.stage_handoff=required` and has no decision for its delivery round | read the current report's `## Handoff`, its `leftovers` and that round's review observations; give every open item one disposition — reuse, create, decline, escalate — then create/seed/link the proposed cards or record `handoff_declined_round`, and record `handoff_consumed_round` on the producer |
@@ -1410,6 +1411,62 @@ Outside the diagram, `question_stale` in [`sla.md`](sla.md) watches the same wai
 status — a 60-minute normal limit, a 1440-minute escalation — and is notify-only: it never
 releases the card and never starts a turn. Without a resident pool no question row is
 enqueued at all, so that row is the only thing that will speak.
+
+### The intake lane, end to end
+
+An **intake request** (`0007`) is a human's free-text work description submitted before any
+card exists — the web's create surface is one box and a project, not a routing form. It is a
+board row (`intake_requests`) plus an activity signal; the supervisor turns the signal into a
+director row, and the director files the cards. There is still no LLM control turn, and the
+supervisor still speaks only `taskctl`.
+
+```text
+    BROWSER                   BOARD (taskd)              SUPERVISOR (poll·pool)     DIRECTOR LANE
+    one description           intake_requests            src/orchestrator           LLM · project dir
+    │                         │                          │                          │
+    │ (1) submit              │                          │                          │
+    ├─POST /api/v1/intake────▶│ pending row +            │                          │
+    │                         │ intake_requested         │                          │
+    │                         │        │                 │                          │
+    │                         │        └─activity────────▶ (2) subscriber wakes a    │
+    │                         │                          │     continue turn        │
+    │                         │◀──intake list pending────┤ (3) poll enqueues        │
+    │                         │                          │     intake:<id> row      │
+    │                         │                          ├─────────────────────────▶│
+    │                         │                          │ (4) director files cards │
+    │                         │◀────intake complete──────┼──────────────────────────┤
+    │                         │ consumed + refs          │ (5) settle by status     │
+    │◀──intake_consumed───────┤ (6) toast re-reads it    │                          │
+```
+
+1. **The write.** `POST /api/v1/intake` stores the description with its project and appends
+   `intake_requested` in one transaction. `(project_id, idem)` is unique: a retried submit
+   (a double click, a lost response) returns the request that already landed.
+2. **The signal.** The subscriber classifies `intake_requested` as a dispatch and wakes one
+   continue turn. The 600-second tick is the fallback when no subscriber is installed.
+3. **The row.** Poll reads `intake list --status pending` (oldest first), resolves the
+   project's local directory from `projects.json`, and enqueues one `queue_kind:"question"`
+   row with `role:"intake"`, `intake:true`, the description, the submitter and **no card
+   ref**. The pool advertises `intake-lane`, so a pool that predates this release receives no
+   such row.
+4. **The decision.** The director lane receives the row in the same turn as its other
+   decisions. It looks for cards already carrying `meta.intake_request=<id>` (a retry reuses
+   them), reads the project's graph when it has one, and creates the missing cards with an
+   accountable role, a target, acceptance seeded from the description, the submitter as
+   reporter, and `--idem "intake|<id>|<n>"`. It then records `intake complete --created` or,
+   when the description names no work, `intake fail --reason`.
+5. **The settle.** The row is settled by the **request's status**, never by the turn's exit
+   code. Unsettled rows retry after 30 seconds (two turns). When the cap is reached the pool
+   adopts the cards the lane did create (`issue list --meta intake_request=<id>`, `intake
+   complete` as `Board`); with none it records the failure. An intake request has no card to
+   park, so a terminal request **is** the end of the lane.
+6. **The receipt.** `intake_consumed` / `intake_failed` are task-less signals; the customer
+   can re-read the request by id. `taskctl console` lists pending requests with their age, so
+   a request the loop never reached is visible without a board surface.
+
+A request whose project has no local directory mapping is logged and left pending; the
+console row is where a human sees it. A request is never claimed, moved or turned into a
+card by the board itself — the claim remains the only dispatch source for work.
 
 ## Continuity: the same worker, resumed by id
 

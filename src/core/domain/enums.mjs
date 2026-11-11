@@ -240,6 +240,19 @@ export const REPORT_ROLLUP_MARKERS = Object.freeze([0, 1]);
 /** Agent session lifecycle. */
 export const SESSION_STATUSES = Object.freeze(["running", "closed", "failed"]);
 
+/**
+ * An intake request's lifecycle (0007). `pending` is a human's description
+ * waiting for the decision lane; `consumed` means cards were filed and their
+ * refs recorded; `failed` means the lane could not turn it into work and said
+ * why. There is no reopen: a rejected description is resubmitted.
+ */
+export const INTAKE_STATUSES = Object.freeze(["pending", "consumed", "failed"]);
+export const INTAKE_STATUS = Object.freeze({
+  PENDING: "pending",
+  CONSUMED: "consumed",
+  FAILED: "failed",
+});
+
 /** Activity event names written to `task_activities`. */
 export const ACTIVITY_EVENTS = Object.freeze([
   "project_created",
@@ -285,6 +298,12 @@ export const ACTIVITY_EVENTS = Object.freeze([
   // One row at the end of a whole-directory import. Per-card imports would
   // storm the stream; the counters are enough to make a client reload.
   "import_completed",
+  // 0007 — a human's free-text work request, and its two terminal decisions.
+  // The request's state is `intake_requests`; the row is the signal that wakes
+  // the supervisor and the account the human can read back.
+  "intake_requested",
+  "intake_consumed",
+  "intake_failed",
 ]);
 
 /**
@@ -325,4 +344,5 @@ export const SQL_ENUM_SETS = Object.freeze({
   "attachments.kind": ATTACHMENT_KINDS,
   "agent_sessions.status": SESSION_STATUSES,
   "task_reports.is_rollup": REPORT_ROLLUP_MARKERS,
+  "intake_requests.status": INTAKE_STATUSES,
 });
