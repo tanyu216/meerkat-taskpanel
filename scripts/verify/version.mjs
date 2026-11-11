@@ -85,7 +85,7 @@ export function findModuleVersionSpan(raw) {
  * declaration. `field` names what carries the version either way, so a diagnostic can say
  * where to look (the marketplace hides its version under `metadata`).
  *
- * Three agent kinds are not carriers: Codex and OpenClaw install the same
+ * Two agent kinds are not carriers: Codex installs the same
  * `.claude-plugin/plugin.json` bundle through the repository marketplace, and Pi declares
  * itself in the canonical `package.json` itself. A row for any would only restate one
  * already above.

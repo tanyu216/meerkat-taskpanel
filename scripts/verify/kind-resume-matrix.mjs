@@ -61,7 +61,7 @@ import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
 const IMAGE = "meerkat-taskpanel:verify";
 
 /** Keep agent CLIs off the network where we can, and their output machine-readable. */
-const QUIET_ENV = { NO_COLOR: "1", CI: "1", OPENCLAW_DISABLE_UPDATE_CHECK: "1" };
+const QUIET_ENV = { NO_COLOR: "1", CI: "1" };
 
 /**
  * Per-agent-kind probe table. `bins` is the executable name; `help` is the list of argv tails

@@ -222,7 +222,7 @@ describe("install.sh", () => {
   it("documents every --target value and supports --dry-run", async () => {
     const script = await readFile(join(ROOT, "install.sh"), "utf8");
 
-    for (const target of ["claude", "openclaw", "codex", "pi", "server", "all"]) {
+    for (const target of ["claude", "codex", "pi", "server", "all"]) {
       assert.ok(script.includes(target), `install.sh must mention target "${target}"`);
     }
 
@@ -249,7 +249,7 @@ describe("install.sh", () => {
     });
 
     assert.equal(run.status, 0, run.stderr);
-    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
+    for (const agentDir of [".claude", ".codex", ".agents"]) {
       // Match the whole destination line, not a substring: `skills/meerkat` is a prefix
       // of `skills/meerkat-director`, so a bare `includes` would pass on the director alone.
       const dest = join(fakeHome, agentDir, "skills", "meerkat");

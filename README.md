@@ -36,7 +36,7 @@ Meerkat TaskPanel is a task board built for AI-agent teams. Its subject is the c
 
 It is a board for teams that already run agents — Claude Code, Codex, OpenClaw or pi — and need the work to outlive a single session. It is not a human project-management tool: nobody has to file or move a card for the work to proceed, the board UI is for watching rather than moving work, and the human's levers are the answer to a question and the acceptance of a `human`-mode card. The mechanisms that make this work are in [Highlights](#highlights).
 
-> **Status: the engine has landed in full.** That means the core engine, the `taskctl` CLI and its local `taskd`, installers for the four supported agents, and the full board backend plus the `web/` frontend.
+> **Status: the engine has landed in full.** That means the core engine, the `taskctl` CLI and its local `taskd`, installers for Claude Code, Codex and Pi (OpenClaw takes two skills by hand), and the full board backend plus the `web/` frontend.
 >
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and `openBoard()`. `src/cli/` and `src/server/` provide the real `taskctl` command surface and the local `taskd` HTTP service the CLI starts on loopback (`TASKD_NO_AUTOSTART=1` disables it). `src/server/` serves the board HTTP API and its SSE stream. `web/` is the Vue 3 board, built to `web/dist` and served by `taskd`. Agent integration is skill-only and drives the `taskctl` CLI (see [`docs/ops/install.md`](docs/ops/install.md)).
 >
@@ -60,14 +60,14 @@ The board's mechanisms, in the order the two problems above need them.
 7. **An append-only audit trail.** Comments, reports and activities cannot be edited or deleted. The board is not just a view of the work; it is the record of it.
 8. **Built for long-running agent fleets.** A heartbeat sets a 10-minute freshness window on a claim. A claim goes stale for its own holder after 30 minutes; past 6 hours it has rotted, and its assignee recovers it — anyone else must take it over explicitly and audited (`--allow-steal --reason`). A crashed agent never wedges a card, and recovery never silently changes the accountable role.
 9. **Local-first, zero runtime dependencies.** A single SQLite file (Node's built-in `node:sqlite`) is the only persistence. The engine needs no other dependencies and works fully offline.
-10. **One board, many front doors — and provider-agnostic by design.** Drive it from the `taskctl` CLI or over the local `taskd` HTTP API; skill/plugin installers exist for Claude Code, Codex, OpenClaw and pi. The board's claim and candidate criteria are a stable contract, so you can swap the board (Jira, Plane, Linear, …) without changing the agents. Access is gated by a token and an optional CIDR allow-list.
+10. **One board, many front doors — and provider-agnostic by design.** Drive it from the `taskctl` CLI or over the local `taskd` HTTP API; skill/plugin installers exist for Claude Code, Codex and pi, and OpenClaw takes the board and chat skills by hand ([practice guide](#openclaw-manage-the-board-from-an-im-conversation)). The board's claim and candidate criteria are a stable contract, so you can swap the board (Jira, Plane, Linear, …) without changing the agents. Access is gated by a token and an optional CIDR allow-list.
 11. **A complete work history you can read however you like.** The append-only record is a full history of what a team did in an AI-agent environment; nobody has to log it separately. The board ships no reporting or statistics feature. `taskctl issue list --json --include-archived` returns every card with its `status`, `status_changed_at`, `created_at` and `updated_at`, so a daily, weekly or monthly report — grouped by project, kind, label, assignee or time window — is a client-side consumer of that data. How you report is your call.
 
 ## Architecture
 
 Meerkat TaskPanel is three thin layers, with the dependency arrow always pointing inward. `src/cli` and `src/server` are the front doors. `src/core` owns the domain model, SQLite storage and use-cases. `src/foundation` holds the DTOs and helpers they agree on.
 
-The **supervisor** (`taskctl run`) is not one of these layers: it drives the board through `taskctl` and runs the deterministic passes, while the **director** skill makes the collaboration decisions. Role skills (`jobs`, `linus`, `turing`, `reviewer`, `worker`) are discovered per platform. See [The supervisor and the director](#the-supervisor-and-the-director). To install the skills or plugin for your agent kind, start with [Agent-kind install details](#agent-kind-install-details).
+The **supervisor** (`taskctl run`) is not one of these layers: it drives the board through `taskctl` and runs the deterministic passes, while the **director** skill makes the collaboration decisions. Role skills (`jobs`, `linus`, `turing`, `reviewer`, `worker`) are discovered per platform. See [The supervisor and the director](#the-supervisor-and-the-director). To install the skills or plugin for your agent kind, start with [Agent-kind install details](#agent-kind-install-details); OpenClaw is installed by hand in the [practice guide](#openclaw-manage-the-board-from-an-im-conversation).
 
 The system record is [docs/architecture.md](docs/architecture.md) — boundaries, data model, contract, configuration, security and the canonical directory tree. The rules a change here must satisfy are [docs/tech-spec.md](docs/tech-spec.md), and [docs/README.md](docs/README.md) indexes which document owns which area.
 
@@ -87,7 +87,7 @@ meerkat-taskpanel/
 ├── CHANGELOG.md / CONTRIBUTING.md
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # workspace root, bin(meerkat-taskpanel/taskctl/taskd), scripts
-├── install.sh                    # install dispatcher: --target claude|openclaw|codex|pi|server|all
+├── install.sh                    # install dispatcher: --target claude|codex|pi|server|all
 ├── src/                          # engineering source
 │   ├── core/                     #   domain model / SQLite repo / state machine / invariants / md export
 │   ├── cli/                      #   taskctl (CLI entry)
@@ -150,7 +150,7 @@ bash install.sh --target server           # server + taskctl only
 ## Agent-kind install details
 
 ```bash
-bash install.sh --target claude|openclaw|codex|pi|server|all
+bash install.sh --target claude|codex|pi|server|all
 ```
 
 `all` is the default: every agent kind below plus the server runtime. `--no-server` leaves the server out, and a comma list (`--target claude,server,pi`) selects exactly those targets.
@@ -164,15 +164,14 @@ The `Bundle` column is the per-agent manifest that the agent's own plugin system
 | Agent | `--target` | Skill directory | Bundle |
 |---|---|---|---|
 | Claude Code | `claude` | `~/.claude/skills/meerkat` | `.claude-plugin/plugin.json` (plugin root = the repository root) |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat` | the same root bundle |
 | Codex | `codex` | `~/.codex/skills/meerkat` | the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat` | the root `package.json`'s `pi` field |
 
-The repository root is the board's plugin root, so every harness reads the one `skills/` tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle too — see [`docs/ops/install.md`](docs/ops/install.md#openclaw).
+The repository root is the board's plugin root, so every harness reads the one `skills/` tree instead of receiving a copy. OpenClaw is not an installer target; the [practice guide](#openclaw-manage-the-board-from-an-im-conversation) installs its two skills by hand.
 
-The `meerkat-director`, `meerkat-chat`, `setup-meerkat` and role skills are not distributed through the marketplace. `install.sh` puts them on the **primary kind** — the explicit `--supervisor=enable` kind when one is named, else the first `claude|codex|pi` in `--target` order (`all` → claude); an upgrade refreshes a role on the kind that already carries it. `--target openclaw` installs the board skill only for now; supervisor support for OpenClaw is on the [roadmap](#roadmap). See [The supervisor and the director](#the-supervisor-and-the-director).
+The `meerkat-director`, `meerkat-chat`, `setup-meerkat` and role skills are not distributed through the marketplace. `install.sh` puts them on the **primary kind** — the explicit `--supervisor=enable` kind when one is named, else the first `claude|codex|pi` in `--target` order (`all` → claude); an upgrade refreshes a role on the kind that already carries it. See [The supervisor and the director](#the-supervisor-and-the-director).
 
-The **`setup-meerkat`** skill is the `/setup-meerkat` command. It works six capabilities as six ordered steps: install and upgrade (`taskctl`, a local `taskd` and the agent bundle), configuration conflict repair and tuning, the director's project rules under `docs/agents/`, the board skill's project rules and the `init`-written instruction entry, role placement and moves across agent platforms, and creating a new role from the shipped template. `install.sh` copies it to the primary kind's skill directory (for example `~/.codex/skills/setup-meerkat` when codex is primary). Other agent kinds, including OpenClaw, can read it from the shared bundle; dedicated OpenClaw support is on the [roadmap](#roadmap).
+The **`setup-meerkat`** skill is the `/setup-meerkat` command. It works six capabilities as six ordered steps: install and upgrade (`taskctl`, a local `taskd` and the agent bundle), configuration conflict repair and tuning, the director's project rules under `docs/agents/`, the board skill's project rules and the `init`-written instruction entry, role placement and moves across agent platforms, and creating a new role from the shipped template. `install.sh` copies it to the primary kind's skill directory (for example `~/.codex/skills/setup-meerkat` when codex is primary). Other agent kinds can read it from the shared bundle.
 
 Role skills have no roles root to own: each one is discovered from the agent kind whose `skills/` tree carries it, and that installation location is the routing. `/setup-meerkat` copies a role between kinds only on request and never deletes one the user did not name.
 
@@ -238,8 +237,6 @@ The supervisor carries no version of its own and declares no board interface: it
 
 The cost model is simple. Ping is $0. Continue is one bounded LLM turn per cadence. Inside it, poll is the deterministic cost gate: a worker or reviewer turn starts only after a successful claim. On cron there is no pool, so there is no worker dispatch.
 
-OpenClaw today gets the board skill only — no loop and no scheduling unit. The same goes for `setup-meerkat`, which OpenClaw can read from the shared bundle but not install separately. Both are [roadmap](#roadmap) items.
-
 ## Practice guide
 
 Installing the skill is one line. Working the board well is a set of habits. Every agent kind shares the same eight rules:
@@ -254,6 +251,69 @@ Installing the skill is one line. Working the board well is a set of habits. Eve
 8. **Stay traceable.** Carry the session id.
 
 What differs between agent kinds is who applies these rules.
+
+### OpenClaw: manage the board from an IM conversation
+
+OpenClaw is not an install target: this installer installs and refreshes nothing under
+`~/.openclaw`, and there is no OpenClaw supervisor or scheduling unit. Its strength is the
+other direction — an OpenClaw session already connects an agent to IM channels. Install
+exactly two skills by hand and let that conversation be the human's front door.
+
+1. **Install the board runtime once for this machine**, and put its launcher on `PATH`:
+
+   ```bash
+   npx meerkat-taskpanel install --target server
+   export PATH="$HOME/.meerkat-taskpanel/bin:$PATH"
+   ```
+
+   A global `npm install -g meerkat-taskpanel` works too.
+
+2. **Copy the two skills into OpenClaw's skill directory.** From a source checkout:
+
+   ```bash
+   cp -R skills/meerkat skills/meerkat-chat ~/.openclaw/skills/
+   ```
+
+   From a global npm package they live under
+   `"$(npm root -g)/meerkat-taskpanel/skills"`; the server runtime tree does not carry the
+   skill sources, so a checkout or a global install is the source. Install only these two:
+   OpenClaw has no loop here, so `meerkat-director` and the role skills have nothing to drive.
+
+3. **Give the OpenClaw session its board identity.** The removed installer used to seed this,
+   so set it in the environment OpenClaw starts its agent with (not in a shell rc the session
+   never reads):
+
+   ```bash
+   export TASKCTL_ACTOR_KIND=openclaw   # without it the board records the write as a person's
+   export TASKCTL_AGENT=<board-name>    # the agent's name on the board
+   export TASKCTL_HUMAN=<your-name>     # the human `--as-human` writes are attributed to
+   ```
+
+   A one-line wrapper on OpenClaw's `PATH` that adds `--actor-kind openclaw --agent <name>` is
+   equivalent.
+
+4. **Use the two skills differently.**
+   - **`meerkat-chat` is your console.** Ask about progress, what is waiting, who is stuck, the
+     acceptance queue, or loop health. It replies in your language, and shows the exact comment
+     or move before writing it. Human writes are `--as-human`.
+   - **`meerkat` is the board contract.** The OpenClaw agent claims a card, sends heartbeats,
+     comments, and delivers with a report — the same eight rules as above.
+
+   Typical prompts: “What is waiting on me?”, “Where is TP-0123?”, “Why is this card stuck?”
+
+Limits worth knowing:
+
+- **No supervisor.** Unassigned cards are not dispatched by this project on OpenClaw; a card
+  moves when the OpenClaw session claims it. For an unattended loop, install on Claude Code,
+  Codex or Pi.
+- **The watch hold is bounded.** `meerkat-chat` can hold `taskctl events follow` for up to ten
+  minutes; a chat turn may not tolerate that. Prefer one-shot questions, or let an OpenClaw
+  automation poll `taskctl console` and post the digest.
+- **Push is still planned.** The engine's own IM adapter is the roadmap item in
+  [`docs/im-integration.md`](docs/im-integration.md); this guide uses OpenClaw's IM, not an
+  adapter shipped here.
+- **Keep the allowlist narrow.** The IM allowlist decides who may trigger a board write, and
+  every human write is shown before it is written.
 
 ### Matt Pocock's engineering skills
 
@@ -304,7 +364,7 @@ Ordered by priority; IM integration is the next planned item.
 |---|---|---|
 | **Engine** | `src/core/` — domain model, SQLite storage + migrations, state machine, invariants pushed down into database triggers, `openBoard()` | *landed* |
 | **CLI & local service** | `src/cli/` — the `taskctl` command surface; the loopback `taskd` it auto-starts | *landed* |
-| **Installers** | `install.sh` + `scripts/install/<actor-kind>.sh` — the claude / openclaw / codex / pi agent-kind targets plus the `server` runtime, idempotent and merge-style | *landed* |
+| **Installers** | `install.sh` + `scripts/install/<actor-kind>.sh` — the claude / codex / pi agent-kind targets plus the `server` runtime, idempotent and merge-style | *landed* |
 | **Markdown export** | `src/core/storage/md/` — `taskctl export md` writes one canonical card per task | *landed* |
 | **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |
 | **supervisor + director** | `skills/meerkat-director/` and the five role skills — the external supervisor: a 60s ping, a 600s deterministic tick (SLA patrol → workflow → poll), the multi-kind session pool, and the director's decision lane; drives the board through `taskctl` only | *landed* |
@@ -312,8 +372,6 @@ Ordered by priority; IM integration is the next planned item.
 | **IM integration** | Push “needs a human” items (awaiting / agent questions / pending acceptance) to IM, record decisions and acceptances from IM, and answer progress questions. The engine gets a plugin host + `channel-kit`; each platform (Feishu, Slack, WeChat, WhatsApp, Teams, Telegram) is an independent adapter package built on a third-party SDK. See [docs/im-integration.md](docs/im-integration.md). | *(planned — priority above the items below)* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |
 | **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity | *(planned)* |
-| **OpenClaw supervisor support** | Install and run the supervisor for the `openclaw` target (scheduling units + session pool). Today `--target openclaw` installs the board skill only; how it should coexist with OpenClaw's own poll/patrol still needs design | *(planned)* |
-| **OpenClaw setup-meerkat support** | Install and run `setup-meerkat` for the `openclaw` target. The installer copies it to the primary loop kind; OpenClaw can still only read it from the shared bundle | *(planned)* |
 
 > The `M0`–`M6` labels are retired from this table: `M3` (the stdio MCP server) was landed
 > and then removed outright — see

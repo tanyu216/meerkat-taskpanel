@@ -1,8 +1,8 @@
 /**
  * Offline plugin-bundle and marketplace inspector.
  *
- * The container image ships Node and the repository only — none of the four agent CLIs
- * (`claude`, `codex`, `openclaw`, `pi`) and no network to install them (see
+ * The container image ships Node and the repository only — none of the three agent CLIs
+ * (`claude`, `codex`, `pi`) and no network to install them (see
  * ARCHITECTURE §9.1: verification runs isolated, offline). So the container cannot ask
  * the OpenClaw CLI "do you recognize this bundle?".
  *
@@ -68,12 +68,12 @@ export const CLAUDE_DEFAULT_ROOTS = [
 export const KIND_BUNDLES = {
   // The repository root IS the board's plugin root. `.claude-plugin/plugin.json` is the
   // board manifest and the root marketplace resolves `meerkat-taskpanel` to `./`, so
-  // Claude Code, Codex and OpenClaw all install the very same bundle. Codex and OpenClaw
-  // ship no marker of their own, which is why their rows name the Claude manifest.
+  // Claude Code and Codex install the very same bundle. Codex ships no marker of its own,
+  // which is why its row names the Claude manifest.
   //
-  // `openclawFormat` is what the detector reports for the row's `dir` — not what the agent kind
-  // calls itself. Four agent kinds share this one directory, and the root carries only
-  // `.claude-plugin/`, so OpenClaw's precedence settles on claude for all four.
+  // `openclawFormat` is what the detector reports for the row's `dir` — not what the agent
+  // kind calls itself. Three kinds share this one directory, and the root carries only
+  // `.claude-plugin/`, so the vendor's precedence settles on claude for all three.
   claude: {
     dir: ".",
     manifest: CLAUDE_MANIFEST,
@@ -81,17 +81,6 @@ export const KIND_BUNDLES = {
     openclawFormat: "claude",
   },
   codex: {
-    dir: ".",
-    manifest: CLAUDE_MANIFEST,
-    openclawKind: "bundle",
-    openclawFormat: "claude",
-  },
-  // OpenClaw used to get its own native bundle (`plugins/openclaw/`). A native OpenClaw
-  // plugin is an in-process runtime module needing `package.json#openclaw.extensions` and
-  // an entry point that imports the OpenClaw SDK — a runtime dependency this project does
-  // not take — so that manifest could never be installed as one. What OpenClaw actually
-  // installs is the root bundle, exactly like Claude Code and Codex.
-  openclaw: {
     dir: ".",
     manifest: CLAUDE_MANIFEST,
     openclawKind: "bundle",

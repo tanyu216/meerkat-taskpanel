@@ -270,7 +270,6 @@ wizard_targets() {
   printf 'pick is the primary kind and also gets the team (director, chat, roles, setup)\n' >&2
   agents="$(wizard_multi "$default_agents" \
     "claude=claude     ${prefix}/.claude/skills/meerkat (board; team if primary)" \
-    "openclaw=openclaw   ${prefix}/.openclaw/skills/meerkat (board only; no loop or supervisor)" \
     "codex=codex      ${prefix}/.codex/skills/meerkat (board; team if primary, claim trigger)" \
     "pi=pi         ${prefix}/.agents/skills/meerkat (board; team if primary)")" || return 2
 
@@ -336,7 +335,7 @@ run_wizard() {
       "")
         ;;
       all)
-        default_agents="claude,openclaw,codex,pi"
+        default_agents="claude,codex,pi"
         saw_server="1"
         ;;
       server)
@@ -355,11 +354,11 @@ run_wizard() {
     default_mode="server"
   fi
   if [ -z "$default_agents" ] && [ -z "$saw_server" ]; then
-    default_agents="claude,openclaw,codex,pi"
+    default_agents="claude,codex,pi"
   fi
   if [ -n "${NO_SERVER:-}" ]; then
     default_mode="skills"
-    [ -n "$default_agents" ] || default_agents="claude,openclaw,codex,pi"
+    [ -n "$default_agents" ] || default_agents="claude,codex,pi"
   fi
 
   printf '\nMeerkat TaskPanel installer — interactive setup\n' >&2
@@ -379,7 +378,6 @@ run_wizard() {
   for target in $targets; do
     case "$target" in
       claude | codex | pi) has_agent=1; has_loop=1 ;;
-      openclaw) has_agent=1 ;;
       server) has_server=1 ;;
     esac
   done

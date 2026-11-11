@@ -292,9 +292,13 @@ in this document’s contract.
 
 ## 10. Roadmap and priority
 
-IM integration is the **next planned item**, ahead of the Epic view, iteration management and
-OpenClaw loop/setup support. The reason: the supervisor currently has no human-facing
-channel, and every `awaiting` card depends on a human polling the board.
+IM integration is the **next planned item**, ahead of the Epic view and iteration management.
+The reason: the supervisor currently has no human-facing channel, and every `awaiting` card
+depends on a human polling the board.
+
+Until it ships, an OpenClaw session with the `meerkat` and `meerkat-chat` skills installed by
+hand can front the board over OpenClaw's own IM channels — see the OpenClaw subsection of the
+README's practice guide.
 
 The first real adapter is a separate decision. Feishu or Slack is the recommended way to
 validate `channel-kit`; WeChat iLink is the least clean SDK ecosystem and should follow.

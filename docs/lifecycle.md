@@ -709,7 +709,7 @@ while identity stays in the marker so every claim/heartbeat/report path remains 
   it. The reverse ordering would delay every dispatch by a tick.
 - **The reviewer runs on the kind that carries its role.** One supervisor process holds
   sessions of every loop kind, so a reviewer installed on another loop kind is dispatched
-  normally; a reviewer installed only on a non-loop kind (for example OpenClaw) is not.
+  normally; a reviewer installed only on a kind that does not run a loop is not.
   Install the role on a loop kind — a second supervisor does not help
   ([scheduling.md](scheduling.md)).
 - **The reviewer's tool surface is adapter-dependent.** Claude and Pi deny the write tools;

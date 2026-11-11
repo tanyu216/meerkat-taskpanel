@@ -57,13 +57,13 @@ describe("install.sh: targets", () => {
     // The comma path is pinned for a pair that is not the default set: their skill must
     // land, and nothing else may come along.
     const home = makeTempDir();
-    const run = runInstall(["--target", "pi,openclaw", "--prefix", home]);
+    const run = runInstall(["--target", "pi,codex", "--prefix", home]);
 
     assert.equal(run.status, 0, run.stderr);
-    for (const agentDir of [".agents", ".openclaw"]) {
+    for (const agentDir of [".agents", ".codex"]) {
       assert.ok(existsSync(join(home, agentDir, "skills", "meerkat", "SKILL.md")), `${agentDir} install missing`);
     }
-    for (const agentDir of [".claude", ".codex"]) {
+    for (const agentDir of [".claude"]) {
       assert.equal(existsSync(join(home, agentDir)), false, `${agentDir} must not be installed`);
     }
   });
@@ -97,6 +97,16 @@ describe("install.sh: targets", () => {
     assert.equal(run.status, 2);
     assert.match(run.stderr, /invalid --target: emacs/);
     assert.match(run.stderr, /server/, "the expected list names server");
+  });
+
+  it("rejects --target openclaw with the manual-install pointer (exit 2)", () => {
+    // OpenClaw is no longer an install target: the installer must say where the two
+    // skills go now, not fall through to the generic invalid-target list.
+    const run = runInstall(["--target", "openclaw", "--dry-run"]);
+    assert.equal(run.status, 2);
+    assert.match(run.stderr, /OpenClaw is no longer an install target/);
+    assert.match(run.stderr, /meerkat and meerkat-chat/);
+    assert.match(run.stderr, /README\.md Practice guide/);
   });
 
   it("installs the runtime tree for --target server and no agent kind", () => {
@@ -175,12 +185,13 @@ describe("install.sh: targets", () => {
     assert.equal(run.status, 0, run.stderr);
     const tree = join(home, ".meerkat-taskpanel");
     assert.ok(existsSync(join(tree, "src", "server", "main.mjs")), "all includes the server");
-    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
+    for (const agentDir of [".claude", ".codex", ".agents"]) {
       assert.ok(
         existsSync(join(home, agentDir, "skills", "meerkat", "SKILL.md")),
         `${agentDir} must be installed`,
       );
     }
+    assert.equal(existsSync(join(home, ".openclaw")), false, "OpenClaw is installed by hand, not by --target all");
   });
 
   it("--no-server removes the server from --target all", () => {
@@ -233,8 +244,8 @@ describe("kind-cli: absent CLIs are skipped, never failed", () => {
     });
 
     assert.equal(run.status, 0, run.stderr);
-    assert.equal((run.stdout.match(/^SKIP /gm) ?? []).length, 4, run.stdout);
-    assert.match(run.stdout, /0 passed, 0 failed, 4 skipped/);
+    assert.equal((run.stdout.match(/^SKIP /gm) ?? []).length, 3, run.stdout);
+    assert.match(run.stdout, /0 passed, 0 failed, 3 skipped/);
   });
 
   it("SKIPs (not FAILs) when a PATH element is a regular file (ENOTDIR)", () => {
@@ -254,7 +265,7 @@ describe("kind-cli: absent CLIs are skipped, never failed", () => {
 
     assert.equal(run.status, 0, run.stderr);
     assert.equal((run.stdout.match(/^FAIL /gm) ?? []).length, 0, run.stdout);
-    assert.ok((run.stdout.match(/^SKIP /gm) ?? []).length >= 4, run.stdout);
+    assert.ok((run.stdout.match(/^SKIP /gm) ?? []).length >= 3, run.stdout);
     assert.match(run.stdout, /0 passed, 0 failed, \d+ skipped/);
   });
 });

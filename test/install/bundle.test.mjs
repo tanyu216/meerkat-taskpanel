@@ -1,7 +1,7 @@
 /**
  * Bundle / marketplace inspection + the per-agent-kind profile bundle assertions.
  *
- * The container cannot run the four agent CLIs (they are not in the image and there is
+ * The container cannot run the three agent CLIs (they are not in the image and there is
  * no network), so `scripts/verify/lib/bundle.mjs` reproduces the agent kinds' detection
  * contract offline. These tests pin that reproduction: the shipped bundles must be
  * detected with the format each agent kind's profile declares, and the detector must follow
@@ -186,7 +186,7 @@ describe("bundle: parseMarketplace", () => {
     assert.equal(market.ok, true, market.error);
 
     // `source: "./"` — the board's plugin root IS the repository root, which is what lets
-    // claude / codex / pi / openclaw share the one `skills/` tree. It is the
+    // claude / codex / pi share the one `skills/` tree. It is the
     // shared tree, so it exposes every skill in `skills/`; that is not a second marketplace plugin.
     //
     // The entry is the plugin's name, not a skill's: the board skill has been renamed

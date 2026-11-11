@@ -11,13 +11,12 @@ import { join } from "node:path";
 
 export const AGENT_KINDS = Object.freeze({
   claude: { dir: ".claude", loop: true },
-  openclaw: { dir: ".openclaw", loop: false },
   codex: { dir: ".codex", loop: true },
   // Pi keeps its skills and config under the `.agents` base.
   pi: { dir: ".agents", loop: true },
 });
 
-/** The actor kinds that run the external loop (OpenClaw does not). */
+/** The actor kinds that run the external loop. */
 export const LOOP_KINDS = Object.freeze(
   Object.entries(AGENT_KINDS)
     .filter(([, info]) => info.loop)

@@ -257,9 +257,9 @@ describe("wizard_multi", () => {
 
 describe("wizard_targets — two-step target selection", () => {
   it("full install: the server plus the selected agent kinds", () => {
-    const result = call("wizard_targets full claude,openclaw,codex,pi '' /tmp/home", "\n\n");
+    const result = call("wizard_targets full claude,codex,pi '' /tmp/home", "\n\n");
     assert.equal(result.code, 0);
-    assert.equal(result.out, "server,claude,openclaw,codex,pi");
+    assert.equal(result.out, "server,claude,codex,pi");
     assert.match(result.stderr, /Install mode/);
     assert.match(result.stderr, /full install/);
   });
@@ -275,7 +275,7 @@ describe("wizard_targets — two-step target selection", () => {
   });
 
   it("maps the mode and agent indices", () => {
-    const result = call("wizard_targets skills claude '' /tmp/home", "1\n1,3\n");
+    const result = call("wizard_targets skills claude '' /tmp/home", "1\n1,2\n");
     assert.equal(result.out, "server,claude,codex");
   });
 

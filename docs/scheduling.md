@@ -162,9 +162,8 @@ shares ([claim-unassigned](#the-claim-unassigned-policy),
 The director is a skill of its own, and the five role skills ship beside it. `install.sh`
 puts the director, the chat console, `setup-meerkat` and a fresh install's roles on the
 **primary kind**; an upgrade refreshes each role on the kind(s) that already carry it.
-OpenClaw installs the board skill only, because its agent framework runs the equivalent
-automations itself (see [OpenClaw: no loop units](#openclaw-no-loop-units)). The runtime
-finds the director by scanning the installed skills trees, never from a config value.
+The runtime finds the director by scanning the installed skills trees, never from a config
+value.
 
 ## The two clocks
 
@@ -1024,9 +1023,8 @@ authenticating agents, not adding a rule to the same layer.
 
 - **The reviewer runs on the kind that carries its role.** The pool holds sessions of several
   kinds and falls back to another kind that carries the same role; if no installed kind does,
-  the card is not dispatched. A reviewer installed only on a non-loop kind (for example
-  OpenClaw) is not dispatched; install the role on a loop kind instead — a second supervisor
-  does not help.
+  the card is not dispatched. A reviewer installed only on a kind that does not run a loop is
+  not dispatched; install the role on a loop kind instead — a second supervisor does not help.
 - **The reviewer's tool surface is enforced only where the adapter can enforce it.**
   A review card runs in its own `role=reviewer` conversation, so Claude and Pi deny
   the write tools (`Edit`/`Write`/`NotebookEdit`, or `edit`/`write`). Codex,
@@ -1539,7 +1537,6 @@ The supervisor cannot live inside the agent application, because Claude Code and
 | `taskctl run` (this tree) | the supervisor: `taskctl run --ping-once` / `--continue-once` for the clocks, `taskctl pool` for the resident pool, `taskctl run` for its own daemon clocks |
 | the installed runtime tree | what `install.sh` deploys; the units name `<tree>/src/cli/index.mjs run …`, and an agent-only install names the checkout |
 | the local `taskd` process | a natural home for the same supervisor in a future milestone |
-| the OpenClaw agent framework | on OpenClaw, the framework itself is the supervisor |
 
 One supervisor runs per machine, on a **primary actor kind** (the installed unit's kind). It
 holds sessions of several kinds at once: a card's worker/reviewer runs on the kind that
@@ -1881,7 +1878,7 @@ systemctl --user enable --now meerkat-taskpanel-taskd.service
 **This is an explicit exception**, and it is the *only* one, to the installer's standing
 rule that it writes a unit and prints the load command but **never starts a daemon for
 you**. It holds **only** for the `taskd` service guard: the supervisor's units are still
-written and left for the operator to load, and OpenClaw still gets none.
+written and left for the operator to load.
 
 A **restart is not a start**, and the installer does restart what it would otherwise leave
 running the previous code. When the server target replaced `src/**` (a content digest, not a
@@ -2257,7 +2254,6 @@ configured kind order), signing its writes as `Director`.
 | **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `taskctl run --ping-once` / `--continue-once`, or the supervisor's own two clocks | `claude -p … --resume <sid>` — resume the session that owns the card |
 | **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | resume the thread with `codex exec resume <sid> <prompt>`; carry `$CODEX_THREAD_ID` as `--session-id` |
 | **Pi** | `pi --print "<handoff>"` | external units | resume with `pi --print --session <sid> <prompt>`; pass the session id through the handoff |
-| **OpenClaw** | *n/a — no self-scheduler* | the agent framework's own `poll`/`patrol` automations — this design is their statement | the framework keeps the id stable across resumes |
 
 The command column is what the *pool* calls to open a session of that kind. The supervisor
 itself wakes no agent: it runs the passes in-process and enqueues rows. Each card's worker
@@ -2374,20 +2370,6 @@ explicit act: the opt-in switch is [`--supervisor=enable`](#enabling-the-supervi
 below, and it is the one thing that makes an installer load a unit or run `crontab` for you
 — see the exception stated there.
 
-### OpenClaw: no loop units
-
-OpenClaw is the one agent kind whose framework already ships a scheduler: a per-agent poll
-(the schedule *is* the trigger, so an idle tick costs nothing) for the scan, and a
-stale-pass patrol. That is this design implemented on the framework's side; repeating it
-here would put two supervisors on one board, racing for the same cards. The board's claim is
-atomic, so the race is bounded — but the second supervisor is pure waste.
-
-`install.sh --target openclaw` therefore installs the **board skill only**: no
-`meerkat-director`, `meerkat-chat` or role skills, no scheduler, no per-kind config —
-permanently, by ruling, not as a gap to be filled later. The framework's own automations are the supervisor on that host;
-this page stops at the boundary of what they must preserve — the atomic claim and the
-candidate criteria the board hands out.
-
 ## Enabling the supervisor (opt-in)
 
 Everything above describes units the installer **writes and never loads**. The enable
@@ -2414,8 +2396,7 @@ the [one-supervisor-per-machine](#one-supervisor-per-machine) rule:
 **`enable` acts on the first loop kind in `--target` order** (`--target all` → `claude`),
 while **`disable` and `status` act on every loop kind in `--target`** so no stray is left
 unseen or running. On `--target all`, `--supervisor=enable` therefore does **not** enable
-`codex`/`pi`, and never OpenClaw (see
-[OpenClaw stays excluded](#openclaw-stays-excluded)).
+`codex`/`pi`.
 
 Per-OS commands below are written for the Claude install (`~/.claude`); for Codex and Pi
 substitute `~/.codex` / `~/.agents` for the agent kind directory and `codex` / `pi` for
@@ -2637,17 +2618,6 @@ the full tool set and the reviewer's write tools are denied.
   discovered **role → platform** map (every `installedOn` entry and the effective kind), and
   closes with a machine line — a machine that still runs a second kind's supervisor is visible
   there, with the command that stops it.
-
-### OpenClaw stays excluded
-
-The new switch does not change the [OpenClaw
-ruling](#openclaw-no-loop-units). `--target openclaw` still installs the
-**board skill only** — no `meerkat-director`, `meerkat-chat` or role skills, no units, no
-glue, so nothing to enable.
-`--target all --supervisor=enable` **skips** openclaw: the enable action applies only to
-`{claude,codex,pi}` — and, by the one-supervisor-per-machine rule, by default only to the
-first of those in `--target` order. `--supervisor-actor-kinds openclaw` is **rejected**
-(reason on stderr, exit 2).
 
 > **Where it is implemented.** `scripts/install/_common.sh` (`apply_supervisor`, the
 > per-agent kind action) drives `scripts/install/lib/supervisor.mjs`, which owns the per-OS

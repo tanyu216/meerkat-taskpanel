@@ -119,23 +119,23 @@ describe("_common.sh: supervisor_actor_kinds_value resolves the action's kinds",
     );
 
   it("enable defaults to the FIRST loop kind in --target order — one supervisor per machine", () => {
-    // `--target all` normalizes to `server claude openclaw codex pi`.
-    assert.equal(resolve("enable", "", " server claude openclaw codex pi ").stdout, " claude ");
+    // `--target all` normalizes to `server claude codex pi`.
+    assert.equal(resolve("enable", "", " server claude codex pi ").stdout, " claude ");
     // Target order, not a hard-coded preference.
     assert.equal(resolve("enable", "", " pi claude ").stdout, " pi ");
     assert.equal(resolve("enable", "", " codex ").stdout, " codex ");
     // No loop kind at all: nothing to act on.
-    assert.equal(resolve("enable", "", " server openclaw ").stdout, "");
+    assert.equal(resolve("enable", "", " server ").stdout, "");
   });
 
   it("disable and status default to EVERY loop kind in --target order — the way back out, and the stray view", () => {
-    assert.equal(resolve("disable", "", " server claude openclaw codex pi ").stdout, " claude codex pi ");
-    assert.equal(resolve("status", "", " server claude openclaw codex pi ").stdout, " claude codex pi ");
+    assert.equal(resolve("disable", "", " server claude codex pi ").stdout, " claude codex pi ");
+    assert.equal(resolve("status", "", " server claude codex pi ").stdout, " claude codex pi ");
     assert.equal(resolve("status", "", " pi claude ").stdout, " pi claude ");
   });
 
   it("an empty action computes nothing, so a plain install changes no set", () => {
-    assert.equal(resolve("", "", " server claude openclaw codex pi ").stdout, "");
+    assert.equal(resolve("", "", " server claude codex pi ").stdout, "");
   });
 
   it("enable names one primary kind; disable may still list kinds and de-duplicates", () => {
@@ -157,7 +157,7 @@ describe("_common.sh: supervisor_actor_kinds_value resolves the action's kinds",
   it("rejects openclaw, server and an unknown kind — with their own reasons", () => {
     const openclaw = resolve("enable", "openclaw", " claude ");
     assert.notEqual(openclaw.status, 0);
-    assert.match(openclaw.stderr, /OpenClaw has no meerkat-director supervisor to enable/);
+    assert.match(openclaw.stderr, /invalid --supervisor-actor-kinds: openclaw/);
 
     const server = resolve("enable", "server", " claude ");
     assert.notEqual(server.status, 0);
@@ -171,7 +171,7 @@ describe("_common.sh: supervisor_actor_kinds_value resolves the action's kinds",
   it("validates an explicit list even when no action was requested", () => {
     const run = resolve("", "openclaw", " claude ");
     assert.notEqual(run.status, 0);
-    assert.match(run.stderr, /OpenClaw has no meerkat-director supervisor to enable/);
+    assert.match(run.stderr, /invalid --supervisor-actor-kinds: openclaw/);
   });
 
   it("rejects an unknown action", () => {
@@ -210,11 +210,11 @@ describe("supervisor: the scheduler and the identifiers", () => {
     assert.match(plist, /<string>com\.meerkat-taskpanel\.\{\{AGENT\}\}\.\{\{ACTOR_KIND\}\}\.ping<\/string>/);
   });
 
-  it("the three actions and the three loop agent kinds are the contract's, and openclaw is never one", () => {
+  it("the three actions and the three loop agent kinds are the contract's, and openclaw is not one", () => {
     assert.deepEqual([...ACTIONS], ["enable", "disable", "status"]);
     assert.deepEqual([...SCHEDULERS], ["auto", "launchd", "systemd", "cron"]);
     assert.deepEqual([...LOOP_KINDS], ["claude", "codex", "pi"]);
-    assert.ok(!LOOP_KINDS.includes("openclaw"), "OpenClaw runs openclaw-team's own supervisor");
+    assert.ok(!LOOP_KINDS.includes("openclaw"), "openclaw is an actor identity, not a loop kind");
   });
 
   it("paths come from the agent directory, with the marker the docs name", () => {
@@ -697,10 +697,18 @@ describe("supervisor: the docs and the implementation agree", () => {
     }
   });
 
-  it("OpenClaw's exclusion is still stated, and still true of the loop agent kinds", () => {
+  it("OpenClaw is no longer an install target, and the loop kinds stay claude/codex/pi", () => {
     const scheduling = doc("docs/scheduling.md");
-    assert.match(scheduling, /OpenClaw: no loop units/);
-    assert.match(scheduling, /--supervisor-actor-kinds openclaw` is \*\*rejected\*\*/);
+    assert.doesNotMatch(scheduling, /--target openclaw/, "scheduling must not present OpenClaw as a target");
+    assert.doesNotMatch(scheduling, /OpenClaw: no loop units/);
+
+    const install = doc("docs/ops/install.md");
+    assert.match(install, /not an install target/i, "install docs must say OpenClaw is installed by hand");
+    assert.doesNotMatch(install, /--target openclaw/);
+
+    const readme = doc("README.md");
+    assert.match(readme, /~\/\.openclaw\/skills/, "README must carry the manual skill destination");
+    assert.match(readme, /meerkat-chat/, "README must name the human console skill");
     assert.ok(!LOOP_KINDS.includes("openclaw"));
   });
 });

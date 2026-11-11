@@ -6,15 +6,15 @@
  *
  * Why this is supplementary and not the evidence: ARCHITECTURE §9.1 requires
  * verification to run in the container, but the container image ships Node and the
- * repository only — no `claude` / `codex` / `openclaw` / `pi`, and no network to install
+ * repository only — no `claude` / `codex` / `pi`, and no network to install
  * them. The container instead asserts the agent kinds' *detection contract* offline
  * (`scripts/verify/lib/bundle.mjs`, run by `scripts/verify/profiles.mjs`). This script is
  * the cross-check that those offline rules match what the real CLI does, and it runs
  * wherever the CLIs happen to exist (a developer machine), never in CI.
  *
- * Every probe runs in a throwaway HOME (never the real `~/.claude`, `~/.codex`,
- * `~/.openclaw`, `~/.pi`) and touches no network. An agent kind whose CLI is absent is SKIPPED,
- * not failed, so the script is safe to run anywhere.
+ * Every probe runs in a throwaway HOME (never the real `~/.claude`, `~/.codex`, `~/.pi`)
+ * and touches no network. An agent kind whose CLI is absent is SKIPPED, not failed, so the
+ * script is safe to run anywhere.
  */
 
 import { spawnSync } from "node:child_process";
@@ -30,8 +30,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /** Env that discourages any network/update behaviour in the agent CLIs. */
 const OFFLINE_ENV = {
   CI: "1",
-  OPENCLAW_NO_AUTO_UPDATE: "1",
-  OPENCLAW_DISABLE_UPDATE_CHECK: "1",
   NO_COLOR: "1",
 };
 
@@ -43,24 +41,6 @@ const OFFLINE_ENV = {
  * @type {Array<{actorKind: string, bin: string, home: string, configEnv?: string, steps: string[][], expect: (output: string) => string|null}>}
  */
 export const PROBES = [
-  {
-    actorKind: "openclaw",
-    bin: "openclaw",
-    home: ".openclaw",
-    steps: [
-      ["plugins", "install", ROOT, "--link", "--force", "--accept-capabilities"],
-      ["plugins", "inspect", "meerkat-taskpanel"],
-    ],
-    expect: (output) => {
-      if (!/Format:\s*bundle/.test(output)) return "expected `Format: bundle`";
-      // The repository root carries `.claude-plugin/`, and OpenClaw's detection
-      // precedence is codex → cursor → claude, so it reports claude. `Format: bundle`,
-      // `Shape`, `Capability mode` and `Bundle capabilities: skills` are untouched.
-      if (!/Bundle format:\s*claude/.test(output)) return "expected `Bundle format: claude`";
-      if (!/Bundle capabilities:\s*skills/.test(output)) return "expected `Bundle capabilities: skills`";
-      return null;
-    },
-  },
   {
     actorKind: "claude",
     bin: "claude",

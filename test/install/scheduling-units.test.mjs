@@ -404,41 +404,6 @@ describe("install.sh: the team skills' distribution", () => {
     });
   }
 
-  it("never installs the director or role skills for openclaw", () => {
-    const home = makeTempDir();
-    const run = runInstall(["--target", "openclaw", "--prefix", home]);
-    assert.equal(run.status, 0, run.stderr);
-
-    // The board skill does land — this is an exclusion of the supervisor, not of OpenClaw.
-    assert.ok(
-      existsSync(join(home, ".openclaw", "skills", "meerkat", "SKILL.md")),
-      "openclaw must still get the board skill",
-    );
-    for (const skill of [
-      "meerkat-director",
-      "meerkat-chat",
-      "jobs",
-      "linus",
-      "turing",
-      "reviewer",
-      "worker",
-    ]) {
-      assert.equal(
-        existsSync(join(home, ".openclaw", "skills", skill)),
-        false,
-        `openclaw must not receive the ${skill} skill (O3: the framework is its supervisor)`,
-      );
-    }
-    assert.equal(
-      existsSync(join(home, ".openclaw", "skills", "setup-meerkat")),
-      false,
-      "OpenClaw is never the primary loop kind",
-    );
-    assert.equal(existsSync(join(home, ".openclaw", "scheduling")), false);
-    assert.equal(existsSync(join(home, ".openclaw", "meerkat-taskpanel")), false);
-    assert.doesNotMatch(run.stdout, /primary agent kind/, "no loop kind is selected");
-  });
-
   it("--target all installs the team skills on the primary kind only", () => {
     const home = makeTempDir();
     const run = runInstall(["--target", "all", "--no-server", "--prefix", home], allKindsEnv(home));
@@ -466,10 +431,11 @@ describe("install.sh: the team skills' distribution", () => {
     assert.equal(existsSync(join(home, ".codex", "agents")), false);
     assert.equal(existsSync(join(home, ".pi", "agent", "agents")), false);
 
-    // The board skill still lands everywhere.
-    for (const agentDir of [".claude", ".openclaw", ".codex", ".agents"]) {
+    // The board skill still lands on every install target.
+    for (const agentDir of [".claude", ".codex", ".agents"]) {
       assert.ok(existsSync(join(home, agentDir, "skills", "meerkat", "SKILL.md")), `${agentDir} board`);
     }
+    assert.equal(existsSync(join(home, ".openclaw")), false, ".openclaw is not an install target");
   });
 
   it("--target codex,pi makes codex the primary kind", () => {
