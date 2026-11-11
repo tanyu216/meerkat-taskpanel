@@ -28,6 +28,7 @@ import {
   readBoard,
   readHandoffTriage,
   readOpenQuestions,
+  readPendingIntake,
   readUnownedTodos,
   runSlaPass,
   runWorkflowPass,
@@ -72,6 +73,7 @@ import {
   notifyNoResident,
   resolveRoleTarget,
   notifyReal,
+  runIntakeTick,
   runPatrolTick,
   runPollTick,
   runQuestionTick,
@@ -83,6 +85,7 @@ import {
   loadRegistry,
   runCli,
   saveRegistry,
+  settleIntakeExhausted,
 } from "./runtime.mjs";
 import { poolStatus } from "./session.mjs";
 
@@ -933,6 +936,28 @@ export async function runPollOnce(opts, env = process.env) {
         if (queued.ok && queued.coalesced !== true) enqueued += 1;
       }
       if (enqueued > 0) log(`triage: ${enqueued} accepted handoff(s) enqueued for the director`);
+    }
+  }
+
+  // The intake lane (0007): a human's free-text work description waits here for
+  // the decision lane. It rides poll like the question lane — a decision
+  // conversation, not a worker dispatch — and the capability guard keeps an
+  // older pool from receiving a row it would treat as a handoff.
+  if (!opts.dryRun && (pool.capabilities ?? []).includes("intake-lane")) {
+    const pending = readPendingIntake(opts, log);
+    if (pending.ok) {
+      const result = runIntakeTick({
+        requests: pending.rows,
+        resolveDir: (project) => resolveWakeDir({ project, projectsJson: opts.projectsJson }),
+        enqueue: (row) => enqueueCard(stateDir, row),
+        dispatches: (dispatchKey) => questionDispatches(stateDir, dispatchKey),
+        adopt: (row) => settleIntakeExhausted(opts, row, log),
+        agent: opts.agents[0] ?? null,
+        log,
+      });
+      if (result.enqueued > 0) {
+        log(`intake: ${result.enqueued} pending request(s) enqueued for the director`);
+      }
     }
   }
 

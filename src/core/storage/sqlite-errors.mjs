@@ -99,6 +99,9 @@ export const UNIQUE_KEY_CODES = Object.freeze([
   // malformed — see `commands/tasks.mjs#createTask`, which converges onto the
   // existing row instead of surfacing this code.
   { columns: ["tasks.idem"], code: "IDEM_EXISTS" },
+  // 0007's partial index `ux_intake_idem`: a second submit of the same client
+  // key resolves to the request that already landed.
+  { columns: ["intake_requests.project_id", "intake_requests.idem"], code: "IDEM_EXISTS" },
   { columns: ["comments.task_id", "comments.source_seq"], code: "COMMENT_DUPLICATE" },
   {
     columns: ["agent_sessions.task_id", "agent_sessions.seg", "agent_sessions.owner"],

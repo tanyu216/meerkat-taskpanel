@@ -14,6 +14,7 @@ you run — including its exact spelling and flags.
 
 | Decision | The question | Your move | Read |
 |---|---|---|---|
+| `intake` | a human submitted a description with no card | split it into deliverable cards, then record the outcome | `references/decision-policy.md` + `references/intake.md` |
 | `question` | a worker needs a choice outside the card's authorization | record the decision and release the card; or escalate | `references/decision-policy.md` + `references/question.md` |
 | `route` | a card has no accountable role | assign exactly one role from the routing table | `references/decision-policy.md` + `references/route.md` |
 | `triage` | an accepted card carries a required handoff | close it out: one disposition per open item — an existing card, a created card, a recorded decline, or an escalation — then the round marker | `references/decision-policy.md` + `references/triage.md` |

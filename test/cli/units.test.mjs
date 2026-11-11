@@ -203,7 +203,9 @@ describe("cli/commands — the registry", () => {
       // the `meerkat` skill: host-local state, never a board request.
       // `worktree` is the session half of the loop's isolation: local git state,
       // never a board request.
-      ["project", "issue", "comment", "relation", "attachment", "session", "actors", "labels", "report", "export", "token", "sla", "events", "role", "worktree"],
+      // `intake` is 0007's free-text work request: the web composer's write, the
+      // supervisor's pending scan and the decision lane's two answers.
+      ["project", "issue", "comment", "relation", "intake", "attachment", "session", "actors", "labels", "report", "export", "token", "sla", "events", "role", "worktree"],
     );
     for (const { group, command } of allCommands()) {
       assert.equal(

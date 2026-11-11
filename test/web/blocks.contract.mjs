@@ -1757,8 +1757,8 @@ const BLOCKS = [
       // TP-0075 round 2 — the reporter row is a value, never a control: the
       // drawer holds no reporter input or menu, and exactly one label carries
       // the name beside the avatar.
-      { kind: "count", selector: "[data-reporter-input]", within: "[data-detail-reporter]", equals: 0, when: "drawer open" },
-      { kind: "count", selector: "[data-reporter-menu]", within: "[data-detail-reporter]", equals: 0, when: "drawer open" },
+      { kind: "absent", selector: "[data-reporter-input]", within: "[data-detail-reporter]" },
+      { kind: "absent", selector: "[data-reporter-menu]", within: "[data-detail-reporter]" },
       { kind: "count", selector: "[data-detail-reporter-label]", within: "[data-detail-reporter]", equals: 1, when: "drawer open" },
       // T-20261014-212017-4 · the four edit surfaces, block by block.
       //
@@ -1791,7 +1791,7 @@ const BLOCKS = [
       { kind: "count", selector: "[data-detail-description-cancel]", within: "[data-detail-description-section]", equals: 1 },
       // The drawer's editor is **not** the create dialog's: the create hook is
       // the dialog's own seat and the drawer must not claim it (B10/§4.2).
-      { kind: "count", selector: "[data-create-task-description]", within: "[data-detail-description-section]", equals: 0 },
+      { kind: "absent", selector: "[data-create-task-description]", within: "[data-detail-description-section]" },
       // ③ attachments — the section's upload control and its hidden picker. The
       // rows themselves are data-driven (`states` above) and are asserted in the
       // driven pass, where a card with files is actually open.
@@ -2140,88 +2140,47 @@ const BLOCKS = [
 
   {
     id: "B10",
-    title: "Create-task modal",
+    title: "Create-task composer",
     root: "[data-create-task]",
     scope: "create",
     status: "active",
     required: [
       "[data-create-task-form]",
-      "[data-create-two-col]",
-      "[data-create-left]",
-      "[data-create-right]",
-      "[data-create-task-title]",
-      "[data-create-task-description]",
-      "[data-create-task-priority]",
+      "[data-create-task-text]",
+      "[data-create-task-examples]",
+      "[data-create-task-example]",
       "[data-create-task-project]",
-      "[data-create-task-review-hint]",
-      "[data-create-task-status]",
+      "[data-create-task-hint]",
+      "[data-create-task-submit]",
       "[data-modal-close]",
     ],
     states: [],
     rules: [
       { kind: "count", selector: "[data-create-task]", equals: 1 },
-      // R8 ① — the panel has a hook of its own. Until this round the only way to
-      // address it was a positional anchor (`[data-create-task] > div`), which the
-      // contract's selector grammar forbids, so the dialog's edge, elevation and
-      // surface could not be asserted at all (the contract's R8-3 correction).
-      // Its dark edge (`--brand-border-strong`) and its scrim are measured in
-      // `dom-smoke.mjs`, where the theme can actually be set.
       { kind: "count", selector: "[data-create-task-panel]", equals: 1 },
-      { kind: "count", selector: "[data-create-two-col]", equals: 1 },
-      { kind: "count", selector: "[data-create-left]", equals: 1 },
-      { kind: "count", selector: "[data-create-right]", equals: 1 },
-      // R10 ③ — the description fills the column it sits in, and the columns are
-      // the height of the taller one. The left column is the short one (the
-      // routing column carries eight fields), so it is the one that has to be
-      // told to stretch: left to its own content height it ended 240px above the
-      // dialog's last edge, with the editor stranded over a band of empty box.
-      //
-      // The stretch is declared, not inherited. A grid container's `align-items`
-      // computes to `normal` when nothing says otherwise, and `normal` behaves
-      // like `stretch` here — but "behaves like" is not "says", and the grid's
-      // default is the one thing a later `items-start` would silently reuse.
-      {
-        kind: "computed",
-        probe: "[data-create-two-col]",
-        property: "alignItems",
-        equals: "stretch",
-      },
-      { kind: "computed", probe: "[data-create-left]", property: "display", equals: "flex" },
-      { kind: "computed", probe: "[data-create-left]", property: "flexDirection", equals: "column" },
-      // The chain's next link: the field that fills the column is a column flex
-      // box *itself*. As a block container it would hand the editor nothing but
-      // its own line box, and the editor's `flex: 1 1 auto` would have no parent
-      // to resolve against — the second break in the chain, measured at 302px.
-      { kind: "computed", probe: ".td-field-grow", property: "display", equals: "flex" },
-      { kind: "computed", probe: ".td-field-grow", property: "flexDirection", equals: "column" },
-      // Terry 2026-10-21 — the chosen value in the routing column's status
-      // control reads from the field's own inline start, the way the two native
-      // `<select>`s above it do (a select's text is left-aligned). The trigger
-      // is the design's `.td-label-trigger` wearing daisyUI's `.btn`, whose
-      // `justify-content: center` centred the dot + name group inside the
-      // full-width box: the one field in the column whose value did not start
-      // on the column's text edge. The caret is absolutely positioned, so it is
-      // not part of what this centres/left-aligns.
-      { kind: "computed", probe: "[data-create-task-status-summary]", property: "justifyContent", equals: "flex-start" },
+      { kind: "count", selector: "[data-create-task-text]", equals: 1 },
+      { kind: "count", selector: "[data-create-task-example]", equals: 3 },
+      { kind: "count", selector: "[data-create-task-project]", equals: 1 },
+      { kind: "count", selector: "[data-create-task-submit]", equals: 1 },
+      { kind: "count", selector: "[data-create-task-hint]", equals: 1 },
+      { kind: "absent", selector: "[data-create-task-title]" },
+      { kind: "absent", selector: "[data-create-two-col]" },
+      { kind: "absent", selector: "[data-create-task-status]" },
+      { kind: "absent", selector: "[data-create-task-priority]" },
       {
         kind: "manual",
         note:
-          "[data-create-two-col] holds exactly two tracks, `minmax(0,1.6fr)` / `minmax(0,1fr)`, " +
-          "so neither a long title nor the editor can overflow the dialog; at ≤760px the tracks " +
-          "stack and the dialog scrolls internally. The routing column carries the eight field " +
-          "groups: priority, assignee (B22), project, status, reporter (B22), labels (B25), " +
-          "parent (B24), depends-on (B24).",
+          "R18 — the dialog is a composer: one description, three examples that fill it, " +
+          "and the project the request belongs to. Priority, assignee, status, labels, " +
+          "parent/depends and the acceptance mode left this surface; the decision lane " +
+          "chooses them. The submit is disabled until the box holds text and a project " +
+          "is selected.",
       },
       {
         kind: "manual",
         note:
-          "[data-modal-close] dismisses; the single writer also serves as the post-submit reset, " +
-          "and must additionally clear the relation inputs, the parent chip, the depends-on chips " +
-          "and the label control's input/chips/menu — none of which a native form reset reaches.",
-      },
-      {
-        kind: "manual",
-        note: "The two relation fields are marked Optional; both leave the task creatable when empty.",
+          "[data-modal-close] dismisses; the single writer serves as the post-submit reset, " +
+          "which clears the box and restores the project default.",
       },
     ],
   },
@@ -2761,21 +2720,17 @@ const BLOCKS = [
 
   {
     id: "B22",
-    title: "Assignee / Reporter control",
+    title: "Assignee control (drawer)",
     root: "[data-assignee-input]",
-    scope: "create",
+    scope: "detail",
     status: "active",
     required: [
       "[data-assignee-input]",
       "[data-assignee-menu]",
       "[data-assignee-option]",
-      "[data-reporter-input]",
-      "[data-reporter-menu]",
-      "[data-reporter-option]",
       "[data-detail-assignee-label]",
       "[data-detail-reporter-label]",
       "[data-assignee-value]",
-      "[data-reporter-value]",
     ],
     states: ["[data-combo-new]"],
     rules: [
@@ -2784,11 +2739,12 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "One control, two rosters: the create dialog's assignee and reporter, plus the drawer's " +
-          "assignee ([data-detail-assignee-label], which the shipped markup also marks with " +
-          "[data-assignee-input], so the two hook families meet on one element). TP-0075 round 2 " +
-          "makes the drawer's reporter a read-only value ([data-detail-reporter-label] on a span, " +
-          "no [data-reporter-input] inside [data-detail-reporter]): a reporter is fixed at creation.",
+          "R18 — the create dialog dropped its assignee and reporter fields with the routing " +
+          "form, so the drawer's assignee is the control's only editable placement " +
+          "([data-detail-assignee-label], which the shipped markup also marks with " +
+          "[data-assignee-input], so the two hook families meet on one element). The drawer's " +
+          "reporter is a read-only value ([data-detail-reporter-label] on a span) because a " +
+          "reporter is fixed at creation.",
       },
       {
         kind: "manual",
@@ -2796,7 +2752,7 @@ const BLOCKS = [
           "Matching is a case-insensitive substring ranked prefix → contains → subsequence; a " +
           "name the roster does not hold is offered as a `· new` row ([data-combo-new]) and is " +
           "added the moment it is used; an unknown assignee defaults to `human` because a handle " +
-          "the board has never seen carries no platform. Both rosters live in memory only.",
+          "the board has never seen carries no platform. The roster lives in memory only.",
       },
       {
         kind: "manual",
@@ -2814,39 +2770,33 @@ const BLOCKS = [
 
   {
     id: "B23",
-    title: "Markdown editor",
+    title: "Markdown editor (drawer)",
     root: "[data-md-editor]",
-    scope: "create",
+    scope: "detail",
     status: "active",
     required: ["[data-md-editor]", "[data-md-toggle]", "[data-md-source]", "[data-md-highlight]", "[data-md-preview]"],
     states: [],
     rules: [
-      // T-20261014-212017-4 — B23's editor is the **create dialog's**, and since
-      // the drawer's Description section grew one of its own there are two
-      // `[data-md-editor]`s in the document. The counts here were document-wide
-      // and said "exactly one"; the honest statement is "exactly one **per
-      // surface**", so they are scoped. This is not a loosening: a second editor
-      // inside `[data-create-task]` still reds, and the drawer's own editor is
-      // asserted in B09 where it belongs.
-      { kind: "count", selector: "[data-md-editor]", within: "[data-create-task]", equals: 1 },
-      { kind: "count", selector: "[data-md-toggle]", within: "[data-create-task]", equals: 3 },
+      // R18 — the create dialog dropped its description editor with the routing
+      // form, so the drawer's Description section is the editor's only surface.
+      // The counts are scoped to the drawer for the same reason they used to be
+      // scoped to the dialog: "exactly one per surface" is the honest statement.
+      { kind: "count", selector: "[data-md-editor]", within: "[data-detail-drawer]", equals: 1, when: "drawer editing" },
+      { kind: "count", selector: "[data-md-toggle]", within: "[data-detail-drawer]", equals: 3, when: "drawer editing" },
+      { kind: "absent", selector: "[data-md-editor]", within: "[data-create-task]" },
       { kind: "domain", selector: "[data-md-toggle]", attribute: "data-md-toggle", subset: DOMAINS.MD_MODE },
-      // R10 ③ — the editor's own end of the stretch chain, and the reason the
-      // round exists. The editor takes what the column leaves it, the panes take
-      // what the editor leaves *them*, and the panes' height has a floor rather
-      // than a viewport-driven ceiling: the old `clamp(280px, 46vh, 520px)` was
-      // a rule about the window, so the box could grow and the editing area could
-      // not, and the difference piled up under the editor.
-      { kind: "computed", probe: "[data-create-task] [data-md-editor]", property: "display", equals: "flex" },
-      { kind: "computed", probe: "[data-create-task] [data-md-editor]", property: "flexGrow", equals: "1" },
-      { kind: "computed", probe: "[data-create-task] [data-md-editor]", property: "flexBasis", equals: "auto" },
-      { kind: "computed", probe: "[data-create-task] [data-md-editor]", property: "flexDirection", equals: "column" },
-      { kind: "computed", probe: "[data-create-task] .td-md-panes", property: "minHeight", equals: "200px" },
-      { kind: "computed", probe: "[data-create-task] .td-md-panes", property: "flexGrow", equals: "1" },
+      // The editor takes what its container leaves it; the panes take what the
+      // editor leaves *them*, and the panes' height has a floor rather than a
+      // viewport-driven ceiling.
+      { kind: "computed", probe: "[data-detail-drawer] [data-md-editor]", property: "display", equals: "flex", when: "drawer editing" },
+      { kind: "computed", probe: "[data-detail-drawer] [data-md-editor]", property: "flexGrow", equals: "1", when: "drawer editing" },
+      { kind: "computed", probe: "[data-detail-drawer] [data-md-editor]", property: "flexBasis", equals: "auto", when: "drawer editing" },
+      { kind: "computed", probe: "[data-detail-drawer] [data-md-editor]", property: "flexDirection", equals: "column", when: "drawer editing" },
+      { kind: "computed", probe: "[data-detail-drawer] .td-md-panes", property: "minHeight", equals: "200px", when: "drawer editing" },
+      { kind: "computed", probe: "[data-detail-drawer] .td-md-panes", property: "flexGrow", equals: "1", when: "drawer editing" },
       // The write side takes the pane it is stacked in and scrolls itself once
-      // the text outgrows it — the same behaviour as before the round, now from
-      // a height that follows the pane instead of a fixed 220px.
-      { kind: "computed", probe: "[data-create-task] [data-md-source]", property: "overflowY", equals: "auto" },
+      // the text outgrows it.
+      { kind: "computed", probe: "[data-detail-drawer] [data-md-source]", property: "overflowY", equals: "auto", when: "drawer editing" },
       {
         kind: "manual",
         note:
@@ -2859,8 +2809,7 @@ const BLOCKS = [
         note:
           "[data-md-highlight] is a `<pre>` painted behind the textarea and `aria-hidden`; the two " +
           "carry the same `.td-md-text` (class) metrics so they break lines identically, and the " +
-          "scroll binding is direct (a `scroll` event does not bubble). [data-md-source] is a " +
-          "`<textarea>` and is also [data-create-task-description] (B10).",
+          "scroll binding is direct (a `scroll` event does not bubble).",
       },
       {
         kind: "manual",
@@ -2871,113 +2820,31 @@ const BLOCKS = [
 
   {
     id: "B24",
-    title: "Parent / Depends-on control",
-    root: "[data-create-task-parent]",
-    scope: "create",
-    status: "active",
-    required: [
-      "[data-create-task-parent]",
-      "[data-parent-input]",
-      "[data-parent-menu]",
-      "[data-parent-option]",
-      "[data-parent-clear]",
-      "[data-parent-chips]",
-      "[data-create-task-depends]",
-      "[data-depends-input]",
-      "[data-depends-menu]",
-      "[data-depends-option]",
-      "[data-depends-chips]",
-      "[data-depends-chip]",
-    ],
-    states: ["[data-parent-chip]", "[data-parent-remove]", "[data-depends-remove]", "[data-drop=\"up\"]"],
+    title: "Parent / Depends-on control (retired)",
+    root: null,
+    scope: "retired",
+    status: "retired",
+    required: [],
+    states: [],
     rules: [
-      { kind: "count", selector: "[data-create-task-parent]", equals: 1 },
-      { kind: "count", selector: "[data-create-task-depends]", equals: 1 },
-      { kind: "count", selector: "[data-parent-clear]", equals: 1 },
-      { kind: "count", selector: "[data-parent-chips]", equals: 1 },
-      // --- the parent control's own structure, against the prototype --------
-      //
-      // T-20261016-113131. The clear ✕ used to be the field group's **sibling**
-      // — a `btn btn-ghost btn-sm` text glyph outside the control, next to a
-      // ComboField whose root shrank to its content (172px against the track's
-      // 405.391). The prototype puts box and ✕ in **one row** (`.td-combo-field`,
-      // the pair that makes `input + gap + ✕ == track` an arithmetic identity),
-      // and draws the ✕ as the same 20×20 `svg.td-icon-sm` box every other
-      // chip-remove in the board is.
-      //
-      // These seven are the **structure** half: what exists, inside what. They
-      // read `querySelectorAll` / `classList` / the computed box, none of which
-      // needs the element to have a box — which matters, because B24's rules
-      // carry no `when` and therefore evaluate in the **board** state, where the
-      // create dialog is `hidden` and every `getBoundingClientRect` is 0
-      // (T-20261015-233122 A6). The **geometry** half — the identity, the 20×20
-      // box, the right edge on the track's right edge, the menu's width — is
-      // measured in `web/scripts/dom-smoke.mjs#r8c`, where the dialog is open.
-      //
-      // A probe may name a design class, so `.td-combo-field` is expressible;
-      // the ✕ itself is addressed by its hook, not by the class the `classes`
-      // rule asserts (that rule is what keeps a Tailwind utility from replacing
-      // it — the design namespace is closed).
-      { kind: "computed", probe: ".td-combo-field [data-parent-input]", count: 1 },
-      { kind: "computed", probe: ".td-combo-field [data-parent-clear]", count: 1 },
-      { kind: "classes", probe: "[data-parent-clear]", includes: ["td-combo-clear"] },
-      { kind: "computed", probe: "[data-parent-clear] svg.td-icon", count: 1 },
-      { kind: "computed", probe: "[data-parent-clear] svg.td-icon-sm", count: 1 },
-      { kind: "computed", probe: "[data-parent-clear]", property: "width", equalsPx: 20 },
-      { kind: "computed", probe: "[data-parent-clear]", property: "height", equalsPx: 20 },
-      {
-        kind: "manual",
-        note:
-          "Two optional fields, both single-roster relations but only one of them is single-valued: " +
-          "parent holds at most one task, and it shows that task **as a chip** — one " +
-          "[data-parent-chip], carrying the identifier under the board's one cap (`lib/identifier.js`) " +
-          "and the title, with its own [data-parent-remove]; [data-parent-clear] empties the field and " +
-          "its box together. depends-on is multi, one [data-depends-chip] per task with its own " +
-          "[data-depends-remove]. Every chip is generated with its value, so both chip hooks are " +
-          "runtime hooks — hence under `states`, like B25's [data-label-remove]. The relation chip is " +
-          "the same reading an option row gives (identifier + title, title ellipsised, whole title on " +
-          "`title`), which is what makes the choice visible in the field after the menu closes " +
-          "(T-20261014-001418 ①②). Both are B22's control pointed at the current project's cards " +
-          "(identifier + title) rather than a people roster.",
-      },
-      {
-        kind: "manual",
-        note:
-          "Free text is **off** (`freeText:false`): a relation can only point at an existing " +
-          "task, so there is no `· new` row and nothing joins a roster. A chosen chip is dropped " +
-          "from the menu on the next render; choosing it twice is a no-op. The menus ship an " +
-          "inert seed as the no-JS floor, redrawn from the live board on focus — the seed's row " +
-          "count is fixture data and is not asserted.",
-      },
-      {
-        kind: "manual",
-        note:
-          "Inside the dialog the menu is clipped by the modal's own scroller, so it flips above " +
-          "the control (`.td-combo[data-drop=\"up\"]`) when there is no room below; the depends-on " +
-          "field, last in its column, opens upward.",
-      },
-      {
-        kind: "manual",
-        note:
-          "UI only: no relation is written anywhere — no graph is built, no cycle is checked, " +
-          "and the chips reach neither the created card nor any store.",
-      },
+      // R18 — the create dialog carries no relation fields; the request's cards
+      // are decided by the director. The drawer keeps its own prerequisite
+      // control (B25's sibling surface), so these hooks are gone from both
+      // trees rather than moved.
+      { kind: "absent", selector: "[data-create-task-parent]" },
+      { kind: "absent", selector: "[data-create-task-depends]" },
+      { kind: "absent", selector: "[data-parent-input]" },
+      { kind: "absent", selector: "[data-depends-input]" },
     ],
   },
 
   {
     id: "B25",
-    title: "Label control",
-    root: "[data-create-task-labels]",
-    scope: "create",
+    title: "Label control (drawer)",
+    root: "[data-detail-labels]",
+    scope: "detail",
     status: "active",
     required: [
-      "[data-create-task-labels]",
-      "[data-label-chips]",
-      "[data-label-input]",
-      "[data-label-menu]",
-      "[data-label-option]",
-      "[data-label-value]",
       "[data-detail-labels]",
       "[data-detail-label-chips]",
       "[data-detail-label-chip]",
@@ -2987,19 +2854,13 @@ const BLOCKS = [
       "[data-detail-label-option]",
       "[data-detail-label-value]",
     ],
-    states: ["[data-label-chip]", "[data-label-remove]", "[data-combo-new]"],
+    states: [],
     rules: [
-      { kind: "count", selector: "[data-create-task-labels]", equals: 1 },
       { kind: "count", selector: "[data-detail-labels]", equals: 1 },
-      {
-        kind: "manual",
-        note:
-          "Two hook families for one control: `data-label-*` in the create dialog and " +
-          "`data-detail-label-*` in the drawer, so their delegated selectors never collide in a " +
-          "single document. The create dialog ships no chips at rest — [data-label-chip] and " +
-          "[data-label-remove] are generated on selection (hence under `states`), while the " +
-          "drawer ships its chips in the markup.",
-      },
+      // R18 — the create dialog dropped its label field with the rest of the
+      // routing form; the drawer's control is the surviving surface.
+      { kind: "absent", selector: "[data-create-task-labels]" },
+      { kind: "absent", selector: "[data-label-input]" },
       {
         kind: "manual",
         note:
@@ -3012,8 +2873,7 @@ const BLOCKS = [
         note:
           "**No management entry** — the hard constraint shared with B22. No \"manage labels\", " +
           "\"label library\", \"delete label\" or \"edit labels\" control exists anywhere, and no " +
-          "button adds, renames, merges or expires a label. Auto-cleanup is a backend concern. " +
-          "As in B22 this absence has no hook to select, so it stays a review item.",
+          "button adds, renames, merges or expires a label. Auto-cleanup is a backend concern.",
       },
       {
         kind: "manual",
@@ -3504,14 +3364,14 @@ const CONSISTENCY_ITEMS = [
 export const STALE_PROSE_COUNTS = Object.freeze([
   Object.freeze({
     claim: "252 `data-i18n*` hooks",
-    measured: 842,
-    detail: "540 `data-i18n` + 188 `-arg` + 84 `-aria-label` + 19 `-title` + 11 `-placeholder`",
+    measured: 804,
+    detail: "514 `data-i18n` + 188 `-arg` + 82 `-aria-label` + 13 `-title` + 7 `-placeholder`",
     verdict: "stale",
   }),
   Object.freeze({
     claim: "198 catalogue keys",
-    measured: 292,
-    detail: "en = 292 and zh = 292, mirrored 1:1 — the prototype `MESSAGES` count the body states (TP-0074 adds the two control searches and the named-row sentence); the shipped extraction drops the 17 prototype-only keys, so it ships 275",
+    measured: 288,
+    detail: "en = 288 and zh = 288, mirrored 1:1 — the prototype `MESSAGES` count; the shipped extraction drops the prototype-only keys",
     verdict: "stale",
   }),
   Object.freeze({
@@ -3572,7 +3432,6 @@ export const AUXILIARY_HOOKS = Object.freeze([
   Object.freeze({ selector: "[data-detail-reopen-cancel]", purpose: "the reopen cancellation button" }),
   Object.freeze({ selector: "[data-label]", purpose: "one chip per card label" }),
   Object.freeze({ selector: "[data-assignee-value]", purpose: "the name an assignee roster option carries" }),
-  Object.freeze({ selector: "[data-reporter-value]", purpose: "the name a reporter roster option carries" }),
   Object.freeze({ selector: "[data-label-value]", purpose: "the name a label option and a label chip carry (dialog family)" }),
   Object.freeze({ selector: "[data-detail-label-value]", purpose: "the name a label option and a label chip carry (drawer family)" }),
   Object.freeze({ selector: "[data-combo-new]", purpose: "marks the generated row offering a name the roster does not hold yet" }),

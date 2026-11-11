@@ -247,6 +247,10 @@ export const ERROR_CODES = Object.freeze({
   IDENTIFIER_CONFLICT: spec(409, "Identifier already exists in this project."),
   SESSION_DUPLICATE: spec(409, "Agent session already registered for (task, seg, owner)."),
   NOT_FOUND: spec(404, "Not found."),
+  // 0007 — an intake request id that is not on the board. Writes on a request
+  // that is already terminal converge on the row instead of naming this code;
+  // only a missing id reaches it.
+  INTAKE_NOT_FOUND: spec(404, "No such intake request."),
 
   // ---- Attachments (the write surface, T-20261014-212017-4) ------------------
   // The two refusals the upload path can decide on its own. `content_type` used
@@ -437,6 +441,9 @@ export const JS_ONLY_CODES = Object.freeze([
   "ASSIGNEE_NOT_IN_CATALOG",
   // The reviewer lane is a role fact, not a board fact; only the CLI guard knows it.
   "ASSIGNEE_NOT_REVIEWER",
+  // 0007 — an unknown intake id is a service-layer lookup miss; no CHECK or
+  // trigger can raise it.
+  "INTAKE_NOT_FOUND",
 ]);
 
 /**

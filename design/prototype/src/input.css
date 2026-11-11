@@ -4407,3 +4407,34 @@ html[data-theme="dark"] .modal-box {
     }
   }
 }
+
+@layer utilities {
+  /* B10 · the create-task composer (R18): one description, no routing form.
+     The panel is narrower than the old two-column box because one field is the
+     whole surface. The narrow branch is the implementation's own arithmetic:
+     the scrim keeps a 16px gutter per side, and the box is `100vw − 32px`. */
+  /* Two classes: the base `.td-modal-box` (and its ≤760 branch) also sets a
+     width, so the composer's own rule names both to win on specificity. */
+  .td-modal-box.td-intake-box {
+    width: min(640px, calc(100vw - 32px));
+  }
+
+  .td-intake-text {
+    min-height: 8rem;
+    resize: vertical;
+  }
+
+  .td-intake-examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  /* An example is a sentence, not a label: it wraps inside the row instead of
+     widening the panel. */
+  .td-intake-examples .btn {
+    max-width: 100%;
+    height: auto;
+    white-space: normal;
+    text-align: left;
+  }
+}

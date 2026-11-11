@@ -72,6 +72,9 @@ export const DISPATCH_EVENTS = Object.freeze([
   "relation_added",
   "relation_removed",
   "import_completed",
+  // 0007 — a human's free-text work request is work to discover: the poll pass
+  // reads pending intake and hands it to the decision lane.
+  "intake_requested",
 ]);
 
 /**
@@ -111,6 +114,10 @@ export const IGNORED_EVENTS = Object.freeze([
   "attachment_added",
   "attachment_updated",
   "attachment_removed",
+  // The two terminal decisions are written by the decision lane/Board itself;
+  // the request they settle is no longer pending, so there is nothing to wake.
+  "intake_consumed",
+  "intake_failed",
 ]);
 
 /**

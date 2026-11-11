@@ -161,6 +161,10 @@
       "http": 409
     },
     {
+      "code": "INTAKE_NOT_FOUND",
+      "http": 404
+    },
+    {
       "code": "INVALID_TRANSITION",
       "http": 409
     },
@@ -533,6 +537,104 @@
             }
           },
           "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intake",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "limit": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intake",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "idem": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "project_id",
+            "text"
+          ],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intake/:id",
+      "request": {
+        "body": null,
+        "query": null
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intake/:id/complete",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "created": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "created"
+          ],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intake/:id/fail",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
           "type": "object"
         },
         "query": null
@@ -1726,6 +1828,23 @@
         "use_count": "number"
       },
       "shape": "dictionary_entry"
+    },
+    {
+      "fields": {
+        "created_at": "string",
+        "created_by": "string",
+        "created_kind": "string",
+        "created_refs": "array",
+        "id": "string",
+        "last_error": "string",
+        "project_id": "string",
+        "settled_at": "string",
+        "settled_by": "string",
+        "settled_by_kind": "string",
+        "status": "string",
+        "text": "string"
+      },
+      "shape": "intake"
     },
     {
       "fields": {

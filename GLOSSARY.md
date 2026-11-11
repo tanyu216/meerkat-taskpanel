@@ -447,9 +447,18 @@ instead.
 _中文_: 主 agent kind
 _Avoid_: main platform, default agent, config key
 
+**Intake request**:
+A human's free-text description of work, submitted before any card exists (`0007`). It is
+board state — `pending` until the decision lane files the cards (`consumed`, with their
+identifiers) or records why it could not (`failed`) — and its activity row is the signal the
+supervisor wakes on. A rejected description is resubmitted; there is no reopen. The request
+is not a card: it has no assignee, status column or brief.
+_中文_: 需求投递
+_Avoid_: draft card, create form, inbox item
+
 **Director lane**:
 The pool's decision conversation for one project directory — the `meerkat-director` skill
-answering question, route, triage and escalation decisions. It is not a role, receives no
+answering question, route, triage, intake and escalation decisions. It is not a role, receives no
 card, draws no worker budget, and runs on the kind that carries the director skill (the
 primary kind first, then the configured kind order), discovered at session open. Its write
 tools are denied: it reads and drives the board, and a fix becomes a card, never an edit.

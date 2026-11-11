@@ -947,12 +947,20 @@ export function doctorReport(opts, env = process.env, deps = {}) {
     for (const row of queueRows) {
       if (String(row?.queue_kind ?? "") !== "question") continue;
       if (String(row?.status ?? "") !== "failed") continue;
-      const ref = String(row?.card ?? "");
+      // An intake row has no card ref; its request id is the readable handle.
+      const ref = String(row?.card ?? row?.request_id ?? "");
       if (ref === "") continue;
       const entry =
         byCard.get(ref) ?? {
           ref,
-          lane: row?.triage === true ? "triage" : row?.route === true ? "route" : "question",
+          lane:
+            row?.intake === true
+              ? "intake"
+              : row?.triage === true
+                ? "triage"
+                : row?.route === true
+                  ? "route"
+                  : "question",
           rows: 0,
           attempts: 0,
           last_error: null,

@@ -58,6 +58,8 @@ export const ERROR_TEXT_KEYS = Object.freeze({
   CLAIM_ON_BACKLOG: "error.claimOnBacklog",
   // Transport and availability.
   NOT_FOUND: "error.notFound",
+  // 0007 — the intake request a consumer asked for by id.
+  INTAKE_NOT_FOUND: "error.intakeNotFound",
   DB_BUSY: "error.busy",
   NETWORK: "error.network",
   // T-20261014-212017-4 — the four refusals the drawer's new edit surfaces can

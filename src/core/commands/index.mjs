@@ -10,6 +10,7 @@ import * as agentSessions from "./agent-sessions.mjs";
 import * as attachments from "./attachments.mjs";
 import * as comments from "./comments.mjs";
 import * as dictionary from "./dictionary.mjs";
+import * as intake from "./intake.mjs";
 import * as labels from "./labels.mjs";
 import * as projects from "./projects.mjs";
 import * as relations from "./relations.mjs";
@@ -37,6 +38,13 @@ export function createCommands(ctx) {
     listProjects: (filter) => projects.listProjects(ctx, filter),
     readmeSet: (input) => projects.readmeSet(ctx, input),
     readmeGet: (input) => projects.readmeGet(ctx, input),
+
+    // intake requests (0007) ------------------------------------------------
+    createIntake: (input) => intake.createIntake(ctx, input),
+    getIntake: (input) => intake.getIntake(ctx, input),
+    listIntake: (filter) => intake.listIntake(ctx, filter),
+    completeIntake: (input) => intake.completeIntake(ctx, input),
+    failIntake: (input) => intake.failIntake(ctx, input),
 
     // tasks ------------------------------------------------------------------
     createTask: (input) => tasks.createTask(ctx, input),

@@ -400,8 +400,9 @@ describe("route-request.mjs — the CLI", () => {
     // board-wide GET /api/v1/sessions and the natural-key
     // POST /tasks/:ref/sessions/close; 42 since project ensure added
     // PUT /api/v1/projects/:id; 43 since the activity ledger gained the
-    // board-wide GET /api/v1/activities.
-    assert.match(result.stdout, /route-request: OK — 43 routes/);
+    // board-wide GET /api/v1/activities; 48 since 0007 added the five intake
+    // routes (submit, list, read, complete, fail).
+    assert.match(result.stdout, /route-request: OK — 48 routes/);
     // Nine since the reopen verb declared `tasks.reopen` beside the eight
     // commands that already projected their input.
     assert.match(result.stdout, /9 command inputs paired/);

@@ -15,8 +15,8 @@ import { highlightMarkdown, renderMarkdown } from "../../lib/markdown.js";
 
 const props = defineProps({
   modelValue: { type: String, default: "" },
-  /** Extra hooks on the textarea (B10 marks it `[data-create-task-description]`). */
-  sourceHooks: { type: Array, default: () => ["data-create-task-description"] },
+  /** Extra hooks on the textarea; the drawer passes none and owns its own. */
+  sourceHooks: { type: Array, default: () => [] },
 });
 const emit = defineEmits(["update:modelValue"]);
 

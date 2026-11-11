@@ -177,21 +177,14 @@
       "time.daysAgo": "%sd ago",
       /* modals */
       "createTask.title": "New task",
-      "createTask.field.title": "Title",
-      "createTask.field.titleHint": "Short, verb first. Shown on the card.",
-      "createTask.field.description": "Description",
-      "createTask.field.status": "Status",
-      "createTask.field.priority": "Priority",
-      "createTask.field.assignee": "Assignee",
+      "createTask.field.description": "Describe the work",
+      "createTask.textHint": "Say what should be true when this is done…",
+      "createTask.intakeHint": "The supervisor hands this to the director, which files the cards onto the board.",
+      "createTask.examples": "Examples",
+      "createTask.example.simple": "Fix the board occasionally going blank after sign-in",
+      "createTask.example.medium": "Add label filtering to the board, with tests",
+      "createTask.example.complex": "Rework task creation into a one-line description: the web keeps one input, the supervisor hands it to the director, which splits it into cards and routes them",
       "createTask.field.project": "Project",
-      "createTask.field.reporter": "Reporter",
-      "createTask.field.parent": "Parent",
-      "createTask.field.parentHint": "The task this one rolls up to. One parent, at most.",
-      "createTask.field.depends": "Depends on",
-      "createTask.field.dependsHint": "Tasks that must finish first. Leave blank to create.",
-      "createTask.field.labels": "Labels",
-      "createTask.field.labelsHint": "Labels grow as they are used. There is nothing to manage.",
-      "createTask.optional": "Optional",
       /* The two roster controls: free text, fuzzy match, no roster editor. */
       "combo.assigneePlaceholder": "Search or type a new name…",
       "combo.reporterPlaceholder": "Search or type a new name…",
@@ -214,7 +207,7 @@
       "md.split": "Split",
       "md.hint": "Markdown · rendered locally",
       "createTask.option.owner": "Terry · owner",
-      "createTask.submit": "Create task",
+      "createTask.submit": "Hand to the team",
       "createProject.title": "New project",
       "createProject.field.name": "Name",
       "createProject.field.prefix": "Identifier prefix",
@@ -244,6 +237,9 @@
       "toast.moved": "Moved",
       "toast.commented": "Comment added",
       "toast.created": "Created",
+      "toast.intakeAccepted": "Received — the director is filing the cards",
+      "toast.intakeConsumed": "Cards created:",
+      "toast.intakeFailed": "Could not file cards:",
       "toast.projectCreated": "Created project",
       "toast.projectSwitched": "Switched to project",
       "toast.copied": "Copied to clipboard",
@@ -506,21 +502,14 @@
       "time.daysAgo": "%s 天前",
       /* modals */
       "createTask.title": "新建任务",
-      "createTask.field.title": "标题",
-      "createTask.field.titleHint": "简短，动词开头。显示在卡片上。",
-      "createTask.field.description": "描述",
-      "createTask.field.status": "状态",
-      "createTask.field.priority": "优先级",
-      "createTask.field.assignee": "负责人",
+      "createTask.field.description": "描述要做的事",
+      "createTask.textHint": "一句话说明完成时应该是什么样……",
+      "createTask.intakeHint": "提交后由 supervisor 交给 director 拆成任务卡，卡片会出现在看板上。",
+      "createTask.examples": "示例",
+      "createTask.example.simple": "修复登录后看板偶发空白的问题",
+      "createTask.example.medium": "给看板加按标签筛选，并补上测试",
+      "createTask.example.complex": "把创建任务改成一句话描述：Web 只留一个输入框，提交后由 supervisor 交给 director 拆卡并派给对应角色",
       "createTask.field.project": "项目",
-      "createTask.field.reporter": "创建人",
-      "createTask.field.parent": "父任务",
-      "createTask.field.parentHint": "本任务归属的任务。最多一个父任务。",
-      "createTask.field.depends": "前置依赖",
-      "createTask.field.dependsHint": "须先完成的任务。留空即可创建。",
-      "createTask.field.labels": "标签",
-      "createTask.field.labelsHint": "标签随使用而生，无需管理。",
-      "createTask.optional": "可选",
       "combo.assigneePlaceholder": "搜索或输入新姓名…",
       "combo.reporterPlaceholder": "搜索或输入新姓名…",
       "combo.empty": "无匹配——使用时将保存为新姓名。",
@@ -539,7 +528,7 @@
       "md.split": "分栏",
       "md.hint": "Markdown · 本地渲染",
       "createTask.option.owner": "Terry · 所有者",
-      "createTask.submit": "创建任务",
+      "createTask.submit": "交给团队",
       "createProject.title": "新建项目",
       "createProject.field.name": "名称",
       "createProject.field.prefix": "标识前缀",
@@ -569,6 +558,9 @@
       "toast.moved": "已移动",
       "toast.commented": "已添加评论",
       "toast.created": "已创建",
+      "toast.intakeAccepted": "已收到，director 正在拆卡",
+      "toast.intakeConsumed": "已创建：",
+      "toast.intakeFailed": "拆卡失败：",
       "toast.projectCreated": "已创建项目",
       "toast.projectSwitched": "已切换到项目",
       "toast.copied": "已复制",
@@ -2560,66 +2552,12 @@
 
   /* --------------------------------------------------------- I9/I10 · modal */
 
-  /* One place sets up the create dialog, whether it was opened from the top
-     bar or from a column's add button: which status it starts on, which
-     project is in force, who reports it, and an empty editor in write mode.
-     Reset after a submit runs the same path, so a second task starts exactly
-     where the first one did. */
-  var DESCRIPTION_SEED = [
-    "## Context",
-    "",
-    "What is true today, and why this matters now.",
-    "",
-    "## Acceptance",
-    "",
-    "- [ ] An observable outcome, not an activity",
-    "- [ ] The check that proves it",
-    "",
-    "```sh",
-    "# how to verify",
-    "npm test",
-    "```",
-    "",
-    "| Key | Action |",
-    "| --- | ------ |",
-    "| Enter | Open the task |",
-    "| Esc | Close the drawer |",
-  ].join("\n");
-
-  function resetCreateTask($form, status) {
-    var $editor = $form.find("[data-md-editor]");
-
-    /* jQuery has no form-reset equivalent, so the native method is used. */
+  /* The composer holds one value, so the native reset plus the project and the
+     box is the whole opening state. */
+  function resetCreateTask($form) {
     if ($form[0] && typeof $form[0].reset === "function") $form[0].reset();
-
     $("[data-create-task-project]").val(state.project);
-    $("[data-create-task-status]").val(status || "backlog");
-    $("[data-create-task-priority]").val("none");
-    $form.find("[data-assignee-input], [data-reporter-input]").val("");
-    /* the relation and label controls hold no state a form reset can reach:
-       the chips are plain elements and the menus are generated, so both are
-       cleared here */
-    $form
-      .find("[data-parent-input], [data-depends-input], [data-label-input]")
-      .val("");
-    $form
-      .find("[data-parent-chips], [data-depends-chips], [data-label-chips]")
-      .empty();
-    $form
-      .find("[data-parent-menu], [data-depends-menu], [data-label-menu]")
-      .empty();
-    /* scoped to this dialog: the drawer carries its own pair of menus, and a
-       global clear would drop the drawer's keyboard position too */
-    $form
-      .find("[data-assignee-menu] [data-assignee-option]")
-      .attr("aria-selected", "false");
-    $form
-      .find("[data-reporter-menu] [data-reporter-option]")
-      .attr("aria-selected", "false");
-    $form.find("[data-md-source]").val(DESCRIPTION_SEED);
-    closeCombos();
-    setMarkdownMode($editor, "write");
-    renderMarkdown($editor);
+    $form.find("[data-create-task-text]").val("");
   }
 
 
@@ -3031,64 +2969,6 @@
       optionAttr: "data-reporter-option",
       valueAttr: "data-reporter-value",
       kindAttr: "",
-    },
-    /* Parent — one task, single select. `freeText: false` because a relation
-       can only point at a task that already exists. It carries the chips half
-       of the relation control even though it never holds more than one: the
-       chosen task has to be *visible* in the field (Terry, 2026-10-14), and
-       the chip is the one shape this document already uses to say "this task,
-       by identifier and title, with a way out of it". */
-    parent: {
-      roster: taskRoster,
-      input: "[data-parent-input]",
-      menu: "[data-parent-menu]",
-      option: "[data-parent-option]",
-      optionAttr: "data-parent-option",
-      valueAttr: "data-parent-value",
-      kindAttr: "",
-      freeText: false,
-      chips: "[data-parent-chips]",
-      chipAttr: "data-parent-chip",
-      removeAttr: "data-parent-remove",
-      emptyKey: "combo.noTasks",
-    },
-    /* Depends on — many tasks, each accepted row becomes a chip. UI only: no
-       graph is built and no cycle is checked. */
-    depends: {
-      roster: taskRoster,
-      input: "[data-depends-input]",
-      menu: "[data-depends-menu]",
-      option: "[data-depends-option]",
-      optionAttr: "data-depends-option",
-      valueAttr: "data-depends-value",
-      kindAttr: "",
-      freeText: false,
-      multi: true,
-      chips: "[data-depends-chips]",
-      chipAttr: "data-depends-chip",
-      removeAttr: "data-depends-remove",
-      emptyKey: "combo.noTasks",
-    },
-    /* Labels — the assignee/reporter control used many times at once: free
-       text, fuzzy match, and each accepted name a removable chip. Like them it
-       grows by being used; unlike them it is not one value, so it carries the
-       multi/chips half of the relation control. A label chip is not an
-       identifier, so it is not `.td-mono` — hence `chipMono: false`. */
-    labels: {
-      roster: labels,
-      input: "[data-label-input]",
-      menu: "[data-label-menu]",
-      option: "[data-label-option]",
-      optionAttr: "data-label-option",
-      valueAttr: "data-label-value",
-      kindAttr: "",
-      freeText: true,
-      multi: true,
-      chips: "[data-label-chips]",
-      chipAttr: "data-label-chip",
-      removeAttr: "data-label-remove",
-      chipMono: false,
-      emptyKey: "combo.noLabels",
     },
     /* The drawer's own Labels control: the same label control the create dialog
        carries, so it is configured identically and differs only in the hook
@@ -4254,67 +4134,8 @@
       });
     });
 
-    /* the relation pickers' own affordances: clear the single parent, and
-       remove a prerequisite chip. Both are inside `.td-combo`, so the outside-
-       click pass leaves their menu alone. */
-    $("[data-create-task-parent]").on("click", "[data-parent-clear]", function () {
-      var $scope = $(this).closest("[data-create-task-parent]");
-      /* one selection, one way out of it: the clear button drops the chip as
-         well as any half-typed query, so "clear" means the same thing whether
-         the field is showing a chip or a search string */
-      $scope.find("[data-parent-chips]").empty();
-      $scope
-        .find("[data-parent-input]")
-        .val("")
-        .trigger("change");
-      /* clearing is a dismissal, not a fresh search — do not reopen the menu */
-      closeCombos();
-    });
-
-    /* dropping the parent's chip is the same act as the clear button, from the
-       chip instead of the field — the mirror of the depends-on removal below */
-    $("[data-create-task-parent]").on("click", "[data-parent-remove]", function () {
-      var $scope = $(this).closest("[data-create-task-parent]");
-      var $input = $scope.find("[data-parent-input]");
-      $(this).closest("[data-parent-chip]").remove();
-      /* a single select shuts its menu on accept, so this is normally a no-op;
-         if it is somehow open, put the row back among the offers */
-      if (!$scope.find("[data-parent-menu]").prop("hidden")) {
-        renderCombo($input, COMBO.parent);
-      }
-      $input.trigger("change");
-    });
-
-    $("[data-create-task-depends]").on(
-      "click",
-      "[data-depends-remove]",
-      function () {
-        var $scope = $(this).closest("[data-create-task-depends]");
-        var $input = $scope.find("[data-depends-input]");
-        $(this).closest("[data-depends-chip]").remove();
-        /* if the menu is open, it is offering the rest — put this one back */
-        if (!$scope.find("[data-depends-menu]").prop("hidden")) {
-          renderCombo($input, COMBO.depends);
-        }
-        $input.trigger("change");
-      }
-    );
-
-    /* removing a label chip: the same shape, and the menu — if it is open —
-       puts the label straight back among the offers */
-    $("[data-create-task-form]").on("click", "[data-label-remove]", function () {
-      var $scope = $(this).closest(".td-combo");
-      var $input = $scope.find("[data-label-input]");
-      $(this).closest("[data-label-chip]").remove();
-      if (!$scope.find("[data-label-menu]").prop("hidden")) {
-        renderCombo($input, COMBO.labels);
-      }
-      $input.trigger("change");
-    });
-
     /* the drawer's label chips remove the same way, against the drawer's own
-       hooks — bound to the drawer, the direct analogue of the create form's
-       scope, so dropping a chip behaves identically in both places */
+       hooks, so dropping a chip behaves identically in both places */
     $("[data-detail-drawer]").on("click", "[data-detail-label-remove]", function () {
       var $scope = $(this).closest(".td-combo");
       var $input = $scope.find("[data-detail-label-input]");
@@ -4678,74 +4499,37 @@
       bumpRevision();
     });
 
-    /* I9 · create task ----------------------------------------------------- */
+    /* I9 · create-task composer -------------------------------------------- */
     $("[data-new-task]").on("click", function () {
-      resetCreateTask($("[data-create-task-form]"), "backlog");
+      resetCreateTask($("[data-create-task-form]"));
       openModal("[data-create-task]");
     });
 
-    /* a column's add button opens the same dialog, already routed to that
-       column's status — the left side is the work, the right side is where
-       it lands */
+    /* a column's add button opens the same composer: the decision lane chooses
+       the card's status, so the column no longer routes the submission */
     $("[data-board]").on("click", "[data-column-add]", function () {
-      var status = $(this).closest("[data-column]").attr("data-status");
-      resetCreateTask($("[data-create-task-form]"), status);
+      resetCreateTask($("[data-create-task-form]"));
       openModal("[data-create-task]");
     });
 
+    /* an example chip fills the box, and the human can then edit it */
+    $("[data-create-task-form]").on("click", "[data-create-task-example]", function () {
+      $("[data-create-task-text]").val(String($(this).text() || ""));
+    });
+
+    /* The prototype has no supervisor, so the submit is the receipt the
+       implementation shows: the request was accepted for the decision lane. */
     $("[data-create-task-form]").on("submit", function (event) {
       event.preventDefault();
       var $form = $(this);
-      var title = $.trim(String($form.find("[data-create-task-title]").val() || ""));
-      if (!title) {
-        $form.find("[data-create-task-title]").trigger("focus");
+      var description = $.trim(String($form.find("[data-create-task-text]").val() || ""));
+      if (!description) {
+        $form.find("[data-create-task-text]").trigger("focus");
         return;
       }
-
-      var status = $form.find("[data-create-task-status]").val();
-      var project = $form.find("[data-create-task-project]").val();
-
-      /* Both rosters upsert here: the task is what makes a name real. An
-         unknown assignee defaults to human, because a handle the board has
-         never seen carries no platform to claim. */
-      var assigneeName =
-        $.trim(String($form.find("[data-assignee-input]").val() || "")) || ME;
-      var reporterName =
-        $.trim(String($form.find("[data-reporter-input]").val() || "")) || ME;
-      var assignee = assignees.upsert(assigneeName) || assignees.get(ME);
-      reporters.upsert(reporterName);
-
-      /* Each chip already states the label's display name — the spelling it
-         was first written with — so the card carries it as-is; no label is
-         filtered or re-cased here. */
-      var labelNames = [];
-      $form.find("[data-label-chip]").each(function () {
-        labelNames.push(String($(this).attr("data-label-value") || ""));
-      });
-
-      var task = {
-        identifier: nextIdentifier(project),
-        internalId: newInternalId(),
-        title: title,
-        status: status,
-        priority: $form.find("[data-create-task-priority]").val(),
-        assignee: assignee.name,
-        kind: assignee.kind,
-        platform: assignee.platform,
-        reporter: reporterName,
-        project: project,
-        labels: labelNames,
-      };
-
-      var $card = buildCard(task);
-      var placed = insertCard($card, status);
-
       closeModal("[data-create-task]");
-      resetCreateTask($form, status);
-
-      if (!placed) return;
-      applyFilters();
-      toast(text("toast.created") + " " + task.identifier, "success");
+      resetCreateTask($form);
+      toast(text("toast.intakeAccepted"), "success");
       bumpRevision();
     });
 

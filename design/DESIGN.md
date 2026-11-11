@@ -2784,3 +2784,70 @@ mirror catalogues and the implementation-side empty states are the implementing 
 4. **`design/prototype/README.md`'s key-pair claim is edited** (280 → 281) because
    `blocks.contract.test.mjs` re-measures that prose against `app.js`; it is the one file
    outside the card's named list that had to move with the key.
+
+## 34. Review round R18 — the create surface becomes one description
+
+Terry's 2026-11-11 request: the web's create-task dialog collected eleven routing fields
+(title, description, priority, assignee, project, status, reporter, labels, parent, depends,
+acceptance), so a human had to do the director's routing before any work existed. The round
+replaces that form with **one description**, three examples that fill it, and the project
+the request belongs to.
+
+### 34.1 The decision, and where the routing went
+
+The create surface files **nothing** itself. It submits an intake request (`0007`); the
+supervisor hands it to the director lane, which decides the cards — one or more deliverables,
+each with an accountable role, a target, acceptance seeded from the description, the
+submitter as reporter, and the request id in its metadata. A description that names no work
+is a recorded refusal the human can read, not a silent no-op.
+
+This is the board's existing ladder applied to a new input: a worker asks the director, a
+human's answer resumes a card, and now a human's **description** asks the director to create
+work. No second dispatcher and no LLM control turn is added; the activity row is the signal
+and `intake_requests` is the state.
+
+### 34.2 What left the surface
+
+| Old control | Where the decision lives now |
+|---|---|
+| title / description | the director writes both from the description |
+| priority, status | the director chooses; a new card starts in `todo` |
+| assignee | the director picks one accountable role from the routing table |
+| reporter | the submitter, recorded by the director |
+| labels | the director seeds what the description names |
+| parent / depends-on | retired from the create surface (B24); the drawer keeps its prerequisite control |
+| acceptance mode | the director seeds acceptance from the outcome; the card's mode follows the project's context |
+
+The detail drawer keeps its editing seats (assignee, status, priority, labels, description,
+prerequisites), so a human can still correct a card after it exists. The create dialog is
+the only surface that changed.
+
+### 34.3 The composer's contract
+
+- One textarea (`data-create-task-text`), labelled "Describe the work".
+- Three examples (simple → medium → complex) that **fill** the box; the human may edit.
+- One project select, defaulting to the project the board is showing.
+- Submit is disabled until the box holds text and a project is chosen.
+- `(project_id, idem)` is the mechanical idempotency key; a double submit is one request.
+- The receipt is a toast; `intake_consumed` / `intake_failed` re-read the request by id and
+  report the outcome. No request list is added to the board.
+
+Measured on the prototype and the implementation in the same run (`R18` record,
+`design/fidelity-r18.md`): panel `min(640px, 100vw − 32px)`, a 16px gutter per side, the
+description box's `min-height: 8rem`, three example buttons, and the submit disabled at
+rest. `[data-create-task]` and its panel/form/close hooks are unchanged, so the shell's
+escape, close and focus behaviour is the same dialog it was.
+
+### 34.4 Retirements recorded
+
+- **B24 (Parent / Depends-on)** is retired: neither side renders its hooks. The drawer's own
+  prerequisite control is unaffected.
+- **B23's create instance** is gone; the editor survives in the drawer (B09), and its block
+  is now a `detail`-scoped block.
+- **B22's create placements** are gone; the drawer's assignee is the control's one editable
+  placement, and the drawer's reporter stays a read-only value.
+- **B25's create labels** are gone; the drawer's label control is the surviving surface.
+- **`test/web/create-dialog-kind.test.mjs` (C-KIND-1)** is retired with its subject: the
+  dialog files no card, so there is no kind to withhold.
+- **`web/scripts/dialog-track-parity.mjs`** is retired: there is no second track to compare.
+  The combo geometry leg reads the drawer alone.

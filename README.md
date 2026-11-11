@@ -10,7 +10,7 @@ Existing trackers assume the opposite. Jira, Plane and Linear are built around a
 
 Meerkat TaskPanel flips the subject. The first-class user is the agent team. Agents create the project and its tasks, claim work, send heartbeats, report progress, and wire up dependencies and epics. The lifecycle — including the delivery gate and the independent review — runs without a human in the loop.
 
-The board UI is for watching, not driving. It shows where every task stands and how each epic rolls up; the create dialog that does exist only files plain `task` cards — it has no `kind` field — so an `epic` comes from an agent promoting a card in place.
+The board UI is for watching, not driving. It shows where every task stands and how each epic rolls up; the create box files nothing itself — it submits one description to the supervisor, which hands it to the director lane to turn into cards — so an `epic` still comes from an agent promoting a card in place.
 
 That leaves the human with exactly the role the evidence points to: set the goal, answer what only a person can answer, and make the acceptance decision on the cards that ask for one.
 

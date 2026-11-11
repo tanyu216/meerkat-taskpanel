@@ -206,6 +206,50 @@ export function readUnownedTodos(opts, log, run = runCli, now = Date.now) {
   return { ok: true, rows, error: null };
 }
 
+/**
+ * The intake lane's input: every request still waiting for a decision, oldest
+ * first. The read is bounded by `--board-limit`; a request whose project has no
+ * local directory is skipped by the caller, not here.
+ *
+ * @param {object} opts
+ * @param {(message: string) => void} log
+ * @param {Function} [run] the `runCli` seam, injectable for tests
+ * @returns {{ok: boolean, rows: object[], error: string|null}}
+ */
+export function readPendingIntake(opts, log, run = runCli) {
+  const agent = Array.isArray(opts.agents) && opts.agents.length > 0 ? opts.agents[0] : null;
+  if (agent === null) return { ok: false, rows: [], error: "no agent configured" };
+  const read = run(opts, agent, [
+    "intake",
+    "list",
+    "--status",
+    "pending",
+    "--limit",
+    String(opts.boardLimit),
+    "--json",
+  ]);
+  if (!read.ok) {
+    log(`intake lane: intake list failed: ${read.error}`);
+    return { ok: false, rows: [], error: read.error };
+  }
+  const requests = Array.isArray(read.data?.requests) ? read.data.requests : [];
+  const rows = [];
+  for (const request of requests) {
+    const id = textOf(request?.id);
+    const project = textOf(request?.project_id);
+    const text = textOf(request?.text);
+    if (id === null || project === null || text === null) continue;
+    rows.push({
+      id,
+      project,
+      text,
+      requested_by: textOf(request?.created_by) ?? null,
+      created_at: textOf(request?.created_at) ?? null,
+    });
+  }
+  return { ok: true, rows, error: null };
+}
+
 /** How far back an accepted producer card is worth an automatic triage. */
 const HANDOFF_TRIAGE_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 

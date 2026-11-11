@@ -386,6 +386,25 @@ export function activityToWire(activity) {
   };
 }
 
+/** @param {object} request a core intake request DTO */
+export function intakeToWire(request) {
+  if (request === null || request === undefined) return null;
+  return {
+    id: request.id,
+    project_id: request.projectId,
+    text: request.text,
+    status: request.status,
+    created_by: request.createdBy,
+    created_kind: request.createdKind,
+    created_at: request.createdAt,
+    settled_at: request.settledAt ?? null,
+    settled_by: request.settledBy ?? null,
+    settled_by_kind: request.settledByKind ?? null,
+    created_refs: Array.isArray(request.createdRefs) ? request.createdRefs : [],
+    last_error: request.lastError ?? null,
+  };
+}
+
 /** @param {object} label a core Label DTO */
 export function labelToWire(label) {
   if (label === null || label === undefined) return null;

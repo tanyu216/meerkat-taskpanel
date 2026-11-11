@@ -170,11 +170,41 @@ export async function consoleCycle(opts, deps = {}) {
     priority: task.priority ?? null,
   }));
 
+  // 0007 — a submitted description the decision lane has not answered yet. It
+  // has no card, so this list is the only place a human can see it; the age is
+  // the fact that matters (a stuck request is invisible everywhere else).
+  const pendingIntake = [];
+  const intakeRead = runCli(opts, agent, [
+    "intake",
+    "list",
+    "--status",
+    "pending",
+    "--limit",
+    String(opts.boardLimit ?? 50),
+    "--json",
+  ]);
+  if (!intakeRead.ok) {
+    errors.push(`intake: ${intakeRead.error}`);
+  } else {
+    for (const request of intakeRead.data?.requests ?? []) {
+      const text = String(request.text ?? "");
+      pendingIntake.push({
+        id: request.id,
+        project: request.project_id,
+        created_by: request.created_by ?? null,
+        created_at: request.created_at ?? null,
+        age_ms: ageMs(request.created_at),
+        text: text.length > 200 ? `${text.slice(0, 200)}…` : text,
+      });
+    }
+  }
+
   return {
     ok: errors.length === 0,
     supervisor,
     questions,
     pending_acceptance: pendingAcceptance,
+    pending_intake: pendingIntake,
     errors,
   };
 }
@@ -193,6 +223,10 @@ function humanReport(result) {
   lines.push(`pending acceptance: ${result.pending_acceptance.length}`);
   for (const card of result.pending_acceptance) {
     lines.push(`  ${card.ref} ${card.title ?? ""}`);
+  }
+  lines.push(`pending intake: ${result.pending_intake.length}`);
+  for (const request of result.pending_intake) {
+    lines.push(`  ${request.id} [${request.project}] ${request.text}`);
   }
   for (const error of result.errors) lines.push(`error: ${error}`);
   return lines.join("\n");

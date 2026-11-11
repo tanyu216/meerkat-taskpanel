@@ -27,9 +27,9 @@ open design/prototype/index.html      # plain file:// — no server, no build st
 columns, all eighteen cards, the legend and the **three footer rows** (theme · language ·
 settings) are static markup, with the default theme and language already named in their
 cells. The activity view (B26) is the same: complete in the markup, hidden until the
-sidebar's Activity item is pressed. The drawer, the states gallery, the create-task /
-create-project modals and the three footer dialogs are secondary surfaces and stay hidden
-until opened.
+sidebar's Activity item is pressed. The drawer, the states gallery, the create-task composer,
+the create-project modal and the three footer dialogs are secondary surfaces and stay
+hidden until opened.
 
 ---
 
@@ -48,7 +48,7 @@ until opened.
 | `vendor/highlight-lite.js` | the source highlighter behind the editor's syntax colours, vendored locally |
 | `../DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n, R3, R4 |
 | `../BLOCKS.md` | the block inventory B01–B26 with every `data-*` hook (B20 and B21 are the retired theme/language dialogs — see v1.4; B22 and B23 are R3's roster controls and Markdown editor; B24 is R4's Parent / Depends-on pair; B25 is R5's label control; B26 is R12x's Activity view) |
-| `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, language menu, access + token, Chinese, 5 viewports, the two-column create dialog, the split editor, assignee autocomplete, the Write-pane scroll proof, the Parent and Depends-on controls) |
+| `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, language menu, access + token, Chinese, 5 viewports, the one-description create composer and the drawer's split editor) |
 | `package.json` | declared devDependencies + `build:css` script |
 | `.gitignore` | keeps `node_modules/` out of the repository |
 
@@ -194,7 +194,7 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | — | Allow-list switch (R3) | the access panel's toggle; states and dims, nothing else | `[data-cidr-switch]` → `[data-cidr-whitelist]` |
 | I13 | Assignee / reporter (R3) | Roster autocomplete — fuzzy match on input, `↑↓`/`Enter`/`Esc`/`Tab`, free text upserts | `[data-assignee-input]` / `[data-reporter-input]` → `[data-assignee-menu]` / `[data-reporter-menu]` → `[data-assignee-option]` / `[data-reporter-option]` |
 | I14 | Markdown editor (R3) | Mode tabs set `data-md-mode`; every keystroke repaints the highlight layer and the preview | `[data-md-editor]` → `[data-md-toggle]`, `[data-md-source]`, `[data-md-highlight]`, `[data-md-preview]` |
-| I15 | Labels (R5) | The roster control used many times at once — fuzzy match, free text creates by use, case/whitespace-insensitive, removable chips. One control, two placements: the create dialog and the drawer's Labels row are both editable | `[data-label-input]` → `[data-label-menu]` → `[data-label-option]` · `[data-label-chips]` → `[data-label-chip]` → `[data-label-remove]` · `[data-detail-label-input]` → `[data-detail-label-menu]` → `[data-detail-label-option]` · `[data-detail-label-chips]` → `[data-detail-label-chip]` → `[data-detail-label-remove]` |
+| I15 | Labels (R5) | The roster control used many times at once — fuzzy match, free text creates by use, case/whitespace-insensitive, removable chips. One placement since R18: the drawer's Labels row is the editable control (the create dialog's field retired) | `[data-label-input]` → `[data-label-menu]` → `[data-label-option]` · `[data-label-chips]` → `[data-label-chip]` → `[data-label-remove]` · `[data-detail-label-input]` → `[data-detail-label-menu]` → `[data-detail-label-option]` · `[data-detail-label-chips]` → `[data-detail-label-chip]` → `[data-detail-label-remove]` |
 | I17 | Board empty state (R10) | the board view shows its empty state instead of bare columns whenever no card survives the filters — including a project that holds none at all | `[data-board-view]` → `data-board-state` → `[data-board]` / `[data-empty][data-empty-kind="no-results"]` |
 | I18 | Drawer auto-save (R10) | the drawer's assignee, reporter and labels commit as they change — focus loss with a moved value, an accepted roster row, a label chip added or dropped — and report through one state region | `[data-detail-save]` → `data-save-state` · `[data-detail-save-error]` · `[data-detail-save-field]` on `[data-detail-assignee]` / `[data-detail-reporter]` / `[data-detail-labels]` |
 | I19 | Status filter (R11) | the bar's second dropdown and its only multi-select: a press toggles one of the seven first-class statuses in or out of the set, `all` clears it, and the pass re-runs. The chosen set is OR inside the field, AND against the other filters | `[data-filter-status]` → `data-filter-status-value` → `[data-filter-status-summary]` / `[data-filter-status-text]` · `[data-filter-status-option]` → `data-status-value` |
@@ -317,7 +317,7 @@ looking at it (DESIGN.md §12).
 | Assignee capsule | the roster item the control's value names wears a **width-neutral** accent capsule — `padding: 0 6px` cancelled by `margin-inline: -6px` — so no row's one line is elided at any viewport (R13) |
 | Assignee removal | **the control's own `Assignee: All` row, and nothing else.** A roster press is the dropdown's own selection, so it neither routes the view nor writes a status, and no second control exists to undo it (R13 修订 · 决定甲) |
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
-| Language | English (default) + Chinese via the language dropdown — 292 key pairs, mirrored |
+| Language | English (default) + Chinese via the language dropdown — 288 key pairs, mirrored |
 | Activity | the sidebar's third destination opens a real view (R12x): 17 rows over 4 day groups, one folded burst, an unread boundary that reads the same number as the sidebar pill, three narrowing controls, `Load older`, and two empty states — all of it static markup |
 | Waiting | the sidebar's fourth destination opens a real queue (R12x): 5 items ordered by how long each has waited, two reason kinds (`question` / `blocked`), a count in its heading, no filters, and an empty state — all of it static markup |
 | List columns | six labelled columns — ID · Title · Status · Assignee · Priority · Revision — with the header sharing the row's grid template; the middle three hide at ≤759px (R8) |
@@ -355,10 +355,11 @@ gained the list's two-state shape: `[data-board-view]` holds `data-board-state`,
 one of its two children — the board or the no-results block — is ever on screen, including
 when the project holds no cards at all. (2) The drawer's assignee, reporter and labels rows
 commit as they change into one state region (`idle` / `saving` / `saved` / `error`), with a
-`role="alert"` block as the only visible half. (3) The create dialog's description fills the
-column it sits in: `align-items: stretch` on the two tracks, a column flex context on
+`role="alert"` block as the only visible half. (3) The create dialog's description filled the
+column it sat in: `align-items: stretch` on the two tracks, a column flex context on
 `.td-field-grow`, and `.td-md-panes` grown from a fixed viewport `clamp` to `flex: 1 1 auto;
-min-height: 200px`. `design/fidelity-r10.md` is the contract; `DESIGN.md` §26 and `BLOCKS.md`
+min-height: 200px`. (R18 retired that dialog's editor; the panes rule now serves the
+**drawer's** editor, which B23 asserts.) `design/fidelity-r10.md` is the contract; `DESIGN.md` §26 and `BLOCKS.md`
 B05/B09/B10/B12/B23 carry the prose.
 
 **R11 — the status filter, and the roster names that route to it.** Two requests from
@@ -485,7 +486,7 @@ alternative.
 | `07-move-menu.png` | the shared "Move to" menu |
 | `08-filters-agent.png` | assignee filter = Agent |
 | `09-no-results.png` | no-results empty state |
-| `10-create-task-modal.png` | create-task modal |
+| `10-create-task-modal.png` | **R18** — the create composer: one description, three examples, the project; the routing fields are gone |
 | `11…14-viewport-*.png` | 1240 / 980 / 760 / 500 |
 | `15-no-javascript.png` | the same document with its `<script>` tags removed — proof that the core structure survives without JavaScript (all 18 cards visible, because the project filter is the only thing JS removes) |
 | `16-states-panel.png` | the states gallery: loading, empty column, no results, error and the three toast kinds in one frame |
@@ -495,25 +496,14 @@ alternative.
 | `20-drawer-zh.png` | the drawer in Chinese: properties, relation labels, comment role chips and relative timestamps |
 | `21-access-panel-dark.png` | the access panel in dark theme |
 | `22-lang-menu.png` | the language dropdown open above the middle footer cell, `English` marked as the current choice |
-| `23-create-two-col.png` | **R5** — the create dialog: Title + Markdown editor on the left, Priority / Assignee / Project / Status / Reporter / Labels / Parent / Depends on on the right |
-| `24-md-editor-split.png` | **R4** — the Markdown editor in Split mode: highlighted source beside the rendered preview |
-| `25-assignee-autocomplete.png` | **R4** — the assignee control mid-type: `ti · new` offered alongside the fuzzy match `turing` |
-| `26-create-narrow-760.png` | **R5** — the same dialog at 760px, stacked to one column and scrolling internally, framed on the Labels field and the fields that close the column |
-| `28-md-write-scroll.png` | **R4** — Write mode scrolled to the tail of a 60-step description: the edit pane scrolls and the highlight layer travels with it |
-| `29-create-parent-dropdown.png` | **R4** — the Parent control mid-type: fuzzy matches over the project's tasks, identifier + title, with the clear button shown |
-| `30-create-depends-multiselect.png` | **R4** — Depends on with two chips and the menu offering the tasks not yet chosen |
+| `26-create-narrow-760.png` | **R18** — the same composer at 760px: one column, the panel capped at 640px |
 | `33-theme-light-1512.png` | **theme three-state** — `Light`, the no-record default: sun glyph, `Light` label, light board |
 | `34-theme-dark-1512.png` | **theme three-state** — one press on: `Dark`, moon glyph, dark board |
 | `35-theme-auto-darkos-1512.png` | **theme three-state** — two presses on: `Auto` under a **dark** system preference — display glyph, `Auto` label, dark board |
 | `36-theme-auto-lightos-1512.png` | **theme three-state** — the same `Auto` state under a **light** system preference: same label, same glyph, light board (the pair is the proof that Auto follows `prefers-color-scheme`) |
 | `37-theme-footer-760.png` | **theme three-state** — the rail at 760px: the footer's three cells collapse to three glyphs (sun · globe · gear), no overflow |
 | `38-theme-footer-760-closeup.png` | **theme three-state** — the same three cells, cropped |
-| `39-create-label-dropdown.png` | **R5** — the Labels control mid-type: `se · new` offered beside the fuzzy match `security` |
-| `40-create-label-new-row.png` | **R5** — a label the board does not hold yet: `zzz-new-label · new`, one Enter away from a new label |
-| `41-create-label-new-chip.png` | **R5** — the accepted name as a chip, with its remove button, and the menu reopening over the remaining labels |
-| `42-create-label-normalised.png` | **R5** — normalisation: `Triaged` · `Bug` after `triaged` / `  Bug  ` / `BUG` / `bug` all resolved to those two labels, first spelling kept |
 | `43-detail-labels.png` | **R5** — the drawer's property grid: the Labels row carries the editable control, its chips filled from the task |
-| `44-create-label-narrow-760.png` | **R5** — the same control at 760px, stacked, its menu flipping down over the fields below |
 | `45-detail-label-dropdown.png` | **R5 fix** — the **drawer's** Labels row mid-type: fuzzy matches over the board's roster with the `· new` row |
 | `46-detail-label-new-chip.png` | **R5 fix** — a name the drawer's roster does not hold accepted into a new chip |
 | `47-detail-label-remove.png` | **R5 fix** — a chip's `×` pressed: the chip is gone, the row falls back to the remaining labels |
@@ -627,6 +617,16 @@ into a chip), `47-detail-label-remove` (a chip removed) and `48-detail-label-nar
 (the same control at 760px, no overflow). Only the drawer's Labels row changes, so no board
 or dialog frame moves. There is still no management entry in any frame (DESIGN.md
 §22.5–§22.6, §22.8).
+
+**R18 recapture:** the create surface became one description, so the frames that framed
+the old form were either re-shot or retired. `10-create-task-modal` and
+`26-create-narrow-760` are re-shot from the current build — the composer at 1512×950 and
+760×900, device-scale-factor 2, transitions disabled, no toast, the description focused
+(the design's own focus ring). Twelve create-dialog clips retired with their subject:
+`23-create-two-col`, `24-md-editor-split`, `25-assignee-autocomplete`, `27-label-dropdown`,
+`28-md-write-scroll`, `29-create-parent-dropdown`, `30-create-depends-multiselect`,
+`39`–`42` and `44` (the create-side label frames). The drawer's own frames (`43`,
+`45`–`48`) stay: the label control survives there, and B23's editor is now the drawer's.
 
 **R4 recapture:** the create dialog changed size, so every frame that shows it was
 re-shot — `10-create-task-modal`, `23-create-two-col`, `24-md-editor-split`,

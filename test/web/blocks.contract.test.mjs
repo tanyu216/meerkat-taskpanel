@@ -12,11 +12,11 @@
  * BLOCKS.md's header contradicts its own body and the shipped DOM. The two claims
  * `STALE_PROSE_COUNTS` keeps — "**252** `data-i18n*` hooks" and "**198** catalogue
  * keys" — were already wrong when they were written; measured today against
- * `design/prototype/index.html` and `design/prototype/app.js`, the document carries **842**
- * `data-i18n*` attributes (540 `data-i18n` + 188 `-arg` + 84 `-aria-label` +
- * 19 `-title` + 11 `-placeholder`) and the prototype's `MESSAGES` holds **292 keys per
- * language** (en = 292, zh = 292, exact parity; the shipped extraction drops the 17
- * prototype-only keys, so it ships 275). Only the
+ * `design/prototype/index.html` and `design/prototype/app.js`, the document carries **804**
+ * `data-i18n*` attributes (514 `data-i18n` + 188 `-arg` + 82 `-aria-label` +
+ * 13 `-title` + 7 `-placeholder`) and the prototype's `MESSAGES` holds **288 keys per
+ * language** (en = 288, zh = 288, exact parity; the shipped extraction drops the
+ * prototype-only keys). Only the
  * "7 columns · 18 cards · 18 detail templates" line survives measurement. A contract
  * that quoted "252" or "198" would be wrong the day it was written, and one that
  * asserted "18 cards" would freeze a demo fixture into the spec. So every count in the
@@ -289,7 +289,7 @@ describe("web/blocks.contract — inventory completeness", () => {
 
   it("keeps retired blocks rootless and free of positive assertions", () => {
     const retired = ALL_CONTRACT_ITEMS.filter((item) => item.status === "retired");
-    assert.deepEqual(retired.map((item) => item.id), ["B20", "B21"]);
+    assert.deepEqual(retired.map((item) => item.id), ["B20", "B21", "B24"]);
     for (const item of retired) {
       assert.equal(item.root, null, `${item.id} was removed, so it has no root`);
       assert.equal(item.scope, "retired");
@@ -710,7 +710,7 @@ describe("web/blocks.contract — the derived selector surface", () => {
 
   it("exposes the surface the browser-free literal scan needs", () => {
     // The L1 bundle check greps for these as literals; a few representative ones must be present.
-    for (const selector of ["[data-app-shell]", "[data-card]", "[data-detail-drawer]", "[data-create-task]", "[data-label-option]"]) {
+    for (const selector of ["[data-app-shell]", "[data-card]", "[data-detail-drawer]", "[data-create-task]", "[data-detail-label-option]"]) {
       assert.ok(allSelectors().includes(selector), `${selector} must be part of the declared surface`);
     }
   });

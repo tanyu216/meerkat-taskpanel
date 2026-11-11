@@ -321,7 +321,8 @@ failure.
   `kind`).
 - Excluded (`FEED_EXCLUDED_EVENTS`): `task_heartbeat`, `session_*`, `progress`, `label_gc`,
   `project_*`, `attachment_updated`, `import_completed`, `task_resumed`, `acceptance_changed`,
-  `acceptance_pruned`, `acceptance_override`.
+  `acceptance_pruned`, `acceptance_override`, `intake_*` (a request has no task, and the
+  composer reports its own outcome).
 
 `task_resumed` is a real status transition and the drawer renders it, but the feed does not
 surface the automatic `awaiting → todo` return. That is a named product decision, not a default.
@@ -347,8 +348,10 @@ queue, the worker-session state and the ledger are the dispatch authorities.
 
 **Dispatch** (`DISPATCH_EVENTS`): `task_created`, `task_moved`, `task_reopened`, `task_delivered`,
 `task_resumed`, `report_written`, `report_waived`, `relation_added`, `relation_removed`,
-`import_completed`, plus `task_updated` only when `fields` intersects `assigneeId`,
-`assigneeKind`, `kind`, `labels`, `meta`.
+`import_completed`, `intake_requested`, plus `task_updated` only when `fields` intersects
+`assigneeId`, `assigneeKind`, `kind`, `labels`, `meta`. The request's two terminal events are
+`IGNORED_EVENTS`: the decision lane or `Board` wrote them, and the request they name is no
+longer pending.
 
 Two narrow field rules sit before the actor suppression (`CONDITIONAL_EVENTS` names
 `task_updated` and `comment_added`):
@@ -628,6 +631,9 @@ should expect a new one.
 | `attachment_updated` | `commands/attachments.mjs` (content PUT) | task | same, with the new `size` | yes |
 | `attachment_removed` | `commands/attachments.mjs` | task | same | yes |
 | `import_completed` | historical import | none | counters (`cards`, `tasks`, …) | yes |
+| `intake_requested` | `commands/intake.mjs` (`createIntake`) | none | `intake_id`, `project_id` | yes |
+| `intake_consumed` | `commands/intake.mjs` (`completeIntake`) | none | `intake_id`, `refs` | yes |
+| `intake_failed` | `commands/intake.mjs` (`failIntake`) | none | `intake_id`, `reason` | yes |
 
 Notes that the table cannot carry:
 

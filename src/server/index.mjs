@@ -62,6 +62,7 @@ import { handleAttachmentContent, registerAttachmentRoutes } from "./routes/atta
 import { registerCommentRoutes } from "./routes/comments.mjs";
 import { registerDictionaryRoutes } from "./routes/dictionary.mjs";
 import { registerExportRoutes } from "./routes/export.mjs";
+import { registerIntakeRoutes } from "./routes/intake.mjs";
 import { registerLabelRoutes } from "./routes/labels.mjs";
 import { registerProjectRoutes } from "./routes/projects.mjs";
 import { registerRelationRoutes } from "./routes/relations.mjs";
@@ -177,6 +178,7 @@ export function registerApiRoutes(router, surface) {
   registerSlaRoutes(router, surface);
   registerDictionaryRoutes(router, surface);
   registerLabelRoutes(router, surface);
+  registerIntakeRoutes(router, surface);
   registerExportRoutes(router, surface);
   // The attachment **metadata** routes are JSON like every other route; the byte
   // pair next to them is not, and is matched before dispatch (`handle` below).

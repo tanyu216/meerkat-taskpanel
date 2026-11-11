@@ -122,6 +122,12 @@ export const FEED_EXCLUDED_EVENTS = Object.freeze([
   "progress",
   "attachment_updated",
   "import_completed",
+  // 0007 — an intake request has no task, and the feed is a task's account. The
+  // composer reports its own outcome through a toast; the request read is the
+  // human's record.
+  "intake_requested",
+  "intake_consumed",
+  "intake_failed",
 ]);
 
 /**

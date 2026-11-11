@@ -1020,11 +1020,37 @@ export async function reloadConflict() {
 
 /* --------------------------------------------------------- create / comment */
 
-export async function createTask(payload) {
-  const data = await api.createTask({ project_id: board.currentProjectId, ...payload });
-  if (data?.task) replaceTask(data.task);
-  pushToast(`${t("toast.created")} · ${data?.task?.identifier ?? ""}`, "success");
-  return data.task;
+/**
+ * 0007 — submit a description instead of creating a card. The request is read
+ * back by id when its terminal event lands, so the human hears the outcome
+ * without the board having to expose a request list.
+ */
+let awaitedIntakeId = null;
+
+export async function createIntake(payload) {
+  const data = await api.createIntake(payload);
+  const request = data?.request ?? null;
+  awaitedIntakeId = request?.id ?? null;
+  pushToast(t("toast.intakeAccepted"), "success");
+  return request;
+}
+
+/**
+ * The terminal event is a signal, not the payload: re-read the request and
+ * report what actually happened. A page that never waited for one (a reload)
+ * has no awaited id and stays quiet.
+ */
+async function announceIntake(id) {
+  try {
+    const { request } = await api.intake(id);
+    if (request?.status === "consumed") {
+      pushToast(`${t("toast.intakeConsumed")} ${(request.created_refs ?? []).join(", ")}`.trim(), "success");
+    } else if (request?.status === "failed") {
+      pushToast(`${t("toast.intakeFailed")} ${request.last_error ?? ""}`.trim(), "danger");
+    }
+  } catch {
+    // The outcome is readable through the board; a lost toast is not a failure.
+  }
 }
 
 export async function addComment(ref, body) {
@@ -1525,6 +1551,18 @@ function handleActivity(activity, revision) {
   if (!isKnownEvent(event) && !unknownEvents.has(event)) {
     unknownEvents.add(event);
     console.warn(`[board] unknown activity event: ${event}`);
+  }
+
+  // 0007 — the request this page submitted just reached a terminal state. The
+  // event names it; the request itself is re-read (signals, not payloads).
+  if (
+    (event === "intake_consumed" || event === "intake_failed") &&
+    typeof activity?.changes?.intake_id === "string" &&
+    activity.changes.intake_id === awaitedIntakeId
+  ) {
+    const intakeId = activity.changes.intake_id;
+    awaitedIntakeId = null;
+    void announceIntake(intakeId);
   }
 
   const target = activity?.task_id;

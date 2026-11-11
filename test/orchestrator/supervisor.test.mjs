@@ -873,6 +873,45 @@ describe("buildQuestionPrompt (pure)", () => {
     assert.match(triage, /When no graph\s+matches/);
   });
 
+  it("turns an intake row into deliverable cards and records the outcome", () => {
+    const intake = buildQuestionPrompt(
+      [{
+        intake: true,
+        card: null,
+        project: "P",
+        target_dir: "/work/app",
+        request_id: "r-1",
+        request_text: "Fix the board's blank first paint",
+        requested_by: "Terry",
+      }],
+      { actorKind: "claude" },
+    );
+    assert.match(intake, /intake r-1 \(asked by Terry\) — a description for P:/);
+    assert.match(intake, /Fix the board's blank first paint/);
+    assert.match(intake, /taskctl issue list --meta intake_request=r-1 --json/);
+    assert.match(intake, /--meta intake_request=r-1 --idem "intake\|r-1\|<n>"/);
+    assert.match(intake, /--reporter "Terry"/);
+    assert.match(intake, /taskctl intake complete r-1 --created <refs>/);
+    assert.match(intake, /taskctl intake fail r-1 --reason/);
+    assert.match(intake, /--agent Director --actor-kind claude/);
+    assert.doesNotMatch(intake, /--agent alice/);
+  });
+
+  it("bounds a huge intake description", () => {
+    const huge = buildQuestionPrompt(
+      [{
+        intake: true,
+        project: "P",
+        target_dir: "/work/app",
+        request_id: "r-2",
+        request_text: "x".repeat(200_000),
+      }],
+      { actorKind: "claude" },
+    );
+    assert.match(huge, /\[truncated\]/);
+    assert.ok(huge.length < 60_000);
+  });
+
   it("signs a route row as the Director too", () => {
     const route = buildQuestionPrompt(
       [{ card: "T-4", project: "P", target_dir: "/work/app", agent: "alice", route: true, title: "wire it" }],

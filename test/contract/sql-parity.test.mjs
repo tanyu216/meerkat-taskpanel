@@ -74,6 +74,7 @@ describe("contract/sql-parity — migration files", () => {
       "0004_review_kind.sql",
       "0005_transition_edges.sql",
       "0006_blocked_to_backlog.sql",
+      "0007_intake_requests.sql",
     ]);
     const baseline = files.find((f) => f.file === "0001_init.sql");
     assert.deepEqual(addedColumns(baseline.sql), [], "the baseline declares every column in its CREATE TABLE");

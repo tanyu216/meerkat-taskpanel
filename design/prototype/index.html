@@ -4129,357 +4129,49 @@
     </aside>
 
     <!-- =====================================================================
-         B10 · Create task modal
+         B10 · Create-task composer — one description, no routing form. The
+         decision lane decides the card's fields; the human states the outcome
+         and picks the project.
          ================================================================== -->
     <dialog class="modal" data-create-task>
-      <div class="modal-box td-modal-box">
+      <div class="modal-box td-modal-box td-intake-box">
         <h2 class="text-lg font-semibold" data-i18n="createTask.title">New task</h2>
         <form data-create-task-form>
-          <!-- Two columns: the work itself on the left, its routing on the
-               right. Equal tracks above 760px, stacked at or below it — see
-               `.td-two-col` in src/input.css. -->
-          <div class="td-two-col" data-create-two-col>
-            <div class="td-col-left" data-create-left>
-              <label class="td-field">
-                <span class="td-field-label" data-i18n="createTask.field.title">Title</span>
-                <input class="input input-sm td-input w-full" type="text" name="title" data-create-task-title required />
-                <span class="td-field-hint" data-i18n="createTask.field.titleHint">Short, verb first. Shown on the card.</span>
-              </label>
+          <label class="td-field">
+            <span class="td-field-label" data-i18n="createTask.field.description">Describe the work</span>
+            <textarea
+              class="td-textarea td-intake-text"
+              rows="5"
+              data-create-task-text
+              data-i18n-placeholder="createTask.textHint"
+              data-i18n-aria-label="createTask.field.description"
+              placeholder="Say what should be true when this is done…"
+              aria-label="Describe the work"
+            ></textarea>
+            <span class="td-field-hint" data-create-task-hint data-i18n="createTask.intakeHint">The supervisor hands this to the director, which files the cards onto the board.</span>
+          </label>
 
-              <div class="td-field td-field-grow">
-                <span class="td-field-label" data-i18n="createTask.field.description">Description</span>
-                <!-- Markdown editor — a monospace source pane with live syntax
-                     highlighting and a rendered preview pane. Both are drawn
-                     locally: the renderer and the highlighter are vendored
-                     files under prototype/vendor/, never a network request. -->
-                <div class="td-md-editor" data-md-editor>
-                  <div class="td-md-bar">
-                    <div class="tabs tabs-box td-md-tabs" role="group" data-i18n-aria-label="md.label" aria-label="Markdown view">
-                      <button type="button" class="tab td-tab td-md-toggle" data-md-toggle="write" aria-pressed="true" data-i18n="md.write">Write</button>
-                      <button type="button" class="tab td-tab td-md-toggle" data-md-toggle="preview" aria-pressed="false" data-i18n="md.preview">Preview</button>
-                      <button type="button" class="tab td-tab td-md-toggle" data-md-toggle="split" aria-pressed="false" data-i18n="md.split">Split</button>
-                    </div>
-                    <span class="td-md-hint" data-i18n="md.hint">Markdown · rendered locally</span>
-                  </div>
-                  <div class="td-md-panes" data-md-mode="write">
-                    <div class="td-md-pane td-md-pane-write">
-                      <pre class="td-md-text td-md-highlight" data-md-highlight aria-hidden="true"></pre>
-                      <textarea
-                        class="td-md-text td-md-source"
-                        name="description"
-                        rows="8"
-                        spellcheck="false"
-                        autocomplete="off"
-                        data-md-source
-                        data-create-task-description
-                        data-i18n-aria-label="createTask.field.description"
-                        aria-label="Description"
-                      >## Context
-
-What is true today, and why this matters now.
-
-## Acceptance
-
-- [ ] An observable outcome, not an activity
-- [ ] The check that proves it
-
-```sh
-# how to verify
-npm test
-```
-
-| Key | Action |
-| --- | ------ |
-| Enter | Open the task |
-| Esc | Close the drawer |</textarea>
-                    </div>
-                    <div class="td-md-pane td-md-pane-preview">
-                      <div class="td-gfm td-md-text td-md-preview" data-md-preview></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="td-col-right" data-create-right>
-              <label class="td-field">
-                <span class="td-field-label" data-i18n="createTask.field.priority">Priority</span>
-                <select class="select select-sm td-select w-full" name="priority" data-create-task-priority>
-                  <option value="none" data-i18n="priority.none">None</option>
-                  <option value="low" data-i18n="priority.low">Low</option>
-                  <option value="medium" data-i18n="priority.medium">Medium</option>
-                  <option value="high" data-i18n="priority.high">High</option>
-                  <option value="urgent" data-i18n="priority.urgent">Urgent</option>
-                </select>
-              </label>
-
-              <!-- Assignee — free text with fuzzy autocomplete over the
-                   in-memory roster. There is deliberately no roster editor
-                   anywhere: a new name is kept the moment it is used. -->
-              <div class="td-field">
-                <label class="td-field-label" for="td-create-assignee" data-i18n="createTask.field.assignee">Assignee</label>
-                <div class="td-combo">
-                  <input
-                    class="input input-sm td-input w-full"
-                    type="text"
-                    id="td-create-assignee"
-                    name="assignee"
-                    autocomplete="off"
-                    spellcheck="false"
-                    data-assignee-input
-                    role="combobox"
-                    aria-autocomplete="list"
-                    aria-haspopup="listbox"
-                    aria-controls="td-assignee-menu-create"
-                    data-i18n-title="combo.hint"
-                    title="↑↓ to choose, Enter to accept, Esc to dismiss."
-                    data-i18n-placeholder="combo.assigneePlaceholder"
-                    placeholder="Search or type a new name…"
-                  />
-                  <ul class="menu td-combo-menu" id="td-assignee-menu-create" role="listbox" data-assignee-menu hidden>
-                    <li><button type="button" data-assignee-option data-assignee-value="elon" data-assignee-kind="agent" data-agent-platform="openclaw">elon</button></li>
-                    <li><button type="button" data-assignee-option data-assignee-value="jobs" data-assignee-kind="agent" data-agent-platform="claude">jobs</button></li>
-                    <li><button type="button" data-assignee-option data-assignee-value="linus" data-assignee-kind="agent" data-agent-platform="claude">linus</button></li>
-                    <li><button type="button" data-assignee-option data-assignee-value="turing" data-assignee-kind="agent" data-agent-platform="codex">turing</button></li>
-                    <li><button type="button" data-assignee-option data-assignee-value="simons" data-assignee-kind="agent" data-agent-platform="claude">simons</button></li>
-                    <li><button type="button" data-assignee-option data-assignee-value="assistant" data-assignee-kind="agent" data-agent-platform="pi">assistant</button></li>
-                    <li><button type="button" data-assignee-option data-assignee-value="Terry" data-assignee-kind="human">Terry</button></li>
-                  </ul>
-                </div>
-              </div>
-
-              <label class="td-field">
-                <span class="td-field-label" data-i18n="createTask.field.project">Project</span>
-                <select class="select select-sm td-select w-full" name="project" data-create-task-project>
-                  <option value="MeerkatTaskPanel">MeerkatTaskPanel</option>
-                  <option value="Orchestrator">Orchestrator</option>
-                  <option value="Site Refresh">Site Refresh</option>
-                </select>
-              </label>
-
-              <label class="td-field">
-                <span class="td-field-label" data-i18n="createTask.field.status">Status</span>
-                <select class="select select-sm td-select w-full" name="status" data-create-task-status>
-                  <option value="backlog" data-i18n="status.backlog">Backlog</option>
-                  <option value="todo" data-i18n="status.todo">To Do</option>
-                  <option value="in_progress" data-i18n="status.in_progress">In Progress</option>
-                  <option value="in_review" data-i18n="status.in_review">In Review</option>
-                  <option value="blocked" data-i18n="status.blocked">Blocked</option>
-                  <option value="done" data-i18n="status.done">Done</option>
-                  <option value="canceled" data-i18n="status.canceled">Canceled</option>
-                </select>
-              </label>
-
-              <!-- Reporter — the same free-text + fuzzy-match control, over the
-                   reporters the board already knows. No management entry. -->
-              <div class="td-field">
-                <label class="td-field-label" for="td-create-reporter" data-i18n="createTask.field.reporter">Reporter</label>
-                <div class="td-combo">
-                  <input
-                    class="input input-sm td-input w-full"
-                    type="text"
-                    id="td-create-reporter"
-                    name="reporter"
-                    autocomplete="off"
-                    spellcheck="false"
-                    data-reporter-input
-                    role="combobox"
-                    aria-autocomplete="list"
-                    aria-haspopup="listbox"
-                    aria-controls="td-reporter-menu-create"
-                    data-i18n-title="combo.hint"
-                    title="↑↓ to choose, Enter to accept, Esc to dismiss."
-                    data-i18n-placeholder="combo.reporterPlaceholder"
-                    placeholder="Search or type a new name…"
-                  />
-                  <ul class="menu td-combo-menu" id="td-reporter-menu-create" role="listbox" data-reporter-menu hidden>
-                    <li><button type="button" data-reporter-option data-reporter-value="Terry">Terry</button></li>
-                  </ul>
-                </div>
-              </div>
-
-              <!-- Labels — the same free-text + fuzzy-match control as
-                   Assignee/Reporter, used many times at once: each accepted
-                   name becomes a removable chip. There is no preset list and
-                   no editor anywhere; a name typed for the first time is a
-                   new label, and `bug`/`Bug`/`bug ` are one label that keeps
-                   the spelling it was first written with. -->
-              <div class="td-field">
-                <div class="td-field-label-row">
-                  <label class="td-field-label" for="td-create-labels" data-i18n="createTask.field.labels">Labels</label>
-                  <span class="td-optional" data-i18n="createTask.optional">Optional</span>
-                </div>
-                <div class="td-combo" data-create-task-labels>
-                  <div class="td-chips" data-label-chips></div>
-                  <div class="td-combo-field">
-                    <input
-                      class="input input-sm td-input w-full"
-                      type="text"
-                      id="td-create-labels"
-                      name="labels"
-                      autocomplete="off"
-                      spellcheck="false"
-                      data-label-input
-                      role="combobox"
-                      aria-autocomplete="list"
-                      aria-haspopup="listbox"
-                      aria-controls="td-label-menu-create"
-                      data-i18n-title="combo.hint"
-                      title="↑↓ to choose, Enter to add, Esc to dismiss."
-                      data-i18n-placeholder="combo.labelsPlaceholder"
-                      placeholder="Search or type a new label…"
-                    />
-                  </div>
-                  <ul class="menu td-combo-menu" id="td-label-menu-create" role="listbox" data-label-menu hidden>
-                    <li><button type="button" data-label-option data-label-value="a11y">a11y</button></li>
-                    <li><button type="button" data-label-option data-label-value="api">api</button></li>
-                    <li><button type="button" data-label-option data-label-value="backend">backend</button></li>
-                    <li><button type="button" data-label-option data-label-value="board">board</button></li>
-                    <li><button type="button" data-label-option data-label-value="ci">ci</button></li>
-                    <li><button type="button" data-label-option data-label-value="design">design</button></li>
-                    <li><button type="button" data-label-option data-label-value="docs">docs</button></li>
-                    <li><button type="button" data-label-option data-label-value="perf">perf</button></li>
-                    <li><button type="button" data-label-option data-label-value="security">security</button></li>
-                    <li><button type="button" data-label-option data-label-value="ui">ui</button></li>
-                    <li><button type="button" data-label-option data-label-value="ux">ux</button></li>
-                  </ul>
-                  <!-- The seed rows above are the board's own labels, shown as
-                       the no-JS floor; the control redraws them from the live
-                       roster the moment it is focused. They are the inert
-                       resting state, not a source of truth. -->
-                </div>
-                <span class="td-field-hint" data-i18n="createTask.field.labelsHint">Labels grow as they are used. There is nothing to manage.</span>
-              </div>
-
-              <!-- Parent — at most one existing task in this project, the one
-                   this task rolls up to (relations type `parent`). Single
-                   select; the value is the task identifier, clearable. -->
-              <div class="td-field">
-                <div class="td-field-label-row">
-                  <label class="td-field-label" for="td-create-parent" data-i18n="createTask.field.parent">Parent</label>
-                  <span class="td-optional" data-i18n="createTask.optional">Optional</span>
-                </div>
-                <div class="td-combo" data-create-task-parent>
-                  <div class="td-chips" data-parent-chips></div>
-                  <div class="td-combo-field">
-                    <input
-                      class="input input-sm td-input w-full"
-                      type="text"
-                      id="td-create-parent"
-                      name="parent"
-                      autocomplete="off"
-                      spellcheck="false"
-                      data-parent-input
-                      role="combobox"
-                      aria-autocomplete="list"
-                      aria-haspopup="listbox"
-                      aria-controls="td-parent-menu-create"
-                      data-i18n-title="combo.taskHint"
-                      title="↑↓ to choose, Enter to accept, Esc to dismiss."
-                      data-i18n-placeholder="combo.parentPlaceholder"
-                      placeholder="Search project tasks…"
-                    />
-                    <button
-                      type="button"
-                      class="td-combo-clear"
-                      data-parent-clear
-                      data-i18n-aria-label="combo.clear"
-                      data-i18n-title="combo.clear"
-                      aria-label="Clear"
-                      title="Clear"
-                    >
-                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" /></svg>
-                    </button>
-                  </div>
-                  <ul class="menu td-combo-menu" id="td-parent-menu-create" role="listbox" data-parent-menu hidden>
-                    <!-- Terry 2026-10-14 — the display samples this field's spec
-                         names, kept at the head of the seed so a screenshot catches
-                         them: an over-cap identifier (`INVENTORY-0042` → `INVENTORY-…`)
-                         and a title long enough that the row's ellipsis has to fire,
-                         then an identifier inside the cap (`PROJ-0007`, nine
-                         characters) that must come through whole.
-                         Both keep the whole value on `data-parent-value` and the whole
-                         title on `title`, so the seed stays inert data rather than a
-                         second source of truth. -->
-                    <li><button type="button" data-parent-option data-parent-value="INVENTORY-0042" title="Reconcile the quarterly inventory ledger against vendor manifests and flag every drift"><span class="td-mono td-combo-id">INVENTORY-…</span><span class="td-combo-title">Reconcile the quarterly inventory ledger against vendor manifests and flag every drift</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-147" title="Backfill the archived sprint audit trail and re-derive every rollup before the freeze"><span class="td-mono td-combo-id">TD-147</span><span class="td-combo-title">Backfill the archived sprint audit trail and re-derive every rollup before the freeze</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="PROJ-0007" title="Add bulk status change to board selection"><span class="td-mono td-combo-id">PROJ-0007</span><span class="td-combo-title">Add bulk status change to board selection</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-129" title="Audit dependency licences for vendored assets"><span class="td-mono td-combo-id">TD-129</span><span class="td-combo-title">Audit dependency licences for vendored assets</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-128" title="Wire keyboard navigation across board columns"><span class="td-mono td-combo-id">TD-128</span><span class="td-combo-title">Wire keyboard navigation across board columns</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-133" title="Expose task version in the edit response"><span class="td-mono td-combo-id">TD-133</span><span class="td-combo-title">Expose task version in the edit response</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-125" title="Draft the v1 prototype of the task board"><span class="td-mono td-combo-id">TD-125</span><span class="td-combo-title">Draft the v1 prototype of the task board</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-130" title="Tighten filter debounce and query state"><span class="td-mono td-combo-id">TD-130</span><span class="td-combo-title">Tighten filter debounce and query state</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-124" title="Add agent session provenance block"><span class="td-mono td-combo-id">TD-124</span><span class="td-combo-title">Add agent session provenance block</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-126" title="Skeleton loading for list view"><span class="td-mono td-combo-id">TD-126</span><span class="td-combo-title">Skeleton loading for list view</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-123" title="Resolve duplication in timeline events"><span class="td-mono td-combo-id">TD-123</span><span class="td-combo-title">Resolve duplication in timeline events</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-117" title="Ship daisyUI theme mapping for tokens"><span class="td-mono td-combo-id">TD-117</span><span class="td-combo-title">Ship daisyUI theme mapping for tokens</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-119" title="Add per-project identifier prefixes"><span class="td-mono td-combo-id">TD-119</span><span class="td-combo-title">Add per-project identifier prefixes</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="TD-112" title="Prototype an emoji reaction bar"><span class="td-mono td-combo-id">TD-112</span><span class="td-combo-title">Prototype an emoji reaction bar</span></button></li>
-                  </ul>
-                  <!-- The seed rows above mirror the working project's tasks and are
-                       redrawn from the live board the moment the control is focused;
-                       they are the inert resting state, not a source of truth. -->
-                </div>
-                <span class="td-field-hint" data-i18n="createTask.field.parentHint">The task this one rolls up to. One parent, at most.</span>
-              </div>
-
-              <!-- Depends on — a prerequisite DAG. Multi-select over this
-                   project's tasks; each choice is a removable chip and the
-                   list dedupes. UI only: no real graph or cycle check. -->
-              <div class="td-field">
-                <div class="td-field-label-row">
-                  <label class="td-field-label" for="td-create-depends" data-i18n="createTask.field.depends">Depends on</label>
-                  <span class="td-optional" data-i18n="createTask.optional">Optional</span>
-                </div>
-                <div class="td-combo" data-create-task-depends>
-                  <div class="td-chips" data-depends-chips></div>
-                  <div class="td-combo-field">
-                    <input
-                      class="input input-sm td-input w-full"
-                      type="text"
-                      id="td-create-depends"
-                      name="depends"
-                      autocomplete="off"
-                      spellcheck="false"
-                      data-depends-input
-                      role="combobox"
-                      aria-autocomplete="list"
-                      aria-haspopup="listbox"
-                      aria-controls="td-depends-menu-create"
-                      data-i18n-title="combo.taskHint"
-                      title="↑↓ to choose, Enter to add, Esc to dismiss."
-                      data-i18n-placeholder="combo.dependsPlaceholder"
-                      placeholder="Add a prerequisite…"
-                    />
-                  </div>
-                  <ul class="menu td-combo-menu" id="td-depends-menu-create" role="listbox" data-depends-menu hidden>
-                    <!-- The same two display samples the parent menu carries, so the
-                         multi-select offers the identical reading: one over-cap
-                         identifier and one title that cannot fit on a row. -->
-                    <li><button type="button" data-depends-option data-depends-value="INVENTORY-0042" title="Reconcile the quarterly inventory ledger against vendor manifests and flag every drift"><span class="td-mono td-combo-id">INVENTORY-…</span><span class="td-combo-title">Reconcile the quarterly inventory ledger against vendor manifests and flag every drift</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-147" title="Backfill the archived sprint audit trail and re-derive every rollup before the freeze"><span class="td-mono td-combo-id">TD-147</span><span class="td-combo-title">Backfill the archived sprint audit trail and re-derive every rollup before the freeze</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="PROJ-0007" title="Add bulk status change to board selection"><span class="td-mono td-combo-id">PROJ-0007</span><span class="td-combo-title">Add bulk status change to board selection</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-129" title="Audit dependency licences for vendored assets"><span class="td-mono td-combo-id">TD-129</span><span class="td-combo-title">Audit dependency licences for vendored assets</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-128" title="Wire keyboard navigation across board columns"><span class="td-mono td-combo-id">TD-128</span><span class="td-combo-title">Wire keyboard navigation across board columns</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-133" title="Expose task version in the edit response"><span class="td-mono td-combo-id">TD-133</span><span class="td-combo-title">Expose task version in the edit response</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-125" title="Draft the v1 prototype of the task board"><span class="td-mono td-combo-id">TD-125</span><span class="td-combo-title">Draft the v1 prototype of the task board</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-130" title="Tighten filter debounce and query state"><span class="td-mono td-combo-id">TD-130</span><span class="td-combo-title">Tighten filter debounce and query state</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-124" title="Add agent session provenance block"><span class="td-mono td-combo-id">TD-124</span><span class="td-combo-title">Add agent session provenance block</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-126" title="Skeleton loading for list view"><span class="td-mono td-combo-id">TD-126</span><span class="td-combo-title">Skeleton loading for list view</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-123" title="Resolve duplication in timeline events"><span class="td-mono td-combo-id">TD-123</span><span class="td-combo-title">Resolve duplication in timeline events</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-117" title="Ship daisyUI theme mapping for tokens"><span class="td-mono td-combo-id">TD-117</span><span class="td-combo-title">Ship daisyUI theme mapping for tokens</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-119" title="Add per-project identifier prefixes"><span class="td-mono td-combo-id">TD-119</span><span class="td-combo-title">Add per-project identifier prefixes</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="TD-112" title="Prototype an emoji reaction bar"><span class="td-mono td-combo-id">TD-112</span><span class="td-combo-title">Prototype an emoji reaction bar</span></button></li>
-                  </ul>
-                </div>
-                <span class="td-field-hint" data-i18n="createTask.field.dependsHint">Tasks that must finish first. Leave blank to create.</span>
-              </div>
+          <div class="td-field">
+            <span class="td-field-label" data-i18n="createTask.examples">Examples</span>
+            <div class="td-intake-examples">
+              <button type="button" class="btn btn-xs btn-ghost" data-create-task-example data-example-kind="simple" data-i18n="createTask.example.simple">Fix the board occasionally going blank after sign-in</button>
+              <button type="button" class="btn btn-xs btn-ghost" data-create-task-example data-example-kind="medium" data-i18n="createTask.example.medium">Add label filtering to the board, with tests</button>
+              <button type="button" class="btn btn-xs btn-ghost" data-create-task-example data-example-kind="complex" data-i18n="createTask.example.complex">Rework task creation into a one-line description: the web keeps one input, the supervisor hands it to the director, which splits it into cards and routes them</button>
             </div>
           </div>
 
+          <label class="td-field">
+            <span class="td-field-label" data-i18n="createTask.field.project">Project</span>
+            <select class="select select-sm td-select w-full" name="project" data-create-task-project>
+              <option value="MeerkatTaskPanel">MeerkatTaskPanel</option>
+              <option value="Orchestrator">Orchestrator</option>
+              <option value="Site Refresh">Site Refresh</option>
+            </select>
+          </label>
+
           <div class="mt-5 flex justify-end gap-2">
             <button type="button" class="btn btn-ghost" data-modal-close data-i18n="modal.cancel">Cancel</button>
-            <button type="submit" class="btn btn-primary" data-i18n="createTask.submit">Create task</button>
+            <button type="submit" class="btn btn-primary" data-create-task-submit data-i18n="createTask.submit">Hand to the team</button>
           </div>
         </form>
       </div>
