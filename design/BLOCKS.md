@@ -904,9 +904,17 @@ deliberate: `.td-modal-box` also sets a width (and its ≤760 branch another), s
 rule names both to win on specificity. Both trees measure 640px at 1512 and at 760
 (`R18`; `design/fidelity-r18.md`).
 
-**An example is a sentence, not a label.** `.td-intake-examples .btn` wraps
-(`white-space: normal`, `max-width: 100%`, `height: auto`), so the complex example fills the
-row instead of widening the panel.
+**An example is a sentence, not a label, and a ladder, not a chip cloud.** R19 makes
+`.td-intake-examples` a column (`flex-direction: column`); each `.td-intake-examples .btn`
+takes the whole row (`width: 100%`, `justify-content: flex-start`, `white-space: normal`,
+`height: auto`), so the complex example wraps **inside its own row** instead of widening the
+panel. The three rows read simple → medium → complex in document order
+(`design/fidelity-r19.md`).
+
+**The set teaches the routing vocabulary.** The simple example names an assignee and the
+highest priority; the medium one names a dependency and an assignee; the complex one names a
+development → Turing-test handoff. Those are the facts the director has to decide when it
+files the cards, so the examples show that a description may carry them.
 
 **The receipt is a toast.** The prototype's submit shows `toast.intakeAccepted` and clears the
 dialog; the implementation posts `POST /api/v1/intake` and reads the request back when its

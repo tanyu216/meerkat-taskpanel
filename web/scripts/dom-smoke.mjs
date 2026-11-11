@@ -4510,6 +4510,27 @@ export async function run() {
     composerCheck(composerState.examples === 3, `found ${composerState.examples} example chips, expected 3`);
     composerCheck(composerState.twoCol === 0 && composerState.titleField === 0, "the old two-column routing form is still rendered");
 
+    // R19 — the examples are a reading ladder, one full-width row each.
+    const composerRows = await page.evaluate(() => {
+      const container = document.querySelector("[data-create-task] [data-create-task-examples]");
+      const buttons = [...document.querySelectorAll("[data-create-task] [data-create-task-example]")];
+      const box = container?.getBoundingClientRect();
+      return {
+        direction: container ? getComputedStyle(container).flexDirection : null,
+        width: Math.round(box?.width ?? 0),
+        rows: buttons.map((button) => {
+          const rect = button.getBoundingClientRect();
+          return { top: Math.round(rect.top), width: Math.round(rect.width) };
+        }),
+      };
+    });
+    composerCheck(composerRows.direction === "column", `the examples are laid out ${composerRows.direction}, not one per row`);
+    composerCheck(new Set(composerRows.rows.map((row) => row.top)).size === 3, "two examples share a row");
+    composerCheck(
+      composerRows.rows.every((row) => row.width >= composerRows.width - 2),
+      `an example is narrower than the row (${JSON.stringify(composerRows.rows)} in ${composerRows.width}px)`,
+    );
+
     // an example fills the box; the submit wakes up
     await page.click('[data-create-task] [data-create-task-example][data-example-kind="medium"]');
     await page.waitForTimeout(120);

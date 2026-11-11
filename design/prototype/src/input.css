@@ -4424,16 +4424,20 @@ html[data-theme="dark"] .modal-box {
     resize: vertical;
   }
 
+  /* R19 — one example per row: the three sentences are a reading ladder
+     (simple → complex), not a chip cloud, so the column order is the order. */
   .td-intake-examples {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 8px;
   }
-  /* An example is a sentence, not a label: it wraps inside the row instead of
-     widening the panel. */
+  /* An example is a sentence, not a label: it takes the whole row and wraps
+     inside it instead of widening the panel. */
   .td-intake-examples .btn {
+    width: 100%;
     max-width: 100%;
     height: auto;
+    justify-content: flex-start;
     white-space: normal;
     text-align: left;
   }
