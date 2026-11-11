@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Shared implementation for the per-agent-kind installers
-# (claude / openclaw / codex / pi).
+# (claude / codex / pi).
 #
 # The skills are distributed by kind, and each agent kind takes the ones that fit it:
 #
@@ -10,16 +10,14 @@
 #   * `meerkat-director`, `meerkat-chat`, `setup-meerkat` — the team layer. They follow the
 #     **primary** agent kind (`install_team_skills`): the explicit `--supervisor=enable`
 #     actor kind when one is named, else the first claude|codex|pi in normalized --target
-#     order. **OpenClaw never gets them**, because the openclaw-team framework already ships
-#     a per-agent poll and a `task-patrol` — see `scripts/install/openclaw.sh` and
-#     docs/scheduling.md.
+#     order.
 #   * the role skills (`skills/*/role.json`) — `install.sh` assigns each role to the kinds
 #     that already carry it (a fresh role defaults to the primary kind). director/chat/setup
 #     are never detected: the runtime finds the director wherever its skill is installed.
 #
 # Each agent-kind script sources this file and calls the pieces it needs. The two bundle agent kinds
-# (claude, codex) add the config / command / trigger helpers below; the skill-only agent kinds
-# (openclaw, pi) do not (pi still takes the loop, OpenClaw does not).
+# (claude, codex) add the config / command / trigger helpers below; the skill-only agent kind
+# (pi) does not.
 #
 # Honours:
 #
@@ -461,8 +459,7 @@ export_tp_env() {
     else
       # Degrade loudly, never silently: the interpreter still resolves (that is `{{NODE}}`'s
       # job), but a woken worker would not — so *record* that, and let `install_scheduling`
-      # say it, because only it knows whether this agent kind gets units at all. An agent kind with no
-      # supervisor (OpenClaw) renders no unit and must not be warned about one.
+      # say it, because only it knows whether this agent kind gets units at all.
       TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd --shim-dir "$TP_SHIM_DIR")"
       TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron --shim-dir "$TP_SHIM_DIR")"
       TP_CLI_ON_PATH="0"
@@ -646,7 +643,6 @@ primary_agent_kind() {
 #   * otherwise `enable` acts on the FIRST loop kind in --target order; `disable` and
 #     `status` act on EVERY loop kind, so an old three-supervisor install can be seen and
 #     stopped in one command.
-# OpenClaw is never one: it runs openclaw-team's own poll/patrol.
 supervisor_actor_kinds_value() {
   local action="${1:-}" explicit="${2:-}" targets="${3:-}"
   local resolved="" kept="" entry raw kind target old_ifs
@@ -673,11 +669,6 @@ supervisor_actor_kinds_value() {
             *" $entry "*) ;;
             *) resolved="$resolved $entry" ;;
           esac
-          ;;
-        openclaw)
-          IFS="$old_ifs"
-          echo "--supervisor-actor-kinds openclaw: OpenClaw has no meerkat-director supervisor to enable (it runs openclaw-team's own poll/patrol — see docs/scheduling.md)" >&2
-          return 1
           ;;
         server)
           IFS="$old_ifs"
@@ -1345,8 +1336,7 @@ install_skill() {
 #   MEERKAT_TASKPANEL_ROLE_SKILLS (possibly empty) and MEERKAT_TASKPANEL_IS_PRIMARY; a
 #   direct scripts/install/<kind>.sh run has neither, so it keeps the old behaviour (the
 #   whole team on that kind) for the documented direct-invocation path.
-#   Always copies (O6); OpenClaw never calls this — its framework already ships an
-#   equivalent supervisor, so a second one would only race the first for the same cards.
+#   Always copies (O6).
 install_team_skills() {
   team_agent_dir="$1"
   team_label="$2"

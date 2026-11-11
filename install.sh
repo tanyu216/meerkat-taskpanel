@@ -7,7 +7,7 @@
 # through MEERKAT_TASKPANEL_* environment variables.
 #
 # Usage:
-#   install.sh [--target claude|openclaw|codex|pi|server|all] [--prefix <home>]
+#   install.sh [--target claude|codex|pi|server|all] [--prefix <home>]
 #              [--agent-name <name>] [--no-automation]
 #              [--claim-unassigned=yes|no] [--assignee-only]
 #              [--supervisor=enable|disable|status] [--supervisor-actor-kinds <list>]
@@ -63,10 +63,6 @@
 # else the first claude|codex|pi in normalized --target order (`--target all` → claude).
 # Move a role later with /setup-meerkat; the runtime finds meerkat-director wherever its
 # skill is installed.
-#
-# OpenClaw is excluded from the loop on purpose: the openclaw-team framework already
-# ships an equivalent `poll` / `task-patrol`, so a second supervisor would only race the
-# first for the same cards. See scripts/install/openclaw.sh and docs/scheduling.md.
 
 set -eu
 
@@ -112,7 +108,7 @@ With no options on a terminal, an interactive wizard asks every setting.
 Piped input, --dry-run and --yes never prompt and keep the defaults.
 
 Options:
-  --target <agent-kind>  claude | openclaw | codex | pi | server | all
+  --target <agent-kind>  claude | codex | pi | server | all
                     (default: all — every agent above plus the server)
                     A comma-separated list is also accepted (claude,codex).
                     The team skills go to the primary kind: the
@@ -167,8 +163,7 @@ Options:
                     list is refused. disable/status default to EVERY loop kind in
                     --target, so a stray is seen and stopped, and accept a narrowing
                     list.
-                    'openclaw' is rejected (exit 2) — it runs openclaw-team's own
-                    poll/patrol. The values are actor kinds — the same vocabulary
+                    The values are loop actor kinds — the same vocabulary
                     taskctl loop takes on --actor-kind.
   --scheduler <m>   auto | launchd | systemd | cron   (default: auto — launchd on
                     macOS, systemd --user on Linux, cron elsewhere). Only one
@@ -199,7 +194,6 @@ error. Pass --skip-node-check to bypass it.
 
 Destinations:
   claude     <home>/.claude/skills/meerkat
-  openclaw   <home>/.openclaw/skills/meerkat
   codex      <home>/.codex/skills/meerkat
   pi         <home>/.agents/skills/meerkat
 
@@ -212,9 +206,6 @@ director, the human console, the setup command and every role skill (`skills/*/r
   others     — the board skill only. An upgrade refreshes a role on every kind that
               already carries it and is in --target; a role whose only home is outside
               --target is reported and left alone.
-  openclaw   — never the primary loop kind, and no team skills on purpose: the
-              openclaw-team framework's poll / task-patrol automations already are
-              this design (see docs/scheduling.md).
 
 `/setup-meerkat` migrates a role between agent kinds and reports an old `meerkat-loop`
 roles tree as deprecated; a forced reinstall carries an existing one across untouched.
@@ -224,8 +215,7 @@ The team skills are always **copied**, never symlinked: --link names the board s
 or a symlinked director would put the checkout back into the load path the split removes.
 
 The claim policy is written to <program root>/.env.<actor-kind> for the agent kinds that
-build a supervisor (claude, codex, pi); OpenClaw installs
-openclaw-team instead. An install that predates this location is migrated once from
+build a supervisor (claude, codex, pi). An install that predates this location is migrated once from
 <home>/<agent-dir>/meerkat-taskpanel.env, which is then left in place and no longer read.
 
 The supervisor stays opt-in (--supervisor, above): without it, and without the
@@ -581,6 +571,15 @@ DRY_RUN="${DRY_RUN:-${MEERKAT_TASKPANEL_DRY_RUN:-}}"
 NO_AUTOMATION="${NO_AUTOMATION:-${MEERKAT_TASKPANEL_NO_AUTOMATION:-}}"
 SKIP_WEB_BUILD="${SKIP_WEB_BUILD:-${MEERKAT_TASKPANEL_SKIP_WEB_BUILD:-}}"
 
+# OpenClaw used to be a target and now has a documented manual route. Reject it before
+# the wizard can prefill from it; the normalizer below uses the same message.
+reject_openclaw_target() {
+  die 'OpenClaw is no longer an install target - install the meerkat and meerkat-chat skills by hand; see README.md Practice guide -> OpenClaw'
+}
+for raw_target in $(printf '%s' "$TARGET" | tr ',' ' '); do
+  [ "$raw_target" = "openclaw" ] && reject_openclaw_target
+done
+
 # The wizard runs after the Node check (fail fast) and before target
 # normalization / env seeding / dispatch (cancel writes nothing). It answers the
 # claim and supervisor policy too, so setting TTY="" below stops those helpers
@@ -620,16 +619,18 @@ for raw in $TARGET; do
     "") ;;
     all)
       add_target claude
-      add_target openclaw
       add_target codex
       add_target pi
       add_target server
       ;;
-    claude | openclaw | codex | pi | server)
+    claude | codex | pi | server)
       add_target "$entry"
       ;;
+    openclaw)
+      reject_openclaw_target
+      ;;
     *)
-      die "invalid --target: $entry (expected claude|openclaw|codex|pi|server|all)"
+      die "invalid --target: $entry (expected claude|codex|pi|server|all)"
       ;;
   esac
 done
@@ -748,9 +749,8 @@ esac
 # Which loop actor kinds the action applies to (one loop supervisor per machine).
 # `--supervisor-actor-kinds` names the primary kind for `enable` (one only); otherwise `enable` takes the FIRST
 # loop kind in --target order and `disable`/`status` take EVERY loop kind, so an old
-# three-supervisor install can be seen and stopped in one command. OpenClaw is never among
-# them, and is rejected explicitly when named — it runs openclaw-team's own poll/patrol, so
-# there is no meerkat-director supervisor to enable (docs/scheduling.md §OpenClaw: no loop units).
+# three-supervisor install can be seen and stopped in one command. Only loop kinds are
+# accepted; an openclaw identity has no unit to enable here (docs/scheduling.md).
 if ! SUPERVISOR_ACTOR_KINDS="$(supervisor_actor_kinds_value "$SUPERVISOR" "$SUPERVISOR_ACTOR_KINDS_FLAG" "$TARGETS")"; then
   exit 2
 fi
@@ -881,7 +881,7 @@ if [ -n "$SUPERVISOR" ] && [ -n "$supervisor_kinds_csv" ]; then
     echo "install.sh: supervisor: every loop kind in --target, so no stray is left"
   fi
 elif [ -n "$SUPERVISOR" ]; then
-  echo "install.sh: supervisor: $SUPERVISOR — no loop actor kind to act on (OpenClaw runs openclaw-team's own poll/patrol)"
+  echo "install.sh: supervisor: $SUPERVISOR — no loop actor kind to act on"
 fi
 
 if [ -n "$DRY_RUN" ]; then

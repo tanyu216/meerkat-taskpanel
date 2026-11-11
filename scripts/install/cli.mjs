@@ -31,7 +31,7 @@ With no options on a terminal, an interactive wizard asks every setting.
 Piped input, --dry-run and --yes never prompt and keep the defaults below.
 
 Options:
-  --target <list>     agent kinds to install (claude,openclaw,codex,pi),
+  --target <list>     agent kinds to install (claude,codex,pi),
                       "server", or "all" (default: every agent + the server)
   --no-server         install only the agent-kind skills
   --prefix <home>     install under <home> instead of $HOME

@@ -8,9 +8,10 @@ catalog and the one place roles touch a write.
 
 ## Discovery
 
-Only the agent kinds `claude`, `codex` and `pi` are loop kinds (`ROLE_KINDS`); `openclaw` is an
-install target, not a loop kind. The supervisor scans each installed kind's skills tree,
-`<home>/<agent-dir>/skills/*/role.json`:
+Only the agent kinds `claude`, `codex` and `pi` are loop kinds (`ROLE_KINDS`). `openclaw` is
+not an install target: an OpenClaw session can work the board through the two skills installed
+by hand, but it never dispatches role skills. The supervisor scans each installed kind's
+skills tree, `<home>/<agent-dir>/skills/*/role.json`:
 
 - an explicit `--roles-dir` / `MEERKAT_TASKPANEL_ROLES_DIR` directory of role directories
   replaces the scanned set (it is still read, and is not "legacy" when it carries `role.json`);

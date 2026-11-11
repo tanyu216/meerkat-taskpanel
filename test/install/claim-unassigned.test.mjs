@@ -5,9 +5,7 @@
  * `install.sh` asks the question when stdin is a TTY and no flag was given,
  * defaults to **yes** everywhere else, and persists the answer as
  * `<program root>/.env.<actor-kind>` (`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=…`) —
- * the file `taskctl run` reads as its default. OpenClaw is the one
- * agent kind that gets no such file, because it does not build its own supervisor
- * (it installs openclaw-team, whose poll/patrol already implement the design).
+ * the file `taskctl run` reads as its default. Every loop kind gets one.
  * The legacy `<agent-dir>/meerkat-taskpanel.env` is migrated once by the installer.
  *
  * Run with: node --test
@@ -49,7 +47,7 @@ function installEnv(home, bin) {
   };
 }
 
-const KIND_BY_DIR = { ".claude": "claude", ".codex": "codex", ".agents": "pi", ".openclaw": "openclaw" };
+const KIND_BY_DIR = { ".claude": "claude", ".codex": "codex", ".agents": "pi" };
 
 /** The per-kind config path, addressed by the agent dir the assertions name. */
 function configPathOf(home, agentDir) {
@@ -167,13 +165,6 @@ describe("install.sh: claim-unassigned flags and persisted config", () => {
     // A later run that does not force must not silently flip the policy.
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice", "--claim-unassigned=yes"], env).status, 0);
     assert.match(configOf(home, ".claude"), /=no$/m);
-  });
-
-  it("gives OpenClaw no config file — it does not build a supervisor", () => {
-    const home = makeTempDir();
-    const run = runInstall(["--target", "openclaw", "--prefix", home]);
-    assert.equal(run.status, 0, run.stderr);
-    assert.equal(configOf(home, ".openclaw"), null);
   });
 });
 

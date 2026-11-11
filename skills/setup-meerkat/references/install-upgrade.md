@@ -133,9 +133,9 @@ it; use the value-file form when the shell's process list is a concern.
 
 `install.sh` copies `setup-meerkat`, `meerkat-director` and `meerkat-chat` to the **primary
 kind**, and the board skill to every selected kind. Role skills go to the kinds that already
-carry them (a fresh role defaults to the primary kind). OpenClaw gets the board skill only;
-it has no loop and no director. The runtime finds the director wherever it is installed, so
-its location is never a config value.
+carry them (a fresh role defaults to the primary kind).
+The runtime finds the director wherever it is installed, so its location is never a config
+value.
 
 The security toolchain is not this step's: it ships with the **Linus role skill**. Point at
 `<linus-skill-dir>/scripts/security-tools.mjs --check` and let Linus decide during system

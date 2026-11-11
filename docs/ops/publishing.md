@@ -2,7 +2,7 @@
 
 How a Meerkat TaskPanel version is packaged and published across its distribution surfaces:
 **npm**, **git + GitHub Release**, and the per-agent-kind bundles — Claude Code's marketplace,
-OpenClaw, Codex and Pi.
+Codex and Pi.
 
 > **Scope.** A release is three dispatches and one human merge: `release-prep` proposes the
 > tree and opens a pull request, a human merges it, `release-tag` cuts the annotated tag,
@@ -27,10 +27,9 @@ The fourth is not a manifest but it is the release the **running program** repor
 (`taskctl --version`, `/health`, `/meta`, the daemon log and the writer-lock record). The
 tools locate it as a single line, `export const VERSION = "x.y.z";`.
 
-Three agent kinds are not carriers. Codex and OpenClaw install the same
-`.claude-plugin/plugin.json` bundle through the repository-root marketplace, and Pi declares
-itself in the canonical `package.json` itself (its `pi` field) — a row for any would only
-restate one above.
+Two agent kinds are not carriers. Codex installs the same `.claude-plugin/plugin.json`
+bundle through the repository-root marketplace, and Pi declares itself in the canonical
+`package.json` itself (its `pi` field) — a row for either would only restate one above.
 
 There is **no loop version**. `meerkat-director` and the five role skills are distributed by
 `install.sh` from `skills/` rather than as plugins, and they declare no version of their own.
@@ -463,21 +462,14 @@ Editing a skill or the loop is an ordinary source edit.
 
 ## 5. OpenClaw
 
-OpenClaw has one supported route. There is **no native manifest**: a *native* OpenClaw plugin
-is an in-process runtime module that must additionally ship `package.json#openclaw.extensions`
-and an entry point importing the OpenClaw plugin SDK — a real runtime dependency this
-zero-dependency project deliberately does not take. Such a manifest could not be installed as
-what it claimed to be, so the repository ships none (it did until `plugins/` was emptied).
+OpenClaw is **not a publication target**. The release ships the npm package and the
+repository-root bundles; OpenClaw takes `skills/meerkat` and `skills/meerkat-chat` by hand.
+The step-by-step recipe is the OpenClaw subsection of the README's practice guide.
 
-- **Bundle (the supported skill-only route)** — OpenClaw consumes the Claude-format bundle:
-
-```bash
-openclaw plugins install <path> --force --accept-capabilities
-openclaw plugins inspect meerkat-taskpanel    # Format: bundle / Bundle format: claude / skills
-```
-
-Equivalently, placing the skill in `~/.openclaw/skills/` (what `install.sh --target openclaw`
-does) is enough for the skill to be found.
+There is still **no native manifest**: a *native* OpenClaw plugin is an in-process runtime
+module that must additionally ship `package.json#openclaw.extensions` and an entry point
+importing the OpenClaw plugin SDK — a real runtime dependency this zero-dependency project
+deliberately does not take. The repository ships none (it did until `plugins/` was emptied).
 
 ## 6. Codex
 

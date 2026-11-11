@@ -241,7 +241,7 @@ describe("install.sh: the supervisor flag surface", () => {
     assert.equal(existsSync(join(home, ".claude")), false, "a usage error must not install anything");
   });
 
-  it("rejects --supervisor-actor-kinds openclaw, with the reason (exit 2)", () => {
+  it("rejects --supervisor-actor-kinds openclaw as an unknown kind (exit 2)", () => {
     const home = makeTempDir();
     const manager = fakeManager();
     const run = runInstall(
@@ -250,8 +250,7 @@ describe("install.sh: the supervisor flag surface", () => {
     );
 
     assert.equal(run.status, 2);
-    assert.match(run.stderr, /--supervisor-actor-kinds openclaw/);
-    assert.match(run.stderr, /OpenClaw has no meerkat-director supervisor/);
+    assert.match(run.stderr, /invalid --supervisor-actor-kinds: openclaw/);
     assert.equal(existsSync(join(home, ".claude")), false, "nothing is installed when the request is invalid");
     assert.deepEqual(loads(manager), [], "and nothing is loaded");
   });
@@ -981,22 +980,6 @@ describe("install.sh: --dry-run and per-agent-kind selection", () => {
         `${agentDir} must not receive the chat skill`,
       );
     }
-  });
-
-  it("--target openclaw with --supervisor=enable enables nothing, and says so", () => {
-    const home = makeTempDir();
-    const manager = fakeManager();
-    const run = runInstall(
-      ["--target", "openclaw", "--prefix", home, "--supervisor=enable", "--scheduler=launchd"],
-      installEnv(home, manager),
-    );
-
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /no loop actor kind to act on \(OpenClaw runs openclaw-team's own poll\/patrol\)/);
-    assert.doesNotMatch(run.stdout, /supervisor: enabled/);
-    assert.equal(existsSync(join(home, ".openclaw", "scheduling")), false, "OpenClaw still gets no units");
-    assert.equal(existsSync(join(home, ".openclaw", "skills", "meerkat-director")), false, "and no director skill");
-    assert.deepEqual(calls(manager), [], "nothing is loaded for it");
   });
 
   it("auto picks this platform's native mechanism", () => {

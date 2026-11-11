@@ -68,7 +68,7 @@ export const ACTIONS = Object.freeze(["enable", "disable", "status"]);
 export const INTERNAL_ACTIONS = Object.freeze(["machine-status", "restart-if-changed", "relocate-state"]);
 /** The mechanisms `--scheduler` may name, plus `auto` (this platform's one). */
 export const SCHEDULERS = Object.freeze(["auto", "launchd", "systemd", "cron"]);
-/** The actor kinds that run the supervisor. OpenClaw is never among them (D8). */
+/** The actor kinds that run the supervisor. */
 export const LOOP_KINDS = Object.freeze(["claude", "codex", "pi"]);
 /** Every systemd user unit the loop installs — copied before `daemon-reload`. */
 export const SYSTEMD_UNITS = Object.freeze([

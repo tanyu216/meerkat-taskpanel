@@ -130,7 +130,7 @@ describe("cli-wrapper — dry run", () => {
     const claudeAt = runResult.stdout.indexOf("install.sh: claude");
     assert.ok(serverAt !== -1 && claudeAt !== -1, runResult.stdout);
     assert.ok(serverAt < claudeAt, "server must be installed before the agents");
-    for (const agent of ["openclaw", "codex", "pi"]) {
+    for (const agent of ["codex", "pi"]) {
       assert.ok(runResult.stdout.includes(`install.sh: ${agent}`), `${agent} must be part of the default`);
     }
     assert.equal(existsSync(join(home, ".meerkat-taskpanel")), false);

@@ -377,7 +377,6 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 | Agent kind | `target_dir` | `installer` |
 |---|---|---|
 | `claude` | `.claude/skills/meerkat` | `scripts/install/claude.sh` |
-| `openclaw` | `.openclaw/skills/meerkat` | `scripts/install/openclaw.sh` |
 | `codex` | `.codex/skills/meerkat` | `scripts/install/codex.sh` |
 | `pi` | `.agents/skills/meerkat` | `scripts/install/pi.sh` |
 

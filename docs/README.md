@@ -82,7 +82,7 @@ How the product behaves, and why.
 |---|---|
 | [lifecycle.md](lifecycle.md) | The card lifecycle: flow A (create, claim, wait, deliver, accept), the delivery round and the delivery gate, flow B (the review card's identity, dispatch, verdict and outcomes), the workflow pass, containers, the enforcement layers, the standing states, and the decisions and limits behind them. |
 | [acceptance.md](acceptance.md) | The acceptance model — who may close a card: the single-layer card vocabulary (`off | auto | human`), resolution at creation and why the fallback is `auto`, the three modes, review's independence from the closer, the standing states, the three enforcement layers, and the known limits. |
-| [scheduling.md](scheduling.md) | The scheduling model: the ping/continue clocks, the deterministic loop passes, the fire-only cost gate, the atomic-claim dispatch, the event subscriber, the three-agent-kind trigger differences, and why OpenClaw installs the board skill only. |
+| [scheduling.md](scheduling.md) | The scheduling model: the ping/continue clocks, the deterministic loop passes, the fire-only cost gate, the atomic-claim dispatch, the event subscriber, and the three-agent-kind trigger differences. |
 | [sla.md](sla.md) | The SLA design: the wait-time model, why the board computes and the loop notifies, the threshold table and tier ladder, the working-hours basis, the alert tuple, the row detectors, de-duplication and pre-emit re-check, the peer watchdog, and the decisions with their costs. |
 | [events.md](events.md) | The event system's design: the append-only activity log and its revision cursor, the SSE contract and its delivery semantics, each consumer's refresh policy (board, ledger, feed, loop, card watcher), the local event hub, the event catalogue, and the decisions and costs behind them. |
 | [projects.md](projects.md) | The project subsystem: the id and the effective identifier prefix (derivation, uniqueness, immutability), what a project carries, its lifecycle and wire surface, the server-ranked `PROJECTS` order, and why the working directory lives in the machine-local `projects.json` instead. |
@@ -96,8 +96,8 @@ Installing, releasing and watching a deployment.
 
 | Document | Contents |
 |---|---|
-| [install.md](ops/install.md) | Installing: `npx` / npm and source-checkout methods, the server runtime tree at `~/.meerkat-taskpanel`, and installing the skill into Claude Code, OpenClaw, Codex or Pi; `install.sh` usage, the per-agent-kind table and flags. |
-| [publishing.md](ops/publishing.md) | Releasing a version: npm packaging / publish (the tarball is a runnable board carrying `web/dist`), the git tag + GitHub Release pipeline, and the per-agent publication steps (Claude Code marketplace / OpenClaw / Codex / Pi). |
+| [install.md](ops/install.md) | Installing: `npx` / npm and source-checkout methods, the server runtime tree at `~/.meerkat-taskpanel`, and installing the skill into Claude Code, Codex or Pi; OpenClaw's manual two-skill route; `install.sh` usage, the per-agent-kind table and flags. |
+| [publishing.md](ops/publishing.md) | Releasing a version: npm packaging / publish (the tarball is a runnable board carrying `web/dist`), the git tag + GitHub Release pipeline, and the per-agent publication steps (Claude Code marketplace / Codex / Pi; OpenClaw is not a publication target). |
 | [observability.md](ops/observability.md) | The metrics sidecar (`/metrics`, the SLO `/health` verdict, Prometheus rules, OTLP export) and the processes' own structured logs: levels, the text line, request correlation, redaction, `taskd.log` ownership and rotation, and the `TASKD_LOG_*` keys. |
 
 The agent-facing skill definitions live beside the skills themselves:
