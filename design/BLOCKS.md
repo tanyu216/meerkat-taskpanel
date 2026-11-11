@@ -911,10 +911,11 @@ takes the whole row (`width: 100%`, `justify-content: flex-start`, `white-space:
 panel. The three rows read simple → medium → complex in document order
 (`design/fidelity-r19.md`).
 
-**The set teaches the routing vocabulary.** The simple example names an assignee and the
-highest priority; the medium one names a dependency and an assignee; the complex one names a
-development → Turing-test handoff. Those are the facts the director has to decide when it
-files the cards, so the examples show that a description may carry them.
+**The set teaches the routing vocabulary, without repeating the assignee.** The simple
+example names the highest priority; the medium one names a dependency; the complex one names
+the development → Turing-test handoff and the two roles it hands between. Those are the facts
+the director has to decide when it files the cards. Only the complex example names who
+handles the work; the other two show that a priority or a dependency carries on its own.
 
 **The receipt is a toast.** The prototype's submit shows `toast.intakeAccepted` and clears the
 dialog; the implementation posts `POST /api/v1/intake` and reads the request back when its

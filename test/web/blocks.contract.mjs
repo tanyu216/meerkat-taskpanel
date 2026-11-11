@@ -2177,9 +2177,9 @@ const BLOCKS = [
           "parent/depends and the acceptance mode left this surface; the decision lane " +
           "chooses them. The submit is disabled until the box holds text and a project " +
           "is selected. R19 — each example is its own full-width row, in simple → medium " +
-          "→ complex order, and the set names the routing vocabulary the description may " +
-          "carry: an assignee, a priority, a dependency, and a development → Turing-test " +
-          "handoff.",
+          "→ complex order; across the set they name the routing vocabulary the description " +
+          "may carry (a priority, a dependency, and a development → Turing-test handoff), " +
+          "and only the complex example names who handles the work.",
       },
       {
         kind: "manual",
