@@ -122,9 +122,10 @@ holds whichever toolchain the ranges resolve to.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **203 KB** (`tw.css` = 208098
-bytes, 2026-10-15 — the line had gone stale again: it still read 205057 while the file had
-grown to 208140 across the rounds after it, and this change took 42 bytes back off; the
+disk can leak classes into the bundle). Current output: **205 KB** (`tw.css` = 210007
+bytes, 2026-11-11 — R19's three-row examples added 57 bytes to 209950; before that the
+line had gone stale: it still read 205057 while the file had grown to 208140 across the
+rounds after it, and that change took 42 bytes back off; the
 paragraph above says why a rebuild will not land on the number either. That R13 修订 rebuild
 was where 决定甲 withdrew the `✕` beside the assignee control and
 its three rules, so the round is **−549 bytes / −23 lines / +0 lines** against the 205606
@@ -486,7 +487,7 @@ alternative.
 | `07-move-menu.png` | the shared "Move to" menu |
 | `08-filters-agent.png` | assignee filter = Agent |
 | `09-no-results.png` | no-results empty state |
-| `10-create-task-modal.png` | **R18** — the create composer: one description, three examples, the project; the routing fields are gone |
+| `10-create-task-modal.png` | **R19** — the create composer: one description, three example sentences on their own rows, the project; the routing fields are gone |
 | `11…14-viewport-*.png` | 1240 / 980 / 760 / 500 |
 | `15-no-javascript.png` | the same document with its `<script>` tags removed — proof that the core structure survives without JavaScript (all 18 cards visible, because the project filter is the only thing JS removes) |
 | `16-states-panel.png` | the states gallery: loading, empty column, no results, error and the three toast kinds in one frame |
@@ -496,7 +497,7 @@ alternative.
 | `20-drawer-zh.png` | the drawer in Chinese: properties, relation labels, comment role chips and relative timestamps |
 | `21-access-panel-dark.png` | the access panel in dark theme |
 | `22-lang-menu.png` | the language dropdown open above the middle footer cell, `English` marked as the current choice |
-| `26-create-narrow-760.png` | **R18** — the same composer at 760px: one column, the panel capped at 640px |
+| `26-create-narrow-760.png` | **R19** — the same composer at 760px: three full-width example rows, the panel capped at 640px |
 | `33-theme-light-1512.png` | **theme three-state** — `Light`, the no-record default: sun glyph, `Light` label, light board |
 | `34-theme-dark-1512.png` | **theme three-state** — one press on: `Dark`, moon glyph, dark board |
 | `35-theme-auto-darkos-1512.png` | **theme three-state** — two presses on: `Auto` under a **dark** system preference — display glyph, `Auto` label, dark board |
@@ -627,6 +628,11 @@ the old form were either re-shot or retired. `10-create-task-modal` and
 `28-md-write-scroll`, `29-create-parent-dropdown`, `30-create-depends-multiselect`,
 `39`–`42` and `44` (the create-side label frames). The drawer's own frames (`43`,
 `45`–`48`) stay: the label control survives there, and B23's editor is now the drawer's.
+
+**R19 recapture:** the examples became three full-width rows and their copy changed, so
+`10-create-task-modal` and `26-create-narrow-760` are re-shot from the current build at
+1512×950 and 760×900 (DSF 2, transitions disabled, no toast). The panel is 640×498 and
+640×490; the frames are 1280×996 and 1280×980. No other frame shows the composer.
 
 **R4 recapture:** the create dialog changed size, so every frame that shows it was
 re-shot — `10-create-task-modal`, `23-create-two-col`, `24-md-editor-split`,

@@ -120,14 +120,14 @@ async function submit() {
             </span>
           </label>
 
-          <div class="flex flex-col gap-2" data-create-task-examples>
+          <div class="flex flex-col gap-2">
             <span data-i18n="createTask.examples">{{ $t("createTask.examples") }}</span>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex flex-col gap-2" data-create-task-examples>
               <button
                 v-for="example in examples"
                 :key="example.key"
                 type="button"
-                class="btn btn-xs btn-ghost h-auto max-w-full justify-start whitespace-normal text-left"
+                class="btn btn-xs btn-ghost h-auto w-full max-w-full justify-start whitespace-normal text-left"
                 data-create-task-example
                 :data-example-kind="example.key"
                 @click="fillExample(example)"

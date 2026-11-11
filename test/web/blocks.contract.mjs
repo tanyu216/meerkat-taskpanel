@@ -2163,6 +2163,8 @@ const BLOCKS = [
       { kind: "count", selector: "[data-create-task-project]", equals: 1 },
       { kind: "count", selector: "[data-create-task-submit]", equals: 1 },
       { kind: "count", selector: "[data-create-task-hint]", equals: 1 },
+      // R19 — the three examples are a reading ladder, one per row.
+      { kind: "computed", probe: "[data-create-task-examples]", property: "flexDirection", equals: "column" },
       { kind: "absent", selector: "[data-create-task-title]" },
       { kind: "absent", selector: "[data-create-two-col]" },
       { kind: "absent", selector: "[data-create-task-status]" },
@@ -2174,7 +2176,10 @@ const BLOCKS = [
           "and the project the request belongs to. Priority, assignee, status, labels, " +
           "parent/depends and the acceptance mode left this surface; the decision lane " +
           "chooses them. The submit is disabled until the box holds text and a project " +
-          "is selected.",
+          "is selected. R19 — each example is its own full-width row, in simple → medium " +
+          "→ complex order, and the set names the routing vocabulary the description may " +
+          "carry: an assignee, a priority, a dependency, and a development → Turing-test " +
+          "handoff.",
       },
       {
         kind: "manual",

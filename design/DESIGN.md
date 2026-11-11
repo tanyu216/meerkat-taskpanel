@@ -2851,3 +2851,34 @@ escape, close and focus behaviour is the same dialog it was.
   dialog files no card, so there is no kind to withhold.
 - **`web/scripts/dialog-track-parity.mjs`** is retired: there is no second track to compare.
   The combo geometry leg reads the drawer alone.
+
+## 35. Review round R19 — the composer's examples become a routing ladder
+
+R18 shrank the create surface to one description. The three examples still read as three
+ways to name work ("fix X", "add Y", "rework Z"), so they taught the box's format but not
+what a good description can carry. R19 turns them into a **routing ladder** and puts each
+on its own row.
+
+### 35.1 The examples, and the facts they teach
+
+| Ladder | What it names |
+|---|---|
+| simple | an assignee and the highest priority |
+| medium | a dependency (after the refactor lands) and an assignee |
+| complex | a development role, then a test role, with the test gated on delivery |
+
+The director still decides the card's fields; the examples show that a description may
+state the who, the how-urgent and the what-first. They remain one natural-language
+sentence each, fill the box on press, and stay editable.
+
+### 35.2 Layout
+
+`.td-intake-examples` is a column and each button takes the row: `width: 100%`,
+`justify-content: flex-start`, `white-space: normal`, `height: auto`. The copy is longer
+than R18's, so wrapping inside the row — not widening the panel — is the point. B10 adds
+one computed contract rule (`flexDirection: column`); the browser leg measures three
+distinct row tops and each row's width against its container.
+
+Measured (`R19` record, `design/fidelity-r19.md`): panel 640×498 at 1512×950 and 640×490
+at 760×900; three rows, each the container's width. No hook, key or intake field is
+added. `10-create-task-modal.png` and `26-create-narrow-760.png` are recaptured.
