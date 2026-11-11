@@ -115,9 +115,6 @@ from the card and the project's `docs/agents/create-card.md`; the detail, routin
 attribution, attachments and the one-line outcome are in
 [`references/scenarios/create.md`](references/scenarios/create.md).
 
-A human's free-text description takes the other path: `intake create` records a request,
-and the director lane decides its cards. An intake request is not a card.
-
 ## Stage markers
 
 A producer card that hands work on sets `meta.stage_handoff=required` and puts a `## Handoff`
