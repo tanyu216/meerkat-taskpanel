@@ -868,6 +868,42 @@ describe("web/board — loads", () => {
     assert.equal(board.currentProjectId, "p2");
   });
 
+  it("loadProjects asks for the active list only, so an archived project leaves the rail", async () => {
+    const { board, loadProjects } = await freshBoard();
+    const calls = installFetch({
+      "GET /api/v1/projects": () =>
+        ok({
+          projects: [
+            { id: "p1", name: "A", archived_at: null },
+            { id: "p2", name: "B", archived_at: "2026-11-11T13:22:46.549Z" },
+          ],
+        }),
+    });
+    await loadProjects();
+    assert.deepEqual(
+      board.projects.map((project) => project.id),
+      ["p1"],
+      "an archived project is not a rail row",
+    );
+    assert.match(calls[0].url, /include_archived=0/);
+  });
+
+  it("loadProjects moves off a current project that has been archived", async () => {
+    const { board, loadProjects } = await freshBoard();
+    board.currentProjectId = "p2";
+    installFetch({
+      "GET /api/v1/projects": () =>
+        ok({
+          projects: [
+            { id: "p1", name: "A", archived_at: null },
+            { id: "p2", name: "B", archived_at: "2026-11-11T13:22:46.549Z" },
+          ],
+        }),
+    });
+    await loadProjects();
+    assert.equal(board.currentProjectId, "p1");
+  });
+
   it("loadBoard records and rethrows a load failure, and clears the loading flag", async () => {
     const { board, loadBoard } = await freshBoard();
     installFetch({ "GET /api/v1/projects": () => failure(500, "INTERNAL", "boom") });

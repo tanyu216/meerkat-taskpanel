@@ -725,8 +725,15 @@ function patchTaskLocal(id, patch) {
 /* ------------------------------------------------------------------ loads */
 
 export async function loadProjects() {
-  const data = await api.projects({ order_debug: 1, include_archived: 1 });
-  board.projects = data.projects ?? [];
+  // The rail, the top-bar switcher and the create-task form all read
+  // `board.projects`, so this is the one list that must hold **active**
+  // projects only: an archived project is removed from the board, not a row
+  // with a different colour. The filter is defensive as well — the request
+  // already excludes archived rows, and the SPA must not resurrect one if an
+  // older server ignores the flag (DESIGN.md §20: archived projects never
+  // participate in the ranking).
+  const data = await api.projects({ order_debug: 1, include_archived: 0 });
+  board.projects = (data.projects ?? []).filter((project) => !project.archived_at);
   board.orderDebug = Object.fromEntries((data.order_debug ?? []).map((entry) => [entry.id, entry]));
   if (!board.projects.some((p) => p.id === board.currentProjectId)) {
     const next = board.projects[0]?.id ?? null;
