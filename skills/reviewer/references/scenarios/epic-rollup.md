@@ -12,6 +12,9 @@ children.
 - Scope coverage: every child the epic promised exists; no silent scope loss and no orphan.
 - The rollup is current at the delivered sha, and names each child's conclusion and the
   aggregate.
+- Each `done` child's line cites its own `evidence[n]` (or states explicitly that the child had
+  no delivery evidence); the rollup's evidence list has one representative anchor per done
+  child, not a union of everything they reported.
 - A fix child links to the finding that created it; a dropped child is explained.
 - Dependency order: a child's conclusion does not rest on an unfinished dependency.
 

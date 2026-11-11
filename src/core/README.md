@@ -48,7 +48,10 @@ Rules that are enforced, not just documented:
   rollup (`commands/reports.mjs`, `commands/rollup.mjs#advanceContainer`), the delivery gate
   refuses an unmarked current-round report (`ROLLUP_REQUIRED`), `done` refuses a rollup that
   no longer matches the live children (`ROLLUP_STALE`), and the DB trigger
-  `tr_tasks_epic_rollup_done` enforces the current-round row at the write. The same pure rule
+  `tr_tasks_epic_rollup_done` enforces the current-round row at the write. The rollup's
+  evidence is one representative anchor per `done` child (`domain/report.mjs#representativeAnchor`,
+  `domain/acceptance.mjs#rollupEvidenceOf`), and each `done` item must cite it — or carry the
+  explicit no-evidence marker (ADR 0024). The same pure rule
   (`domain/acceptance.mjs#rollupGapOf`) is read by the sweep and by the workflow planner;
 * **questions** (0034) are comments, not a column: an agent entering `awaiting` writes a
   `question` comment in the same transaction (`QUESTION_REQUIRED` if it has neither a

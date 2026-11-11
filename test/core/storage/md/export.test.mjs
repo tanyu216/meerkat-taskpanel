@@ -497,7 +497,14 @@ describe("md/export — 0033 rollups", () => {
 
       const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
       assert.match(card, /^rollup: yes$/m);
-      assert.match(card, new RegExp(`^- \\[met\\] ${child.identifier} Child \\(done\\) · ref: ${child.identifier}$`, "m"));
+      assert.match(
+        card,
+        new RegExp(
+          `^- \\[met\\] ${child.identifier} Child \\(done\\) · ref: ${child.identifier} — evidence\\[1\\] — this child's own delivery anchor$`,
+          "m",
+        ),
+        "the rollup line cites the child's own anchor",
+      );
       assert.doesNotMatch(card, /^origin: /m, "0035 removed the provenance marker");
       assert.match(card, /A backfilled narrative\./);
 

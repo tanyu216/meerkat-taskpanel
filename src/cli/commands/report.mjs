@@ -24,8 +24,11 @@
 
 import { spawnSync } from "node:child_process";
 
+import { ROLLUP_NO_EVIDENCE_NOTE } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
 import { TODO_PLACEHOLDER } from "../../foundation/report-warning.mjs";
+import { rollupEvidenceOf } from "../../core/domain/acceptance.mjs";
+import { representativeAnchor } from "../../core/domain/report.mjs";
 import { table } from "../output/human.mjs";
 
 /** Parse the report JSON a caller handed us — the one place a bad file is named. */
@@ -183,12 +186,26 @@ export function buildTemplate(task, options = {}, context = {}) {
   // 0033 — an epic's report *is* its rollup: one item per child, joined by
   // `ref`. The template lists the live children so the author cannot deliver a
   // rollup that never mentions one.
+  //
+  // Each done child contributes its own representative anchor, pre-filled into
+  // its line: the rollup's evidence is the children's, one pointer per child,
+  // never a container-level list with no provenance. A child delivered under
+  // `--no-report` has none, so its line says so explicitly instead.
   const children = Array.isArray(context.children) ? context.children : null;
-  const acceptance =
-    task.kind === "epic" && children !== null
-      ? { items: children.map(childTemplateItem), source: "children (rollup)", warning: null }
-      : acceptanceFrom(task);
-  const evidence = evidenceFor({ ...options, task });
+  let acceptance = acceptanceFrom(task);
+  let childEvidence = null;
+  if (task.kind === "epic" && children !== null) {
+    const { items, citations } = rollupEvidenceOf(
+      children.map((child) => ({ ref: child.ref, anchor: child.anchor ?? null })),
+    );
+    acceptance = {
+      items: children.map((child) => childTemplateItem(child, citations.get(child.ref) ?? null)),
+      source: "children (rollup)",
+      warning: null,
+    };
+    if (items.length > 0) childEvidence = { anchors: items, source: "children (rollup)" };
+  }
+  const evidence = childEvidence ?? evidenceFor({ ...options, task });
   const warnings = [];
   if (acceptance.warning !== null) warnings.push(acceptance.warning);
   if (evidence.source === "placeholder") {
@@ -201,6 +218,11 @@ export function buildTemplate(task, options = {}, context = {}) {
     warnings.push(
       "the working tree has uncommitted changes, so the template cannot name a commit — " +
         "commit the work, then pass --commit <sha>",
+    );
+  }
+  if (evidence.source === "children (rollup)") {
+    warnings.push(
+      "each done child's line is pre-filled with that child's own anchor; flip it to met once you agree",
     );
   }
 
@@ -219,11 +241,16 @@ export function buildTemplate(task, options = {}, context = {}) {
 /**
  * One child line in an epic rollup template. `done` → `met` **only after the
  * author confirms it** — the template writes `not_met` like every other line,
- * because an untouched template must never be a passing report. A `canceled`
- * child is `not_applicable` with a TODO note: the cancellation is a fact, the
- * reason it was acceptable is the author's to state.
+ * because an untouched template must never be a passing report. When the child
+ * has a representative anchor, the note is pre-filled with its index; a child
+ * with none gets the explicit no-evidence marker. A `canceled` child is
+ * `not_applicable` with a TODO note: the cancellation is a fact, the reason it
+ * was acceptable is the author's to state.
+ *
+ * @param {{ref: string, title?: string, status?: string, anchor?: object|null}} child
+ * @param {number|null} anchorIndex 1-based into the template's evidence list
  */
-function childTemplateItem(child) {
+function childTemplateItem(child, anchorIndex = null) {
   const label = `${child.ref} ${child.title ?? ""}`.trim();
   if (child.status === "canceled") {
     return {
@@ -233,11 +260,17 @@ function childTemplateItem(child) {
       note: "TODO: why it was acceptable to finish without this child",
     };
   }
+  const note =
+    child.status === "done"
+      ? anchorIndex === null
+        ? `TODO: flip to met — ${ROLLUP_NO_EVIDENCE_NOTE}`
+        : `TODO: flip to met — evidence[${anchorIndex}]`
+      : "TODO: met for a done child, or explain the state";
   return {
     ref: child.ref,
     text: `${label} (${child.status ?? "unknown"})`,
     status: "not_met",
-    note: "TODO: met for a done child, or explain the state",
+    note,
   };
 }
 
@@ -312,6 +345,8 @@ export const COMMANDS = [
       // 0033 — an epic template is a rollup over its children. The relations
       // route names them by id; the parent cap is 8, so resolving each one is a
       // bounded read, and the template needs the identifier + title + state.
+      // A done child also lends its current-round report's representative
+      // anchor, so its line can pre-fill the citation the gate will require.
       let children = null;
       if (task.kind === "epic") {
         const relations = await ctx.client.get(
@@ -320,7 +355,23 @@ export const COMMANDS = [
         children = [];
         for (const edge of relations.children) {
           const child = (await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(edge.target)}`)).task;
-          children.push({ ref: child.identifier, title: child.title, status: child.status });
+          let anchor = null;
+          if (child.status === "done") {
+            const { reports } = await ctx.client.get(
+              `/api/v1/tasks/${encodeURIComponent(child.id)}/reports`,
+            );
+            const report = reports.find((candidate) => candidate.round === child.delivery_round);
+            anchor =
+              report === undefined
+                ? null
+                : representativeAnchor(Array.isArray(report.evidence) ? report.evidence : []);
+          }
+          children.push({
+            ref: child.identifier,
+            title: child.title,
+            status: child.status,
+            anchor,
+          });
         }
       }
       const template = buildTemplate(

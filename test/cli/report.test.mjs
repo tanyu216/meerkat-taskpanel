@@ -230,6 +230,66 @@ describe("cli/report template", () => {
     });
   });
 
+  it("pre-fills the done child's own anchor, and the filled rollup delivers", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const epic = dataOf(
+        run(["issue", "create", "--project", "demo", "--title", "Epic", "--kind", "epic", "--json"]),
+      ).task;
+      const child = dataOf(
+        run([
+          "issue", "create", "--project", "demo", "--title", "One",
+          "--acceptance-mode", "off", "--json",
+        ]),
+      ).task;
+      run([
+        "relation", "add", epic.identifier,
+        "--type", "parent", "--target", child.identifier, "--json",
+      ]);
+      run(["issue", "move", child.identifier, "in_progress", "--json"], { actorKind: "agent" });
+      run(["issue", "deliver", child.identifier, "--report-file", "-", "--to", "done", "--json"], {
+        actorKind: "agent",
+        input: JSON.stringify({
+          conclusion: "child delivered",
+          acceptance: [{ text: "child works", status: "met", note: "evidence[1]" }],
+          evidence: [{ kind: "commit", sha: "abc1234" }],
+        }),
+      });
+      assert.equal(
+        dataOf(run(["issue", "get", child.identifier, "--json"])).task.status,
+        "done",
+        "the child landed with its report",
+      );
+
+      // The last child closed the epic automatically; rework it to write the
+      // rollup by hand, which is the path a human uses.
+      assert.equal(
+        dataOf(run(["issue", "get", epic.identifier, "--json"])).task.status,
+        "in_review",
+      );
+      run(["issue", "move", epic.identifier, "in_progress", "--json"], { actorKind: "agent" });
+
+      const template = dataOf(run(["report", "template", epic.identifier, "--json"]));
+      assert.equal(template.evidence_source, "children (rollup)");
+      assert.deepEqual(template.report.evidence, [{ kind: "commit", sha: "abc1234" }]);
+      const [item] = template.report.acceptance;
+      assert.equal(item.status, "not_met", "the template never claims the rollup passed");
+      assert.match(item.note, /evidence\[1\]/, "the note names the child's own anchor");
+
+      const delivered = dataOf(
+        run(["issue", "deliver", epic.identifier, "--report-file", "-", "--json"], {
+          actorKind: "agent",
+          input: JSON.stringify({
+            ...template.report,
+            conclusion: "rollup complete",
+            acceptance: [{ ...item, status: "met" }],
+          }),
+        }),
+      );
+      assert.equal(delivered.task.status, "in_review");
+    });
+  });
+
   it("prints something a human can edit, and what it prints delivers", async () => {
     await boardWithIssue(
       async ({ run }) => {

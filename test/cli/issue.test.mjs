@@ -1344,6 +1344,8 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
 
       // The manual path still works — the container is a human's to close here.
       // 0033: the report on an epic is its rollup, so it must name the child.
+      // The child was waived, so its line carries the explicit no-evidence
+      // marker rather than a citation the rollup cannot supply.
       const delivered = dataOf(
         run(["issue", "deliver", card.task.identifier, "--report-file", "-", ...AS, "--json"], {
           input: JSON.stringify({
@@ -1352,6 +1354,7 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
               {
                 text: `${child.task.identifier} delivered`,
                 status: "met",
+                note: "no delivery evidence on the child card",
                 ref: child.task.identifier,
               },
             ],

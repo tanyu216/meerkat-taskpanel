@@ -114,8 +114,8 @@ function verdictAuthorIdFor(ctx, task) {
  *
  * Review cards are exempt: their path anchors name places the reviewer read,
  * not work they produced. An epic is exempt too — a container has no working
- * tree of its own, and its rollup evidence is the union of its children's,
- * each of which passed this gate.
+ * tree of its own, and its rollup evidence is one representative anchor per
+ * done child, each taken from a child report that passed this gate.
  *
  * @param {object} task
  * @param {object|null|undefined} report the prepared or stored report
@@ -282,7 +282,12 @@ export function assertAcceptanceCoverage(ctx, task, options = {}) {
     // A `deliver` call passes the report it is about to insert; any other caller
     // reads the current round from the repository.
     if (options.report !== undefined && options.report !== null) {
-      assertRollupCoverage(ctx, task, options.report.acceptance);
+      assertRollupCoverage(
+        ctx,
+        task,
+        options.report.acceptance,
+        evidenceFromJson(options.report.evidence).items,
+      );
       return true;
     }
     return assertEpicRollupReady(ctx, task);

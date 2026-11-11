@@ -42,6 +42,7 @@ what a change must comply with.
 | [0021](0021-the-loop-cli-is-flat.md) | The `loop` group is flattened into top-level runtime commands; `status` → `board`, `loop session` → `pool`, and old spellings exit 2 with a migration error | Accepted |
 | [0022](0022-the-loop-state-lives-at-the-config-root.md) | The loop state lives at `<config root>/loop/`, one per board installation; not in the agent home and not in `.data`; a stable `loop.id` replaces the path identity | Proposed |
 | [0023](0023-the-director-stays-read-only.md) | The director and reviewer lanes are read-only; the worker keeps the full tool set; a fix is a card, never a control-lane edit | Accepted |
+| [0024](0024-a-rollup-cites-one-anchor-per-done-child.md) | A rollup carries one representative anchor per `done` child, cited by that child's item; the gap check rejects an uncited child | Proposed |
 
 ## Writing one
 

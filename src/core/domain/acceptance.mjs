@@ -23,6 +23,7 @@
  * Pure: no `node:` specifiers, no clock.
  */
 
+import { ROLLUP_NO_EVIDENCE_NOTE } from "../../foundation/constants.mjs";
 import { ACCEPTANCE_STATUSES } from "./enums.mjs";
 
 /** Statuses that make a delivery incomplete. */
@@ -146,12 +147,58 @@ function mergeReportItems(reportItems) {
 const EVIDENCE_REF = /evidence\[(\d+)\]/gi;
 
 /**
+ * The indices an acceptance note cites, 1-based into the report's own
+ * `evidence[]`. One reader for the spelling, so the writer, the delivery gate
+ * and the rollup gate cannot disagree about what a citation looks like.
+ *
+ * @param {unknown} note
+ * @returns {number[]}
+ */
+export function evidenceCitationIndicesOf(note) {
+  return [...String(note ?? "").matchAll(EVIDENCE_REF)].map((match) => Number(match[1]));
+}
+
+/**
+ * Does the note carry the explicit "this child had nothing to cite" marker?
+ *
+ * Only a rollup item accepts it (`citationGapOf`'s `allowNoEvidence`): on an
+ * ordinary card the marker would be a way to claim `met` with no anchor at all.
+ *
+ * @param {unknown} note
+ * @returns {boolean}
+ */
+export function hasNoEvidenceNote(note) {
+  return String(note ?? "").includes(ROLLUP_NO_EVIDENCE_NOTE);
+}
+
+/**
+ * Does a `met` note point at an anchor that exists?
+ *
+ * `null` means it resolves (or, for a rollup, carries the explicit
+ * no-evidence marker); otherwise the reason the claim is unsupported. The check
+ * is structural, so it forces the pointer, not the truth of the pointer (the
+ * reviewer's independent run is what tests that).
+ *
+ * @param {unknown} note
+ * @param {number} anchorCount length of the report's own `evidence[]`
+ * @param {{allowNoEvidence?: boolean}} [options]
+ * @returns {"no_anchor"|"dangling_anchor"|null}
+ */
+export function citationGapOf(note, anchorCount, options = {}) {
+  if (options.allowNoEvidence === true && hasNoEvidenceNote(note)) return null;
+  const refs = evidenceCitationIndicesOf(note);
+  if (refs.length === 0) return "no_anchor";
+  const resolves = refs.some((index) => index >= 1 && index <= anchorCount);
+  return resolves ? null : "dangling_anchor";
+}
+
+/**
  * The `met` claims a report cannot point at.
  *
  * A `met` is a claim, and a claim with no anchor is a recollection. The note
  * must name at least one `evidence[n]` that resolves inside the report's own
- * `evidence[]`; the check is structural, so it forces the pointer, not the
- * truth of the pointer (the reviewer's independent run is what tests that).
+ * `evidence[]`. The rollup's no-evidence marker is *not* accepted here: this
+ * gate judges ordinary cards, where `met` always needs a pointer.
  *
  * @param {{reportItems?: unknown[], evidence?: unknown[]}} input
  * @returns {{key: string, text: string, reason: "no_anchor"|"dangling_anchor"}[]}
@@ -161,15 +208,52 @@ export function unsupportedClaimsOf(input = {}) {
   const out = [];
   for (const item of mergeReportItems(input.reportItems ?? []).values()) {
     if (item.status !== "met") continue;
-    const refs = [...String(item.note ?? "").matchAll(EVIDENCE_REF)].map((match) => Number(match[1]));
-    if (refs.length === 0) {
-      out.push({ key: item.key, text: item.text, reason: "no_anchor" });
-      continue;
-    }
-    const resolves = refs.some((index) => index >= 1 && index <= anchors.length);
-    if (!resolves) out.push({ key: item.key, text: item.text, reason: "dangling_anchor" });
+    const reason = citationGapOf(item.note, anchors.length);
+    if (reason !== null) out.push({ key: item.key, text: item.text, reason });
   }
   return out;
+}
+
+/**
+ * Compose a rollup's evidence from one representative anchor per done child.
+ *
+ * Each entry is `{ref, anchor|null}` in child order. A distinct anchor gets one
+ * 1-based index; two children that stand on the same anchor share it, so the
+ * evidence list is at most one item per distinct anchor (never more than the
+ * fan-in cap). A `null` anchor — a child delivered under `--no-report` — is
+ * mapped to `null`, which the writer turns into the explicit marker note.
+ *
+ * Pure; the writer (`commands/rollup.mjs`) and the CLI template share it so the
+ * index mapping cannot fork.
+ *
+ * @param {{ref: string, anchor: object|null}[]} entries
+ * @returns {{items: object[], citations: Map<string, number|null>}}
+ */
+export function rollupEvidenceOf(entries) {
+  const items = [];
+  const citations = new Map();
+  const seen = new Map();
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (entry === null || typeof entry !== "object") continue;
+    const ref = typeof entry.ref === "string" ? entry.ref.trim() : "";
+    if (ref === "") continue;
+    const anchor = entry.anchor;
+    if (anchor === null || anchor === undefined || typeof anchor !== "object") {
+      citations.set(ref, null);
+      continue;
+    }
+    const key = JSON.stringify(anchor);
+    const prior = seen.get(key);
+    if (prior !== undefined) {
+      citations.set(ref, prior);
+      continue;
+    }
+    items.push(anchor);
+    const index = items.length;
+    seen.set(key, index);
+    citations.set(ref, index);
+  }
+  return { items, citations };
 }
 
 /**
@@ -241,14 +325,21 @@ export function coverageOf(input = {}) {
  * mismatch — a terminal rollup cannot describe work still in flight. At least
  * one child must be `done`, the same rule the automatic rollup applies.
  *
- * Pure: callers pass the children (the command reads them from the repository,
- * the workflow planner from its board snapshot), so the rule is written once.
+ * A `done` child's `met` item must also cite an anchor that resolves inside the
+ * rollup's own `evidence[]`, or carry the explicit no-evidence marker. This is
+ * what keeps the evidence list from being a container-level union with no
+ * provenance: each delivered child's line points at that child's own anchor.
  *
- * @param {{children?: {identifier: string, status: string}[], items?: unknown[]}} input
- * @returns {{ok: boolean, childCount: number, done: number, missingChildren: string[], unexpectedChildren: string[], statusMismatches: object[], duplicates: string[]}}
+ * Pure: callers pass the children and the evidence (the command reads them from
+ * the repository, the workflow planner from its board snapshot), so the rule is
+ * written once.
+ *
+ * @param {{children?: {identifier: string, status: string}[], items?: unknown[], evidence?: unknown[]}} input
+ * @returns {{ok: boolean, childCount: number, done: number, missingChildren: string[], unexpectedChildren: string[], statusMismatches: object[], duplicates: string[], uncitedChildren: {ref: string, reason: "no_anchor"|"dangling_anchor"}[]}}
  */
 export function rollupGapOf(input = {}) {
   const children = Array.isArray(input.children) ? input.children : [];
+  const anchors = Array.isArray(input.evidence) ? input.evidence : [];
   const byRef = new Map();
   const duplicates = [];
   for (const item of Array.isArray(input.items) ? input.items : []) {
@@ -263,6 +354,7 @@ export function rollupGapOf(input = {}) {
   const missingChildren = [...childRefs].filter((ref) => !byRef.has(ref));
   const unexpectedChildren = [...byRef.keys()].filter((ref) => !childRefs.has(ref));
   const statusMismatches = [];
+  const uncitedChildren = [];
   let done = 0;
   for (const child of children) {
     const item = byRef.get(child.identifier);
@@ -276,6 +368,9 @@ export function rollupGapOf(input = {}) {
           verdict: item.status ?? null,
           expected: "met",
         });
+      } else {
+        const reason = citationGapOf(item.note, anchors.length, { allowNoEvidence: true });
+        if (reason !== null) uncitedChildren.push({ ref: child.identifier, reason });
       }
     } else if (child.status === "canceled") {
       const noted = typeof item.note === "string" && item.note.trim() !== "";
@@ -304,12 +399,14 @@ export function rollupGapOf(input = {}) {
       missingChildren.length === 0 &&
       unexpectedChildren.length === 0 &&
       statusMismatches.length === 0 &&
-      duplicates.length === 0,
+      duplicates.length === 0 &&
+      uncitedChildren.length === 0,
     childCount: children.length,
     done,
     missingChildren,
     unexpectedChildren,
     statusMismatches,
     duplicates,
+    uncitedChildren,
   };
 }

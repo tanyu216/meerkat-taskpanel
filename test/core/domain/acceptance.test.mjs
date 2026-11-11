@@ -13,9 +13,11 @@ import {
   isBlockingStatus,
   normalizeAcceptanceList,
   normalizeAcceptanceText,
+  rollupEvidenceOf,
   rollupGapOf,
   unsupportedClaimsOf,
 } from "../../../src/core/domain/acceptance.mjs";
+import { ROLLUP_NO_EVIDENCE_NOTE } from "../../../src/foundation/constants.mjs";
 
 describe("domain/acceptance — normalisation", () => {
   it("NFKC-folds, collapses whitespace, and trims", () => {
@@ -175,13 +177,14 @@ describe("domain/acceptance — the rollup gap (0033)", () => {
     { identifier: "P-1", status: "done" },
     { identifier: "P-2", status: "canceled" },
   ];
+  const anchors = [{ kind: "commit", sha: "abc1234" }];
   const items = [
-    { text: "P-1 done", status: "met", ref: "P-1" },
+    { text: "P-1 done", status: "met", note: "evidence[1] — the child's own anchor", ref: "P-1" },
     { text: "P-2 dropped", status: "not_applicable", note: "scope withdrawn", ref: "P-2" },
   ];
 
   it("accepts a rollup that names every child with the right verdict", () => {
-    const gap = rollupGapOf({ children, items });
+    const gap = rollupGapOf({ children, items, evidence: anchors });
     assert.equal(gap.ok, true);
     assert.equal(gap.childCount, 2);
     assert.equal(gap.done, 1);
@@ -189,22 +192,24 @@ describe("domain/acceptance — the rollup gap (0033)", () => {
 
   it("joins by ref, not by prose — a renamed child is the same card", () => {
     const renamed = items.map((item) => ({ ...item, text: "a title that changed later" }));
-    assert.equal(rollupGapOf({ children, items: renamed }).ok, true);
+    assert.equal(rollupGapOf({ children, items: renamed, evidence: anchors }).ok, true);
   });
 
   it("names a missing child, an unexpected ref, and a duplicate", () => {
-    const missing = rollupGapOf({ children, items: [items[0]] });
+    const missing = rollupGapOf({ children, items: [items[0]], evidence: anchors });
     assert.deepEqual(missing.missingChildren, ["P-2"]);
     assert.equal(missing.ok, false);
 
     const unexpected = rollupGapOf({
       children,
+      evidence: anchors,
       items: [...items, { text: "stranger", status: "met", ref: "P-9" }],
     });
     assert.deepEqual(unexpected.unexpectedChildren, ["P-9"]);
 
     const duplicated = rollupGapOf({
       children,
+      evidence: anchors,
       items: [...items, { text: "again", status: "met", ref: "P-1" }],
     });
     assert.deepEqual(duplicated.duplicates, ["P-1"]);
@@ -214,18 +219,21 @@ describe("domain/acceptance — the rollup gap (0033)", () => {
   it("refuses the wrong verdict for a child's state", () => {
     const notMet = rollupGapOf({
       children,
+      evidence: anchors,
       items: [{ ...items[0], status: "not_met" }, items[1]],
     });
     assert.equal(notMet.statusMismatches[0].expected, "met");
 
     const noNote = rollupGapOf({
       children,
+      evidence: anchors,
       items: [items[0], { ...items[1], note: "" }],
     });
     assert.equal(noNote.statusMismatches[0].expected, "not_applicable with a note");
 
     const openChild = rollupGapOf({
       children: [...children, { identifier: "P-3", status: "in_progress" }],
+      evidence: anchors,
       items: [...items, { text: "P-3", status: "met", ref: "P-3" }],
     });
     assert.equal(openChild.statusMismatches[0].expected, "a terminal child");
@@ -235,21 +243,78 @@ describe("domain/acceptance — the rollup gap (0033)", () => {
     assert.equal(
       rollupGapOf({
         children: [{ identifier: "P-1", status: "canceled" }],
+        evidence: anchors,
         items: [{ text: "x", status: "not_applicable", note: "dropped", ref: "P-1" }],
       }).ok,
       false,
       "an all-canceled container delivered nothing",
     );
-    assert.equal(rollupGapOf({ children: [], items: [] }).ok, false);
+    assert.equal(rollupGapOf({ children: [], items: [], evidence: anchors }).ok, false);
   });
 
   it("ignores items without a usable ref", () => {
     const gap = rollupGapOf({
       children: [{ identifier: "P-1", status: "done" }],
+      evidence: anchors,
       items: [{ text: "unjoined", status: "met" }, null, "junk", { text: "x", status: "met", ref: "  " }],
     });
     assert.deepEqual(gap.missingChildren, ["P-1"]);
     assert.equal(gap.ok, false);
+  });
+
+  it("requires a done child's met item to cite a resolving anchor", () => {
+    const noAnchor = rollupGapOf({
+      children,
+      evidence: anchors,
+      items: [{ ...items[0], note: "" }, items[1]],
+    });
+    assert.deepEqual(noAnchor.uncitedChildren, [{ ref: "P-1", reason: "no_anchor" }]);
+    assert.equal(noAnchor.ok, false);
+
+    const dangling = rollupGapOf({
+      children,
+      evidence: anchors,
+      items: [{ ...items[0], note: "evidence[4]" }, items[1]],
+    });
+    assert.deepEqual(dangling.uncitedChildren, [{ ref: "P-1", reason: "dangling_anchor" }]);
+    assert.equal(dangling.ok, false);
+  });
+
+  it("accepts the explicit no-evidence marker, and never asks a canceled child to cite", () => {
+    const waived = rollupGapOf({
+      children,
+      evidence: anchors,
+      items: [{ ...items[0], note: ROLLUP_NO_EVIDENCE_NOTE }, items[1]],
+    });
+    assert.equal(waived.ok, true);
+    assert.deepEqual(waived.uncitedChildren, []);
+  });
+});
+
+describe("domain/acceptance — rollup evidence composition", () => {
+  const commitA = { kind: "commit", sha: "abc1234" };
+  const commitB = { kind: "commit", sha: "def5678" };
+
+  it("assigns one 1-based index per distinct anchor and maps each ref", () => {
+    const { items, citations } = rollupEvidenceOf([
+      { ref: "P-1", anchor: commitA },
+      { ref: "P-2", anchor: commitB },
+      { ref: "P-3", anchor: null },
+    ]);
+    assert.deepEqual(items, [commitA, commitB]);
+    assert.equal(citations.get("P-1"), 1);
+    assert.equal(citations.get("P-2"), 2);
+    assert.equal(citations.get("P-3"), null, "a waived child has no anchor to cite");
+  });
+
+  it("folds a shared anchor to one index cited by both children", () => {
+    const { items, citations } = rollupEvidenceOf([
+      { ref: "P-1", anchor: commitA },
+      { ref: "P-2", anchor: { ...commitA } },
+    ]);
+    assert.equal(items.length, 1);
+    assert.equal(citations.get("P-1"), 1);
+    assert.equal(citations.get("P-2"), 1);
   });
 });
 

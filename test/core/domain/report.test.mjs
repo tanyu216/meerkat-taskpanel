@@ -23,6 +23,7 @@ import {
   normalizeImportedReport,
   normalizeReportCreate,
   reportFromRow,
+  representativeAnchor,
   serializeAcceptance,
   serializeEvidence,
   validateReport,
@@ -342,10 +343,63 @@ describe("domain/report — bounds and truncation", () => {
     assert.deepEqual(bounded.evidence, [], "nothing fits, so nothing is kept");
   });
 
+  it("keeps a met item's claim note when the payload must shrink", () => {
+    const bounded = boundEvidence(
+      [{ text: "criterion", status: "met", note: `evidence[1] — ${"n".repeat(40_000)}` }],
+      [{ kind: "path", path: "p".repeat(40_000) }],
+    );
+    assert.match(bounded.acceptance[0].note, /^evidence\[1\]/);
+    assert.match(bounded.acceptance[0].note, /…$/, "shortened, not dropped");
+
+    // The citation may sit past the truncation point: it is the claim, so the
+    // shortened note restates it.
+    const trailing = boundEvidence(
+      [{ text: "criterion", status: "met", note: `${"n".repeat(40_000)} evidence[2]` }],
+      [{ kind: "path", path: "p".repeat(40_000) }],
+    );
+    assert.match(trailing.acceptance[0].note, /evidence\[2\]$/);
+  });
+
   it("serialises arrays plainly and truncated payloads as an object", () => {
     assert.equal(serializeAcceptance([{ text: "x", status: "met" }]), '[{"text":"x","status":"met"}]');
     assert.equal(serializeEvidence([{ kind: "commit", sha: "abc1234" }]), '[{"kind":"commit","sha":"abc1234"}]');
     assert.match(serializeEvidence([], { truncated: true, note: "why" }), /"truncated":true/);
+  });
+});
+
+describe("domain/report — the rollup's representative anchor", () => {
+  it("picks the strongest kind: commit > path > command > coverage", () => {
+    assert.deepEqual(
+      representativeAnchor([
+        { kind: "coverage", lines: 91 },
+        { kind: "command", cmd: "npm test", exit_code: 0 },
+        { kind: "path", path: "src/x.mjs" },
+        { kind: "commit", sha: "abc1234" },
+      ]),
+      { kind: "commit", sha: "abc1234" },
+    );
+    assert.deepEqual(
+      representativeAnchor([
+        { kind: "coverage", lines: 91 },
+        { kind: "command", cmd: "npm test", exit_code: 0 },
+      ]),
+      { kind: "command", cmd: "npm test", exit_code: 0 },
+    );
+  });
+
+  it("keeps the first anchor of the strongest kind and ignores junk", () => {
+    assert.deepEqual(
+      representativeAnchor([
+        { kind: "commit", sha: "abc1234" },
+        { kind: "commit", sha: "def5678" },
+        null,
+        "junk",
+        { kind: "unknown" },
+      ]),
+      { kind: "commit", sha: "abc1234" },
+    );
+    assert.equal(representativeAnchor([]), null);
+    assert.equal(representativeAnchor(undefined), null);
   });
 });
 

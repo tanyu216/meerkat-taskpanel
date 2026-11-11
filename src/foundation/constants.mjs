@@ -489,6 +489,13 @@ export const REPORT_MAX_BYTES = 64 * 1024;
 export const REPORT_MAX_ITEMS = 64;
 /** Maximum length of a report conclusion (characters). */
 export const REPORT_MAX_CONCLUSION_CHARS = 16_384;
+/**
+ * The explicit marker a rollup item carries when its `done` child has no
+ * current-round delivery evidence to cite (delivered under `--no-report`).
+ * One spelling for the writer, the gate and the CLI template: an epic may
+ * close without inventing an anchor, never without saying so.
+ */
+export const ROLLUP_NO_EVIDENCE_NOTE = "no delivery evidence on the child card";
 
 // ---------------------------------------------------------------------------
 // md export

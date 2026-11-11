@@ -19,8 +19,10 @@ import {
   REPORT_MAX_BYTES,
   REPORT_MAX_CONCLUSION_CHARS,
   REPORT_MAX_ITEMS,
+  ROLLUP_NO_EVIDENCE_NOTE,
 } from "../../foundation/constants.mjs";
 import { DomainError } from "../../foundation/errors.mjs";
+import { evidenceCitationIndicesOf, hasNoEvidenceNote } from "./acceptance.mjs";
 import { ACCEPTANCE_STATUSES, EVIDENCE_KINDS, isActorKind } from "./enums.mjs";
 
 /** UTF-8 byte length, computed without the node-only byteLength helper. */
@@ -208,6 +210,33 @@ export function validateReport(input, context = {}) {
   return { ok: true, issues: [], report };
 }
 
+/**
+ * The one anchor a child's rollup line stands on.
+ *
+ * A child may have run several things; the rollup needs a single, bounded
+ * pointer per child. Strength is `EVIDENCE_KINDS`'s order — a commit proves the
+ * state, a path corroborates it, a command proves a run, coverage is a number —
+ * and the first anchor of the strongest kind present wins (report order breaks
+ * ties). Unknown shapes are ignored; no usable anchor is `null`.
+ *
+ * @param {unknown} anchors
+ * @returns {object|null}
+ */
+export function representativeAnchor(anchors) {
+  let best = null;
+  let bestRank = Number.POSITIVE_INFINITY;
+  for (const anchor of Array.isArray(anchors) ? anchors : []) {
+    if (anchor === null || typeof anchor !== "object") continue;
+    const rank = EVIDENCE_KINDS.indexOf(anchor.kind);
+    if (rank === -1) continue;
+    if (rank < bestRank) {
+      best = anchor;
+      bestRank = rank;
+    }
+  }
+  return best;
+}
+
 /** @returns {{path: string, message: string}[]} */
 function validateAnchor(anchor, at) {
   const issues = [];
@@ -295,10 +324,27 @@ export function boundEvidence(acceptance, evidence, options = {}) {
     if (item === null || typeof item !== "object") return item;
     // `ref` is structural (0033's staleness check reads it), and a
     // `not_applicable` note is mandatory (0032's trigger refuses one without
-    // it), so those survive. Any other note is prose and goes first.
+    // it). A `met` note that carries the claim — a citation or the rollup's
+    // no-evidence marker — is structural too: dropping it would leave a `met`
+    // the gate can never accept. Any other note is prose and goes first.
+    const claimNote =
+      typeof item.note === "string" &&
+      (evidenceCitationIndicesOf(item.note).length > 0 || hasNoEvidenceNote(item.note));
     const slim = { text: shrink(item.text), status: item.status };
-    if (item.status === "not_applicable" && typeof item.note === "string") {
-      slim.note = shrink(item.note);
+    if (
+      typeof item.note === "string" &&
+      (item.status === "not_applicable" || (item.status === "met" && claimNote))
+    ) {
+      let note = shrink(item.note);
+      // The pointer may sit past the truncation point. Re-state it, so a
+      // shortened note still carries the claim the gate reads.
+      const cited = evidenceCitationIndicesOf(item.note);
+      if (cited.length > 0 && evidenceCitationIndicesOf(note).length === 0) {
+        note = `${note} ${cited.map((index) => `evidence[${index}]`).join(" ")}`;
+      } else if (hasNoEvidenceNote(item.note) && !hasNoEvidenceNote(note)) {
+        note = `${note} ${ROLLUP_NO_EVIDENCE_NOTE}`;
+      }
+      slim.note = note;
     }
     if (typeof item.ref === "string") slim.ref = shrink(item.ref);
     return slim;
