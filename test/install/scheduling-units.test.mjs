@@ -307,17 +307,13 @@ describe("install.sh: scheduling units", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The team skills: the primary agent kind by default, never OpenClaw
+// The team skills: the primary agent kind by default
 //
 // The loop is a skill of its own (T-20261012-163500-loopdecouple-b). `meerkat-director`,
 // `meerkat-chat`, `setup-meerkat` and every role skill go to the **primary** kind — the
 // first claude|codex|pi in normalized --target order, the same rule --supervisor=enable
 // uses. A role already installed on another kind is refreshed there on upgrade; a role
 // whose only home is outside --target is reported, never written cross-target.
-// OpenClaw is excluded **permanently** (ruling O3): the openclaw-team framework already
-// ships a per-agent poll and a `task-patrol` — the same design (cadence: the framework's
-// own AUTOMATIONS.md, not a number restated here); two supervisors on one board would only
-// race each other for the same cards.
 //
 // The skill carries decisions, not an execution body: `taskctl run` is the body.
 // ---------------------------------------------------------------------------

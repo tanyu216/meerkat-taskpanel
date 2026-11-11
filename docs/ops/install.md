@@ -905,7 +905,7 @@ rm -rf ~/.claude/skills/meerkat ~/.claude/skills/{meerkat-director,meerkat-chat}
 
 ### OpenClaw
 
-OpenClaw is **not an install target**. This installer installs and refreshes nothing under
+OpenClaw is **not an install target**. This installer installs and refreshes no skill under
 `~/.openclaw`, and there is no OpenClaw scheduling unit or supervisor. Install the runtime,
 then copy the two skills OpenClaw needs by hand:
 

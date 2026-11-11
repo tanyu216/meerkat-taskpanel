@@ -254,7 +254,7 @@ What differs between agent kinds is who applies these rules.
 
 ### OpenClaw: manage the board from an IM conversation
 
-OpenClaw is not an install target: this installer installs and refreshes nothing under
+OpenClaw is not an install target: this installer installs and refreshes no skill under
 `~/.openclaw`, and there is no OpenClaw supervisor or scheduling unit. Its strength is the
 other direction — an OpenClaw session already connects an agent to IM channels. Install
 exactly two skills by hand and let that conversation be the human's front door.
