@@ -8,7 +8,7 @@
 ## 0. 结论摘要
 
 - **① 三个示例各占一行。** `.td-intake-examples` 从 `flex-wrap` 改为 `flex-direction: column`；每个 `.btn` 取整行（`width: 100%`、`justify-content: flex-start`），文字在行内换行，面板不被撑宽。
-- **② 示例成为一条路由词汇的阶梯。** 简单例给出**指派人 + 最高优先级**；中等例给出**依赖 + 指派人**；复杂例给出**开发 → Turing 测试**的交接。三句合起来示范「描述里可以带哪些事实」，因为卡的字段最终由 director 决定。
+- **② 示例成为一条路由词汇的阶梯。** 简单例给出**最高优先级**；中等例给出**依赖**；复杂例给出**开发 → Turing 测试**的交接。**只有复杂例写「谁做」**；三句合起来示范「描述里可以带哪些事实」，因为卡的字段最终由 director 决定。
 - **③ 面没有新增 hook、没有新增 i18n key。** `[data-create-task-example]` 仍是 3 个，`data-example-kind` 仍是 `simple|medium|complex`；三份 catalogue 只改值。
 - **④ 契约与浏览器腿都量到「一行一个」。** B10 新增 computed 规则（`flexDirection: column`）；dom-smoke 的 B10 腿量三行 `top` 互异、每行宽度 = 容器宽度（±2px）。
 - **⑤ 重拍两帧。** `10-create-task-modal.png` = 1280×996，`26-create-narrow-760.png` = 1280×980（面板 640×498 / 640×490，DSF 2）。
@@ -19,9 +19,11 @@
 
 | 阶梯 | en | zh | 示范的路由事实 |
 |---|---|---|---|
-| simple | Fix the blank board after sign-in — assign it to Linus at the highest priority. | 修复登录后看板偶发空白的问题——交给 Linus，设为最高优先级。 | 指派人 + 优先级 |
-| medium | After the filter-bar refactor lands, add label filtering — route it to the Worker. | 等筛选栏重构完成后，给看板加标签筛选——交给 Worker。 | 依赖 + 指派人 |
-| complex | Ship the intake composer: Linus implements it, then Turing writes and runs the regression tests once the implementation is delivered. | 实现需求投递框：由 Linus 开发，交付后由 Turing 编写并执行回归测试。 | 开发 → 测试的角色交接 + 依赖 |
+| simple | Fix the blank board after sign-in at the highest priority. | 修复登录后看板偶发空白的问题，设为最高优先级。 | 优先级 |
+| medium | After the filter-bar refactor lands, add label filtering to the board. | 等筛选栏重构完成后，给看板加标签筛选。 | 依赖 |
+| complex | Ship the intake composer: Linus implements it, then Turing writes and runs the regression tests once the implementation is delivered. | 实现需求投递框：由 Linus 开发，交付后由 Turing 编写并执行回归测试。 | 开发 → 测试的角色交接 + 依赖（**唯一写「谁做」的一条**） |
+
+**修订（2026-11-11）：** 第一版三条都写了指派人（simple: Linus；medium: Worker；complex: Linus → Turing）。需求方指出不必每条都写「交给谁」，有一条即可；修订后只有 complex 保留角色名，simple 只留优先级，medium 只留依赖。三句合起来仍覆盖四个场景。
 
 三句都仍是**一段自然语言**，不是表单；点选后照旧填入文本框，可继续编辑。卡的语言、项目归属和验收仍由 director 从描述与项目上下文决定，示例不新增字段。
 

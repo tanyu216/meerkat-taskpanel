@@ -2863,13 +2863,15 @@ on its own row.
 
 | Ladder | What it names |
 |---|---|
-| simple | an assignee and the highest priority |
-| medium | a dependency (after the refactor lands) and an assignee |
+| simple | the highest priority |
+| medium | a dependency (after the refactor lands) |
 | complex | a development role, then a test role, with the test gated on delivery |
 
 The director still decides the card's fields; the examples show that a description may
-state the who, the how-urgent and the what-first. They remain one natural-language
-sentence each, fill the box on press, and stay editable.
+state the who, the how-urgent and the what-first. Only the complex example names who
+handles the work — the simple and medium examples show that one routing fact is enough
+(revision, 2026-11-11). They remain one natural-language sentence each, fill the box on
+press, and stay editable.
 
 ### 35.2 Layout
 
