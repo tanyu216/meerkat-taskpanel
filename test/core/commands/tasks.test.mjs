@@ -1218,6 +1218,19 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       // No report of theirs to stand on: the container is left for a human
       // (started, because its children were worked, but not delivered).
       assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
+      // The reconcile pass names the same refusal and every done child it
+      // cannot stand on — never a bare "not closeable".
+      const plan = commands.reconcileContainers({ dryRun: true });
+      const entry = plan.actions.find((candidate) => candidate.epic === epic.identifier);
+      assert.deepEqual(
+        { action: entry.action, reason: entry.reason },
+        { action: "none", reason: "no_delivery_evidence" },
+      );
+      assert.deepEqual(
+        entry.blocking.map((child) => child.identifier),
+        [one.identifier, two.identifier],
+        "the blocking list names both done children",
+      );
       // 0033 — the manual rollup must name every child; the children's own
       // waiver says nothing about the container.
       const manual = commands.deliver({

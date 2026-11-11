@@ -13,6 +13,7 @@ import {
   REPORT_MAX_BYTES,
   REPORT_MAX_CONCLUSION_CHARS,
   REPORT_MAX_ITEMS,
+  ROLLUP_NO_EVIDENCE_NOTE,
 } from "../../../src/foundation/constants.mjs";
 import {
   OPEN_ACCEPTANCE_STATUSES,
@@ -358,6 +359,14 @@ describe("domain/report — bounds and truncation", () => {
       [{ kind: "path", path: "p".repeat(40_000) }],
     );
     assert.match(trailing.acceptance[0].note, /evidence\[2\]$/);
+
+    // The rollup's no-evidence marker is the other load-bearing note: it must
+    // survive the same shrink, or a waived child's line would lose its claim.
+    const marker = boundEvidence(
+      [{ text: "criterion", status: "met", note: `${"n".repeat(40_000)} ${ROLLUP_NO_EVIDENCE_NOTE}` }],
+      [{ kind: "path", path: "p".repeat(40_000) }],
+    );
+    assert.match(marker.acceptance[0].note, new RegExp(`${ROLLUP_NO_EVIDENCE_NOTE}$`));
   });
 
   it("serialises arrays plainly and truncated payloads as an object", () => {

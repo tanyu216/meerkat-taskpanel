@@ -290,6 +290,53 @@ describe("cli/report template", () => {
     });
   });
 
+  it("pre-fills the explicit no-evidence marker for a waived done child", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const epic = dataOf(
+        run(["issue", "create", "--project", "demo", "--title", "Epic", "--kind", "epic", "--json"]),
+      ).task;
+      const child = dataOf(
+        run([
+          "issue", "create", "--project", "demo", "--title", "One",
+          "--acceptance-mode", "off", "--json",
+        ]),
+      ).task;
+      run([
+        "relation", "add", epic.identifier,
+        "--type", "parent", "--target", child.identifier, "--json",
+      ]);
+      run(["issue", "move", child.identifier, "in_progress", "--json"], { actorKind: "agent" });
+      run(
+        [
+          "issue", "move", child.identifier, "in_review",
+          "--no-report", "--reason", "audited waiver, no commit", "--json",
+        ],
+        { actorKind: "agent" },
+      );
+      run(["issue", "move", child.identifier, "done", "--json"], { actorKind: "agent" });
+      assert.equal(
+        dataOf(run(["issue", "get", epic.identifier, "--json"])).task.status,
+        "in_progress",
+        "a waived child leaves the container without evidence to roll up",
+      );
+
+      const template = dataOf(
+        run(["report", "template", epic.identifier, "--commit", "dcd7d15", "--json"]),
+      );
+      assert.equal(template.acceptance_source, "children (rollup)");
+      assert.equal(
+        template.evidence_source,
+        "flags",
+        "no child anchor, so the template falls back to the given evidence",
+      );
+      assert.deepEqual(template.report.evidence, [{ kind: "commit", sha: "dcd7d15" }]);
+      const [item] = template.report.acceptance;
+      assert.equal(item.status, "not_met", "the template never claims the rollup passed");
+      assert.match(item.note, /no delivery evidence on the child card/);
+    });
+  });
+
   it("prints something a human can edit, and what it prints delivers", async () => {
     await boardWithIssue(
       async ({ run }) => {
