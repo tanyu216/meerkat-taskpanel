@@ -221,9 +221,11 @@ export const ERROR_CODES = Object.freeze({
   // `SQLITE_IOERR` (an I/O failure) or `SQLITE_CANTOPEN` (the file cannot be
   // opened). The operation did not happen and a retry may succeed once the
   // operator fixes the disk or the attachment — a 503-class service fault, not
-  // the caller's `VALIDATION_FAILED` (400).
-  DB_UNAVAILABLE: spec(503, "The database is unavailable; the operation was not applied — retry.", {
-    retryAfterSeconds: 1,
+  // the caller's `VALIDATION_FAILED` (400). No `retryAfterSeconds`: the router
+  // emits `Retry-After` only for `DB_BUSY`, and this fault does not clear on a
+  // one-second clock — the `fix` names the operator action instead.
+  DB_UNAVAILABLE: spec(503, "The database is unavailable; the operation was not applied — check the data directory and free space, then retry.", {
+    fix: "free disk space and check the data directory's permissions, then retry",
   }),
   MIGRATION_CHECKSUM_MISMATCH: spec(500, "A migration file changed after it was applied; migrations are append-only."),
   SCHEMA_MISMATCH: spec(500, "Database schema is not at the expected migration version."),

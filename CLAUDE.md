@@ -163,9 +163,11 @@ A fresh clone has none: `git config core.hooksPath .githooks` (do not run `npm i
 - **One reader for a handoff round marker.** `meta.handoff_consumed_round` /
   `meta.handoff_declined_round` may carry the created refs after the round, so every layer reads
   them through `src/foundation/handoff-round.mjs`; a direct `Number(value)` read is a regression.
-- **The supervisor speaks only `taskctl`.** `src/orchestrator/**` never calls the HTTP API; the
-  live stream is `taskctl events follow`, and the supervisor carries no board discovery or token
-  code.
+- **The supervisor speaks only `taskctl`.** `src/orchestrator/**` never mutates the board
+  through the HTTP API; the live stream is `taskctl events follow`, and the supervisor carries
+  no board discovery or token code. The one exception is the ping's read-only `GET /health`
+  liveness probe (with the runtime pointer as the fallback URL): observability only, never a
+  board operation (`docs/scheduling.md` § The board's own health).
 - **A claim-cycle exit is a new attempt.** Leaving `in_progress`/`awaiting`/`in_review`/`blocked`
   interrupts the running turn (`stateDir/interrupts/`, the adapter's `interrupt()`), records the
   queue row `interrupted` without spending a counter, and deletes the session record and
