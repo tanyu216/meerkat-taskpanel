@@ -130,6 +130,20 @@ describe("storage/sqlite-errors — constraint failures", () => {
     assert.equal(mapSqliteError(sqliteFailure(SQLITE_ERRCODE.BUSY, "database is locked")).code, "DB_BUSY");
   });
 
+  it("names the operator action for DB_UNAVAILABLE instead of an inert retry clock", () => {
+    // `router.mjs#retryHeaders` emits `Retry-After` only for `DB_BUSY`, and a
+    // full disk does not recover in one second. A retry hint here would be a
+    // promise the wire never keeps; the fix tells the operator what to do.
+    const code = ERROR_CODES.DB_UNAVAILABLE;
+    assert.equal(code.http, 503);
+    assert.equal(
+      Number.isFinite(code.hint?.retryAfterSeconds),
+      false,
+      "no retry clock on an operator fault",
+    );
+    assert.match(String(code.hint?.fix ?? ""), /disk|space|data directory|permission/i);
+  });
+
   it("maps the CHECK texts that express an invariant", () => {
     const self = mapSqliteError(
       sqliteFailure(SQLITE_ERRCODE.CHECK, "CHECK constraint failed: source_task_id <> target_task_id"),
