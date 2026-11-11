@@ -7,6 +7,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-03
+
+### Added
+
+- **loop:** sign the director lane as Director
+- **web:** restrict status editing to the human-facing subset
+- **web:** an Activity row opens its tab and focuses the entry
+
+### Fixed
+
+- **docker:** give taskd a writable data volume on a fresh checkout
+- **web:** align the list's left edge with the filter bar
+- **web:** keep the filter bar's height beside an overflowing view
+- **state:** fsync durable json and record process start tokens
+
 ## [0.2.0] - 2026-11-03
 
 ### Added
@@ -291,5 +306,6 @@ First public release.
 [0.1.1]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.1
 [0.1.2]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.2
 [0.2.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.2.0
-[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v0.2.0...HEAD
+[0.2.1]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.2.1
+[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v0.2.1...HEAD
 [0.1.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v0.1.0
