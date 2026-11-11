@@ -28,12 +28,13 @@ import { baseEnv } from "../helpers/base-env.mjs";
 import { processStartToken } from "../../src/foundation/daemon-state.mjs";
 import { createClaudePool } from "../../src/orchestrator/actor-kinds/claude.mjs";
 import {
+  QUEUE_FILES,
   claimCards,
   enqueueCard,
   readCards,
 } from "../../src/orchestrator/queue.mjs";
 import { readLedger, upsertSubagent, writeLedger } from "../../src/orchestrator/ledger.mjs";
-import { requestInterrupt } from "../../src/orchestrator/interrupts.mjs";
+import { readInterruptRequestIndex, requestInterrupt } from "../../src/orchestrator/interrupts.mjs";
 import {
   appendWorkerTurn,
   readWorkerSessions,
@@ -4698,6 +4699,71 @@ describe("a claim-cycle exit stops the turn (TP-0125)", () => {
       await pool.stop();
     });
   }
+
+  /**
+   * The stronger settle case: the drain that runs mid-settle sets the token but
+   * cannot finalize the row (its queue write fails), so the row is still
+   * `processing` when the settle resumes. The settle's own re-check is the only
+   * thing that can keep the attempt; without it `requeueCards` would spend one.
+   */
+  it("a marker the drain cannot finalize still spends no counter at settle", async (t) => {
+    const f = fixture(t);
+    const queuePath = join(f.dir, QUEUE_FILES.cards);
+    let handle = null;
+    let rowAtSettle = null;
+    let drain = null;
+    let pool;
+    const fake = fakePool({
+      behavior: async ({ handle: opened }) => {
+        handle = opened;
+        return { ok: false, error: "turn failed" };
+      },
+    });
+    pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      revalidateCard: async () => {
+        assert.ok(handle !== null, "the turn opened before the settle");
+        const saved = readFileSync(queuePath, "utf8");
+        // `abortEntry` marks the token before it writes the terminal row; a
+        // queue write that cannot land leaves it set with the row in flight.
+        const interrupt = handle.interrupt.bind(handle);
+        handle.interrupt = async () => {
+          writeFileSync(queuePath, "{ not a queue");
+          return interrupt();
+        };
+        const marker = interruptFor(f, "T-1");
+        assert.equal(marker.ok, true, `the marker was written (${JSON.stringify(marker)})`);
+        assert.equal(
+          readInterruptRequestIndex(f.dir).files.length,
+          1,
+          "the marker is on disk before the drain",
+        );
+        drain = await pool.drainInterrupts();
+        writeFileSync(queuePath, saved);
+        rowAtSettle = readCards(f.dir).value.cards.find((entry) => entry.card === "T-1");
+        return { ok: true, status: "in_progress" };
+      },
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), card(f, "T-1", f.app));
+    await pool.tick();
+
+    assert.equal(
+      drain?.skipped,
+      1,
+      `the drain kept the marker: it could not finalize the row (${JSON.stringify(drain)})`,
+    );
+    assert.equal(rowAtSettle?.status, "processing", "the failed write left the row in flight");
+    const row = rowOf(f, "T-1");
+    assert.equal(row.status, "interrupted", "the settle exits the row the drain could not");
+    assert.equal(row.attempts, 0, "no attempt is spent");
+    assert.equal(row.timeouts, 0, "no timeout is spent");
+    assert.equal(row.recoveries, 0, "no recovery is spent");
+    assert.equal(handle.interruptCalls, 1, "the adapter was interrupted exactly once");
+    await pool.stop();
+  });
 
   it("startup drains markers before reattach can resume them", async (t) => {
     const f = fixture(t);
