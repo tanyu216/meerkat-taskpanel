@@ -108,6 +108,10 @@ for `in_review` cards. `taskctl doctor --json` adds the health rows.
   it leaves the list only when the operator records the result and releases it.
 - **A pending acceptance is not always the human's.** Read `acceptance_mode`: `human` is the
   human's; `auto` closes on the loop's `APPROVE`; `off` is the deliverer's. Say which and why.
+- **A pending intake request is not waiting on the human.** `pending_intake[]` lists a
+  description submitted from the web composer that the director has not settled. Report its
+  age and text when the human asks where their request went; it is a status read, not a
+  question to answer, and it never joins watch mode.
 - Do not re-raise an item the human already handled. Re-read and confirm it left the list.
 
 This register is what makes the skill *proactive*: when the conversation turns to the board and

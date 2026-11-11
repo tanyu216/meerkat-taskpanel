@@ -110,6 +110,18 @@ const COMMENTS = {
   ],
 };
 
+/** One pending request, longer than the console's 200-character preview. */
+const INTAKE = [
+  {
+    id: "r-1",
+    project_id: "P",
+    created_by: "Terry",
+    created_at: "2025-12-31T23:00:00Z",
+    status: "pending",
+    text: `make it so ${"x".repeat(220)}`,
+  },
+];
+
 function sentinelCli(dir) {
   const calls = join(dir, "calls.jsonl");
   const script = join(dir, "sentinel-cli.mjs");
@@ -119,14 +131,15 @@ function sentinelCli(dir) {
       'import { appendFileSync } from "node:fs";',
       'const argv = process.argv.slice(2);',
       "if (process.env.TP_CLI_CALLS) appendFileSync(process.env.TP_CLI_CALLS, `${JSON.stringify(argv)}\\n`);",
+      "const isIntake = argv.includes('intake');",
       "const start = argv.findIndex((a) => a === 'issue' || a === 'comment');",
       "const args = start === -1 ? [] : argv.slice(start);",
       "const status = args.includes('--status') ? args[args.indexOf('--status') + 1] : null;",
-      "let data = {};",
-      "if (args[0] === 'issue' && status !== null) {",
+      `let data = isIntake ? { requests: ${JSON.stringify(INTAKE)} } : {};`,
+      "if (!isIntake && args[0] === 'issue' && status !== null) {",
       `  const tasks = ${JSON.stringify(TASKS)};`,
       "  data = { tasks: tasks[status] ?? [] };",
-      "} else if (args[0] === 'comment') {",
+      "} else if (!isIntake && args[0] === 'comment') {",
       `  const comments = ${JSON.stringify(COMMENTS)};`,
       "  data = { comments: comments[args[2]] ?? [] };",
       "}",
@@ -199,6 +212,13 @@ describe("the live-session console", () => {
     assert.equal(typeof external.age_ms, "number");
     assert.equal(typeof result.questions.find((entry) => entry.ref === "T-4").age_ms, "number");
     assert.deepEqual(result.pending_acceptance.map((entry) => entry.ref), ["T-3"]);
+    assert.equal(result.pending_intake.length, 1, "a pending request has no card, so the console is its only list");
+    assert.equal(result.pending_intake[0].id, "r-1");
+    assert.equal(result.pending_intake[0].project, "P");
+    assert.equal(result.pending_intake[0].created_by, "Terry");
+    assert.equal(typeof result.pending_intake[0].age_ms, "number");
+    assert.equal(result.pending_intake[0].text.length, 201, "the preview is bounded to 200 characters plus the ellipsis");
+    assert.ok(result.pending_intake[0].text.endsWith("…"));
     assert.deepEqual(result.errors, []);
 
     const argv = readFileSync(calls, "utf8")
@@ -209,6 +229,9 @@ describe("the live-session console", () => {
       /\b(move|claim|deliver|add|update|create)\b/.test(args.join(" ")),
     );
     assert.deepEqual(writes, [], "the console never writes to the board");
+    const intakeCall = argv.find((args) => args.includes("intake") && args.includes("list"));
+    assert.ok(intakeCall, "the console reads pending intake");
+    assert.equal(intakeCall[intakeCall.indexOf("--status") + 1], "pending");
   });
 
   it("reports a failed board read instead of crashing", async () => {

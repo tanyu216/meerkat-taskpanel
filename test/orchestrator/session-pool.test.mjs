@@ -1179,6 +1179,147 @@ describe("session pool", () => {
     await pool.stop();
   });
 
+  it("settles an intake row by the request's status, not the turn's exit", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const seen = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      intakeOutcome: async (input) => {
+        seen.push(input);
+        return { ok: true, settled: true, status: "consumed" };
+      },
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "intake:r-1",
+      queue_kind: "question",
+      role: "intake",
+      card: null,
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      intake: true,
+      request_id: "r-1",
+      question_id: "intake:r-1",
+      request_text: "make it so",
+    });
+    await pool.routeQuestionsNow();
+
+    assert.deepEqual(seen.map((input) => input.requestId), ["r-1"]);
+    assert.equal(readCards(f.dir).value.cards[0].status, "done");
+    await pool.stop();
+  });
+
+  it("requeues an intake row while the request is still pending", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const seen = [];
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      intakeOutcome: async (input) => {
+        seen.push(input);
+        return { ok: true, settled: false, status: "pending" };
+      },
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "intake:r-2",
+      queue_kind: "question",
+      role: "intake",
+      card: null,
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      intake: true,
+      request_id: "r-2",
+      question_id: "intake:r-2",
+      request_text: "make it so",
+    });
+    await pool.routeQuestionsNow();
+
+    assert.deepEqual(seen.map((input) => input.requestId), ["r-2"]);
+    const row = readCards(f.dir).value.cards.find((card) => card.id === "intake:r-2");
+    assert.equal(row.status, "pending", "the row is retried, not abandoned");
+    assert.equal(row.attempts, 1);
+    assert.match(row.lastError, /did not settle/);
+    assert.ok(Date.parse(row.retry_at) > Date.now(), "the retry waits out the backoff");
+    await pool.stop();
+  });
+
+  it("ends an intake row after two unsettled turns without parking a card", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool();
+    const pool = createSessionPool({
+      opts: optsFor(f),
+      kindPool: fake,
+      intakeOutcome: async () => ({ ok: true, settled: false, status: "pending" }),
+    });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "intake:r-3",
+      queue_kind: "question",
+      role: "intake",
+      card: null,
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      intake: true,
+      request_id: "r-3",
+      question_id: "intake:r-3",
+      request_text: "make it so",
+    });
+    await pool.routeQuestionsNow();
+    // The retry is due after the backoff; drive it directly instead of sleeping.
+    const file = join(f.dir, "cards.queue.json");
+    const value = JSON.parse(readFileSync(file, "utf8"));
+    value.cards.find((card) => card.id === "intake:r-3").retry_at = null;
+    writeFileSync(file, JSON.stringify(value), "utf8");
+    await pool.routeQuestionsNow();
+
+    const row = readCards(f.dir).value.cards.find((card) => card.id === "intake:r-3");
+    assert.equal(row.status, "failed");
+    assert.equal(row.attempts, 2);
+    await pool.stop();
+  });
+
+  it("ends an intake row whose turn kept failing (no card to park)", async (t) => {
+    const f = fixture(t);
+    const fake = fakePool({ behavior: async () => ({ ok: false, error: "spawn error" }) });
+    const pool = createSessionPool({ opts: optsFor(f), kindPool: fake });
+    t.after(() => pool.stop());
+    await pool.start();
+    enqueueCard(join(f.dir), {
+      id: "intake:r-4",
+      queue_kind: "question",
+      role: "intake",
+      card: null,
+      project: "P",
+      agent: "alice",
+      target_dir: f.app,
+      intake: true,
+      request_id: "r-4",
+      question_id: "intake:r-4",
+      request_text: "make it so",
+    });
+    await pool.routeQuestionsNow();
+    const file = join(f.dir, "cards.queue.json");
+    const value = JSON.parse(readFileSync(file, "utf8"));
+    value.cards.find((card) => card.id === "intake:r-4").retry_at = null;
+    writeFileSync(file, JSON.stringify(value), "utf8");
+    await pool.routeQuestionsNow();
+
+    const row = readCards(f.dir).value.cards.find((card) => card.id === "intake:r-4");
+    assert.equal(row.status, "failed");
+    assert.equal(row.attempts, 2);
+    await pool.stop();
+  });
+
   it("does not verify a route row (it assigns, it does not answer)", async (t) => {
     const f = fixture(t);
     const fake = fakePool();

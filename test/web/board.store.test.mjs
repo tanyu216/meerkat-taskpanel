@@ -213,6 +213,102 @@ describe("web/board — reopening a terminal card", () => {
   });
 });
 
+/* ------------------------------------------------ intake (R18, 0007) */
+
+describe("web/board — a submitted description", () => {
+  const request = (status, over = {}) => ({
+    id: "r-1",
+    project_id: "proj",
+    text: "make the board honest",
+    status,
+    created_refs: [],
+    last_error: null,
+    ...over,
+  });
+
+  it("posts the request and claims the receipt", async () => {
+    const { createIntake } = await freshBoard();
+    const calls = installFetch({ "POST /api/v1/intake": () => ok({ request: request("pending") }) });
+
+    const created = await createIntake({ project_id: "proj", text: "make the board honest", idem: "k-1" });
+
+    assert.equal(created.id, "r-1");
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].body, { project_id: "proj", text: "make the board honest", idem: "k-1" });
+    assert.equal(toasts.value.at(-1).kind, "success");
+    assert.equal(toasts.value.at(-1).text, resolveText("en", "toast.intakeAccepted"));
+  });
+
+  it("re-reads the request on its terminal event and reports the refs", async () => {
+    const { startEvents, createIntake } = await freshBoard();
+    const calls = installFetch({
+      "POST /api/v1/intake": () => ok({ request: request("pending") }),
+      "GET /api/v1/intake/r-1": () =>
+        ok({ request: request("consumed", { created_refs: ["TP-1", "TP-2"] }) }),
+    });
+
+    startEvents();
+    await createIntake({ project_id: "proj", text: "make the board honest", idem: "k-1" });
+    FakeEventSource.instances.at(-1).emit(31, {
+      event: "intake_consumed",
+      task_id: null,
+      changes: { intake_id: "r-1", refs: ["TP-1", "TP-2"] },
+    });
+    // The handler re-reads through `void announceIntake(...)`; let it settle.
+    await settle();
+    await settle();
+
+    assert.deepEqual(
+      calls.map((call) => `${call.method} ${call.url}`),
+      ["POST /api/v1/intake", "GET /api/v1/intake/r-1"],
+      "the event is a signal; the refs come from the re-read",
+    );
+    assert.equal(toasts.value.at(-1).kind, "success");
+    assert.equal(toasts.value.at(-1).text, `${resolveText("en", "toast.intakeConsumed")} TP-1, TP-2`);
+  });
+
+  it("reports a refusal with the lane's reason", async () => {
+    const { startEvents, createIntake } = await freshBoard();
+    installFetch({
+      "POST /api/v1/intake": () => ok({ request: request("pending") }),
+      "GET /api/v1/intake/r-1": () =>
+        ok({ request: request("failed", { last_error: "not a task the team can file" }) }),
+    });
+
+    startEvents();
+    await createIntake({ project_id: "proj", text: "make the board honest", idem: "k-1" });
+    FakeEventSource.instances.at(-1).emit(32, {
+      event: "intake_failed",
+      task_id: null,
+      changes: { intake_id: "r-1" },
+    });
+    await settle();
+    await settle();
+
+    assert.equal(toasts.value.at(-1).kind, "danger");
+    assert.equal(
+      toasts.value.at(-1).text,
+      `${resolveText("en", "toast.intakeFailed")} not a task the team can file`,
+    );
+  });
+
+  it("ignores a terminal event for a request this page did not submit", async () => {
+    const { startEvents } = await freshBoard();
+    const calls = installFetch({ "*": () => ok({}) });
+
+    startEvents();
+    FakeEventSource.instances.at(-1).emit(33, {
+      event: "intake_consumed",
+      task_id: null,
+      changes: { intake_id: "r-other" },
+    });
+    await settle();
+
+    assert.deepEqual(calls, [], "a page that never waited for a request stays quiet");
+    assert.deepEqual(toasts.value, []);
+  });
+});
+
 /* ------------------------------------------- 409 rollback + conflict panel */
 
 describe("web/board — 409 rollback and the conflict panel", () => {

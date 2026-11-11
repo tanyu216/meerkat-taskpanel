@@ -954,7 +954,9 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     const app = join(dir, "app");
     mkdirSync(app, { recursive: true });
     writeFileSync(join(dir, "projects.json"), JSON.stringify({ projects: [{ project: "P", local_path: app }] }));
-    writeLivePool(dir, { version: 3, capabilities: ["question-lane", "intake-lane"] });
+    // The baseline is an older pool: it lacks the intake lane, so the request
+    // must stay unqueued rather than be handed to a lane that cannot read it.
+    writeLivePool(dir, { version: 3, capabilities: ["question-lane"] });
     const record = join(dir, "calls.jsonl");
     const script = join(dir, "intake-cli.mjs");
     writeFileSync(
@@ -971,16 +973,23 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
         'process.stdout.write(`${JSON.stringify({ ok: true, data })}\\n`);',
       ].join("\n"),
     );
-    const run = runEntry(
-      "passes.mjs",
-      [
-        "--actor-kind", "claude", "--agent", "alice",
-        "--cli", script, "--repo", dir,
-        "--state", join(dir, "state.json"), "--log", join(dir, "log"),
-      ],
-      { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir },
-      "poll",
+    const argv = [
+      "--actor-kind", "claude", "--agent", "alice",
+      "--cli", script, "--repo", dir,
+      "--state", join(dir, "state.json"), "--log", join(dir, "log"),
+    ];
+    const env = { TP_SENTINEL: record, MEERKAT_TASKPANEL_CONFIG_DIR: dir };
+
+    const oldPool = runEntry("passes.mjs", argv, env, "poll");
+    assert.equal(oldPool.status, 0, oldPool.stderr);
+    assert.equal(
+      readCards(dir).value.cards.filter((row) => row.id === "intake:r-1").length,
+      0,
+      "a pool without intake-lane is not handed the request",
     );
+
+    writeLivePool(dir, { version: 3, capabilities: ["question-lane", "intake-lane"] });
+    const run = runEntry("passes.mjs", argv, env, "poll");
     assert.equal(run.status, 0, run.stderr);
 
     const rows = readCards(dir).value.cards.filter((row) => row.id === "intake:r-1");

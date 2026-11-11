@@ -114,7 +114,9 @@ It is skipped when:
 
 **It looks at the assignee, never the writer.** `Board` / `Director` are
 writer identities for closure work (verdict, move, acceptance, comment, reconcile) and are
-never assignees; `Director` is the decision lane's signature even though it is not a role. The
+never assignees; `Director` is the decision lane's signature even though it is not a role. Its
+decisions are the ones the supervisor cannot make: answer a question, route an unowned card,
+consume a handoff, and turn a human's free-text intake request into cards. The
 two board-created cards are the review card (the catalog's `default_reviewer`, named by
 `--assignee` at that one argv builder) and the rework child (`--assignee-id`). A board
 writer that names a worker assignee is checked like anyone else.
